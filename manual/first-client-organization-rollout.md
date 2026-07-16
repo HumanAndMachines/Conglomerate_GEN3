@@ -1,6 +1,6 @@
 # First-client Organization rollout runbook
 
-Tento runbook je obecný closeout postup pro první klientský **HumanAndMachine GEN3** rollout z prázdného nebo čerstvě migrovaného klienta do lokálního `Conglomerate/` rootu.
+Tento runbook je obecný closeout postup pro první klientský **HumanAndMachine GEN3** rollout z prázdného nebo čerstvě migrovaného klienta do lokálního `Conglomerate/` rootu. Podporuje dvě explicitní cesty: **GitHub-first**, kdy už klient schválil cílovou GitHub Organization a repo, a **local-first**, kdy se Organization připraví a ověří lokálně bez remote `origin` a GitHub hranice se připojí až později za účasti klienta.
 
 Cíl: nový klient má vlastní Organization repo, je lokálně namountovaný pod `organizations/<ClientOrg>_GEN3/`, Launchpad ho objeví bez hardcodovaných root portů a `bun run check` + `bun run doctor` v rootu projdou bez support-loop warningů.
 
@@ -20,11 +20,12 @@ Vyplň před tím, než vytvoříš nebo mountneš klientský checkout:
 
 | Otázka | Příklad / požadavek |
 |---|---|
-| Client / GitHub Organization | `ClientX` nebo existující GitHub org |
+| Klient / kanonická Organization identity | `ClientX`; čistý název bez `_GEN3` |
+| Režim rollout | `github-first` nebo `local-first`; u local-first není GitHub Organization ani `origin` vstupní podmínkou |
+| Cílová GitHub Organization / repo | U github-first klientem schválená hranice; u local-first zatím `not configured` |
 | Lokální mount slug | `organizations/ClientX_GEN3/`; suffix `_GEN3` je filesystem marker, ne interní company identity |
-| Canonická company identity | čistý název bez `_GEN3`, např. `ClientX` |
 | Repo hranice | klientské super-repo ve vlastnictví klientské/GitHub organization hranice |
-| Default workspace | právě jeden default workspace se slugem `workspace` |
+| Default Team | právě jeden default Team se slugem `workspace`; Team je logická deklarace, ne adresář |
 | Role hranice | Admin Organizace, Builder Organizace, Uživatel Organizace; Steward Organizace (AI Kolega ve Steward seatu) na Workspace Hostu; kdo drží secrets a kdo smí měnit source |
 | Počáteční moduly | Mission Control + Knowledgebase; ne big-bang rollout |
 | Template baseline | Organization z `TemplatesRozjedeme-ai/OrganizationTemplate_GEN3`; Mission Control + Knowledgebase z vlastních `TemplatesRozjedeme-ai/*Template` fork-style upstreamů |
@@ -59,7 +60,12 @@ Fail-fast: novou GEN3 Organizaci nezakládej ze starého `CompanyTemplate` / GEN
 
 ### 1. Organization repo bootstrap
 
-Klientská Organization pravda vzniká v klientském repo, ne v rootu. Repo vzniká fork-style z `TemplatesRozjedeme-ai/OrganizationTemplate_GEN3` a drží remote `template` na upstream template, aby byl budoucí template sync reviewovatelný.
+Klientská Organization pravda vzniká v samostatném klientském repo, ne v rootu. Baseline vždy pochází z `TemplatesRozjedeme-ai/OrganizationTemplate_GEN3` a checkout drží remote `template` jako fetch-only upstream, aby byl budoucí template sync reviewovatelný. Push na `template` musí být explicitně zakázaný.
+
+Zvol právě jeden bootstrap režim:
+
+- **GitHub-first:** klient schválil GitHub Organization, název a vlastnictví repa. Cílové repo vznikne fork-style z OrganizationTemplate, klientský remote se jmenuje `origin` a upstream `template` je fetch-only.
+- **Local-first:** GitHub Organization/repo se dnes nezakládá. Lokální checkout se klonuje přímo z OrganizationTemplate s názvem remote `template`, nemá remote `origin` a jeho vytvoření ani push se nesmí vydávat za hotový GitHub bootstrap. Aktivace `origin` má samostatný klientem schválený gate ve fázi 2.
 
 Minimální tvar, který má klientské repo směřovat mít:
 
@@ -79,7 +85,7 @@ Minimální tvar, který má klientské repo směřovat mít:
 │       └── README.md
 ├── workspace/
 │   ├── README.md
-│   └── <modul>/            # plochá složka modulů; Workspaces jsou deklarace v manifestu, ne adresáře workspaces/<slug>/ (decision 0041)
+│   └── <modul>/            # plochá složka modulů; Teamy jsou deklarace v manifestu, ne adresáře workspaces/<slug>/ (decision 0041)
 └── productionspace/
     └── README.md
 ```
@@ -89,20 +95,73 @@ První klientský pilot má raději malé, čitelné moduly než kompletní migr
 První reálný GEN3 klient začíná s:
 
 1. **Mission Control** — plánování a source-of-truth evidence Organizace; app/code fork-style z `TemplatesRozjedeme-ai/MissionControlTemplate`, klientská data zůstávají v klientské Organization hranici.
-2. **Knowledgebase** — privátní Git-native knowledgebase ve default workspace; fork-style z `TemplatesRozjedeme-ai/KnowledgebaseTemplate`.
+2. **Knowledgebase** — privátní Git-native knowledgebase v default Teamu; fork-style z `TemplatesRozjedeme-ai/KnowledgebaseTemplate`.
 3. **Guide** — shared z `HumanAndMachines/Conglomerate_GEN3/guide`; nekopíruj ani neforkuj Guide do klientské Organizace. Pokud klient vzniká migrací z GEN2 a má vlastní top-level `guide/`, obecný Guide z Organization repozitáře smaž — nahrazuje ho shared root Guide. Organization-specific onboarding přesuň do `manual/`, knowledgebase nebo role docs.
 
-### 2. Lokální mount
+### 2. Lokální mount a remote hranice
 
-V rootu mountni klientské repo jako běžný nested Git checkout:
+#### GitHub-first mount
+
+V rootu mountni klientem schválené repo jako běžný nested Git checkout a přidej fetch-only template upstream:
 
 ```sh
 cd /path/to/Conglomerate
 git clone <client-org-repo-url> organizations/<ClientOrg>_GEN3
+git -C organizations/<ClientOrg>_GEN3 remote add template git@github.com:TemplatesRozjedeme-ai/OrganizationTemplate_GEN3.git
+git -C organizations/<ClientOrg>_GEN3 config remote.template.pushurl DISABLED
 
+git -C organizations/<ClientOrg>_GEN3 status --short --branch
+git -C organizations/<ClientOrg>_GEN3 remote -v
+test -d organizations/<ClientOrg>_GEN3/.git || test -f organizations/<ClientOrg>_GEN3/.git
+```
+
+#### Local-first mount bez `origin`
+
+Pokud klient schválil lokální přípravu, ale GitHub hranici chce založit až společně později, naklonuj template rovnou do cílového mountu a pojmenuj jediný remote `template`:
+
+```sh
+cd /path/to/Conglomerate
+git clone --origin template \
+  git@github.com:TemplatesRozjedeme-ai/OrganizationTemplate_GEN3.git \
+  organizations/<ClientOrg>_GEN3
+
+git -C organizations/<ClientOrg>_GEN3 config remote.template.pushurl DISABLED
+git -C organizations/<ClientOrg>_GEN3 config companyascode.templateBase \
+  "$(git -C organizations/<ClientOrg>_GEN3 rev-parse template/main)"
+
+test "$(git -C organizations/<ClientOrg>_GEN3 remote)" = template
+test "$(git -C organizations/<ClientOrg>_GEN3 remote get-url --push template)" = DISABLED
 git -C organizations/<ClientOrg>_GEN3 status --short --branch
 test -d organizations/<ClientOrg>_GEN3/.git || test -f organizations/<ClientOrg>_GEN3/.git
 ```
+
+V tomhle stavu dnes žádný `origin` nepřidávej. Lokální commity zůstávají Draft v klientském checkoutu; `template` slouží jen pro fetch/sync review a nikdy není publish target.
+
+#### Pozdější aktivace klientského `origin`
+
+Remote `origin` připoj až v klientem schváleném kroku, po kontrole přesné GitHub Organization, repo URL a přístupů. Nejdřív ověř, že lokální historie skutečně navazuje na uložený template baseline. Potom přijmi jen prázdný cílový remote nebo stav, jehož `origin/main` je předkem lokálního `HEAD`; tím zůstane první push fast-forward:
+
+```sh
+ORG=/path/to/Conglomerate/organizations/<ClientOrg>_GEN3
+TEMPLATE_BASE="$(git -C "$ORG" config --get companyascode.templateBase)"
+
+test -n "$TEMPLATE_BASE"
+git -C "$ORG" merge-base --is-ancestor "$TEMPLATE_BASE" HEAD
+
+git -C "$ORG" remote add origin <client-approved-repo-url>
+git -C "$ORG" fetch origin
+
+if git -C "$ORG" show-ref --verify --quiet refs/remotes/origin/main; then
+  git -C "$ORG" merge-base --is-ancestor origin/main HEAD
+else
+  test -z "$(git -C "$ORG" ls-remote --heads origin)"
+fi
+
+git -C "$ORG" push --dry-run origin HEAD:main
+git -C "$ORG" push -u origin HEAD:main
+```
+
+Nepoužívej `--force` ani `--force-with-lease`. Pokud ancestry nebo prázdný-remote gate neprojde, zastav se: neřeš konflikt přepsáním historie, ale ověř, zda klient schválil správné repo a zda se GitHub repo nemá vytvořit znovu jako prázdné nebo jako skutečný fork stejného template baseline.
 
 Nesmí vzniknout:
 
@@ -144,7 +203,7 @@ Launchpad nesmí držet app porty jedné Organizace v rootu. Každá aplikace de
 Kontrolní pravidla:
 
 - `company` je čistá Organization identity, ne `workspace`, ne filesystem slug s `_GEN3`.
-- `module` je modul/app surface identita; workspace příslušnost patří do `company.gen3.json` / `modules.manifest.json`, ne do app manifestu.
+- `module` je modul/app surface identita; příslušnost k Teamům patří do `company.gen3.json` / `modules.manifest.json`, ne do app manifestu.
 - Porty jsou unikátní napříč lokálním rootem. Pro prvního klienta začínej v klientském bloku okolo `5500+` a ověř kolize přes Launchpad `/api/apps`.
 - Productionspace systémy nesmí získat hosted/public exposure jen tím, že existuje manifest. Sdílený Launchpad defaultně `productionspace/` app package discovery neprochází.
 
@@ -246,23 +305,29 @@ Lokální odmountování klientského checkoutu není destruktivní vůči remot
 
 ## Handoff evidence template
 
-Použij pro první klientský closeout:
+Použij pro první klientský closeout. Pole označené `pokud ...` dokládej jen tehdy, když daný krok patřil do zvoleného rollout režimu; neprovedenou GitHub nebo runtime akci neprezentuj jako selhání ani jako hotovou práci.
 
 ```md
 ## HumanAndMachine GEN3 first-client rollout evidence
 
+- Rollout mode: `github-first` / `local-first`
 - Root: `<path>`
 - Root HEAD: `<sha>`; `HEAD == origin/main`: yes/no
 - Client mount: `organizations/<ClientOrg>_GEN3`
 - Client repo HEAD: `<sha>`
-- Apps discovered: `<n>`; client apps: `<ids>`
+- Template remote: `<url>`; push disabled: yes/no
+- Client `origin`: `<url>` / `not configured (local-first)`
+- Origin ancestry + push dry-run: pass/fail + excerpt (pokud se `origin` připojoval)
+- Apps discovered: `<n>`; client apps: `<ids>` (pokud jsou app moduly materializované)
 - `bun run check`: pass/fail + excerpt
 - `bun run doctor`: ok/warn/fail + excerpt
-- Runtime smoke: `<app-id>` ready/start/repair result
-- Secrets: metadata-only custody check, no values printed
+- Runtime smoke: `<app-id>` ready/start/repair result (pokud se app runtime předává)
+- Secrets: metadata-only custody check, no values printed (pokud se secrets konfigurovaly)
 - Known accepted warnings: `<none>` or explicit list
-- Rollback path tested/available: yes/no
+- Rollback path: tested/available/not applicable + proč
 ```
+
+Vždy povinná je evidence zvoleného režimu, samostatného Git checkoutu, template původu a push guardu, root/Organization validace a známých warningů. GitHub evidence je povinná pouze pro github-first nebo dokončenou pozdější aktivaci `origin`; runtime evidence pouze pro skutečně materializovanou a předávanou appku.
 
 ## Definition of ready for first client
 
@@ -270,6 +335,7 @@ GEN3 je ready pro prvního klienta, když:
 
 - shared root je zelený na `bun run check` a `bun run doctor`;
 - klientský Organization checkout je samostatný Git repo mount, ne submodule;
+- zvolený rollout režim odpovídá remote stavu: github-first má klientem schválený `origin`, local-first nemá `origin` a `template` má zakázaný push;
 - první klientský pilot modul má validní manifest, nekolidující port a vysvětlitelný dependency/runtime stav;
 - člověk i agent najdou source-of-truth hranice v README/Guide/manuálu;
 - Organization baseline je z `OrganizationTemplate_GEN3`, Mission Control a Knowledgebase z vlastních template forků, Guide ze shared Conglomerate rootu;

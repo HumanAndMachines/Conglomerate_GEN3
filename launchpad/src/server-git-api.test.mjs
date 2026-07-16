@@ -22,7 +22,7 @@ afterAll(async () => {
 test("Launchpad server exposes read-only git and Mission Control routes", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
-  const dealsRepo = join(root, "organizations", "BetaCo_GEN3", "modules", "deals");
+  const dealsRepo = join(root, "organizations", "BetaCo_GEN3", "workspace", "deals");
   await initGitRepo(dealsRepo);
   await writeFile(join(dealsRepo, "draft.md"), "local draft\n");
   const omegacoRoot = join(root, "organizations", "OmegaCo_GEN3");
@@ -185,12 +185,12 @@ test("Launchpad server forwards runtime source from POST body to worktree open",
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const orgRoot = join(root, "organizations", "BetaCo_GEN3");
-  const dealsRepo = join(orgRoot, "modules", "deals");
+  const dealsRepo = join(orgRoot, "workspace", "deals");
   await initGitRepo(dealsRepo);
   const mainPort = await findFreePort();
   await createPackageApp({
     root,
-    packagePath: "organizations/BetaCo_GEN3/modules/deals/app/v1",
+    packagePath: "organizations/BetaCo_GEN3/workspace/deals/app/v1",
     app: {
       id: "deals-v1",
       title: "Deals v1",
@@ -207,7 +207,7 @@ test("Launchpad server forwards runtime source from POST body to worktree open",
   await cp(dealsRepo, worktreeRoot, { recursive: true });
   await writeFile(
     join(orgRoot, "mission-control", "plans", "2026", "07", "CAC-0042-deals-runtime-selector.yaml"),
-    "dev_code: CAC-0042\ntitle: Deals runtime selector\nstatus: in_progress\nlinks:\n  - path: modules/deals\n",
+    "dev_code: CAC-0042\ntitle: Deals runtime selector\nstatus: in_progress\nlinks:\n  - path: workspace/deals\n",
   );
   await writeJson(join(orgRoot, ".worktrees", "workspace", "deals", `${worktreeSlug}.worktree.json`), {
     schema_version: "companiesascode.worktree.v1",
@@ -215,7 +215,7 @@ test("Launchpad server forwards runtime source from POST body to worktree open",
     organization_path: "organizations/BetaCo_GEN3",
     workspace: "workspace",
     module: "deals",
-    module_path: "modules/deals",
+    module_path: "workspace/deals",
     repo_kind: "module",
     base_branch: "main",
     branch: "CAC-0042-deals-runtime-selector",
@@ -253,12 +253,12 @@ test("Launchpad server creates and publishes a Mission-Control-owned worktree vi
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const orgRoot = join(root, "organizations", "BetaCo_GEN3");
-  const dealsRepo = join(orgRoot, "modules", "deals");
+  const dealsRepo = join(orgRoot, "workspace", "deals");
   const remotePath = join(root, "remotes", "deals.git");
   await initGitRepo(dealsRepo, { remotePath });
   await writeFile(
     join(orgRoot, "mission-control", "plans", "2026", "07", "CAC-0042-deals-publish.yaml"),
-    "dev_code: CAC-0042\ntitle: Deals publish assistant\nstatus: in_progress\nlinks:\n  - path: modules/deals\n",
+    "dev_code: CAC-0042\ntitle: Deals publish assistant\nstatus: in_progress\nlinks:\n  - path: workspace/deals\n",
   );
 
   const { port } = await startLaunchpadServer(root);

@@ -50,7 +50,7 @@ test("guarded create makes a canonical Mission-Control-owned worktree with sidec
     organization_path: "organizations/BetaCo_GEN3",
     workspace: "workspace",
     module: "deals",
-    module_path: "modules/deals",
+    module_path: "workspace/deals",
     repo_kind: "module",
     base_branch: "main",
     branch: "CAC-0042-deals-publish",
@@ -210,7 +210,7 @@ async function setupDealsRepoWithPlan({
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const orgRoot = join(root, "organizations", "BetaCo_GEN3");
-  const dealsRepo = join(orgRoot, "modules", "deals");
+  const dealsRepo = join(orgRoot, "workspace", "deals");
   const remotePath = join(root, "remotes", "deals.git");
   await initGitRepo(dealsRepo, { remotePath });
   const absolutePlanPath = join(orgRoot, planRelativePath);
@@ -222,7 +222,7 @@ async function setupDealsRepoWithPlan({
       "title: Deals publish assistant",
       "status: in_progress",
       "links:",
-      "  - path: modules/deals",
+      "  - path: workspace/deals",
       "",
     ].join("\n"),
   );

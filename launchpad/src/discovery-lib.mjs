@@ -42,6 +42,148 @@ export function organizationMountStructureIssues({ organizationRoot, label }) {
   return issues;
 }
 
+// Lokální cross-file gate Organization mountu. Schémata žijí v
+// HumanAndMachines core, ale Launchpad/Doctor nesmí pro základní bezpečnostní
+// invarianty záviset na jiném checkoutu nebo runtime importu. Proto zde držíme
+// malou read-only kontrolu identity, kanonických cest, Team referencí a Git
+// materializace. Platí shodně pro běžnou Organizaci i marker template mount.
+async function organizationMountContractIssues({ organizationRoot, label }) {
+  const issues = organizationMountStructureIssues({ organizationRoot, label });
+  if (issues.length > 0) return issues;
+
+  let companyConfig;
+  let manifest;
+  try {
+    companyConfig = await readJson(join(organizationRoot, "company.gen3.json"));
+  } catch (error) {
+    return [`${label}: company.gen3.json nejde přečíst: ${error.message}`];
+  }
+  try {
+    manifest = await readJson(join(organizationRoot, "modules.manifest.json"));
+  } catch (error) {
+    return [`${label}: modules.manifest.json nejde přečíst: ${error.message}`];
+  }
+
+  const company = companyConfig?.company ?? {};
+  const companySlug = trimmedString(company.slug);
+  const manifestCompany = trimmedString(manifest?.company);
+  if (companySlug && manifestCompany && companySlug !== manifestCompany) {
+    issues.push(
+      `${label}: company.gen3.json company.slug "${companySlug}" neodpovídá modules.manifest.json company "${manifestCompany}"`,
+    );
+  }
+
+  const companyGithubOrg = trimmedString(company.github_org);
+  const manifestGithubOrg = trimmedString(manifest?.github_org);
+  if (companyGithubOrg && manifestGithubOrg && companyGithubOrg !== manifestGithubOrg) {
+    issues.push(
+      `${label}: company.gen3.json company.github_org "${companyGithubOrg}" neodpovídá modules.manifest.json github_org "${manifestGithubOrg}"`,
+    );
+  }
+
+  const teamSlugs = declaredOrganizationTeamSlugs(companyConfig);
+  const manifestSlots = Array.isArray(manifest?.module_slots) ? manifest.module_slots : [];
+  for (const [index, slot] of manifestSlots.entries()) {
+    validateDeclaredModule({
+      slot,
+      source: `modules.manifest.json module_slots[${index}]`,
+      organizationRoot,
+      label,
+      teamSlugs,
+      checkMaterializedGit: true,
+      issues,
+    });
+  }
+
+  // company.gen3.json#modules je druhý deklarativní povrch. Git/readiness je
+  // kanonicky v modules.manifest.json, ale deprecated filesystem cesta nesmí
+  // zůstat zelená jen proto, že ji drží pouze tento paralelní seznam.
+  const companyModules = Array.isArray(companyConfig?.modules) ? companyConfig.modules : [];
+  for (const [index, slot] of companyModules.entries()) {
+    validateDeclaredModule({
+      slot,
+      source: `company.gen3.json modules[${index}]`,
+      organizationRoot,
+      label,
+      teamSlugs,
+      checkMaterializedGit: false,
+      issues,
+    });
+  }
+
+  return issues;
+}
+
+function validateDeclaredModule({
+  slot,
+  source,
+  organizationRoot,
+  label,
+  teamSlugs,
+  checkMaterializedGit,
+  issues,
+}) {
+  if (!slot || typeof slot !== "object") return;
+  const path = trimmedString(slot.path)?.replace(/\\/g, "/") ?? null;
+  if (!path) return;
+
+  if (path.startsWith("modules/")) {
+    issues.push(`${label}: ${source}.path "${path}" používá deprecated modules/*; použij workspace/<modul>`);
+  }
+
+  for (const team of declaredSlotTeams(slot)) {
+    if (!teamSlugs.has(team)) {
+      issues.push(
+        `${label}: ${source}.teams odkazuje na neexistující Team "${team}" v company.gen3.json teams[]`,
+      );
+    }
+  }
+
+  if (!checkMaterializedGit || !isActiveModuleSlot(slot) || !existsSync(join(organizationRoot, path))) return;
+  const gitUrl = slot.git?.url ?? slot.repo ?? slot.repository ?? null;
+  if (isMissingOrPlaceholderGitUrl(gitUrl)) {
+    issues.push(
+      `${label}: ${source} je materializovaný aktivní modul "${path}", ale nemá konkrétní git URL v git.url/repo/repository`,
+    );
+  }
+}
+
+function declaredOrganizationTeamSlugs(companyConfig) {
+  const canonical = Array.isArray(companyConfig?.teams) ? companyConfig.teams : null;
+  const legacy = Array.isArray(companyConfig?.workspaces) ? companyConfig.workspaces : null;
+  const roster = canonical ?? legacy ?? [];
+  const slugs = new Set(roster.map((team) => trimmedString(team?.slug)).filter(Boolean));
+  // Chybějící roster má podle decision 0041 implicitní default Team workspace.
+  if (slugs.size === 0) slugs.add("workspace");
+  return slugs;
+}
+
+function declaredSlotTeams(slot) {
+  if (Array.isArray(slot.teams)) return slot.teams.map(trimmedString).filter(Boolean);
+  if (Array.isArray(slot.workspaces)) return slot.workspaces.map(trimmedString).filter(Boolean);
+  const legacy = trimmedString(slot.workspace);
+  return legacy ? [legacy] : [];
+}
+
+function isActiveModuleSlot(slot) {
+  const status = trimmedString(slot.status)?.toLowerCase() ?? "active";
+  return !new Set(["planned", "planned_slot", "inactive", "archived", "disabled"]).has(status);
+}
+
+function isMissingOrPlaceholderGitUrl(value) {
+  const normalized = trimmedString(value)?.toLowerCase() ?? "";
+  return (
+    normalized === "" ||
+    normalized.includes("<") ||
+    normalized.includes("vyplnit") ||
+    normalized.includes("placeholder")
+  );
+}
+
+function trimmedString(value) {
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
 export async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"));
 }
@@ -438,6 +580,25 @@ async function discoverOrganizations({ companiesRoot, companiesConfig, failures,
       continue;
     }
 
+    const organizationKind = organizationKindFromCompanyJson(companyJson);
+    if (organizationKind !== "template") {
+      const declaredSlug = companyJson?.company?.slug;
+      const declaredGithubOrg = companyJson?.company?.github_org;
+      const placeholderIdentityFields = [
+        ["company.slug", declaredSlug],
+        ["company.github_org", declaredGithubOrg],
+      ].filter(([, value]) => typeof value === "string" && isPlaceholderOrganization({ slug: value }));
+      if (placeholderIdentityFields.length > 0) {
+        failures.push(
+          ...placeholderIdentityFields.map(
+            ([field, value]) =>
+              `${path}: company.gen3.json ${field} "${value}" je placeholder; placeholder identita je povolená jen s organization_kind "template"`,
+          ),
+        );
+        continue;
+      }
+    }
+
     const mount = autoOrganizationFromCompanyJson({ companyJson, path, directoryName: entry.name });
     if (!mount) continue;
 
@@ -549,7 +710,7 @@ async function walkMountPackages({
     if (company.status === "planned" || !company.path) continue;
     const companyRoot = join(companiesRoot, company.path);
     if (!existsSync(companyRoot)) continue;
-    const requiredPathIssues = organizationMountStructureIssues({
+    const mountContractIssues = await organizationMountContractIssues({
       organizationRoot: companyRoot,
       label: company.path,
     });
@@ -557,8 +718,8 @@ async function walkMountPackages({
     // mountu: namountovaná Organizace bez povinné GEN3 struktury je hard failure
     // (stejná gate jako před scan-first) a její balíčky se neprocházejí — appka
     // z nezvalidované hranice se nesmí stát spustitelnou.
-    if (requiredPathIssues.length > 0) {
-      failures.push(...requiredPathIssues);
+    if (mountContractIssues.length > 0) {
+      failures.push(...mountContractIssues);
       continue;
     }
     await walkPackageJson(companiesRoot, companyRoot, packageEntries, company);

@@ -47,20 +47,20 @@ export async function createLaunchpadGitFixture() {
     slug: "BetaCo",
     moduleSlots: [
       {
-        path: "modules/deals",
+        path: "workspace/deals",
         workspace: "workspace",
         category: "sales",
         git: { url: "git@github.com:BetaCo/deals.git", branch: "main" },
       },
       {
-        path: "modules/knowledgebase",
+        path: "workspace/knowledgebase",
         workspace: "workspace",
         category: "knowledge",
         repo: "git@github.com:BetaCo/knowledgebase.git",
         branch: "main",
       },
       {
-        path: "modules/brainstorm",
+        path: "workspace/brainstorm",
         workspace: "workspace",
         category: "planned",
       },

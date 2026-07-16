@@ -883,6 +883,181 @@ test("namountovaná Organizace bez povinné GEN3 struktury je hard failure a jej
   expect(apps).toEqual([]);
 });
 
+test("Organization cross-file gate failuje identity, modules/*, neexistující Team a materializovaný modul bez konkrétní Git URL", async () => {
+  const root = await createCompaniesWorkspaceFixture({
+    plugin: { schema_version: "companyascode.launchpad_plugin.v1", title: "Demo kontext" },
+  });
+  const companyRoot = join(root, "organizations", "TestCompany");
+  const companyConfig = await Bun.file(join(companyRoot, "company.gen3.json")).json();
+  companyConfig.company.github_org = "CorrectGithubOrg";
+  companyConfig.teams = [{ slug: "workspace", display_name: "Hlavní Team", default: true }];
+  await writeJson(join(companyRoot, "company.gen3.json"), companyConfig);
+  await mkdir(join(companyRoot, "workspace", "no-git"), { recursive: true });
+  await writeJson(join(companyRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "WrongCompany",
+    github_org: "WrongGithubOrg",
+    module_slots: [
+      {
+        path: "modules/demo",
+        teams: ["missing-team"],
+        git: { url: "git@github.com:vyplnit-github-org/demo.git", branch: "main" },
+      },
+      {
+        path: "workspace/no-git",
+        teams: ["workspace"],
+      },
+    ],
+  });
+
+  const { apps, failures } = await discoverLaunchpadApps(root);
+
+  expect(failures.some((failure) => failure.includes("company.slug") && failure.includes("WrongCompany"))).toBe(true);
+  expect(failures.some((failure) => failure.includes("company.github_org") && failure.includes("WrongGithubOrg"))).toBe(true);
+  expect(failures.some((failure) => failure.includes('path "modules/demo"') && failure.includes("deprecated modules/*"))).toBe(true);
+  expect(failures.some((failure) => failure.includes('neexistující Team "missing-team"'))).toBe(true);
+  expect(failures.some((failure) => failure.includes('aktivní modul "modules/demo"') && failure.includes("git URL"))).toBe(true);
+  expect(failures.some((failure) => failure.includes('aktivní modul "workspace/no-git"') && failure.includes("git URL"))).toBe(true);
+  // Mount s rozbitým Organization kontraktem nesmí dodat spustitelnou appku.
+  expect(apps).toEqual([]);
+});
+
+test("stejný cross-file identity gate platí i pro marker template mount", async () => {
+  const root = await createGenerationMountFixture();
+  await writeGenerationOrg({
+    root,
+    path: "organizations/OrganizationTemplate_GEN3",
+    company: "vyplnit-company-slug",
+    appDir: "mission-control/app/v1",
+    appId: "organizationtemplate-mission-control-v1",
+    port: 5991,
+    organizationKind: "template",
+  });
+  const templateRoot = join(root, "organizations", "OrganizationTemplate_GEN3");
+  const companyConfig = await Bun.file(join(templateRoot, "company.gen3.json")).json();
+  companyConfig.company.github_org = "vyplnit-github-org";
+  await writeJson(join(templateRoot, "company.gen3.json"), companyConfig);
+  await writeJson(join(templateRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "different-placeholder",
+    github_org: "vyplnit-github-org",
+    module_slots: [
+      {
+        path: "modules/knowledgebase",
+        status: "planned_slot",
+        teams: ["workspace"],
+      },
+    ],
+  });
+
+  const { template_apps, failures } = await discoverLaunchpadApps(root);
+
+  expect(failures.some((failure) => failure.includes("OrganizationTemplate_GEN3") && failure.includes("company.slug"))).toBe(true);
+  expect(
+    failures.some(
+      (failure) =>
+        failure.includes("OrganizationTemplate_GEN3") &&
+        failure.includes('path "modules/knowledgebase"') &&
+        failure.includes("deprecated modules/*"),
+    ),
+  ).toBe(true);
+  expect(template_apps.some((app) => app.organization_path === "organizations/OrganizationTemplate_GEN3")).toBe(false);
+});
+
+test("placeholder Organization identita bez markeru template je hard failure", async () => {
+  const root = await createGenerationMountFixture();
+  await writeGenerationOrg({
+    root,
+    path: "organizations/Scaffold_GEN3",
+    company: "vyplnit-company-slug",
+    appDir: "mission-control/app/v1",
+    appId: "scaffold-mission-control-v1",
+    port: 5992,
+  });
+
+  const { organizations, failures } = await discoverLaunchpadApps(root);
+
+  expect(failures.some((failure) => failure.includes("Scaffold_GEN3") && failure.includes("povolená jen") && failure.includes("organization_kind"))).toBe(true);
+  expect(organizations.some((organization) => organization.path === "organizations/Scaffold_GEN3")).toBe(false);
+});
+
+test("placeholder company.github_org bez markeru template je hard failure", async () => {
+  const root = await createGenerationMountFixture();
+  await writeGenerationOrg({
+    root,
+    path: "organizations/Scaffold_GEN3",
+    company: "Scaffold",
+    appDir: "mission-control/app/v1",
+    appId: "scaffold-mission-control-v1",
+    port: 5992,
+  });
+  const companyRoot = join(root, "organizations", "Scaffold_GEN3");
+  const companyConfig = await Bun.file(join(companyRoot, "company.gen3.json")).json();
+  companyConfig.company.github_org = "vyplnit-github-org";
+  await writeJson(join(companyRoot, "company.gen3.json"), companyConfig);
+
+  const { organizations, failures } = await discoverLaunchpadApps(root);
+
+  expect(
+    failures.some(
+      (failure) =>
+        failure.includes("Scaffold_GEN3") &&
+        failure.includes("company.github_org") &&
+        failure.includes("organization_kind"),
+    ),
+  ).toBe(true);
+  expect(organizations.some((organization) => organization.path === "organizations/Scaffold_GEN3")).toBe(false);
+});
+
+test("opravený OrganizationTemplate placeholder kontrakt projde bez false failure", async () => {
+  const root = await createGenerationMountFixture();
+  const templateRoot = join(root, "organizations", "OrganizationTemplate_GEN3");
+  await mkdir(join(templateRoot, "manual"), { recursive: true });
+  await mkdir(join(templateRoot, "company", "colleagues"), { recursive: true });
+  await mkdir(join(templateRoot, "workspace"), { recursive: true });
+  // Infra je v template jen plánovaný scaffold. Jeho existence proto nesmí
+  // aktivovat materialized-active Git URL gate.
+  await mkdir(join(templateRoot, "infra"), { recursive: true });
+  await writeJson(join(templateRoot, "company.gen3.json"), {
+    organization_generation: "gen3",
+    organization_kind: "template",
+    company: {
+      slug: "vyplnit-company-slug",
+      display_name: "<VYPLNIT_COMPANY_NAME>",
+      github_org: "vyplnit-github-org",
+    },
+    teams: [
+      { slug: "workspace", display_name: "<VYPLNIT_DEFAULT_TEAM_NAME>", default: true },
+    ],
+  });
+  await writeJson(join(templateRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "vyplnit-company-slug",
+    github_org: "vyplnit-github-org",
+    workspace_path: "workspace",
+    teams: [
+      { slug: "workspace", display_name: "<VYPLNIT_DEFAULT_TEAM_NAME>", default: true },
+    ],
+    module_slots: [
+      {
+        path: "workspace/knowledgebase",
+        teams: ["workspace"],
+        git: { url: "git@github.com:vyplnit-github-org/knowledgebase.git", branch: "main" },
+      },
+      {
+        path: "infra",
+        status: "planned_slot",
+        git: { url: "git@github.com:vyplnit-github-org/infra.git", branch: "main" },
+      },
+    ],
+  });
+
+  const { template_mounts, failures } = await discoverLaunchpadApps(root);
+
+  expect(failures).toEqual([]);
+  expect(template_mounts.some((mount) => mount.path === "organizations/OrganizationTemplate_GEN3")).toBe(true);
+});
+
 async function createCompaniesWorkspaceFixture({ plugin, appOverrides = {} }) {
   const root = await mkdtemp(join(tmpdir(), "companiesascode-discovery-"));
   tempRoots.push(root);

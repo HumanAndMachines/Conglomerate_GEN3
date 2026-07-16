@@ -29,7 +29,7 @@ test("inventory reads repo paths from Organization manifests and does not infer 
     workspace: "workspace",
     module: "deals",
     repo_kind: "module",
-    repo_path: "organizations/BetaCo_GEN3/modules/deals",
+    repo_path: "organizations/BetaCo_GEN3/workspace/deals",
     expected_branch: "main",
   });
   expect(repos.get("OmegaCo::infra")).toMatchObject({
