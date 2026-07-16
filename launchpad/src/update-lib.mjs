@@ -452,6 +452,11 @@ async function mergeTargetFastForward({ rootPath, before }) {
 async function mergeTargetWithAutostash({ rootPath, before }) {
   // Záměrná odchylka od původního redesign návrhu rebase --autostash:
   // zrcadlíme bezpečný per-repo pattern stash → ff-only → přesná obnova.
+  // Identita autostashe: zapamatuj si stash tip PŘED push — `git stash push`
+  // umí skončit ok i bez vytvoření záznamu (změny mezitím zmizely) a my pak
+  // nesmíme aplikovat ani dropnout případný starší stash uživatele.
+  const preStash = await runGit(["rev-parse", "refs/stash"], { cwd: rootPath, timeoutMs: GIT_LOCAL_TIMEOUT_MS });
+  const preStashSha = preStash.ok ? preStash.stdout : null;
   const stash = await runGit(
     ["stash", "push", "--include-untracked", "--message", `launchpad-root-update-${new Date().toISOString()}`],
     { cwd: rootPath, timeoutMs: GIT_LOCAL_TIMEOUT_MS },
@@ -465,19 +470,13 @@ async function mergeTargetWithAutostash({ rootPath, before }) {
     };
   }
   const stashRef = await runGit(["rev-parse", "refs/stash"], { cwd: rootPath, timeoutMs: GIT_LOCAL_TIMEOUT_MS });
-  if (!stashRef.ok || !stashRef.stdout) {
-    const restored = await runGit(["stash", "apply", "--index", "stash@{0}"], {
-      cwd: rootPath,
-      timeoutMs: GIT_LOCAL_TIMEOUT_MS,
-    });
+  if (!stashRef.ok || !stashRef.stdout || stashRef.stdout === preStashSha) {
     return {
       ok: false,
       updated: false,
-      code: restored.ok ? "autostash_identity_failed" : "autostash_restore_failed",
-      message: restored.ok
-        ? "Git nepotvrdil identitu autostashe. Aktualizace se nespustila, lokální změny jsou obnovené a bezpečnostní kopie zůstala ve stash stacku."
-        : "Git nepotvrdil identitu autostashe ani automatickou obnovu. Bezpečnostní kopie zůstala ve stash stacku.",
-      stash_preserved: true,
+      code: "autostash_identity_failed",
+      message: "Autostash nevznikl, nebo nejde prokázat jeho identita (změny se mezitím zřejmě změnily). Aktualizace se nespustila a existující stash zůstal nedotčený; spusť ji znovu.",
+      stash_preserved: false,
     };
   }
 

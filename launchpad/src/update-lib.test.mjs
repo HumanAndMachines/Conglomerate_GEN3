@@ -164,6 +164,26 @@ test("ahead target se nikdy nedowngradne a chybějící remote skončí fetch_fa
   expect(failed.fetch.ok).toBe(false);
 });
 
+test("autostash nikdy nesáhne na starší stash uživatele", async () => {
+  const fixture = await createUpdateFixture({ channel: "nightly", targetAhead: true });
+  // Starší uživatelský stash, kterého se update nesmí dotknout.
+  await writeFile(join(fixture.repo, ".gitignore"), "launchpad.gen3.local.json\n# uzivatelsky draft\n");
+  runGit(["stash", "push", "--message", "uzivatelsky-draft"], fixture.repo);
+  const userStash = runGit(["rev-parse", "refs/stash"], fixture.repo);
+  // Nová tracked změna, kterou má update zachovat.
+  await writeFile(join(fixture.repo, ".gitignore"), "launchpad.gen3.local.json\n# rozdelana zmena\n");
+
+  const result = await performRootUpdate({ rootPath: fixture.repo, mode: "preserve_changes" });
+  expect(result.ok).toBe(true);
+  expect(result.updated).toBe(true);
+  // Tracked změna je obnovená a uživatelský stash zůstal přesně jeden a stejný.
+  const gitignore = await readFile(join(fixture.repo, ".gitignore"), "utf8");
+  expect(gitignore).toContain("rozdelana zmena");
+  const stashList = runGit(["stash", "list"], fixture.repo);
+  expect(stashList.split("\n").filter(Boolean).length).toBe(1);
+  expect(runGit(["rev-parse", "refs/stash"], fixture.repo)).toBe(userStash);
+});
+
 test("stable target ignoruje lokální tagy neinzerované originem", async () => {
   const fixture = await createUpdateFixture({ channel: "stable", targetTag: "v0.1.0" });
   // Stale/lokální tag, který origin nikdy nepublikoval, nesmí určit cíl —
