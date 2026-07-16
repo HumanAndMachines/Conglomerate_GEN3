@@ -331,19 +331,54 @@ async function resolveChannelTarget({ rootPath, channel }) {
       : { available: false, ref: "origin/main", sha: null, version: null, detail: result.stderr || result.error };
   }
 
-  const tagsResult = await runGit(["tag", "--list"], { cwd: rootPath, timeoutMs: GIT_LOCAL_TIMEOUT_MS });
-  if (!tagsResult.ok) {
-    return { available: false, ref: null, sha: null, version: null, detail: tagsResult.stderr || tagsResult.error };
+  // Stable target se vybírá VÝHRADNĚ z tagů inzerovaných originem — lokální
+  // nebo stale tagy (git tag --list) nesmí nikdy určit release cíl kanálu.
+  const remoteTags = await runGit(["ls-remote", "--tags", "origin"], {
+    cwd: rootPath,
+    timeoutMs: GIT_FETCH_TIMEOUT_MS,
+    env: safeGitRemoteEnv(),
+  });
+  if (!remoteTags.ok) {
+    return {
+      available: false,
+      ref: null,
+      sha: null,
+      version: null,
+      detail: remoteTags.stderr || remoteTags.error || "Tagy originu nejde přečíst.",
+      remote_error: true,
+    };
   }
-  const tag = selectHighestStableTag(tagsResult.stdout.split("\n").filter(Boolean));
+  const originTags = parseRemoteTags(remoteTags.stdout);
+  const tag = selectHighestStableTag([...originTags.keys()]);
   if (!tag) return { available: false, ref: null, sha: null, version: null, detail: null };
-  const result = await runGit(["rev-parse", "--verify", `${tag}^{commit}`], {
+  // Peeled sha z ls-remote je commit; ověř, že po fetchi existuje lokálně.
+  const originSha = originTags.get(tag);
+  const result = await runGit(["rev-parse", "--verify", `${originSha}^{commit}`], {
     cwd: rootPath,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
   return result.ok
     ? { available: true, ref: tag, sha: result.stdout, version: tag, detail: null }
-    : { available: false, ref: tag, sha: null, version: tag, detail: result.stderr || result.error };
+    : {
+      available: false,
+      ref: tag,
+      sha: null,
+      version: tag,
+      detail: result.stderr || result.error || "Origin tag není lokálně dostupný; fetch zřejmě selhal.",
+    };
+}
+
+// Parsuje `git ls-remote --tags origin`: peeled řádky (refs/tags/x^{}) mají
+// přednost, protože ukazují na commit anotovaného tagu.
+export function parseRemoteTags(output) {
+  const tags = new Map();
+  for (const line of String(output).split("\n")) {
+    const match = line.match(/^([0-9a-f]{40})\trefs\/tags\/(.+?)(\^\{\})?$/);
+    if (!match) continue;
+    const [, sha, name, peeled] = match;
+    if (peeled || !tags.has(name)) tags.set(name, sha);
+  }
+  return tags;
 }
 
 function statusFailure({ rootPath, channelConfig, detail, fetchResult = null }) {
@@ -382,6 +417,23 @@ function targetRelation({ targetAvailable, relationOk, ahead, behind }) {
 }
 
 async function mergeTargetFastForward({ rootPath, before }) {
+  // TOCTOU guard: mezi status snapshotem a merge se stav mohl změnit.
+  // Přesně před mutací znovu ověř HEAD i čistotu tracked souborů.
+  const [headCheck, statusCheck] = await Promise.all([
+    runGit(["rev-parse", "--verify", "HEAD^{commit}"], { cwd: rootPath, timeoutMs: GIT_LOCAL_TIMEOUT_MS }),
+    runGit(["status", "--porcelain=v1"], { cwd: rootPath, timeoutMs: GIT_LOCAL_TIMEOUT_MS }),
+  ]);
+  const trackedDirty = statusCheck.ok
+    ? statusCheck.stdout.split("\n").filter((row) => row && !row.startsWith("??")).length > 0
+    : true;
+  if (!headCheck.ok || headCheck.stdout !== before.head.sha || !statusCheck.ok || trackedDirty) {
+    return {
+      ok: false,
+      updated: false,
+      code: "update_precondition_changed",
+      message: "Stav repa se mezi kontrolou a aktualizací změnil. Nic se nezměnilo; spusť aktualizaci znovu.",
+    };
+  }
   const merge = await runGit(["merge", "--ff-only", before.target.sha], {
     cwd: rootPath,
     timeoutMs: GIT_FETCH_TIMEOUT_MS,

@@ -5,6 +5,7 @@ import { join } from "path";
 import { initGitRepo, runGit, writeJson } from "./git-fixture-helpers.test.mjs";
 import {
   deriveUpdateState,
+  parseRemoteTags,
   performRootUpdate,
   readRootUpdateStatus,
   readUpdateChannelConfig,
@@ -161,6 +162,30 @@ test("ahead target se nikdy nedowngradne a chybějící remote skončí fetch_fa
   const failed = await readRootUpdateStatus({ rootPath: fixture.repo });
   expect(failed.state).toBe("fetch_failed");
   expect(failed.fetch.ok).toBe(false);
+});
+
+test("stable target ignoruje lokální tagy neinzerované originem", async () => {
+  const fixture = await createUpdateFixture({ channel: "stable", targetTag: "v0.1.0" });
+  // Stale/lokální tag, který origin nikdy nepublikoval, nesmí určit cíl —
+  // ani když ukazuje na potomka HEAD (descendant by prošel ff merge).
+  runGit(["fetch", "origin", "main", "--tags"], fixture.repo);
+  runGit(["tag", "v999.0.0", fixture.targetCommit], fixture.repo);
+  const status = await readRootUpdateStatus({ rootPath: fixture.repo });
+  expect(status.target.ref).toBe("v0.1.0");
+  expect(status.state).toBe("update_available");
+  const result = await performRootUpdate({ rootPath: fixture.repo });
+  expect(result.ok).toBe(true);
+  expect(result.to_commit).toBe(fixture.targetCommit);
+});
+
+test("parseRemoteTags preferuje peeled commit anotovaného tagu", () => {
+  const tags = parseRemoteTags([
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\trefs/tags/v0.1.0",
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\trefs/tags/v0.1.0^{}",
+    "cccccccccccccccccccccccccccccccccccccccc\trefs/tags/v0.2.0",
+  ].join("\n"));
+  expect(tags.get("v0.1.0")).toBe("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+  expect(tags.get("v0.2.0")).toBe("cccccccccccccccccccccccccccccccccccccccc");
 });
 
 async function temporaryRoot(prefix) {
