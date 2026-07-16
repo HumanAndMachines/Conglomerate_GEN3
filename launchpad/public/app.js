@@ -38,6 +38,8 @@ const state = {
   selectedReadonlyDetail: null,
   actionMessage: null,
   pendingAction: null,
+  updateStatus: null,
+  updatePending: false,
   openVersionMenu: null,
   // CAC-0044: per-modul poslední změny + lokální usage tracking + git read model.
   recentModules: [],
@@ -200,6 +202,7 @@ const elements = {
   runtimeRootBadge: document.querySelector("#runtimeRootBadge"),
   personalPrivacyBadge: document.querySelector("#personalPrivacyBadge"),
   doctorStatus: document.querySelector("#doctorStatus"),
+  updateButton: document.querySelector("#updateButton"),
   reloadButton: document.querySelector("#reloadButton"),
   pullAllButton: document.querySelector("#pullAllButton"),
   themeToggle: document.querySelector("#themeToggle"),
@@ -250,6 +253,7 @@ elements.reloadButton.addEventListener("click", () => {
   loadData();
 });
 elements.pullAllButton?.addEventListener("click", () => pullAllRepositories());
+elements.updateButton?.addEventListener("click", () => runRootUpdate());
 elements.heroCta.addEventListener("click", () => runHeroAction());
 elements.doctorStatus.addEventListener("click", () => {
   closeMobileOverflow();
@@ -436,6 +440,9 @@ document.addEventListener("click", (event) => {
 
 renderSkeleton();
 await loadData();
+// Update pill se načítá až po hlavních datech — status dělá git fetch a nesmí
+// blokovat první vykreslení prostoru.
+loadUpdateStatus();
 initActiveWindowPolling();
 
 /* =========================================================
@@ -3556,6 +3563,92 @@ async function pullGitRepository({ git, label, autostash = false, pendingKey = `
   } finally {
     state.pendingAction = null;
     render();
+  }
+}
+
+// Update lane Conglomerate rootu (decision 0059, draft 0078) — oddělená od
+// per-repo org pullů; pill v top baru ukazuje kanál, verzi a akční stav.
+async function loadUpdateStatus() {
+  const payload = await fetchJsonSafe("/api/update/status");
+  state.updateStatus = payload && !payload.error ? payload : null;
+  renderUpdatePill();
+}
+
+function renderUpdatePill() {
+  const button = elements.updateButton;
+  if (!button) return;
+  const status = state.updateStatus;
+  if (!status) {
+    button.hidden = true;
+    return;
+  }
+  const channel = status.channel ?? "stable";
+  const version = status.version?.describe || status.head?.short_sha || "";
+  const pill = (tone, label) => {
+    button.className = `status-pill status-${tone} update-pill`;
+    button.textContent = state.updatePending ? "Aktualizuju…" : label;
+    button.disabled = state.updatePending;
+    button.title = `${status.message ?? ""} Kanál: ${channel}. Verze: ${version}.`.trim();
+    button.hidden = false;
+  };
+  switch (status.state) {
+    case "up_to_date":
+      pill("ok", `Aktuální · ${channel} · ${version}`);
+      break;
+    case "update_available":
+      pill("warn", `Aktualizovat · ${channel}`);
+      break;
+    case "dirty_worktree":
+      pill("warn", status.can_update_with_autostash ? "Aktualizovat (zachovat změny)" : `Lokální změny · ${channel}`);
+      break;
+    case "ahead_of_channel_target":
+      pill("ok", `Před kanálem ${channel} · ${version}`);
+      break;
+    case "no_release_tag":
+      pill("unknown", "Stable zatím bez release");
+      break;
+    default:
+      pill("fail", `Update: vyžaduje pozornost`);
+      break;
+  }
+}
+
+async function runRootUpdate() {
+  const status = state.updateStatus;
+  if (!status || state.updatePending) return;
+  let mode = null;
+  if (status.state === "update_available") {
+    if (!window.confirm(`Aktualizovat Conglomerate root na cíl kanálu ${status.channel} (${status.target?.ref ?? ""})? Provede se bezpečný fast-forward; po dokončení restartuj Launchpad.`)) return;
+    mode = "ff_only";
+  } else if (status.state === "dirty_worktree" && status.can_update_with_autostash) {
+    if (!window.confirm("Tracked soubory mají lokální změny. Aktualizovat a zachovat změny? Změny se bezpečně odloží a po fast-forwardu obnoví; při konfliktu zůstanou ve stash zálohách.")) return;
+    mode = "preserve_changes";
+  } else {
+    toast(status.message ?? "Aktualizace teď není bezpečně proveditelná.", "info", 8_000);
+    return;
+  }
+  state.updatePending = true;
+  renderUpdatePill();
+  try {
+    const payload = await fetchJson("/api/update", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ mode }),
+    });
+    if (payload.ok && payload.updated) {
+      toast(`Aktualizace hotová: ${payload.from_commit?.slice(0, 7)} → ${payload.to_commit?.slice(0, 7)}. Restartuj Launchpad, aby načetl novou verzi.`, "success", 12_000);
+    } else if (payload.ok) {
+      toast(payload.message ?? "Root je aktuální.", "success", 8_000);
+    } else {
+      toast(payload.message ?? "Aktualizace se nespustila.", "error", 12_000);
+    }
+    state.updateStatus = payload.after ?? state.updateStatus;
+  } catch (error) {
+    toast(`Aktualizace selhala: ${error.message}`, "error", 12_000);
+  } finally {
+    state.updatePending = false;
+    renderUpdatePill();
+    loadUpdateStatus();
   }
 }
 
