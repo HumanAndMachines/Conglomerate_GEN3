@@ -1,0 +1,69 @@
+{
+  "achievements": [
+    {
+      "id": "first-lesson",
+      "name": "První krok",
+      "description": "Začal/a jsi cestu digitální kanceláří.",
+      "icon": "compass",
+      "level": "bronze",
+      "trigger": {
+        "type": "lekce-complete",
+        "ref": "01-vitej-v-digitalni-kancelari"
+      }
+    },
+    {
+      "id": "slop-aware",
+      "name": "Poznám AI vatu",
+      "description": "Umíš poznat hezky znějící, ale nepoužitelný výstup.",
+      "icon": "star",
+      "level": "bronze",
+      "trigger": {
+        "type": "lekce-complete",
+        "ref": "05-ai-vata-a-jak-se-ji-vyhnout"
+      }
+    },
+    {
+      "id": "orientation-ready",
+      "name": "Umím se zorientovat",
+      "description": "Víš, kde hledat rozcestníky, slovník a stav kanceláře.",
+      "icon": "book",
+      "level": "silver",
+      "trigger": {
+        "type": "section-complete",
+        "ref": "2-prvni-orientace"
+      }
+    },
+    {
+      "id": "good-brief",
+      "name": "Umím zadat práci",
+      "description": "Umíš AI kolegovi říct cíl, kontext i hranice.",
+      "icon": "sparkles",
+      "level": "silver",
+      "trigger": {
+        "type": "lekce-complete",
+        "ref": "12-jak-zadat-praci"
+      }
+    },
+    {
+      "id": "calm-recovery",
+      "name": "Klid při chybě",
+      "description": "Víš, jak popsat problém bez paniky.",
+      "icon": "wrench",
+      "level": "silver",
+      "trigger": {
+        "type": "ukol-complete",
+        "ref": "20-kdyz-se-neco-rozbije"
+      }
+    },
+    {
+      "id": "team-helper",
+      "name": "Pomáhám týmu",
+      "description": "Umíš z poznatku udělat pomoc pro další kolegy.",
+      "icon": "trophy",
+      "level": "gold",
+      "trigger": {
+        "type": "cesta-complete"
+      }
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "name": "conglomerate-guide-v1",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev --host 127.0.0.1 --port 5281 --strictPort",
+    "build": "astro check && astro build",
+    "preview": "astro preview --host 127.0.0.1 --port 5281"
+  },
+  "dependencies": {
+    "@astrojs/node": "^9.2.0",
+    "@tailwindcss/typography": "^0.5.19",
+    "@tailwindcss/vite": "^4.2.0",
+    "astro": "^5.14.0",
+    "gray-matter": "^4.0.3",
+    "marked": "^16.3.0",
+    "tailwindcss": "^4.2.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.6",
+    "@types/node": "^24.10.1",
+    "typescript": "~5.9.3"
+  },
+  "companyascode": {
+    "app": {
+      "schema_version": "companyascode.launchpad_app.v1",
+      "id": "conglomerate-guide-v1",
+      "title": "Guide GEN3",
+      "company": "conglomerate",
+      "module": "guide",
+      "surface": "manual",
+      "port": 5281,
+      "host": "127.0.0.1",
+      "health_path": "/",
+      "dev_script": "dev",
+      "tags": [
+        "guide",
+        "onboarding",
+        "first-client",
+        "gen3"
+      ]
+    }
+  }
+}

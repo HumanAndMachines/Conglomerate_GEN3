@@ -1,0 +1,22 @@
+# Nightly live-run contract
+
+1. Load `SKILL.md` and `references/organization-policy.yaml`. The configured Organizations, seat identity, no-touch exclusions, report target and timezone are hard boundaries.
+2. Use the live GitHub API for a complete inventory of every open PR in each configured Organization. A dirty branch, conflict, red check, review request or unresolved thread is a work class, not a terminal category.
+3. Preserve owner/no-touch and productionspace routing. Never mutate billing, permissions, production configuration, deploys or Releases. Never print or store secrets, raw logs or copied client business data.
+4. Before any merge, re-read the exact head and require all policy gates at that SHA: mergeability, green required checks, independent approval where required, zero unresolved threads and explicit merge authority. Fix, delegate or escalate when a gate is absent.
+5. One colleague may hold separate Steward responsibility in more than one Organization. Keep inventory, authority, evidence, idempotency key and report publication separate per Organization. Never use one Organization's data repo or report as another's target.
+6. For each Organization, generate one strict v1 JSON report with ID `steward-<organization-slug>-<seat>-<YYYY-MM-DD>` and idempotency key `<organization-slug>:<seat>:<YYYY-MM-DD>`. Validate against `mission-control-steward-report.schema.json`; because it uses `additionalProperties: false`, never add fields or enum values not declared by that schema.
+7. Read `reporting.repository_db_root` from the Organization policy. Require that checkout to be clean, on `v3`, and fast-forwarded from `origin/v3`. Publish with the standard writer:
+
+   ```bash
+   bun "$HOME/.hermes/runtime/steward-reporting/steward-report-cli.bundle.js" \
+     --repository-db-root "$REPOSITORY_DB_ROOT" \
+     --input "$REPORT_JSON" \
+     --organization "$ORGANIZATION" \
+     --seat "$STEWARD_SEAT" \
+     --schema "$HOME/.hermes/runtime/steward-reporting/mission-control-steward-report.schema.json"
+   ```
+
+8. Accept only writer output `status=created` or idempotent `status=existing`, with matching `reportId`, `relativePath` and `readback.idempotency_key`. Commit and push only the returned report path. Re-run the identical input and require `status=existing` plus the same report ID/path as readback proof.
+9. Reruns for the same Organization/seat/date are read-only and idempotent. If an existing report differs or the live queue changed after a terminal report, stop with `report_slot_closed`; never mutate GitHub, overwrite the report or create a duplicate for that date.
+10. Finish with one concise result per Organization: status, counts, report ID/path/head, merges/fixes/delegations and the smallest remaining human decision. Mission Control is the durable report surface; ClickUp is forbidden.

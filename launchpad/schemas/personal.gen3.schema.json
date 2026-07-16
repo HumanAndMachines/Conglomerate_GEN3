@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rozjedeme.ai/schemas/personal.gen3.schema.json",
+  "$comment": "Upstream source of truth: HumanAndMachines/schemas/personal.gen3.schema.json (decision 0051). Tato kopie MUSÍ zůstat identická s upstream; Launchpad ji jen používá pro personalspace discovery lane. Při změně kontraktu edituj HnM upstream a překopíruj sem beze změny.",
+  "title": "Personalspace GEN3 configuration",
+  "type": "object",
+  "required": [
+    "personal_generation",
+    "owner",
+    "buddy",
+    "repository",
+    "privacy",
+    "modules_manifest_path",
+    "workspace_path",
+    "gbrain",
+    "secrets"
+  ],
+  "properties": {
+    "personal_generation": {
+      "const": "gen3",
+      "description": "Kanonický klíč generace osobního prostoru. Repo i mount používají _GEN3 marker podle decision 0045/0051."
+    },
+    "owner": {
+      "type": "object",
+      "required": [
+        "github_username",
+        "display_name",
+        "type"
+      ],
+      "properties": {
+        "github_username": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "enum": [
+            "human",
+            "ai-colleague"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "buddy": {
+      "type": "object",
+      "required": [
+        "slug",
+        "gbrain_path"
+      ],
+      "properties": {
+        "slug": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gbrain_path": {
+          "const": "gbrain"
+        }
+      },
+      "additionalProperties": true
+    },
+    "repository": {
+      "type": "object",
+      "required": [
+        "github_repo",
+        "mount_path",
+        "visibility"
+      ],
+      "properties": {
+        "github_repo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+_GEN3$"
+        },
+        "mount_path": {
+          "type": "string",
+          "pattern": "^personalspace/[A-Za-z0-9_.-]+_GEN3$"
+        },
+        "visibility": {
+          "const": "private"
+        }
+      },
+      "additionalProperties": true
+    },
+    "privacy": {
+      "type": "object",
+      "required": [
+        "default_share",
+        "agent_boundary",
+        "shared_outputs"
+      ],
+      "properties": {
+        "default_share": {
+          "const": "private"
+        },
+        "agent_boundary": {
+          "const": "personal-context-only"
+        },
+        "shared_outputs": {
+          "const": "metadata-only"
+        }
+      },
+      "additionalProperties": true
+    },
+    "modules_manifest_path": {
+      "const": "modules.manifest.json"
+    },
+    "workspace_path": {
+      "const": "workspace"
+    },
+    "gbrain": {
+      "type": "object",
+      "required": [
+        "path",
+        "default_shared",
+        "human_editor",
+        "agent_access"
+      ],
+      "properties": {
+        "path": {
+          "const": "gbrain"
+        },
+        "default_shared": {
+          "const": false
+        },
+        "human_editor": {
+          "enum": [
+            "obsidian",
+            "none"
+          ]
+        },
+        "agent_access": {
+          "const": "mcp-only"
+        }
+      },
+      "additionalProperties": true
+    },
+    "secrets": {
+      "type": "object",
+      "required": [
+        "path",
+        "custody_pattern",
+        "git"
+      ],
+      "properties": {
+        "path": {
+          "const": "secrets"
+        },
+        "custody_pattern": {
+          "const": "personalspace/<owner>_GEN3/secrets/<provider>/<scope>/<purpose>"
+        },
+        "git": {
+          "const": "ignored"
+        }
+      },
+      "additionalProperties": true
+    },
+    "shared_spaces": {
+      "type": "array",
+      "description": "Metadata-only slots for personal spaces shared into this machine. Each nested repo still needs its own GitHub access."
+    }
+  },
+  "additionalProperties": true
+}

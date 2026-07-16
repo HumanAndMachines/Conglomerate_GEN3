@@ -1,0 +1,191 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import GuidePet from "@/components/GuidePet.astro";
+import LevelSection from "@/components/LevelSection.astro";
+import ProgressBar from "@/components/ProgressBar.astro";
+import AchievementCelebration from "@/components/AchievementCelebration.astro";
+import { contentReady, lekceById, loadAllLekce, loadCesta } from "@/lib/content";
+
+const ready = contentReady();
+const cesta = loadCesta();
+const lekce = loadAllLekce();
+const byId = lekceById(lekce);
+
+const totalLekce = lekce.length;
+const welcome = cesta?.welcome ?? "Vítej. Tohle je tvoje cesta. Postupuj svým tempem — každá lekce navazuje na tu předchozí.";
+const totalMinutes = lekce.reduce((sum, l) => sum + l.duration_min, 0);
+---
+
+<Layout
+  title="Mapa digitální kanceláře"
+  eyebrow="learning path"
+  description={welcome}
+  mapFirst
+>
+  <script is:inline define:vars={{ totalLekce }}>
+    document.documentElement.dataset.totalLessons = String(totalLekce);
+  </script>
+  {
+    !ready ? (
+      <div class="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-panel)] p-8 text-center">
+        <p class="text-[var(--surface-muted)]">
+          Obsah ještě není připravený, podívej se do <code>guide/content/</code>.
+        </p>
+      </div>
+    ) : (
+      <>
+        <div class="guide-dashboard mb-8">
+          <div class="guide-dashboard-main">
+            <div class="navi-coach">
+              <div class="navi-figure">
+                <GuidePet class="guide-pet-coach" />
+                <div class="navi-name">Průvodce</div>
+              </div>
+              <div class="navi-speech">
+                <p data-navi-message>
+                  Zdravím, provedu tě digitální kanceláří krok za krokem.
+                </p>
+              </div>
+            </div>
+            <ProgressBar totalLekce={totalLekce} />
+          </div>
+          <div class="guide-stats" aria-label="Souhrn postupu">
+            <div><strong data-map-done>0</strong><span>lekcí hotovo</span></div>
+            <div><strong data-map-xp>0</strong><span>XP</span></div>
+            <div><strong data-map-streak>0</strong><span>týdenní série</span></div>
+            <div><strong>{totalMinutes}</strong><span>minut obsahu</span></div>
+          </div>
+        </div>
+
+        <div class="learning-map" data-learning-map>
+          {cesta?.sections.map((section, idx) => (
+            <LevelSection
+              section={section}
+              index={idx + 1}
+              lessons={section.lessons
+                .map((id) => byId.get(id))
+                .filter((l): l is NonNullable<typeof l> => Boolean(l))}
+              byId={byId}
+            />
+          ))}
+        </div>
+
+        <div class="locked-lesson-modal" data-locked-modal aria-hidden="true">
+          <div class="locked-lesson-card" role="dialog" aria-modal="true" aria-labelledby="locked-title">
+            <GuidePet size="sm" />
+            <h2 id="locked-title">Tenhle bod je zatím zamčený</h2>
+            <p data-locked-copy>Nejdřív dokonči předchozí lekce na mapě.</p>
+            <button type="button" data-locked-close>Rozumím</button>
+          </div>
+        </div>
+      </>
+    )
+  }
+
+  <AchievementCelebration />
+</Layout>
+
+<script is:inline define:vars={{ totalLekce }}>
+  // Po načtení nastav statusy lekcí na základě localStorage + prereqs.
+  (() => {
+    const cards = Array.from(document.querySelectorAll("[data-lekce-card]"));
+    const sections = Array.from(document.querySelectorAll("[data-map-section]"));
+    const devMode = document.documentElement.dataset.devMode === "1";
+    const statusOf = (id) => localStorage.getItem(`guide:lekce:${id}:status`) ?? "available";
+    const navi = document.querySelector("[data-navi-message]");
+    const modal = document.querySelector("[data-locked-modal]");
+    const modalCopy = document.querySelector("[data-locked-copy]");
+    const closeModal = document.querySelector("[data-locked-close]");
+
+    function currentWeekKey() {
+      const now = new Date();
+      return `${now.getFullYear()}-${Math.ceil((((now - new Date(now.getFullYear(), 0, 1)) / 86400000) + new Date(now.getFullYear(), 0, 1).getDay() + 1) / 7)}`;
+    }
+
+    function isUnlocked(prereqs) {
+      if (devMode) return true;
+      return prereqs.every((p) => statusOf(p) === "done");
+    }
+
+    let doneCount = 0;
+    let quizPassed = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      if (k.startsWith("guide:lekce:") && k.endsWith(":quiz-passed") && localStorage.getItem(k) === "1") quizPassed++;
+    }
+
+    cards.forEach((card, idx) => {
+      const id = card.dataset.lekceCard ?? "";
+      let prereqs = [];
+      try { prereqs = JSON.parse(card.dataset.prereqs ?? "[]"); } catch {}
+      const stored = localStorage.getItem(`guide:lekce:${id}:status`);
+      const unlocked = isUnlocked(prereqs);
+      const status = stored ?? (unlocked ? "available" : "locked");
+      card.dataset.status = status;
+      card.style.setProperty("--node-shift", `${idx % 2 === 0 ? -1 : 1}`);
+      if (status === "done") {
+        doneCount++;
+        card.setAttribute("aria-label", `${card.dataset.title ?? "Lekce"} hotovo. Otevřít rekapitulaci.`);
+      }
+      if (status === "locked") {
+        card.addEventListener("click", (e) => {
+          e.preventDefault();
+          if (modalCopy) modalCopy.textContent = `Nejdřív dokonči: ${card.dataset.prereqTitles || "předchozí lekce"}.`;
+          if (modal instanceof HTMLElement) {
+            modal.dataset.open = "true";
+            modal.setAttribute("aria-hidden", "false");
+          }
+        });
+      }
+    });
+
+    const available = cards.find((c) => c.dataset.status === "in-progress") ?? cards.find((c) => c.dataset.status === "available");
+    if (available instanceof HTMLElement) {
+      available.dataset.current = "true";
+      available.scrollIntoView({ block: "center", behavior: "smooth" });
+      if (navi) navi.textContent = "Zdravím, provedu tě digitální kanceláří krok za krokem.";
+    }
+
+    sections.forEach((section) => {
+      const sectionCards = Array.from(section.querySelectorAll("[data-lekce-card]"));
+      const done = sectionCards.filter((c) => c.dataset.status === "done").length;
+      const pct = sectionCards.length ? Math.round((done / sectionCards.length) * 100) : 0;
+      const bar = section.querySelector("[data-section-progress-bar]");
+      const text = section.querySelector("[data-section-progress-text]");
+      const checkpoint = section.querySelector("[data-section-checkpoint]");
+      if (bar instanceof HTMLElement) bar.style.width = `${pct}%`;
+      if (text) text.textContent = `${done}/${sectionCards.length} lekcí · ${pct}%`;
+      if (checkpoint instanceof HTMLElement) checkpoint.dataset.state = pct === 100 ? "done" : pct > 0 ? "active" : "locked";
+    });
+
+    doneCount = cards.filter((c) => c.dataset.status === "done").length;
+    const pct = totalLekce ? Math.round((doneCount / totalLekce) * 100) : 0;
+    const xp = doneCount * 20 + quizPassed * 5;
+    const streak = localStorage.getItem("guide:activity:last-week") === currentWeekKey() ? 1 : 0;
+    const mapDone = document.querySelector("[data-map-done]");
+    const mapXp = document.querySelector("[data-map-xp]");
+    const mapStreak = document.querySelector("[data-map-streak]");
+    const progressDone = document.querySelector("[data-progress-done]");
+    const progressPct = document.querySelector("[data-progress-pct]");
+    if (mapDone) mapDone.textContent = String(doneCount);
+    if (mapXp) mapXp.textContent = String(xp);
+    if (mapStreak) mapStreak.textContent = String(streak);
+    if (progressDone) progressDone.textContent = String(doneCount);
+    if (progressPct) progressPct.textContent = String(pct);
+    const progressBar = document.querySelector("[data-progress-bar]");
+    if (progressBar instanceof HTMLElement) progressBar.style.width = `${pct}%`;
+
+    closeModal?.addEventListener("click", () => {
+      if (!(modal instanceof HTMLElement)) return;
+      modal.removeAttribute("data-open");
+      modal.setAttribute("aria-hidden", "true");
+    });
+    modal?.addEventListener("click", (e) => {
+      if (e.target === modal && modal instanceof HTMLElement) {
+        modal.removeAttribute("data-open");
+        modal.setAttribute("aria-hidden", "true");
+      }
+    });
+  })();
+</script>

@@ -1,0 +1,30 @@
+{
+  "questions": [
+    {
+      "id": "q1",
+      "text": "Co je dobrý další krok po kurzu?",
+      "type": "single",
+      "options": [
+        {
+          "id": "a",
+          "text": "Vzít malý reálný úkol a nechat po sobě čitelný stav.",
+          "correct": true,
+          "feedback": "Ano. Tohle je správný a bezpečný směr."
+        },
+        {
+          "id": "b",
+          "text": "Čekat, až budu vědět úplně všechno.",
+          "correct": false,
+          "feedback": "Tohle by spíš přidalo zmatek nebo riziko."
+        },
+        {
+          "id": "c",
+          "text": "Smazat průvodce.",
+          "correct": false,
+          "feedback": "Tohle není dobrý běžný postup."
+        }
+      ],
+      "explanation": "Cílem je pracovat jednoduše, čitelně a bezpečně."
+    }
+  ]
+}

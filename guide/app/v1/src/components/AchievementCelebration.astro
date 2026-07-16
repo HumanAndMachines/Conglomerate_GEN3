@@ -1,0 +1,70 @@
+---
+// Globální celebration overlay. Naslouchá window event "guide:achievement"
+// a pro metadata zkusí použít osobní odznaky, jinak nechá krátký fallback.
+---
+
+<div class="celebration" data-celebration role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="celebration-card">
+    <div class="text-xs tracking-[0.3em] text-[var(--surface-muted)] mb-2">NOVÝ ODZNAK</div>
+    <div class="text-5xl mb-3" aria-hidden="true">🏆</div>
+    <h3 class="font-sans text-2xl font-bold mb-2" data-celebration-name>Odznak</h3>
+    <p class="text-sm text-[var(--surface-muted)] mb-6" data-celebration-desc>
+      Skvělá práce! Tohle byl tvůj další krok.
+    </p>
+    <div class="flex gap-2 justify-center">
+      <a href="/" class="rounded-lg bg-guide-700 text-white px-4 py-2 text-sm hover:bg-guide-800">
+        Zpět na mapu
+      </a>
+      <button type="button" class="rounded-lg border border-[var(--surface-border)] px-4 py-2 text-sm" data-celebration-close>
+        Pokračuj
+      </button>
+    </div>
+  </div>
+</div>
+
+<script is:inline>
+  (() => {
+    const overlay = document.querySelector("[data-celebration]");
+    if (!(overlay instanceof HTMLElement)) return;
+    const nameEl = overlay.querySelector("[data-celebration-name]");
+    const descEl = overlay.querySelector("[data-celebration-desc]");
+    const closeBtn = overlay.querySelector("[data-celebration-close]");
+
+    function open(detail) {
+      const seenKey = `guide:achievement:seen:${detail.id}`;
+      if (localStorage.getItem(seenKey) === "1") return;
+      if (nameEl && detail.name) nameEl.textContent = detail.name;
+      if (descEl && detail.description) descEl.textContent = detail.description;
+      overlay.dataset.open = "true";
+      overlay.setAttribute("aria-hidden", "false");
+      localStorage.setItem(seenKey, "1");
+    }
+
+    function close() {
+      overlay.removeAttribute("data-open");
+      overlay.setAttribute("aria-hidden", "true");
+    }
+
+    closeBtn?.addEventListener("click", close);
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) close();
+    });
+
+    window.addEventListener("guide:achievement", async (ev) => {
+      const detail = ev.detail ?? {};
+      // Try to enrich with the current user's achievement metadata.
+      try {
+        const res = await fetch("/api/achievements/me");
+        if (res.ok) {
+          const data = await res.json();
+          const match = data.find?.((it) => it.definition?.id === detail.id);
+          if (match?.definition) {
+            detail.name = match.definition.name;
+            detail.description = match.definition.description;
+          }
+        }
+      } catch {}
+      open(detail);
+    });
+  })();
+</script>

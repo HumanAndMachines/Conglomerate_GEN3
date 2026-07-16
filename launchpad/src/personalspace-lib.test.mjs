@@ -1,0 +1,659 @@
+import { afterAll, expect, test } from "bun:test";
+import { tmpdir } from "os";
+import { join } from "path";
+import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
+import { buddyPresentationProjection, discoverPersonalspace, personalAppRuntimeId } from "./personalspace-lib.mjs";
+import { discoverLaunchpadApps } from "./discovery-lib.mjs";
+
+const tempRoots = [];
+
+afterAll(async () => {
+  await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
+});
+
+test("Buddy presentation projection oddělí UX metadata od kanonické technické vazby", () => {
+  expect(buddyPresentationProjection({
+    slug: "demobuddy",
+    gbrain_path: "gbrain",
+    status: "active",
+    display_name: "Demo Buddy",
+    application: { name: "Demo chat", type: "web" },
+  })).toEqual({
+    display_name: "Demo Buddy",
+    application: { name: "Demo chat", type: "web" },
+  });
+});
+
+async function writeJson(path, data) {
+  await mkdir(join(path, ".."), { recursive: true });
+  await writeFile(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
+function personalConfig(username, overrides = {}) {
+  return {
+    personal_generation: "gen3",
+    owner: { github_username: username, display_name: `${username} Display`, type: "human" },
+    buddy: { slug: `${username}-buddy`, gbrain_path: "gbrain" },
+    repository: {
+      github_repo: `${username}/${username}_GEN3`,
+      mount_path: `personalspace/${username}_GEN3`,
+      visibility: "private",
+    },
+    privacy: { default_share: "private", agent_boundary: "personal-context-only", shared_outputs: "metadata-only" },
+    modules_manifest_path: "modules.manifest.json",
+    workspace_path: "workspace",
+    gbrain: { path: "gbrain", default_shared: false, human_editor: "obsidian", agent_access: "mcp-only" },
+    secrets: { path: "secrets", custody_pattern: "personalspace/<owner>_GEN3/secrets/<provider>/<scope>/<purpose>", git: "ignored" },
+    shared_spaces: [],
+    ...overrides,
+  };
+}
+
+function personalAppManifest(username, { id, port, module = "notes", title = "Osobní poznámky" } = {}) {
+  return {
+    name: `${username}-${id}`,
+    version: "1.0.0",
+    packageManager: "bun@1.0.0",
+    scripts: { dev: "bun run server.mjs" },
+    companyascode: {
+      app: {
+        schema_version: "companyascode.launchpad_app.v1",
+        id,
+        title,
+        company: username,
+        module,
+        surface: "internal",
+        port,
+        host: "127.0.0.1",
+        health_path: "/health",
+        dev_script: "dev",
+        tags: ["personal"],
+      },
+    },
+  };
+}
+
+// Root fixture s launchpad.gen3.json + personalspace mountpointem. Vrací root path.
+// Scan-first (decision 0042): trackovaný config vlastníka NEnese a sken ho nikdy
+// neodvozuje (fail-closed privacy hranice — nasdílený cizí prostor vypadá stejně
+// jako vlastní). Primární prostor určuje jen `localOwner`, který se zapíše do
+// gitignored launchpad.gen3.local.json (per-machine override).
+async function createPersonalspaceFixture({ spaces = [], localOwner = null } = {}) {
+  const root = await mkdtemp(join(tmpdir(), "personalspace-"));
+  tempRoots.push(root);
+  // Kopie personal + app schema z reálného launchpad/schemas do fixture rootu,
+  // aby discovery lane měla schémata k dispozici.
+  await mkdir(join(root, "launchpad", "schemas"), { recursive: true });
+  const realSchemas = join(import.meta.dirname, "..", "schemas");
+  for (const name of ["personal.gen3.schema.json", "launchpad-app.schema.json"]) {
+    const content = await Bun.file(join(realSchemas, name)).text();
+    await writeFile(join(root, "launchpad", "schemas", name), content, "utf8");
+  }
+  await writeJson(join(root, "launchpad.gen3.json"), {
+    workspace_generation: "gen3",
+    organization_mountpoint: "organizations",
+    personalspace_mountpoint: "personalspace",
+  });
+  if (localOwner) {
+    await writeJson(join(root, "launchpad.gen3.local.json"), { personalspace_owner: localOwner });
+  }
+  await mkdir(join(root, "organizations"), { recursive: true });
+
+  for (const space of spaces) {
+    const dir = join(root, "personalspace", space.dirName);
+    await mkdir(join(dir, "workspace"), { recursive: true });
+    await writeJson(join(dir, "personal.gen3.json"), space.config);
+    await writeJson(join(dir, "modules.manifest.json"), space.manifest ?? { personal_generation: "gen3", owner: space.owner, module_slots: [] });
+    if (space.gbrainNotes) {
+      await mkdir(join(dir, "gbrain"), { recursive: true });
+      for (const [name, body] of Object.entries(space.gbrainNotes)) {
+        await writeFile(join(dir, "gbrain", name), body, "utf8");
+      }
+    }
+    for (const app of space.apps ?? []) {
+      const appDir = join(dir, "workspace", app.module ?? "notes", "app", "v1");
+      await mkdir(appDir, { recursive: true });
+      await writeJson(join(appDir, "package.json"), app.manifest);
+    }
+    // Materializuj "available" moduly (jejich složka existuje).
+    for (const materialized of space.materializedModules ?? []) {
+      await mkdir(join(dir, materialized), { recursive: true });
+      await writeFile(join(dir, materialized, ".gitkeep"), "", "utf8");
+    }
+  }
+  return root;
+}
+
+test("personalspace lane objeví validní osobní prostor s aplikací a Private příznaky", async () => {
+  const root = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
+    spaces: [
+      {
+        dirName: "exampleuser_GEN3",
+        owner: "exampleuser",
+        config: personalConfig("exampleuser"),
+        apps: [{ module: "notes", manifest: personalAppManifest("exampleuser", { id: "notes-v1", port: 41100 }) }],
+      },
+    ],
+  });
+  const result = await discoverPersonalspace(root);
+
+  expect(result.failures).toEqual([]);
+  expect(result.spaces).toHaveLength(1);
+  const space = result.spaces[0];
+  expect(space.owner).toBe("exampleuser");
+  expect(space.is_owner_primary).toBe(true);
+  expect(space.config_valid).toBe(true);
+  expect(space.identity_ok).toBe(true);
+  expect(result.apps).toHaveLength(1);
+  const app = result.apps[0];
+  expect(app.personal).toBe(true);
+  expect(app.surface_scope).toBe("private");
+  expect(app.space).toBe("exampleuser_GEN3");
+  expect(app.id).toBe(personalAppRuntimeId("exampleuser_GEN3", "notes-v1"));
+});
+
+test("Buddy prezentační metadata zůstanou v oddělené personalspace lane", async () => {
+  const root = await createPersonalspaceFixture({
+    localOwner: "otherowner",
+    spaces: [{
+      dirName: "otherowner_GEN3",
+      owner: "otherowner",
+      config: personalConfig("otherowner", {
+        buddy: {
+          slug: "demobuddy",
+          display_name: "Demo Buddy",
+          application: { name: "Demo chat", type: "web", url: "https://chat.example.test/" },
+          recurring_tasks: [
+            { id: "synthetic-check", title: "Syntetická kontrola", schedule_label: "Podle testu" },
+          ],
+          gbrain_path: "gbrain",
+        },
+      }),
+    }],
+  });
+
+  const result = await discoverPersonalspace(root);
+  expect(result.failures).toEqual([]);
+  expect(result.spaces[0].buddy).toMatchObject({
+    slug: "demobuddy",
+    display_name: "Demo Buddy",
+    application: { name: "Demo chat", type: "web" },
+    recurring_tasks: [{ id: "synthetic-check", title: "Syntetická kontrola", schedule_label: "Podle testu" }],
+  });
+  expect(result.apps).toEqual([]);
+});
+
+test("nebezpečný odkaz skryje jen Buddy prezentaci, neplatný Personalspace z něj nevznikne", async () => {
+  const root = await createPersonalspaceFixture({
+    localOwner: "otherowner",
+    spaces: [{
+      dirName: "otherowner_GEN3",
+      owner: "otherowner",
+      config: personalConfig("otherowner", {
+        buddy: {
+          slug: "demobuddy",
+          application: { name: "Demo chat", type: "web", url: "javascript:alert(1)" },
+          gbrain_path: "gbrain",
+        },
+      }),
+    }],
+  });
+
+  const result = await discoverPersonalspace(root);
+  expect(result.spaces[0].config_valid).toBe(true);
+  expect(result.spaces[0].buddy.application).toBeNull();
+  expect(result.presentation_warnings.some((warning) => warning.includes("Buddy prezentační metadata se ignorují"))).toBe(true);
+});
+
+test("neřetězcový odkaz skryje jen Buddy prezentaci", async () => {
+  const root = await createPersonalspaceFixture({
+    localOwner: "otherowner",
+    spaces: [{
+      dirName: "otherowner_GEN3",
+      owner: "otherowner",
+      config: personalConfig("otherowner", {
+        buddy: {
+          slug: "demobuddy",
+          application: { name: "Demo chat", type: "web", url: 42 },
+          gbrain_path: "gbrain",
+        },
+      }),
+    }],
+  });
+
+  const result = await discoverPersonalspace(root);
+  expect(result.spaces[0].config_valid).toBe(true);
+  expect(result.spaces[0].buddy.application).toBeNull();
+  expect(result.presentation_warnings.some((warning) => warning.includes("buddy.application.url musí být neprázdný text"))).toBe(true);
+});
+
+test("neúplná URL skryje jen Buddy prezentaci", async () => {
+  const root = await createPersonalspaceFixture({
+    localOwner: "otherowner",
+    spaces: [{
+      dirName: "otherowner_GEN3",
+      owner: "otherowner",
+      config: personalConfig("otherowner", {
+        buddy: {
+          slug: "demobuddy",
+          application: { name: "Demo chat", type: "web", url: "https://" },
+          gbrain_path: "gbrain",
+        },
+      }),
+    }],
+  });
+
+  const result = await discoverPersonalspace(root);
+  expect(result.spaces[0].config_valid).toBe(true);
+  expect(result.spaces[0].buddy.application).toBeNull();
+  expect(result.presentation_warnings.some((warning) => warning.includes("buddy.application.url"))).toBe(true);
+});
+
+test("validní URL s query bez lomítka projde Personalspace configem", async () => {
+  const root = await createPersonalspaceFixture({
+    localOwner: "otherowner",
+    spaces: [{
+      dirName: "otherowner_GEN3",
+      owner: "otherowner",
+      config: personalConfig("otherowner", {
+        buddy: {
+          slug: "demobuddy",
+          application: { name: "Demo chat", type: "web", url: "https://example.com?chat=1" },
+          gbrain_path: "gbrain",
+        },
+      }),
+    }],
+  });
+
+  const result = await discoverPersonalspace(root);
+  expect(result.spaces[0].config_valid).toBe(true);
+  expect(result.spaces[0].buddy.application.url).toBe("https://example.com?chat=1");
+});
+
+test("neplatný port, hostname nebo URI syntax skryje jen Buddy prezentaci", async () => {
+  for (const url of ["https://example.com:99999/", "http://./", "https://example.com/%zz", "https:\\example.com", "tg:resolve?domain=lumi"]) {
+    const root = await createPersonalspaceFixture({
+      localOwner: "otherowner",
+      spaces: [{
+        dirName: "otherowner_GEN3",
+        owner: "otherowner",
+        config: personalConfig("otherowner", {
+          buddy: {
+            slug: "demobuddy",
+            application: { name: "Demo chat", type: "web", url },
+            gbrain_path: "gbrain",
+          },
+        }),
+      }],
+    });
+
+    const result = await discoverPersonalspace(root);
+    expect(result.spaces[0].config_valid).toBe(true);
+    expect(result.spaces[0].buddy.application).toBeNull();
+    expect(result.presentation_warnings.some((warning) => warning.includes("buddy.application.url"))).toBe(true);
+  }
+});
+
+test("starší neautoritativní status je tolerovaný, ale nedostane se do Launchpad odpovědi", async () => {
+  const root = await createPersonalspaceFixture({
+    localOwner: "otherowner",
+    spaces: [{
+      dirName: "otherowner_GEN3",
+      owner: "otherowner",
+      config: personalConfig("otherowner", {
+        buddy: { slug: "demobuddy", status: "active", gbrain_path: "gbrain" },
+      }),
+    }],
+  });
+
+  const result = await discoverPersonalspace(root);
+  expect(result.spaces[0].config_valid).toBe(true);
+  expect(result.spaces[0].buddy.status).toBeUndefined();
+});
+
+test("neplatný identifikátor opakovaného úkolu skryje jen Buddy prezentaci", async () => {
+  const root = await createPersonalspaceFixture({
+    localOwner: "otherowner",
+    spaces: [{
+      dirName: "otherowner_GEN3",
+      owner: "otherowner",
+      config: personalConfig("otherowner", {
+        buddy: {
+          slug: "demobuddy",
+          recurring_tasks: {
+            "Neplatné ID": { title: "Denní kontrola", schedule_label: "Denně" },
+          },
+          gbrain_path: "gbrain",
+        },
+      }),
+    }],
+  });
+
+  const result = await discoverPersonalspace(root);
+  expect(result.spaces[0].config_valid).toBe(true);
+  expect(result.spaces[0].buddy.recurring_tasks).toEqual([]);
+  expect(result.presentation_warnings.some((warning) => warning.includes("Neplatné ID neodpovídá pattern"))).toBe(true);
+});
+
+test("duplicitní ID ve starším seznamu úkolů skryje jen Buddy prezentaci", async () => {
+  const root = await createPersonalspaceFixture({
+    localOwner: "otherowner",
+    spaces: [{
+      dirName: "otherowner_GEN3",
+      owner: "otherowner",
+      config: personalConfig("otherowner", {
+        buddy: {
+          slug: "demobuddy",
+          recurring_tasks: [
+            { id: "daily-check", title: "První kontrola", schedule_label: "Denně" },
+            { id: "daily-check", title: "Druhá kontrola", schedule_label: "Denně" },
+          ],
+          gbrain_path: "gbrain",
+        },
+      }),
+    }],
+  });
+
+  const result = await discoverPersonalspace(root);
+  expect(result.spaces[0].config_valid).toBe(true);
+  expect(result.spaces[0].buddy.recurring_tasks).toEqual([]);
+  expect(result.presentation_warnings.some((warning) => warning.includes("daily-check je duplicitní"))).toBe(true);
+});
+
+test("primární prostor vlastníka je první, nasdílený prostor dostane owner badge (is_owner_primary false)", async () => {
+  // Víc prostorů = sken sám nerozhodne; per-machine override určí vlastníka mašiny.
+  const root = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
+    spaces: [
+      { dirName: "othercolleague_GEN3", owner: "othercolleague", config: personalConfig("othercolleague") },
+      { dirName: "exampleuser_GEN3", owner: "exampleuser", config: personalConfig("exampleuser") },
+    ],
+  });
+  const result = await discoverPersonalspace(root);
+
+  expect(result.failures).toEqual([]);
+  expect(result.spaces).toHaveLength(2);
+  // Primární první.
+  expect(result.spaces[0].owner).toBe("exampleuser");
+  expect(result.spaces[0].is_owner_primary).toBe(true);
+  // Nasdílený druhý, bez primary příznaku (UI mu dá owner badge).
+  expect(result.spaces[1].owner).toBe("othercolleague");
+  expect(result.spaces[1].is_owner_primary).toBe(false);
+});
+
+test("nasdílený prostor nikdy nematerializuje privátní Buddy prezentaci", async () => {
+  const privateMarker = "synthetic-shared-private-marker";
+  const root = await createPersonalspaceFixture({
+    localOwner: "primary",
+    spaces: [
+      { dirName: "primary_GEN3", owner: "primary", config: personalConfig("primary") },
+      {
+        dirName: "shared_GEN3",
+        owner: "shared",
+        config: personalConfig("shared", {
+          buddy: {
+            slug: "shared-buddy",
+            display_name: privateMarker,
+            recurring_tasks: {
+              "private-check": { title: privateMarker, schedule_label: "Soukromě" },
+            },
+            gbrain_path: "gbrain",
+          },
+        }),
+      },
+    ],
+  });
+
+  const result = await discoverPersonalspace(root);
+  const shared = result.spaces.find((space) => space.owner === "shared");
+  expect(shared.buddy.display_name).toBeNull();
+  expect(shared.buddy.recurring_tasks).toEqual([]);
+  expect(JSON.stringify(result)).not.toContain(privateMarker);
+});
+
+test("jediný prostor bez override NENÍ primární — fail-closed privacy hranice (scan-first)", async () => {
+  // Nasdílený cizí prostor se mountuje identicky jako vlastní: kdyby sken z jediného
+  // prostoru odvodil vlastníka, cizí gbrain vault by se otevřel jako vlastníkův.
+  const root = await createPersonalspaceFixture({
+    spaces: [
+      { dirName: "othercolleague_GEN3", owner: "othercolleague", config: personalConfig("othercolleague") },
+    ],
+  });
+  const result = await discoverPersonalspace(root);
+
+  expect(result.failures).toEqual([]);
+  expect(result.primary_owner).toBeNull();
+  expect(result.spaces[0].is_owner_primary).toBe(false);
+  expect(result.warnings.some((warning) => warning.includes("primární vlastník mašiny není určen"))).toBe(true);
+  expect(result.warnings.some((warning) => warning.includes("othercolleague"))).toBe(true);
+});
+
+test("víc prostorů bez override = žádný primární prostor + warning, žádný fail (scan-first)", async () => {
+  const root = await createPersonalspaceFixture({
+    spaces: [
+      { dirName: "othercolleague_GEN3", owner: "othercolleague", config: personalConfig("othercolleague") },
+      { dirName: "exampleuser_GEN3", owner: "exampleuser", config: personalConfig("exampleuser") },
+    ],
+  });
+  const result = await discoverPersonalspace(root);
+
+  expect(result.failures).toEqual([]);
+  expect(result.primary_owner).toBeNull();
+  expect(result.spaces.every((space) => space.is_owner_primary === false)).toBe(true);
+  expect(result.warnings.some((warning) => warning.includes("primární vlastník mašiny není určen"))).toBe(true);
+});
+
+test("legacy personalspace_owner ve sdíleném configu se ignoruje s deprecation warningem (scan-first)", async () => {
+  const root = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
+    spaces: [
+      { dirName: "exampleuser_GEN3", owner: "exampleuser", config: personalConfig("exampleuser") },
+    ],
+  });
+  // Stale lokální kopie sdíleného configu ještě nese osobní data vlastníka.
+  const configPath = join(root, "launchpad.gen3.json");
+  const config = await Bun.file(configPath).json();
+  config.personalspace_owner = "someoneelse";
+  await writeJson(configPath, config);
+
+  const result = await discoverPersonalspace(root);
+
+  expect(result.failures).toEqual([]);
+  // Legacy hodnota se NEpoužije — vlastníka drží per-machine override.
+  expect(result.primary_owner).toBe("exampleuser");
+  expect(result.warnings.some((warning) => warning.includes("personalspace_owner je zastaralé pole"))).toBe(true);
+});
+
+test("modul bez lokálního checkoutu s deklarovaným repo je missing_access; bez repo je planned_slot", async () => {
+  const root = await createPersonalspaceFixture({
+    spaces: [
+      {
+        dirName: "exampleuser_GEN3",
+        owner: "exampleuser",
+        config: personalConfig("exampleuser"),
+        manifest: {
+          personal_generation: "gen3",
+          owner: "exampleuser",
+          module_slots: [
+            { path: "workspace/shared-todo", category: "knowledge", default_access: "private", repo: "exampleuser/shared-todo" },
+            { path: "workspace/future-idea", category: "knowledge", default_access: "private" },
+            { path: "workspace/present", category: "knowledge", default_access: "private" },
+          ],
+        },
+        materializedModules: ["workspace/present"],
+      },
+    ],
+  });
+  const result = await discoverPersonalspace(root);
+
+  expect(result.failures).toEqual([]);
+  const modules = result.spaces[0].modules;
+  const byPath = Object.fromEntries(modules.map((m) => [m.path, m.status]));
+  expect(byPath["workspace/shared-todo"]).toBe("missing_access");
+  expect(byPath["workspace/future-idea"]).toBe("planned_slot");
+  expect(byPath["workspace/present"]).toBe("available");
+  expect(result.spaces[0].module_summary).toEqual({ available: 1, missing_access: 1, planned_slot: 1 });
+});
+
+test("nevalidní osobní app manifest izoluje jen sebe (prostor zůstává validní)", async () => {
+  const badManifest = personalAppManifest("exampleuser", { id: "broken", port: 41102 });
+  // Rozbij surface na nepovolenou hodnotu.
+  badManifest.companyascode.app.surface = "not-a-surface";
+  const root = await createPersonalspaceFixture({
+    spaces: [
+      {
+        dirName: "exampleuser_GEN3",
+        owner: "exampleuser",
+        config: personalConfig("exampleuser"),
+        apps: [
+          { module: "good", manifest: personalAppManifest("exampleuser", { id: "good-v1", port: 41101, module: "good" }) },
+          { module: "bad", manifest: badManifest },
+        ],
+      },
+    ],
+  });
+  const result = await discoverPersonalspace(root);
+
+  // Prostor je pořád validní, jedna appka platná, jedna izolovaná jako invalid.
+  expect(result.spaces[0].config_valid).toBe(true);
+  expect(result.apps.map((a) => a.app_id)).toContain("good-v1");
+  expect(result.apps.map((a) => a.app_id)).not.toContain("broken");
+  expect(result.invalid_apps).toHaveLength(1);
+  expect(result.invalid_apps[0].manifest_state).toBe("invalid_manifest");
+});
+
+test("porušený identity invariant → prostor se NEmaterializuje (fail-closed), žádné appky", async () => {
+  // owner ≠ dir name (mount adresář lže o vlastníkovi).
+  const root = await createPersonalspaceFixture({
+    spaces: [
+      {
+        dirName: "someoneelse_GEN3",
+        owner: "exampleuser",
+        // config tvrdí exampleuser, ale adresář je someoneelse_GEN3 → invariant fail
+        config: personalConfig("exampleuser"),
+        apps: [{ module: "notes", manifest: personalAppManifest("exampleuser", { id: "notes-v1", port: 41103 }) }],
+      },
+    ],
+  });
+  const result = await discoverPersonalspace(root);
+
+  expect(result.failures.length).toBeGreaterThan(0);
+  expect(result.failures.join(" ")).toContain("neodpovídá owner.github_username");
+  // Prostor je viditelný jako nevalidní, ale bez materializace appek/gbrainu.
+  expect(result.spaces).toHaveLength(1);
+  expect(result.spaces[0].config_valid).toBe(false);
+  expect(result.spaces[0].identity_ok).toBe(false);
+  expect(result.apps).toHaveLength(0);
+});
+
+test("nevalidní privacy const (shared_outputs) selže — tvrdá hranice", async () => {
+  const leaky = personalConfig("exampleuser");
+  leaky.privacy.shared_outputs = "everything"; // musí být metadata-only
+  const root = await createPersonalspaceFixture({
+    spaces: [{ dirName: "exampleuser_GEN3", owner: "exampleuser", config: leaky }],
+  });
+  const result = await discoverPersonalspace(root);
+
+  expect(result.failures.join(" ")).toContain("privacy.shared_outputs");
+  expect(result.spaces[0].config_valid).toBe(false);
+});
+
+test("ORG discovery NIKDY nevidí personalspace (oddělené lane)", async () => {
+  const root = await createPersonalspaceFixture({
+    spaces: [
+      {
+        dirName: "exampleuser_GEN3",
+        owner: "exampleuser",
+        config: personalConfig("exampleuser"),
+        apps: [{ module: "notes", manifest: personalAppManifest("exampleuser", { id: "notes-v1", port: 41104 }) }],
+      },
+    ],
+  });
+  // Org lane nad stejným rootem: nesmí objevit žádnou osobní aplikaci ani prostor.
+  const org = await discoverLaunchpadApps(root, { allowMissingOrganizations: true });
+  expect(org.apps).toHaveLength(0);
+  expect(org.organizations).toHaveLength(0);
+  // Žádný org výstup nesmí odkazovat personalspace mountpoint jako cestu ani
+  // osobní app id (personal--). (Pozn.: temp fixture root se náhodou jmenuje
+  // "personalspace-…", proto porovnáváme mountpoint cestu, ne holý substring.)
+  const orgText = [...org.failures, ...org.warnings, JSON.stringify(org.apps)].join(" ");
+  expect(orgText).not.toContain("personalspace/exampleuser_GEN3");
+  expect(orgText).not.toContain("personal--");
+
+  // Personalspace lane naopak prostor vidí.
+  const personal = await discoverPersonalspace(root);
+  expect(personal.spaces).toHaveLength(1);
+  expect(personal.apps).toHaveLength(1);
+});
+
+test("prostor bez personal.gen3.json se přeskočí bez chyby (např. jen živý gbrain checkout)", async () => {
+  const root = await createPersonalspaceFixture({ spaces: [] });
+  // Vytvoř adresář, který vypadá jako mount, ale nemá manifest.
+  await mkdir(join(root, "personalspace", "just-a-vault"), { recursive: true });
+  await writeFile(join(root, "personalspace", "just-a-vault", "note.md"), "# ahoj", "utf8");
+  const result = await discoverPersonalspace(root);
+  expect(result.failures).toEqual([]);
+  expect(result.spaces).toHaveLength(0);
+});
+
+test("gbrain transitional_source_path uvnitř rootu se použije; útěk mimo root se odmítne na canonical", async () => {
+  const root = await createPersonalspaceFixture({
+    spaces: [
+      {
+        dirName: "exampleuser_GEN3",
+        owner: "exampleuser",
+        config: personalConfig("exampleuser", {
+          gbrain: { path: "gbrain", default_shared: false, human_editor: "obsidian", agent_access: "mcp-only", transitional_source_path: "../live-vault" },
+        }),
+      },
+    ],
+  });
+  // Vytvoř živý vault vedle prostoru (uvnitř personalspace/, tedy uvnitř rootu).
+  await mkdir(join(root, "personalspace", "live-vault"), { recursive: true });
+  await writeFile(join(root, "personalspace", "live-vault", "index.md"), "# live", "utf8");
+  const result = await discoverPersonalspace(root);
+  const gbrain = result.spaces[0].gbrain;
+  expect(gbrain.mode).toBe("transitional");
+  expect(gbrain.exists).toBe(true);
+  expect(gbrain.source_rel).toBe("personalspace/live-vault");
+
+  // Teď útěk mimo root:
+  const root2 = await createPersonalspaceFixture({
+    spaces: [
+      {
+        dirName: "exampleuser_GEN3",
+        owner: "exampleuser",
+        config: personalConfig("exampleuser", {
+          gbrain: { path: "gbrain", default_shared: false, human_editor: "obsidian", agent_access: "mcp-only", transitional_source_path: "../../../../etc" },
+        }),
+        gbrainNotes: { "canonical.md": "# canonical" },
+      },
+    ],
+  });
+  const result2 = await discoverPersonalspace(root2);
+  expect(result2.spaces[0].gbrain.mode).toBe("canonical");
+  expect(result2.warnings.join(" ")).toContain("mimo personalspace mountpoint");
+});
+
+test("gbrain transitional_source_path mířící do organizations/ se odmítne (privátní hranice)", async () => {
+  const root = await createPersonalspaceFixture({
+    spaces: [
+      {
+        dirName: "exampleuser_GEN3",
+        owner: "exampleuser",
+        config: personalConfig("exampleuser", {
+          gbrain: { path: "gbrain", default_shared: false, human_editor: "obsidian", agent_access: "mcp-only", transitional_source_path: "../../organizations/SomeOrg_GEN3" },
+        }),
+        gbrainNotes: { "canonical.md": "# canonical" },
+      },
+    ],
+  });
+  // I kdyby ta org složka existovala, přechodný zdroj mimo personalspace/ se odmítne.
+  await mkdir(join(root, "organizations", "SomeOrg_GEN3"), { recursive: true });
+  await writeFile(join(root, "organizations", "SomeOrg_GEN3", "secret.md"), "# org tajemství", "utf8");
+  const result = await discoverPersonalspace(root);
+  expect(result.spaces[0].gbrain.mode).toBe("canonical");
+  expect(result.spaces[0].gbrain.source_rel).toContain("exampleuser_GEN3/gbrain");
+  expect(result.warnings.join(" ")).toContain("mimo personalspace mountpoint");
+});

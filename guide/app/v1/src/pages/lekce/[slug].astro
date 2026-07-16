@@ -1,0 +1,324 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import GuidePet from "@/components/GuidePet.astro";
+import MarkdownContent from "@/components/MarkdownContent.astro";
+import Quiz from "@/components/Quiz.astro";
+import Checklist from "@/components/Checklist.astro";
+import AchievementCelebration from "@/components/AchievementCelebration.astro";
+import {
+  loadCesta,
+  loadKviz,
+  loadLekce,
+  loadUkol,
+  nextLekceId,
+  sectionForLekce,
+} from "@/lib/content";
+
+const { slug } = Astro.params;
+if (!slug) return Astro.redirect("/");
+
+const lekce = loadLekce(slug);
+if (!lekce) {
+  return new Response("Lekce nenalezena", { status: 404 });
+}
+
+const cesta = loadCesta();
+const section = cesta ? sectionForLekce(cesta, lekce.id) : null;
+const next = cesta ? nextLekceId(cesta, lekce.id) : null;
+const kviz = lekce.hasKviz ? loadKviz(lekce.id) : null;
+const ukol = lekce.hasUkol ? loadUkol(lekce.id) : null;
+
+function stripTags(html: string): string {
+  return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function buildLessonSlides(html: string, fallbackTitle: string): Array<{ title: string; html: string }> {
+  const chunks = html
+    .split(/(?=<h2\b)/i)
+    .map((chunk) => chunk.trim())
+    .filter(Boolean);
+
+  const slides = chunks.map((chunk, index) => {
+    const titleMatch = chunk.match(/<h[12][^>]*>(.*?)<\/h[12]>/i);
+    const title = titleMatch ? stripTags(titleMatch[1]) : index === 0 ? fallbackTitle : `Krok ${index + 1}`;
+    return { title, html: chunk };
+  });
+
+  return slides.length > 0 ? slides : [{ title: fallbackTitle, html }];
+}
+
+const contentSlides = buildLessonSlides(lekce.bodyHtml, lekce.title);
+const interactiveSlides = (kviz ? 1 : 0) + (ukol ? 1 : 0);
+const totalSlides = contentSlides.length + interactiveSlides + 1;
+---
+
+<Layout
+  title={lekce.title}
+  eyebrow={section ? section.title : `lekce ${lekce.order}`}
+  description={`${lekce.duration_min} min · etapa ${lekce.section}`}
+>
+  <script is:inline>
+    document.documentElement.dataset.lessonDeck = "true";
+  </script>
+
+  <section
+    class="lesson-deck-shell"
+    data-lesson-deck
+    data-total-slides={totalSlides}
+    aria-label={`Lekce ${lekce.title}`}
+  >
+    <div class="lesson-deck-top">
+      <a href="/" class="lesson-map-link">← mapa</a>
+      <div class="lesson-progress-axis" aria-label="Postup lekcí">
+        <span data-lesson-progress-fill style="width:0%"></span>
+      </div>
+      <div class="lesson-slide-counter">
+        <strong data-lesson-current>1</strong> / {totalSlides}
+      </div>
+    </div>
+
+    <div class="lesson-slide-stage" data-slide-stage>
+      {
+        contentSlides.map((slide, index) => (
+          <section
+            class:list={["lesson-slide", index === 0 && "is-active"]}
+            data-slide-panel
+            data-slide-title={slide.title}
+            aria-hidden={index === 0 ? "false" : "true"}
+          >
+            <div class="lesson-slide-card lesson-content-slide">
+              <div class="lesson-slide-kicker">
+                Lekce {String(lekce.order).padStart(2, "0")} · {index + 1}/{totalSlides}
+              </div>
+              <MarkdownContent html={slide.html} />
+            </div>
+          </section>
+        ))
+      }
+
+      {
+        kviz && (
+          <section class="lesson-slide" data-slide-panel data-slide-title="Kvíz" aria-hidden="true">
+            <div class="lesson-slide-card lesson-interactive-slide">
+              <div class="lesson-slide-kicker">{kviz.mode === "glossary-cards" ? "Slovníček" : "Kvíz"}</div>
+              <Quiz lekceId={lekce.id} kviz={kviz} />
+            </div>
+          </section>
+        )
+      }
+
+      {
+        ukol && (
+          <section class="lesson-slide" data-slide-panel data-slide-title="Úkol" aria-hidden="true">
+            <div class="lesson-slide-card lesson-interactive-slide">
+              <div class="lesson-slide-kicker">Praktický krok</div>
+              <Checklist lekceId={lekce.id} ukol={ukol} />
+            </div>
+          </section>
+        )
+      }
+
+      <section class="lesson-slide" data-slide-panel data-slide-title="Dokončení" aria-hidden="true">
+        <div class="lesson-slide-card lesson-finish-slide">
+          <GuidePet />
+          <div class="lesson-slide-kicker">Finále lekce</div>
+          <h2>Jsi na konci tohoto kroku.</h2>
+          <p>
+            Mattyčus: Když ti něco nesedí, můžeš se vrátit šipkou zpět. Chyby jsou tady mapa,
+            ne trest.
+          </p>
+          {lekce.achievement_on_complete && (
+            <p class="lesson-finish-achievement">
+              Po dokončení získáš odznak <code>{lekce.achievement_on_complete}</code>.
+            </p>
+          )}
+          <button
+            type="button"
+            data-complete-lekce
+            data-lekce={lekce.id}
+            data-achievement={lekce.achievement_on_complete ?? ""}
+            data-next={next ?? ""}
+            class="lesson-finish-button"
+          >
+            Dokončit lekci · +20 XP
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <button type="button" class="lesson-slide-nav lesson-slide-prev" data-slide-prev aria-label="Předchozí slide">
+      ←
+    </button>
+    <button type="button" class="lesson-slide-nav lesson-slide-next" data-slide-next aria-label="Další slide">
+      →
+    </button>
+
+    <div class="lesson-focus-cue" aria-hidden="true">
+      <GuidePet size="sm" />
+      <span data-slide-hint>Držím směr. Pokračuj šipkou vpravo.</span>
+    </div>
+  </section>
+
+  <div class="lesson-complete-modal" data-lesson-complete aria-hidden="true">
+    <div class="xp-burst" data-xp-burst aria-hidden="true"></div>
+    <div class="lesson-complete-card" role="dialog" aria-modal="true" aria-labelledby="lesson-complete-title">
+      <GuidePet />
+      <h2 id="lesson-complete-title">Skvělá práce! Právě jsi odemkl další úroveň.</h2>
+      <p>
+        Mattyčus: Tahle lekce ti přidala <strong>20 XP</strong> a posunula tě dál na mapě.
+        Nová úroveň čeká, až budeš připravený pokračovat.
+      </p>
+      <a href={next ? `/lekce/${next}` : "/"} data-complete-next>
+        Pokračovat na mapě
+      </a>
+    </div>
+  </div>
+
+  <AchievementCelebration />
+</Layout>
+
+<script is:inline>
+  (() => {
+    const deck = document.querySelector("[data-lesson-deck]");
+    if (!(deck instanceof HTMLElement)) return;
+
+    const slides = Array.from(deck.querySelectorAll("[data-slide-panel]")).filter(
+      (slide) => slide instanceof HTMLElement,
+    );
+    const nextBtn = deck.querySelector("[data-slide-next]");
+    const prevBtn = deck.querySelector("[data-slide-prev]");
+    const currentEl = deck.querySelector("[data-lesson-current]");
+    const fill = deck.querySelector("[data-lesson-progress-fill]");
+    const hint = deck.querySelector("[data-slide-hint]");
+    let index = 0;
+
+    function setSlide(nextIndex, direction = 1) {
+      const clamped = Math.max(0, Math.min(slides.length - 1, nextIndex));
+      if (clamped === index && slides[clamped]?.classList.contains("is-active")) return;
+      const previous = slides[index];
+      const current = slides[clamped];
+      index = clamped;
+
+      slides.forEach((slide, slideIndex) => {
+        slide.classList.toggle("is-active", slideIndex === index);
+        slide.classList.toggle("is-before", slideIndex < index);
+        slide.classList.toggle("is-after", slideIndex > index);
+        slide.setAttribute("aria-hidden", slideIndex === index ? "false" : "true");
+      });
+
+      if (previous instanceof HTMLElement) previous.dataset.direction = direction > 0 ? "forward" : "back";
+      if (current instanceof HTMLElement) current.dataset.direction = direction > 0 ? "forward" : "back";
+      if (currentEl) currentEl.textContent = String(index + 1);
+      if (fill instanceof HTMLElement) {
+        const pct = slides.length <= 1 ? 100 : Math.round((index / (slides.length - 1)) * 100);
+        fill.style.width = `${pct}%`;
+      }
+      if (prevBtn instanceof HTMLButtonElement) prevBtn.disabled = index === 0;
+      if (nextBtn instanceof HTMLButtonElement) nextBtn.disabled = index === slides.length - 1;
+      if (hint instanceof HTMLElement) {
+        const title = current?.getAttribute("data-slide-title") || "další krok";
+        hint.textContent = index === slides.length - 1
+          ? "Tady můžeš lekci dokončit a odemknout další bod."
+          : `Teď jsi ve slidu „${title}“. Pokračuj šipkou vpravo.`;
+      }
+    }
+
+    nextBtn?.addEventListener("click", () => setSlide(index + 1, 1));
+    prevBtn?.addEventListener("click", () => setSlide(index - 1, -1));
+    document.addEventListener("keydown", (event) => {
+      const target = event.target;
+      const isTyping = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+      if (isTyping) return;
+      if (event.key === "ArrowRight" || event.key === "PageDown" || event.key === " ") {
+        event.preventDefault();
+        setSlide(index + 1, 1);
+      }
+      if (event.key === "ArrowLeft" || event.key === "PageUp") {
+        event.preventDefault();
+        setSlide(index - 1, -1);
+      }
+    });
+
+    setSlide(0);
+  })();
+</script>
+
+<script is:inline>
+  (() => {
+    const btn = document.querySelector("[data-complete-lekce]");
+    if (!(btn instanceof HTMLButtonElement)) return;
+    const id = btn.dataset.lekce ?? "";
+    const achievement = btn.dataset.achievement ?? "";
+    const next = btn.dataset.next ?? "";
+    const completeModal = document.querySelector("[data-lesson-complete]");
+    const completeNext = document.querySelector("[data-complete-next]");
+    const xpBurst = document.querySelector("[data-xp-burst]");
+
+    const launchXpBurst = () => {
+      if (!(xpBurst instanceof HTMLElement)) return;
+      xpBurst.replaceChildren();
+      const labels = ["+20 XP", "XP", "+5 XP", "XP", "+10 XP", "XP"];
+      const pieces = 34;
+
+      for (let i = 0; i < pieces; i += 1) {
+        const piece = document.createElement("span");
+        const angle = (Math.PI * 2 * i) / pieces + (Math.random() - 0.5) * 0.55;
+        const distance = 180 + Math.random() * 520;
+        const x = Math.cos(angle) * distance;
+        const y = Math.sin(angle) * distance;
+        const spin = `${Math.round((Math.random() - 0.5) * 120)}deg`;
+
+        piece.className = "xp-burst-piece";
+        piece.textContent = labels[i % labels.length];
+        piece.style.setProperty("--xp-x", `${x.toFixed(1)}px`);
+        piece.style.setProperty("--xp-y", `${y.toFixed(1)}px`);
+        piece.style.setProperty("--xp-rotate", spin);
+        piece.style.setProperty("--xp-delay", `${(Math.random() * 0.18).toFixed(2)}s`);
+        piece.style.setProperty("--xp-duration", `${(1.35 + Math.random() * 0.65).toFixed(2)}s`);
+        piece.dataset.variant = String((i % 4) + 1);
+        xpBurst.append(piece);
+      }
+    };
+
+    // mark in-progress on first interaction
+    const statusKey = `guide:lekce:${id}:status`;
+    if (!localStorage.getItem(statusKey)) {
+      localStorage.setItem(statusKey, "in-progress");
+    }
+
+    btn.addEventListener("click", async () => {
+      localStorage.setItem(statusKey, "done");
+      const now = new Date();
+      const week = `${now.getFullYear()}-${Math.ceil((((now - new Date(now.getFullYear(), 0, 1)) / 86400000) + new Date(now.getFullYear(), 0, 1).getDay() + 1) / 7)}`;
+      localStorage.setItem("guide:activity:last-week", week);
+      if (achievement) {
+        const flagKey = `guide:lekce:${id}:lekce-achievement`;
+        if (localStorage.getItem(flagKey) !== "1") {
+          try {
+            const res = await fetch("/api/achievements/unlock", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ achievement_id: achievement, lesson_id: id }),
+            });
+            if (res.ok) {
+              localStorage.setItem(flagKey, "1");
+              window.dispatchEvent(new CustomEvent("guide:achievement", { detail: { id: achievement } }));
+              await new Promise((r) => setTimeout(r, 1200));
+            }
+          } catch (err) {
+            console.warn(err);
+          }
+        }
+      }
+      if (completeModal instanceof HTMLElement) {
+        completeModal.dataset.open = "true";
+        completeModal.setAttribute("aria-hidden", "false");
+        launchXpBurst();
+        if (completeNext instanceof HTMLElement) completeNext.focus();
+        return;
+      }
+      if (next) window.location.href = `/lekce/${next}`;
+      else window.location.href = "/";
+    });
+  })();
+</script>

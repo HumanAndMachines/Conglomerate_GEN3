@@ -1,0 +1,31 @@
+{
+  "questions": [
+    {
+      "id": "q1",
+      "text": "Co je hlavní smysl digitální kanceláře?",
+      "type": "single",
+      "options": [
+        {
+          "id": "a",
+          "text": "Mít společné místo pro práci, znalosti, návody a pomoc.",
+          "correct": true,
+          "feedback": "Ano. Tohle je správný a bezpečný směr."
+        },
+        {
+          "id": "b",
+          "text": "Schovat co nejvíc technických věcí do jedné složky.",
+          "correct": false,
+          "feedback": "Tohle by spíš přidalo zmatek nebo riziko."
+        },
+        {
+          "id": "c",
+          "text": "Nahradit lidi AI kolegy.",
+          "correct": false,
+          "feedback": "Tohle není dobrý běžný postup."
+        }
+      ],
+      "explanation": "Cílem je pracovat jednoduše, čitelně a bezpečně."
+    }
+  ],
+  "achievement_on_pass": "first-lesson"
+}

@@ -1,0 +1,38 @@
+{
+  "schema_version": "conglomerate.skills.v0",
+  "policy": {
+    "principle": "Opakovatelné postupy pro Buddy a AI kolegy v Launchpad rootu patří do .agents/skills.",
+    "directory": ".agents/skills",
+    "required_headings": [
+      "## Kdy použít",
+      "## Postup",
+      "## Ověření"
+    ]
+  },
+  "skills": [
+    {
+      "slug": "desktop-execution-agent-collaboration",
+      "path": ".agents/skills/desktop-execution-agent-collaboration/SKILL.md",
+      "applies_to": [
+        "claude-desktop",
+        "codex-desktop",
+        "buddy-qa-gate",
+        "desktop-execution-agents",
+        "ai-colleague-collaboration"
+      ],
+      "required": true
+    },
+    {
+      "slug": "nightly-steward-pr-sweep",
+      "path": ".agents/skills/nightly-steward-pr-sweep/SKILL.md",
+      "applies_to": [
+        "organization-steward",
+        "github-pull-requests",
+        "exact-head-review",
+        "mission-control-steward-reporting",
+        "nightly-operations"
+      ],
+      "required": true
+    }
+  ]
+}

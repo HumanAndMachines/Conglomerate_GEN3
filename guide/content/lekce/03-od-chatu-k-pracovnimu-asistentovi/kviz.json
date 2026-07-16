@@ -1,0 +1,30 @@
+{
+  "questions": [
+    {
+      "id": "q1",
+      "text": "Co je rozdíl mezi chatem a pracovním asistentem?",
+      "type": "single",
+      "options": [
+        {
+          "id": "a",
+          "text": "Pracovní asistent pomáhá i s kontextem, uložením a kontrolou výsledku.",
+          "correct": true,
+          "feedback": "Ano. Tohle je správný a bezpečný směr."
+        },
+        {
+          "id": "b",
+          "text": "Žádný, je to jen jiné jméno.",
+          "correct": false,
+          "feedback": "Tohle by spíš přidalo zmatek nebo riziko."
+        },
+        {
+          "id": "c",
+          "text": "Chat je vždy bezpečnější pro trvalá rozhodnutí.",
+          "correct": false,
+          "feedback": "Tohle není dobrý běžný postup."
+        }
+      ],
+      "explanation": "Cílem je pracovat jednoduše, čitelně a bezpečně."
+    }
+  ]
+}

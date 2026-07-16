@@ -1,0 +1,41 @@
+---
+import type { Lekce } from "@/lib/types";
+
+interface Props {
+  lekce: Lekce;
+  prereqTitles?: string[];
+  index?: number;
+}
+
+const { lekce, prereqTitles = [], index = 0 } = Astro.props;
+const lessonNumber = String(lekce.order);
+---
+
+<a
+  href={`/lekce/${lekce.id}`}
+  class="map-node"
+  data-lekce-card={lekce.id}
+  data-prereqs={JSON.stringify(lekce.prerequisites)}
+  data-prereq-titles={prereqTitles.join(", ")}
+  data-title={lekce.title}
+  style={`--node-index:${index};`}
+>
+  <span class="map-node-rail" aria-hidden="true"></span>
+  <span class="map-node-dot" aria-hidden="true">
+    <span class="map-node-number">{lessonNumber}</span>
+    <span class="map-node-status map-node-check">✓</span>
+    <span class="map-node-status map-node-lock">⌁</span>
+  </span>
+  <span class="map-node-card">
+    <span class="map-node-meta">
+      MISE {lessonNumber} · {lekce.duration_min} min
+    </span>
+    <span class="map-node-title">{lekce.title}</span>
+    <span class="map-node-cta">Spustit misi</span>
+    {
+      prereqTitles.length > 0 && (
+        <span class="map-node-lock-copy">Nejdřív: {prereqTitles.join(", ")}</span>
+      )
+    }
+  </span>
+</a>

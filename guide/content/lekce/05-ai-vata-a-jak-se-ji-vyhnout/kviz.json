@@ -1,0 +1,31 @@
+{
+  "questions": [
+    {
+      "id": "q1",
+      "text": "Co je AI vata?",
+      "type": "single",
+      "options": [
+        {
+          "id": "a",
+          "text": "Hezky znějící výstup bez opory a praktické hodnoty.",
+          "correct": true,
+          "feedback": "Ano. Tohle je správný a bezpečný směr."
+        },
+        {
+          "id": "b",
+          "text": "Každá odpověď od AI.",
+          "correct": false,
+          "feedback": "Tohle by spíš přidalo zmatek nebo riziko."
+        },
+        {
+          "id": "c",
+          "text": "Krátký konkrétní návod.",
+          "correct": false,
+          "feedback": "Tohle není dobrý běžný postup."
+        }
+      ],
+      "explanation": "Cílem je pracovat jednoduše, čitelně a bezpečně."
+    }
+  ],
+  "achievement_on_pass": "slop-aware"
+}

@@ -1,0 +1,100 @@
+---
+import type { Ukol } from "@/lib/types";
+
+interface Props {
+  lekceId: string;
+  ukol: Ukol;
+}
+
+const { lekceId, ukol } = Astro.props;
+---
+
+<section class="my-10 rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-panel)] p-6">
+  <div class="text-xs tracking-[0.3em] text-[var(--surface-muted)] mb-2">
+    ÚKOL · {ukol.type.toUpperCase()}
+  </div>
+  <h2 class="font-display text-2xl font-light mb-2">{ukol.title}</h2>
+  <article class="prose prose-sm max-w-none mb-6" set:html={ukol.bodyHtml} />
+
+  <div
+    data-checklist
+    data-lekce={lekceId}
+    data-achievement={ukol.achievement_on_complete ?? ""}
+    class="space-y-2"
+  >
+    {
+      ukol.checklist.map((step, i) => (
+        <label class="flex items-start gap-3 p-2 rounded hover:bg-[var(--surface-faint)] cursor-pointer">
+          <input
+            type="checkbox"
+            class="mt-1"
+            data-step={String(i)}
+          />
+          <span>{step}</span>
+        </label>
+      ))
+    }
+  </div>
+
+  <div class="mt-4 text-sm text-[var(--surface-muted)]" data-checklist-status></div>
+</section>
+
+<script is:inline>
+  (() => {
+    const root = document.querySelector("[data-checklist]");
+    if (!(root instanceof HTMLElement)) return;
+    const lekceId = root.dataset.lekce ?? "";
+    const achievementId = root.dataset.achievement ?? "";
+    const status = document.querySelector("[data-checklist-status]");
+    const key = `guide:lekce:${lekceId}:checklist`;
+    const boxes = root.querySelectorAll('input[type="checkbox"]');
+
+    let state = {};
+    try {
+      state = JSON.parse(localStorage.getItem(key) ?? "{}");
+    } catch {
+      state = {};
+    }
+
+    boxes.forEach((cb) => {
+      const idx = cb.dataset.step ?? "";
+      if (state[idx]) cb.checked = true;
+      cb.addEventListener("change", async () => {
+        state[idx] = cb.checked;
+        localStorage.setItem(key, JSON.stringify(state));
+        const all = Array.from(boxes).every((b) => b.checked);
+        if (status instanceof HTMLElement) {
+          status.textContent = all
+            ? "Hotovo! Můžeš jít na další krok."
+            : `${Array.from(boxes).filter((b) => b.checked).length} / ${boxes.length} hotovo`;
+        }
+        if (all && achievementId) {
+          const flagKey = `guide:lekce:${lekceId}:ukol-achievement`;
+          if (localStorage.getItem(flagKey) !== "1") {
+            try {
+              const res = await fetch("/api/achievements/unlock", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ achievement_id: achievementId, lesson_id: lekceId }),
+              });
+              if (res.ok) {
+                localStorage.setItem(flagKey, "1");
+                window.dispatchEvent(new CustomEvent("guide:achievement", { detail: { id: achievementId } }));
+              }
+            } catch (err) {
+              console.warn("achievement unlock failed", err);
+            }
+          }
+        }
+      });
+    });
+
+    // initial status
+    const initialAll = Array.from(boxes).every((b) => b.checked);
+    if (status instanceof HTMLElement) {
+      status.textContent = initialAll
+        ? "Hotovo! Můžeš jít na další krok."
+        : `${Array.from(boxes).filter((b) => b.checked).length} / ${boxes.length} hotovo`;
+    }
+  })();
+</script>

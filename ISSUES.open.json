@@ -1,0 +1,10 @@
+{
+  "schema_version": "companiesascode.open_issues.v1",
+  "scope": {
+    "id": "conglomerate-root",
+    "name": "HumanAndMachines/Conglomerate_GEN3 root",
+    "path": "Conglomerate_GEN3",
+    "owner": "founder"
+  },
+  "issues": []
+}

@@ -1,0 +1,30 @@
+{
+  "questions": [
+    {
+      "id": "q1",
+      "text": "Co znamená napojená služba pro běžného kolegu?",
+      "type": "single",
+      "options": [
+        {
+          "id": "a",
+          "text": "Některé údaje není potřeba ručně přepisovat, ale změny mají mít jasný důvod.",
+          "correct": true,
+          "feedback": "Ano. Tohle je správný a bezpečný směr."
+        },
+        {
+          "id": "b",
+          "text": "AI může bez ptaní měnit všechno.",
+          "correct": false,
+          "feedback": "Tohle by spíš přidalo zmatek nebo riziko."
+        },
+        {
+          "id": "c",
+          "text": "Hesla se mají posílat v chatu.",
+          "correct": false,
+          "feedback": "Tohle není dobrý běžný postup."
+        }
+      ],
+      "explanation": "Cílem je pracovat jednoduše, čitelně a bezpečně."
+    }
+  ]
+}

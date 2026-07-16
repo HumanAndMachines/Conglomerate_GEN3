@@ -1,0 +1,35 @@
+---
+interface Props {
+  totalLekce: number;
+}
+
+const { totalLekce } = Astro.props;
+---
+
+<div class="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-panel)] p-4">
+  <div class="flex items-center justify-between text-xs text-[var(--surface-muted)] mb-2">
+    <span>Tvůj postup kurzem</span>
+    <span><span data-progress-done>0</span> / {totalLekce} lekcí · <span data-progress-pct>0</span>%</span>
+  </div>
+  <div class="progress"><span data-progress-bar style="width:0%"></span></div>
+</div>
+
+<script is:inline define:vars={{ totalLekce }}>
+  (() => {
+    let done = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      if (k.startsWith("guide:lekce:") && k.endsWith(":status") && localStorage.getItem(k) === "done") {
+        done++;
+      }
+    }
+    const pct = totalLekce > 0 ? Math.round((done / totalLekce) * 100) : 0;
+    const bar = document.querySelector("[data-progress-bar]");
+    const doneEl = document.querySelector("[data-progress-done]");
+    const pctEl = document.querySelector("[data-progress-pct]");
+    if (bar instanceof HTMLElement) bar.style.width = pct + "%";
+    if (doneEl) doneEl.textContent = String(done);
+    if (pctEl) pctEl.textContent = String(pct);
+  })();
+</script>
