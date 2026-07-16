@@ -1,7 +1,7 @@
 ---
 name: nightly-steward-pr-sweep
 description: Use when an Organization Steward must run the daily 02:00 PR closeout for exactly the GitHub Organizations assigned to that seat. Inventories the live queue, applies exact-head review and CI gates, actively fixes or routes bounded work, merges only within Steward authority, and writes one idempotent Mission Control Steward Report.
-version: 1.0.1
+version: 1.0.2
 author: HumanAndMachine GEN3
 license: MIT
 metadata:
@@ -53,10 +53,11 @@ A run is complete only when all are true:
 1. Read the nearest Organization `AGENTS.md`, source-of-truth guide, governance manifest and `references/organization-policy.yaml`.
 2. Verify `hostname`, OS user, local timezone, `gh api user`, Git protocol, workspace paths, clean reference checkouts and Mission Control report target. Never print credentials.
 3. Verify the current seat login equals `steward.github_login`. A mismatch or invalid GitHub auth is `BLOCKED`; do not borrow Admin credentials.
-4. Verify read visibility for every `scope.required_read_repositories` entry. An inaccessible required repository is `BLOCKED` **before any GitHub mutation**. Never call an all-Organization inventory complete from only the repositories visible to the current credential.
-5. Resolve one `steward_seat` per configured Organization. For multi-Organization assignments, require a matching `reporting.organization_reports[]` entry with `organization_slug`, `github_organization`, `steward_seat` and `repository_db_root`. Missing, duplicate or shared seat mappings are `BLOCKED`; do not infer the second Organization's seat from the first one's global fallback.
-6. Reconcile explicit owner/no-touch declarations from the policy file, PR body/comments/labels and current Mission Control tasks. A no-touch item is read-only inventory: no review, comment, reviewer request, rebase, push or merge.
-7. If the same `report_date + steward seat + scope` already has a terminal Mission Control report, do not mutate GitHub. Read the report back and finish idempotently when it matches. If the live queue changed, stop as `BLOCKED` with `report_slot_closed`, preserve only a local redacted retry note and defer durable reporting to the next supported run slot. The v1 writer cannot reconcile different content into the same Organization/seat/date key; never rewrite or duplicate the report.
+4. Require policy schema `humanandmachine.nightly_steward_pr_sweep.policy.v2`. For every configured GitHub Organization, resolve exactly one `scope.organization_repository_rosters[]` entry with `github_organization`, a non-placeholder `source`, and a non-empty unique `required_repositories` list of canonical `owner/repo` identifiers belonging to that Organization. Reconcile the list against the authoritative Organization governance source named by `source`. Missing v2 metadata, an empty list, unresolved placeholders, duplicate/mismatched Organizations, or a governance repo absent from the list is `BLOCKED` **before any GitHub mutation**; legacy v1 policies must be migrated, never interpreted permissively.
+5. Verify read visibility for every repository in the matching Organization roster. An inaccessible required repository is `BLOCKED` **before any GitHub mutation**. Never call an all-Organization inventory complete from only the repositories visible to the current credential.
+6. Resolve one `steward_seat` per configured Organization. Require a matching `reporting.organization_reports[]` entry with `organization_slug`, `github_organization`, `steward_seat`, `target` and `repository_db_root`. Missing, duplicate or shared seat/target mappings are `BLOCKED`; do not infer one Organization's report identity or destination from another Organization or from a global fallback.
+7. Reconcile explicit owner/no-touch declarations from the policy file, PR body/comments/labels and current Mission Control tasks. A no-touch item is read-only inventory: no review, comment, reviewer request, rebase, push or merge.
+8. If the same `report_date + steward seat + scope` already has a terminal Mission Control report, do not mutate GitHub. Read the report back and finish idempotently when it matches. If the live queue changed, stop as `BLOCKED` with `report_slot_closed`, preserve only a local redacted retry note and defer durable reporting to the next supported run slot. The v1 writer cannot reconcile different content into the same Organization/seat/date key; never rewrite or duplicate the report.
 
 **Preflight completion:** identity and scope match, report target is writable, and the exact inventory start time is recorded.
 
@@ -75,7 +76,7 @@ For every configured GitHub Organization, query all open PRs live. The pre-run l
 Inventory is Organization-wide, not owner-lane-wide. Workspace, Productionspace,
 domain-owner and explicit no-touch PRs all remain in the inventory; route them to
 the named owner and preserve their no-mutation boundary. If the seat cannot read a
-required repository, return `BLOCKED` instead of publishing a partial inventory.
+repository from its authoritative v2 roster, return `BLOCKED` instead of publishing a partial inventory.
 
 Track review-thread counts separately:
 
@@ -224,14 +225,16 @@ Before enabling the 02:00 job:
 - Counting a Mission Control write as delivered without read-back.
 - Expanding scope to another Organization visible to the GitHub account.
 - Treating another owner lane (for example Productionspace) as permission to omit the PR instead of inventorying and routing it read-only.
-- Calling a partial visible-repository list complete when `required_read_repositories` contains an inaccessible repository.
+- Treating a missing/empty legacy repository list as successful preflight instead of requiring a v2 Organization roster.
+- Calling a partial visible-repository list complete when an authoritative roster repository is inaccessible.
 - Reusing one global Steward seat ID for two Organization-local reports.
 - Recording only active unresolved threads while outdated unresolved threads still exist.
 
 ## Ověření
 
 - [ ] Seat identity equals policy.
-- [ ] Every required repository is readable, or the run stopped `BLOCKED` before mutation.
+- [ ] Policy is v2 and every Organization has one non-empty, governance-reconciled repository roster.
+- [ ] Every roster repository is readable, or the run stopped `BLOCKED` before mutation.
 - [ ] Every configured Organization has one distinct report entry and Steward seat.
 - [ ] Full live inventory was loaded twice.
 - [ ] Every non-draft PR has exact-head evidence.
