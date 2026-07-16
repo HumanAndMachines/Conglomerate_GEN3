@@ -75,10 +75,13 @@ PR Steward zavře s vysvětlením.
 
 ## Jak se změna dostane k lidem
 
-Merge do `main` ještě není release. Komunita dostává změny přes release
-kanály: **Nightly** sleduje `main` (automatický prerelease build), **Stable**
-dostává ruční kurátorský řez `vX.Y.Z`, který dělá Steward/Admin. Release smí
-spustit jen GitHub user s právy — Release není Publikace dat.
+Merge do `main` ještě není release. Dnes se změny šíří direct-pull modelem:
+každá mašina si aktualizuje svůj klon z `main`. **Plánované** (decision draft
+0078 v HumanAndMachines) jsou dva release kanály: **Nightly** sleduje `main`
+(automatický prerelease build) a **Stable** dostává ruční kurátorský řez
+`vX.Y.Z` od maintainera frameworku (Steward/Admin GitHub organizace
+HumanAndMachines). Release smí spustit jen GitHub user s právy — Release
+není Publikace dat.
 
 ## Fork policy
 
