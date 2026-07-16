@@ -9,6 +9,7 @@ import {
   performRootUpdate,
   readRootUpdateStatus,
   readUpdateChannelConfig,
+  restoreCreatedStash,
   selectHighestStableTag,
 } from "./update-lib.mjs";
 
@@ -182,6 +183,27 @@ test("autostash nikdy nesáhne na starší stash uživatele", async () => {
   const stashList = runGit(["stash", "list"], fixture.repo);
   expect(stashList.split("\n").filter(Boolean).length).toBe(1);
   expect(runGit(["rev-parse", "refs/stash"], fixture.repo)).toBe(userStash);
+});
+
+test("restoreCreatedStash najde náš autostash podle SHA i pod cizím stashem", async () => {
+  const fixture = await createUpdateFixture({ channel: "nightly", targetAhead: false });
+  // Náš autostash (tracked změna) …
+  await writeFile(join(fixture.repo, ".gitignore"), "launchpad.gen3.local.json\n# nas draft\n");
+  runGit(["stash", "push", "--include-untracked", "--message", "launchpad-root-update-test"], fixture.repo);
+  const ourSha = runGit(["rev-parse", "refs/stash"], fixture.repo);
+  // … a NAD ním mezitím přibude cizí stash uživatele.
+  await writeFile(join(fixture.repo, ".gitignore"), "launchpad.gen3.local.json\n# cizi draft\n");
+  runGit(["stash", "push", "--message", "uzivatelsky-stash"], fixture.repo);
+  const userSha = runGit(["rev-parse", "refs/stash"], fixture.repo);
+
+  const restored = await restoreCreatedStash({ rootPath: fixture.repo, stashSha: ourSha });
+  expect(restored.ok).toBe(true);
+  expect(restored.dropped).toBe(true);
+  // Náš stash je aplikovaný a dropnutý; cizí stash zůstal jako jediný a nedotčený.
+  const gitignore = await readFile(join(fixture.repo, ".gitignore"), "utf8");
+  expect(gitignore).toContain("nas draft");
+  const stashList = runGit(["stash", "list", "--format=%H"], fixture.repo).split("\n").filter(Boolean);
+  expect(stashList).toEqual([userSha]);
 });
 
 test("stable target ignoruje lokální tagy neinzerované originem", async () => {

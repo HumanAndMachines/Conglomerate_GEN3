@@ -118,7 +118,10 @@ export async function readRootUpdateStatus({ rootPath, refresh = true } = {}) {
 
   let fetchResult = null;
   if (refresh) {
-    fetchResult = await runGit(["fetch", "origin", "main", "--tags", "--prune"], {
+    // --prune-tags drží lokální tagy v synchronizaci s originem — yanknutý
+    // nebo přesunutý tag nesmí strašit v Doctor pohledu (update.channel čte
+    // lokální tagy), zatímco merge target se ověřuje přes ls-remote.
+    fetchResult = await runGit(["fetch", "origin", "main", "--tags", "--prune", "--prune-tags"], {
       cwd: rootPath,
       timeoutMs: GIT_FETCH_TIMEOUT_MS,
       env: safeGitRemoteEnv(),
@@ -533,18 +536,28 @@ async function mergeTargetWithAutostash({ rootPath, before }) {
   };
 }
 
-async function restoreCreatedStash({ rootPath, stashSha }) {
+export async function restoreCreatedStash({ rootPath, stashSha }) {
   const apply = await runGit(["stash", "apply", "--index", stashSha], {
     cwd: rootPath,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
   if (!apply.ok) return { ok: false, dropped: false };
-  const currentStash = await runGit(["rev-parse", "refs/stash"], {
+  // Náš autostash najdi podle SHA v celém stacku — když mezitím přibyl cizí
+  // stash nad naším, nesmí nám ujet drop (a cizí stash se nikdy nedropne).
+  const list = await runGit(["stash", "list", "--format=%H"], {
     cwd: rootPath,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
-  if (!currentStash.ok || currentStash.stdout !== stashSha) return { ok: true, dropped: false };
-  const drop = await runGit(["stash", "drop", "stash@{0}"], {
+  if (!list.ok) return { ok: true, dropped: false };
+  const index = list.stdout.split("\n").filter(Boolean).indexOf(stashSha);
+  if (index === -1) return { ok: true, dropped: false };
+  // Fail-safe re-check identity přesně před dropem (úzké TOCTOU okno).
+  const verify = await runGit(["rev-parse", `stash@{${index}}`], {
+    cwd: rootPath,
+    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+  });
+  if (!verify.ok || verify.stdout !== stashSha) return { ok: true, dropped: false };
+  const drop = await runGit(["stash", "drop", `stash@{${index}}`], {
     cwd: rootPath,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
