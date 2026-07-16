@@ -1,0 +1,42 @@
+# CI checks sdíleného frameworku: stejné gates, jaké běží lokálně
+# (`bun run check` = Launchpad discovery check + testy; Guide build).
+# Release/binárková pipeline je samostatná práce (CAC-0054, task-2026-07-16-002).
+name: checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Public repo: CI token drží least-privilege — joby jen čtou obsah.
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: bun run check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # Držet v paritě s vývojovými mašinami; při bumpu ověřit i macOS
+          # codesign regresi (Bun >= 1.3.12) v budoucí release pipeline.
+          bun-version: 1.3.14
+      - name: Launchpad discovery check + testy
+        run: bun run check
+
+  guide-build:
+    name: guide app build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: Instalace závislostí Guide
+        working-directory: guide/app/v1
+        run: bun install --frozen-lockfile
+      - name: Build Guide
+        working-directory: guide/app/v1
+        run: bun run build
