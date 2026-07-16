@@ -79,7 +79,7 @@ PR Steward zavře s vysvětlením.
 
 Merge do `main` ještě není release. Dnes se změny šíří direct-pull modelem:
 každá mašina si aktualizuje svůj klon z `main`. **Plánované** (decision draft
-0078 v HumanAndMachines/docs/decisions/) jsou dva release kanály: **Nightly** sleduje `main`
+0080 v HumanAndMachines/docs/decisions/) jsou dva release kanály: **Nightly** sleduje `main`
 (automatický prerelease build) a **Stable** dostává ruční kurátorský řez
 `vX.Y.Z` od maintainera frameworku (Steward/Admin GitHub organizace
 HumanAndMachines). Release smí spustit jen GitHub user s právy — Release
