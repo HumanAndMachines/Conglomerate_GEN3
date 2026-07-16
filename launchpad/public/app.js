@@ -3566,7 +3566,7 @@ async function pullGitRepository({ git, label, autostash = false, pendingKey = `
   }
 }
 
-// Update lane Conglomerate rootu (decision 0059, draft 0078) — oddělená od
+// Update lane Conglomerate rootu (decision 0059, draft 0080) — oddělená od
 // per-repo org pullů; pill v top baru ukazuje kanál, verzi a akční stav.
 async function loadUpdateStatus() {
   const payload = await fetchJsonSafe("/api/update/status");

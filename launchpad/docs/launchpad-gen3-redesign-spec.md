@@ -154,7 +154,7 @@ Implementation note: v1 deliberately deviates from the `git pull --rebase
 primitives — **ff-only merge to an explicit verified channel target**, with
 autostash (stash → ff → exact restore) only as an explicit second action, never
 as a silent default. Channels and client checkout policy are held by decision
-draft 0078 (HumanAndMachines); the binary axis waits for the CI build+sign
+draft 0080 (HumanAndMachines); the binary axis waits for the CI build+sign
 pipeline and is reported as `binary: { state: "not_available" }`.
 
 - **Intent:** bring the Conglomerate root to the current target of the

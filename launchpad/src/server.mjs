@@ -640,7 +640,7 @@ function startServer(startPort) {
         if (runtimeRoute) return handleRuntimeRoute(request, runtimeRoute);
         const gitRoute = gitApiRoute(url.pathname);
         if (gitRoute) return handleGitApiRoute(request, url, gitRoute);
-        // Update lane Conglomerate rootu (decision 0059, draft 0078): oddělená
+        // Update lane Conglomerate rootu (decision 0059, draft 0080): oddělená
         // od org git inventáře; mutace jde přes trusted-local guard výše a
         // serializuje se s background fetchi přes withRemoteRefreshPaused.
         // I GET status je trusted-local: dělá git fetch (síť + credentials),

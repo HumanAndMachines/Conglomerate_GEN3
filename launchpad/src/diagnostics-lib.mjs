@@ -978,7 +978,7 @@ function gitWorktreeCheck(companiesRoot) {
   };
 }
 
-// Anti-stuck check update kanálu (decision 0059, draft 0078). Read-only:
+// Anti-stuck check update kanálu (decision 0059, draft 0080). Read-only:
 // čte jen lokální refs a config, NIKDY nefetchuje ani nemutuje — mutační
 // update je samostatný guarded tool (/api/update), ne Doctor check.
 export function updateChannelCheck(companiesRoot) {
