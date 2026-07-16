@@ -38,10 +38,12 @@ změna Conglomerate, ale kandidát na plugin nebo obsah Organizace.
 - **Funkce nebo změna chování** začíná issue/návrhem, ne hotovým diffem.
   Popiš záměr, koho v komunitě se týká a proč nestačí nižší stupeň žebříku.
   Velké přepisy a refactory bez předchozí domluvy se zavírají.
-- Pracuj ve worktree (`.worktrees/<kód>/`), nikdy v primárním checkoutu —
-  ten zůstává na `main` a slouží jako referenční strom. Dlouhodobá lokální
-  větev na mašině je zakázaný stav; práce, která nemíří do PR, do
-  Conglomerate nepatří.
+- Pracuj v dedikovaném worktree, nikdy v primárním checkoutu — ten zůstává
+  na `main` a slouží jako referenční strom. Umístění a pojmenování worktree
+  neurčuj ručně: drž se toho, co dnes vynucují Doctor/Launchpad guardy;
+  referenci (aktuální postup i cílový model CAC-0065) najdeš v
+  `manual/worktree-management.md`. Dlouhodobá lokální větev na mašině je
+  zakázaný stav; práce, která nemíří do PR, do Conglomerate nepatří.
 
 ## Kvalita PR — co musí platit
 
@@ -77,7 +79,7 @@ PR Steward zavře s vysvětlením.
 
 Merge do `main` ještě není release. Dnes se změny šíří direct-pull modelem:
 každá mašina si aktualizuje svůj klon z `main`. **Plánované** (decision draft
-0078 v HumanAndMachines) jsou dva release kanály: **Nightly** sleduje `main`
+0078 v HumanAndMachines/docs/decisions/) jsou dva release kanály: **Nightly** sleduje `main`
 (automatický prerelease build) a **Stable** dostává ruční kurátorský řez
 `vX.Y.Z` od maintainera frameworku (Steward/Admin GitHub organizace
 HumanAndMachines). Release smí spustit jen GitHub user s právy — Release
