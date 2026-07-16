@@ -1,7 +1,8 @@
-import { existsSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { readFile, readdir, stat } from "fs/promises";
 import { basename, join } from "path";
 import { discoverLaunchpadApps, readJson } from "./discovery-lib.mjs";
+import { UPDATE_CHANNELS, selectHighestStableTag } from "./update-lib.mjs";
 import { buildGitApiResponse, compactGitSummaryForApp } from "./git-api-lib.mjs";
 import { createRuntimeManager } from "./runtime-lib.mjs";
 import { buildWorktreeIndex } from "./worktree-lib.mjs";
@@ -595,6 +596,7 @@ export function buildEnvironmentChecks({ companiesRoot, companies = [], template
     ...toolChecks,
     gitRootCheck(companiesRoot),
     gitWorktreeCheck(companiesRoot),
+    updateChannelCheck(companiesRoot),
     gitSubmodulesCheck(companiesRoot),
     gitRepoMountsCheck(companiesRoot, repoMounts),
     gitignoreProtectionCheck(companiesRoot, repoMounts),
@@ -973,6 +975,130 @@ function gitWorktreeCheck(companiesRoot) {
     paths: ["."],
     links: [],
     details: dirtyLines.slice(0, 20),
+  };
+}
+
+// Anti-stuck check update kanálu (decision 0059, draft 0078). Read-only:
+// čte jen lokální refs a config, NIKDY nefetchuje ani nemutuje — mutační
+// update je samostatný guarded tool (/api/update), ne Doctor check.
+export function updateChannelCheck(companiesRoot) {
+  const base = {
+    id: "update.channel",
+    severity: "local-state",
+    title: "Update kanál",
+    paths: ["launchpad.gen3.local.json"],
+    links: [],
+  };
+
+  let channel = "stable";
+  let configState = "defaulted";
+  const configPath = join(companiesRoot, "launchpad.gen3.local.json");
+  if (existsSync(configPath)) {
+    try {
+      const configured = JSON.parse(readFileSync(configPath, "utf8"))?.update_channel;
+      if (configured !== undefined && configured !== null && configured !== "") {
+        if (UPDATE_CHANNELS.includes(configured)) {
+          channel = configured;
+          configState = "configured";
+        } else {
+          return {
+            ...base,
+            status: "warn",
+            message: `Neplatný update_channel ${JSON.stringify(configured)}; platí stable. Povolené hodnoty: ${UPDATE_CHANNELS.join(", ")}.`,
+            details: [],
+          };
+        }
+      }
+    } catch {
+      return {
+        ...base,
+        status: "warn",
+        message: "launchpad.gen3.local.json nejde přečíst jako JSON; update kanál platí stable.",
+        details: [],
+      };
+    }
+  }
+
+  const branch = runGit(["branch", "--show-current"], companiesRoot);
+  if (!branch.ok || branch.stdout !== "main") {
+    return {
+      ...base,
+      status: "warn",
+      message: branch.ok && branch.stdout
+        ? `Root checkout je na branchi ${branch.stdout}, ne na main — update kanálu je zablokovaný.`
+        : "Root checkout není na branchi main (detached HEAD nebo nečitelný stav) — update kanálu je zablokovaný.",
+      details: ["Kontrakt: primární checkout zůstává na main; práce patří do worktrees (AGENTS.md)."],
+    };
+  }
+
+  let targetSha = null;
+  let targetLabel = null;
+  if (channel === "nightly") {
+    const originMain = runGit(["rev-parse", "--verify", "origin/main^{commit}"], companiesRoot);
+    if (originMain.ok) {
+      targetSha = originMain.stdout;
+      targetLabel = "origin/main";
+    }
+  } else {
+    const tags = runGit(["tag", "--list"], companiesRoot);
+    const tag = tags.ok ? selectHighestStableTag(tags.stdout.split("\n").filter(Boolean)) : null;
+    if (!tag) {
+      return {
+        ...base,
+        status: "warn",
+        message: "Stable kanál zatím nemá žádný release tag vMAJOR.MINOR.PATCH — update nemá cíl.",
+        details: ["Kanál lze dočasně přepnout na nightly v launchpad.gen3.local.json."],
+      };
+    }
+    const tagSha = runGit(["rev-parse", "--verify", `${tag}^{commit}`], companiesRoot);
+    if (tagSha.ok) {
+      targetSha = tagSha.stdout;
+      targetLabel = tag;
+    }
+  }
+
+  if (!targetSha) {
+    return {
+      ...base,
+      status: "warn",
+      message: `Cíl kanálu ${channel} nejde lokálně přečíst (poslední známý stav chybí).`,
+      details: ["Doctor nefetchuje; stav se zpřesní po akci Aktualizovat nebo git fetch."],
+    };
+  }
+
+  const relation = runGit(["rev-list", "--left-right", "--count", `HEAD...${targetSha}`], companiesRoot);
+  if (!relation.ok) {
+    return {
+      ...base,
+      status: "warn",
+      message: `Vztah HEAD a cíle kanálu ${channel} (${targetLabel}) nejde ověřit.`,
+      details: [relation.stderr || relation.error || "git rev-list selhal"],
+    };
+  }
+  const [ahead, behind] = relation.stdout.split(/\s+/).map((value) => Number(value));
+  if (ahead > 0 && behind > 0) {
+    return {
+      ...base,
+      status: "warn",
+      message: `Root se rozešel s cílem kanálu ${channel} (${targetLabel}): ${ahead} vlastních commitů, ${behind} chybějících.`,
+      details: ["Fail-closed stav — vyřeš s Agentem; žádný reset --hard."],
+    };
+  }
+  if (behind > 0) {
+    return {
+      ...base,
+      status: "warn",
+      message: `Kanál ${channel} má novější verzi (${targetLabel}); root je ${behind} commitů pozadu — spusť Aktualizovat.`,
+      details: [],
+    };
+  }
+  return {
+    ...base,
+    status: "ok",
+    message: ahead > 0
+      ? `Kanál ${channel} (${configState === "defaulted" ? "default" : "nastaveno"}): root je ${ahead} commitů před posledním známým cílem (${targetLabel}) — žádný downgrade se neprovádí.`
+      : `Kanál ${channel} (${configState === "defaulted" ? "default" : "nastaveno"}): root odpovídá poslednímu známému cíli (${targetLabel}).`,
+    details: [],
   };
 }
 

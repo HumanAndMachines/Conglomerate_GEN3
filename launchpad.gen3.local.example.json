@@ -1,6 +1,7 @@
 {
   "$comment": "Per-machine Launchpad root override. Copy to launchpad.gen3.local.json (gitignored, never tracked) and edit for THIS machine. The tracked launchpad.gen3.json is shared across every GEN3 user and stays generic; anything machine-specific lives here. Organizace i šablony se discoverují skenem disku i bez tohoto souboru; personalspace_owner je ale JEDINÝ způsob, jak označit primární prostor vlastníka mašiny (fail-closed privacy hranice — sken nerozliší vlastní prostor od nasdíleného, bez tohoto souboru není žádný prostor primární). Reálná data patří jen sem, nikdy do trackovaného launchpad.gen3.json.",
   "personalspace_owner": "<github-username>",
+  "update_channel": "stable",
   "planned_organizations": [
     {
       "slug": "<organization-slug>",
