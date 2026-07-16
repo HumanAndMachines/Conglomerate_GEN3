@@ -1,4 +1,4 @@
-schema_version: humanandmachine.nightly_steward_pr_sweep.policy.v1
+schema_version: humanandmachine.nightly_steward_pr_sweep.policy.v2
 organization_slug: replace-me
 display_name: Replace Me
 steward:
@@ -12,9 +12,13 @@ workspace_roots:
   gen3: /absolute/path/to/Conglomerate/organizations/ReplaceMe_GEN3
 scope:
   repository_mode: all-visible-active-in-configured-orgs
-  # Repositories whose visibility is required to claim complete Organization coverage.
-  # Keep owner-lane repositories here even when the Steward must not mutate them.
-  required_read_repositories: []
+  # Materialize from an Organization Admin/governance source. Empty or placeholder
+  # rosters are BLOCKED before mutation. Keep owner/no-touch lanes in the roster.
+  organization_repository_rosters:
+    - github_organization: ReplaceMe
+      source: replace-with-authoritative-organization-governance-roster
+      required_repositories:
+        - ReplaceMe/replace-with-required-repository
   excluded_repositories: []
   explicit_no_touch_prs: []
 routing:
