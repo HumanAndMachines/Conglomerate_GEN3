@@ -28,7 +28,9 @@ materializuj `templates/organization-policy.yaml` do lokálního
 Organization hranici. Když explicitní founder governance rozhodnutí přiřadí
 jednomu AI Kolegovi více Organization seatů, musí mít každá Organization
 v `reporting.organization_reports[]` vlastní `steward_seat`, report target a
-idempotency scope; globální `steward.seat` je pouze single-Organization fallback.
+idempotency scope. Policy v2 vyžaduje explicitní `organization_reports[]`
+entry pro každou Organizaci — i pro single-Organization setup; globální
+`steward.seat` je jen legacy/informativní pole, nikdy zdroj report identity.
 
 ## Completion contract
 
@@ -55,7 +57,7 @@ A run is complete only when all are true:
 3. Verify the current seat login equals `steward.github_login`. A mismatch or invalid GitHub auth is `BLOCKED`; do not borrow Admin credentials.
 4. Require policy schema `humanandmachine.nightly_steward_pr_sweep.policy.v2`. For every configured GitHub Organization, resolve exactly one `scope.organization_repository_rosters[]` entry with `github_organization`, a non-placeholder `source`, and a non-empty unique `required_repositories` list of canonical `owner/repo` identifiers belonging to that Organization. Reconcile the list against the authoritative Organization governance source named by `source`. Missing v2 metadata, an empty list, unresolved placeholders, duplicate/mismatched Organizations, or a governance repo absent from the list is `BLOCKED` **before any GitHub mutation**; legacy v1 policies must be migrated, never interpreted permissively.
 5. Verify read visibility for every repository in the matching Organization roster. An inaccessible required repository is `BLOCKED` **before any GitHub mutation**. Never call an all-Organization inventory complete from only the repositories visible to the current credential.
-6. Resolve one `steward_seat` per configured Organization. Require a matching `reporting.organization_reports[]` entry with `organization_slug`, `github_organization`, `steward_seat`, `target` and `repository_db_root`. Missing, duplicate or shared seat/target mappings are `BLOCKED`; do not infer one Organization's report identity or destination from another Organization or from a global fallback.
+6. Resolve one `steward_seat` per configured Organization. Require a matching `reporting.organization_reports[]` entry with `organization_slug`, `github_organization`, `steward_seat`, `target` and `repository_db_root`. Missing, duplicate or shared seat/target mappings are `BLOCKED`; do not infer one Organization's report identity or destination from another Organization or from a global fallback. Require `reporting.one_append_only_report_per_organization: true` — a missing or `false` value is `BLOCKED` (the field is the machine-readable declaration of the append-only report invariant, not a comment).
 7. Reconcile explicit owner/no-touch declarations from the policy file, PR body/comments/labels and current Mission Control tasks. A no-touch item is read-only inventory: no review, comment, reviewer request, rebase, push or merge.
 8. If the same `report_date + steward seat + scope` already has a terminal Mission Control report, do not mutate GitHub. Read the report back and finish idempotently when it matches. If the live queue changed, stop as `BLOCKED` with `report_slot_closed`, preserve only a local redacted retry note and defer durable reporting to the next supported run slot. The v1 writer cannot reconcile different content into the same Organization/seat/date key; never rewrite or duplicate the report.
 
@@ -183,9 +185,10 @@ Write exactly one append-only report per Organization seat and run slot through 
 `<organization_slug>:<steward_seat>:<YYYY-MM-DD>`
 
 Read `steward_seat` from that Organization's
-`reporting.organization_reports[]` entry. The global `steward.seat` may be used
-only when exactly one Organization is configured. Never reuse one seat ID across
-two Organization reports.
+`reporting.organization_reports[]` entry — always, including single-Organization
+setups; the global `steward.seat` is never a source of report identity
+(preflight Step 6 and live-run contract Step 3 are the gate). Never reuse one
+seat ID across two Organization reports.
 
 The report contains no secrets, raw logs, tokens or copied business payloads. It must match the strict v1 schema (`additionalProperties: false`) exactly:
 
