@@ -1,0 +1,29 @@
+---
+interface Props {
+  size?: "sm" | "md";
+  label?: string;
+  decorative?: boolean;
+  class?: string;
+}
+
+const {
+  size = "md",
+  label = "Mattyčus",
+  decorative = true,
+  class: className = "",
+} = Astro.props;
+---
+
+<span
+  class:list={[
+    "navi-mark",
+    "guide-pet",
+    size === "sm" && "navi-mark-sm guide-pet-sm",
+    className,
+  ]}
+  role={decorative ? undefined : "img"}
+  aria-label={decorative ? undefined : label}
+  aria-hidden={decorative ? "true" : undefined}
+>
+  <span class="guide-pet-sprite" aria-hidden="true"></span>
+</span>

@@ -1,0 +1,147 @@
+---
+import "@/styles/global.css";
+import GuidePet from "@/components/GuidePet.astro";
+
+interface Props {
+  title: string;
+  eyebrow?: string;
+  description?: string;
+  mapFirst?: boolean;
+}
+
+const { title, eyebrow, description, mapFirst = false } = Astro.props;
+const path = Astro.url.pathname;
+
+const nav = [
+  { href: "/", label: "Mapa" },
+  { href: "/kompletni-mapa", label: "Všechny lekce" },
+];
+---
+
+<!doctype html>
+<html lang="cs">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>{title} · Průvodce</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=app-icons-20260429" />
+    <meta name="description" content={description ?? "Jednoduchý průvodce digitální kanceláří"} />
+  </head>
+  <body class="min-h-screen font-sans antialiased">
+    <script is:inline>
+      // Dev mode přepínač přes ?dev=1 / ?dev=0; jinak honor localStorage.
+      (() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.has("dev")) {
+          const on = params.get("dev") !== "0";
+          if (on) localStorage.setItem("guide:dev-mode", "1");
+          else localStorage.removeItem("guide:dev-mode");
+        }
+        if (localStorage.getItem("guide:dev-mode") === "1") {
+          document.documentElement.dataset.devMode = "1";
+        }
+      })();
+    </script>
+
+    <div id="dev-banner" class="dev-banner" hidden>
+      DEV MODE · všechny lekce odemčené ·
+      <a href="/?dev=0" class="underline">vypnout</a>
+    </div>
+    <script is:inline>
+      if (document.documentElement.dataset.devMode === "1") {
+        const el = document.getElementById("dev-banner");
+        if (el) el.hidden = false;
+      }
+    </script>
+
+    <header class="app-header sticky top-0 z-40">
+      <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 md:px-6">
+        <a href="/" class="brand-lockup group flex items-center gap-3">
+          <GuidePet size="sm" />
+          <span class="block">
+            <span class="text-[10px] tracking-[0.35em] text-[var(--surface-muted)]">PRŮVODCE</span>
+            <span class="brand-title block font-display text-xl font-light leading-none">
+              guide
+            </span>
+          </span>
+        </a>
+        <div class="hidden min-w-0 flex-1 items-center justify-center gap-3 px-2 lg:flex">
+          <div class="top-progress" title="Celkový postup kurzem">
+            <span data-top-progress-bar style="width:0%"></span>
+          </div>
+          <div class="top-stat"><strong data-top-progress-pct>0%</strong> hotovo</div>
+          <div class="top-stat"><strong data-top-xp>0</strong> XP</div>
+          <div class="top-stat"><strong data-top-streak>0</strong> týdenní série</div>
+        </div>
+        <nav class="top-nav flex items-center gap-1 overflow-x-auto text-sm">
+          {
+            nav.map((item) => {
+              const active = path === item.href || (item.href !== "/" && path.startsWith(item.href));
+              return (
+                <a
+                  href={item.href}
+                  class:list={[
+                    "nav-link px-3 py-2 transition",
+                    active ? "is-active" : "",
+                  ]}
+                >
+                  {item.label}
+                </a>
+              );
+            })
+          }
+        </nav>
+      </div>
+    </header>
+
+    <main class="mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-10">
+      {!mapFirst && (
+        <header class="page-heading mb-8">
+          {eyebrow && <div class="text-xs tracking-[0.35em] text-[var(--surface-muted)] mb-3">{eyebrow.toUpperCase()}</div>}
+          <h1 class="font-display text-3xl md:text-5xl font-light leading-tight">{title}</h1>
+          {description && <p class="mt-4 max-w-3xl text-[var(--surface-muted)] text-lg">{description}</p>}
+        </header>
+      )}
+
+      <slot />
+
+      <footer class="mt-24 border-t border-[var(--surface-border)] pt-6 text-xs text-[var(--surface-muted)]">
+        Průvodce digitální kanceláří · krátké kroky pro každodenní práci
+      </footer>
+    </main>
+
+    <script is:inline>
+      (() => {
+        const pctEl = document.querySelector("[data-top-progress-pct]");
+        const xpEl = document.querySelector("[data-top-xp]");
+        const streakEl = document.querySelector("[data-top-streak]");
+        const bar = document.querySelector("[data-top-progress-bar]");
+        const lessonKeys = [];
+        let done = 0;
+        let quizPassed = 0;
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (!k) continue;
+          if (k.startsWith("guide:lekce:") && k.endsWith(":status")) {
+            lessonKeys.push(k);
+            if (localStorage.getItem(k) === "done") done++;
+          }
+          if (k.startsWith("guide:lekce:") && k.endsWith(":quiz-passed") && localStorage.getItem(k) === "1") {
+            quizPassed++;
+          }
+        }
+        const total = Number(document.documentElement.dataset.totalLessons || "0") || Math.max(lessonKeys.length, 1);
+        const pct = Math.min(100, Math.round((done / total) * 100));
+        const xp = done * 20 + quizPassed * 5;
+        const weekKey = localStorage.getItem("guide:activity:last-week");
+        const now = new Date();
+        const week = `${now.getFullYear()}-${Math.ceil((((now - new Date(now.getFullYear(), 0, 1)) / 86400000) + new Date(now.getFullYear(), 0, 1).getDay() + 1) / 7)}`;
+        const streak = weekKey === week ? 1 : 0;
+        if (pctEl) pctEl.textContent = `${pct}%`;
+        if (xpEl) xpEl.textContent = String(xp);
+        if (streakEl) streakEl.textContent = String(streak);
+        if (bar instanceof HTMLElement) bar.style.width = `${pct}%`;
+      })();
+    </script>
+  </body>
+</html>

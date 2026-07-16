@@ -1,0 +1,15 @@
+{
+  "name": "companies-workspace-launchpad",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "bun src/check-launchpad-discovery.mjs --allow-missing-organizations && bun test",
+    "check:strict": "bun src/check-launchpad-discovery.mjs && bun test",
+    "doctor": "bun src/doctor.mjs",
+    "doctor:json": "bun src/doctor.mjs --json",
+    "dev": "bun src/server.mjs",
+    "discover": "bun src/discover-apps.mjs --allow-missing-organizations",
+    "launch": "bun src/server.mjs --open",
+    "test": "bun test"
+  }
+}

@@ -1,0 +1,56 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import { lekceById, loadAllLekce, loadCesta } from "@/lib/content";
+
+const cesta = loadCesta();
+const lekce = loadAllLekce();
+const byId = lekceById(lekce);
+---
+
+<Layout
+  title="Všechny lekce"
+  eyebrow="všechny lekce"
+  description="Rychlý seznam všech lekcí. Hodí se, když se chceš vrátit ke konkrétnímu tématu."
+>
+  {
+    !cesta ? (
+      <p class="text-[var(--surface-muted)]">
+        Obsah ještě není připravený, podívej se do <code>guide/content/</code>.
+      </p>
+    ) : (
+      <ol class="space-y-6">
+        {cesta.sections.map((section, idx) => (
+          <li>
+            <div class="text-xs tracking-[0.3em] text-[var(--surface-muted)] mb-2">
+              ETAPA {idx + 1}
+            </div>
+            <h2 class="font-display text-xl font-light mb-3">{section.title}</h2>
+            <ul class="space-y-1 text-sm">
+              {section.lessons.map((id) => {
+                const l = byId.get(id);
+                if (!l) return (
+                  <li class="opacity-50">
+                    <code>{id}</code> — chybí
+                  </li>
+                );
+                return (
+                  <li>
+                    <a href={`/lekce/${l.id}`} class="hover:underline">
+                      <span class="text-[var(--surface-muted)] tabular-nums">
+                        {String(l.order).padStart(2, "0")}.
+                      </span>{" "}
+                      {l.title}
+                      <span class="text-[var(--surface-muted)] opacity-60">
+                        {" "}· {l.duration_min} min
+                      </span>
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          </li>
+        ))}
+      </ol>
+    )
+  }
+</Layout>

@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://humanandmachines.dev/schemas/launchpad/personal-buddy-presentation.draft.schema.json",
+  "$comment": "Neautoritativní Launchpad-local prezentační overlay pro UX prototyp. Nesmí rozhodovat o validitě personal.gen3.json, aplikací ani gbrainu a před produkčním přijetím se nesmí vydávat za HnM upstream model.",
+  "title": "Launchpad Buddy presentation draft",
+  "type": "object",
+  "properties": {
+    "display_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "avatar_url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https?://"
+    },
+    "application": {
+      "type": "object",
+      "required": [
+        "name",
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "enum": [
+            "telegram",
+            "signal",
+            "whatsapp",
+            "web",
+            "other"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^(?:https?|tg|sgnl|whatsapp)://"
+        }
+      },
+      "additionalProperties": true
+    },
+    "recurring_tasks": {
+      "description": "Nastavený lidský přehled; není plánovač ani runtime source of truth.",
+      "anyOf": [
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "title",
+              "schedule_label"
+            ],
+            "properties": {
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "schedule_label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1
+              },
+              "delivery_channel": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        {
+          "type": "array",
+          "description": "Přechodně podporovaný starší draft; nové konfigurace používají mapu.",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "title",
+              "schedule_label"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "schedule_label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1
+              },
+              "delivery_channel": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      ]
+    }
+  },
+  "additionalProperties": false
+}

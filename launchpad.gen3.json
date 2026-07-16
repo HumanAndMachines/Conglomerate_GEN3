@@ -1,0 +1,61 @@
+{
+  "workspace_generation": "gen3",
+  "organization_mountpoint": "organizations",
+  "personalspace_mountpoint": "personalspace",
+  "launchpad_root": {
+    "slug": "conglomerate",
+    "display_name": "Conglomerate",
+    "root_role": "launchpad-root"
+  },
+  "local_surfaces": [
+    {
+      "path": "launchpad",
+      "kind": "shared-launchpad",
+      "authority": "runtime-shell",
+      "notes": "Shared GEN3 Launchpad baseline. Builder-first surface for Workspace Builders (decision 0047). Admin Organizace flows, production workspace user entrypoints and deploy/server configuration live in Conglomerate Dashboard GEN3. Company apps declare ports in their package.json manifests."
+    },
+    {
+      "path": "guide",
+      "kind": "shared-guide",
+      "authority": "read-only-view",
+      "notes": "User-facing shared Guide over the whole Conglomerate: explains Launchpad root, Organizations, workspaces, productionspace, personalspace and links into Organization-specific manuals."
+    },
+    {
+      "path": "manual",
+      "kind": "maintenance-manual",
+      "authority": "source-of-truth",
+      "notes": "Technical manual for Launchpad root maintenance agents."
+    },
+    {
+      "path": "drafts",
+      "kind": "drafts",
+      "authority": "none",
+      "notes": "Local helper drafts. Not long-term company knowledge."
+    }
+  ],
+  "cross_company_isolation": {
+    "allowed_transfers": [
+      "general workflows",
+      "anonymized templates",
+      "agent rules without company data",
+      "cross-platform scripts without secrets"
+    ],
+    "forbidden_transfers": [
+      "secrets",
+      "customer data",
+      "business strategy of one company as truth of another",
+      "personal overlays",
+      "module data without explicit reason and access"
+    ]
+  },
+  "terminology": {
+    "conglomerate": "Multiple Organizations GEN3 under one Launchpad root on one machine, defined by launchpad.gen3.json. Not a business repo: each Organization keeps its own access boundary. Organizations are discovered by scanning organizations/*/company.gen3.json, never from a hardcoded registry in this shared file.",
+    "organization_gen3": "One company = one super-repo = one GitHub organization = one access boundary, defined by company.gen3.json and mounted as organizations/<slug>/. Inside one Organization live one or more workspaces (team or brand/venture), org-level productionspace/ for production systems and modules.",
+    "workspace": "A named group of modules inside one Organization GEN3: the digital office of one team OR one brand/venture, with its own doctor, rules and access boundary. Every Organization has exactly one default workspace with slug `workspace`. A module belongs to exactly one workspace; the module definition declares it. Hosted pattern: <module>.<workspace>.<domain>.",
+    "module": "Nested Git repo with one domain source of truth, described in modules.manifest.json and company.gen3.json.modules. A module is owned by exactly one workspace. A missing module is not automatically an error: distinguish available, missing_access and planned_slot.",
+    "launchpad_root": "Root folder of one Conglomerate on one machine, defined by launchpad.gen3.json. Mounts organizations/<org>/ and personalspace/ and hosts the shared Launchpad GEN3 and Guide. Exactly one Launchpad root per machine. This file is shared across every GEN3 user, so it carries only the generic contract — no machine-specific organization list, template list or personalspace owner.",
+    "personalspace": "Private personal repository/mount owned by the machine owner or autonomous AI colleague GitHub account, outside shared GitHub organizations. It should grow into a private module layer analogous to workspace modules: per-user/per-colleague apps, Buddy runtime, personal tools and hosted/readable GBrain surfaces, with strict privacy and scoped agent access.",
+    "productionspace": "Inside one Organization GEN3: the org-level place where the Organization's deployed/production systems live (e.g. firmware, connect, a product monorepo, public docs/website) — modules that are already deployed on a server / have their own CI-CD or are public, no longer worked on only locally or via a Workspace Host. A module is PROMOTED here from a workspace (versioned, e.g. v1.4) once a workspace version is deemed good. Unlike the workspace, productionspace has NO universal pattern: each production module keeps its OWN historically-designed release/CI-CD pipeline and rules. Mounted next to workspace mountpoints, shared by the whole Organization, owned by no single workspace. NOT the Workspace Host (a remote-access runtime for the workspace dílna). The Conglomerate-level Launchpad is SHARED (updated to everyone) and holds only universal principles, so it does NOT standardize or operate productionspace internals — each Organization defines its productionspace ITS OWN way in its own repo. Launchpad SHOWS a read-only productionspace overview for Workspace Builders (declared systems, git state; decision 0047), but does not operate it: no install/start/release actions without that Organization's explicit policy. How a given productionspace works is the Organization's concern, not Launchpad's.",
+    "conglomerate_dashboard": "Hosted HumanAndMachine surface for Admin Organizace (Organization Admin) flows, Organization and AI-colleague configuration, access, billing, user entry into production workspace applications, and deploy/server configuration for workspace and personalspace applications. It applies changes through Git/adapter flows and should not become a hidden replacement source of truth."
+  }
+}

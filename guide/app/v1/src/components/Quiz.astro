@@ -1,0 +1,306 @@
+---
+import type { Kviz } from "@/lib/types";
+
+interface Props {
+  lekceId: string;
+  kviz: Kviz;
+}
+
+const { lekceId, kviz } = Astro.props;
+
+const mode = kviz.mode ?? "standard";
+const isGlossary = mode === "glossary-cards";
+const optionLabels = ["A", "B", "C", "D"];
+const title = kviz.title ?? (isGlossary ? "Slovníček na start" : "Ověř si, co ti utkvělo");
+const subtitle = kviz.subtitle ?? (isGlossary
+  ? "Otoč kartu v hlavě: podívej se na pojem a vyber, jak bys ho vysvětlil/a kolegovi."
+  : "Vyber odpověď u každé otázky.");
+
+const ICONS: Record<string, string> = {
+  workspace:
+    '<path d="M4 7.5 12 3l8 4.5v9L12 21 4 16.5v-9Z"/><path d="M12 12 4.5 7.7"/><path d="M12 12l7.5-4.3"/><path d="M12 12v8.5"/>',
+  agent:
+    '<path d="M12 3v4"/><path d="M12 17v4"/><path d="M3 12h4"/><path d="M17 12h4"/><path d="m5.6 5.6 2.8 2.8"/><path d="m15.6 15.6 2.8 2.8"/><path d="m18.4 5.6-2.8 2.8"/><path d="m8.4 15.6-2.8 2.8"/><circle cx="12" cy="12" r="3.2"/>',
+  context:
+    '<path d="M5 7.5 12 4l7 3.5-7 3.5-7-3.5Z"/><path d="m5 12 7 3.5 7-3.5"/><path d="m5 16.5 7 3.5 7-3.5"/>',
+  authority:
+    '<path d="M12 3.5 19 7v5.3c0 4.1-2.6 6.8-7 8.2-4.4-1.4-7-4.1-7-8.2V7l7-3.5Z"/><path d="m8.8 12.2 2.1 2.1 4.5-5"/>',
+  module:
+    '<path d="M5 5h6v6H5z"/><path d="M13 5h6v6h-6z"/><path d="M5 13h6v6H5z"/><path d="M13 13h6v6h-6z"/>',
+  skill:
+    '<path d="M13 2 5 13h6l-2 9 8-12h-6l2-8Z"/>',
+  prompt:
+    '<path d="M5 5h14v10H8l-3 3V5Z"/><path d="M8 8h8"/><path d="M8 11h5"/>',
+  task:
+    '<path d="M6 4h12v18H6z"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="m9 16 1.4 1.4L14 14"/>',
+  mcp:
+    '<path d="M6 8h4v4H6z"/><path d="M14 4h4v4h-4z"/><path d="M14 16h4v4h-4z"/><path d="M10 10h3"/><path d="M13 8l1.5-1.5"/><path d="M13 12l1.5 5.5"/>',
+  browser:
+    '<path d="M4 5h16v14H4z"/><path d="M4 9h16"/><path d="M7 7h.1"/><path d="M10 7h.1"/><path d="M8 13h8"/><path d="M8 16h5"/>',
+  diff:
+    '<path d="M6 5h7"/><path d="M6 9h11"/><path d="M6 15h5"/><path d="M6 19h9"/><path d="M17 14v6"/><path d="M14 17h6"/>',
+  markdown:
+    '<path d="M4 6h16v12H4z"/><path d="M7 15V9l3 3 3-3v6"/><path d="M16 9v6"/><path d="m14 13 2 2 2-2"/>',
+  github:
+    '<path d="M9 19c-4 .8-4-2-5-3"/><path d="M15 22v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6A4.6 4.6 0 0 0 18.7 7c.1-.3.6-1.6-.1-3.2 0 0-1.1-.3-3.5 1.3a12.1 12.1 0 0 0-6.2 0C6.5 3.5 5.4 3.8 5.4 3.8 4.7 5.4 5.2 6.7 5.3 7A4.6 4.6 0 0 0 4 10.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V22"/>',
+  commit:
+    '<circle cx="12" cy="12" r="3"/><path d="M3 12h6"/><path d="M15 12h6"/>',
+};
+
+const iconFor = (name?: string) => ICONS[name ?? ""] ?? ICONS.workspace;
+---
+
+<section class:list={["my-10 rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-panel)] p-6", isGlossary && "glossary-quiz-shell"]}>
+  <div class="text-xs tracking-[0.3em] text-[var(--surface-muted)] mb-2">
+    {isGlossary ? "SLOVNÍČEK" : "KVÍZ"}
+  </div>
+  <h2 class="font-display text-2xl font-light mb-2">{title}</h2>
+  <p class="quiz-intro">{subtitle}</p>
+
+  <form
+    data-quiz
+    data-quiz-mode={mode}
+    data-lekce={lekceId}
+    data-achievement={kviz.achievement_on_pass ?? ""}
+    class="space-y-8"
+  >
+    {
+      kviz.questions.map((q, qi) => (
+        <fieldset data-question={q.id} class:list={["space-y-3", isGlossary && "glossary-question-card"]}>
+          <legend class:list={["font-medium", isGlossary && "glossary-card-legend"]}>
+            {isGlossary ? (
+              <div class="glossary-card-face">
+                <span class="glossary-card-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" set:html={iconFor(q.icon)}></svg>
+                </span>
+                <span class="glossary-card-copy">
+                  <span class="glossary-card-label">Pojem {qi + 1}</span>
+                  <strong>{q.term ?? q.text}</strong>
+                  {q.cardHint && <span class="glossary-card-hint">{q.cardHint}</span>}
+                </span>
+              </div>
+            ) : (
+              <>
+                <span class="text-[var(--surface-muted)] mr-2">{qi + 1}.</span>
+                {q.text}
+              </>
+            )}
+          </legend>
+          {isGlossary && <p class="glossary-card-prompt">{q.text}</p>}
+          <div class:list={["grid gap-2", isGlossary && "glossary-options"]}>
+            {q.options.map((opt, oi) => (
+              <button
+                type="button"
+                class="quiz-option"
+                data-option-id={opt.id}
+                data-correct={opt.correct ? "1" : "0"}
+                data-feedback={opt.feedback ?? ""}
+              >
+                <span class="quiz-option-index" aria-hidden="true">{optionLabels[oi] ?? oi + 1}</span>
+                <span>{opt.text}</span>
+              </button>
+            ))}
+          </div>
+          <div class="quiz-feedback" data-question-feedback hidden>
+            {q.explanation}
+          </div>
+        </fieldset>
+      ))
+    }
+
+    <div class="quiz-question-nav" data-quiz-question-nav>
+      <button type="button" data-quiz-question-prev>
+        ← Předchozí otázka
+      </button>
+      <span data-quiz-question-step>1 / {kviz.questions.length}</span>
+      <button type="button" data-quiz-question-next>
+        Další otázka →
+      </button>
+    </div>
+
+    <div class="flex items-center justify-between">
+      <div class="text-sm text-[var(--surface-muted)]" data-quiz-status>Vyber odpověď u každé otázky.</div>
+      <button
+        type="button"
+        data-quiz-submit
+        class="rounded-lg bg-guide-700 text-white px-4 py-2 text-sm hover:bg-guide-800 disabled:opacity-40"
+        disabled
+      >
+        Vyhodnotit
+      </button>
+    </div>
+  </form>
+
+  <div class="quiz-result" data-quiz-result aria-hidden="true">
+    <div class="quiz-result-confetti" data-quiz-confetti aria-hidden="true"></div>
+    <div class="quiz-result-card" role="dialog" aria-modal="true" aria-labelledby={`quiz-result-title-${lekceId}`}>
+      <div class="quiz-result-kicker" data-quiz-result-kicker>VÝSLEDEK KVÍZU</div>
+      <div class="quiz-result-score" data-quiz-result-score>0/0</div>
+      <h3 id={`quiz-result-title-${lekceId}`} class="quiz-result-title" data-quiz-result-title>Vyhodnoceno</h3>
+      <p class="quiz-result-copy" data-quiz-result-copy>Výsledek kvízu je připravený.</p>
+      <button type="button" class="quiz-result-close" data-quiz-result-close>
+        Pokračovat
+      </button>
+    </div>
+  </div>
+</section>
+
+<script is:inline>
+  (() => {
+    const form = document.querySelector("[data-quiz]");
+    if (!(form instanceof HTMLElement)) return;
+    const lekceId = form.dataset.lekce ?? "";
+    const achievementId = form.dataset.achievement ?? "";
+    const submit = form.querySelector("[data-quiz-submit]");
+    const status = form.querySelector("[data-quiz-status]");
+    const questions = form.querySelectorAll("[data-question]");
+    const questionPrev = form.querySelector("[data-quiz-question-prev]");
+    const questionNext = form.querySelector("[data-quiz-question-next]");
+    const questionStep = form.querySelector("[data-quiz-question-step]");
+    const result = form.parentElement?.querySelector("[data-quiz-result]");
+    const resultKicker = result?.querySelector("[data-quiz-result-kicker]");
+    const resultScore = result?.querySelector("[data-quiz-result-score]");
+    const resultTitle = result?.querySelector("[data-quiz-result-title]");
+    const resultCopy = result?.querySelector("[data-quiz-result-copy]");
+    const resultClose = result?.querySelector("[data-quiz-result-close]");
+    const confetti = result?.querySelector("[data-quiz-confetti]");
+    const answers = {};
+    let questionIndex = 0;
+
+    if (result instanceof HTMLElement && result.parentElement !== document.body) {
+      document.body.appendChild(result);
+    }
+
+    function setQuestion(nextIndex) {
+      questionIndex = Math.max(0, Math.min(questions.length - 1, nextIndex));
+      questions.forEach((q, index) => {
+        q.toggleAttribute("data-active-question", index === questionIndex);
+        q.setAttribute("aria-hidden", index === questionIndex ? "false" : "true");
+      });
+      if (questionStep instanceof HTMLElement) questionStep.textContent = `${questionIndex + 1} / ${questions.length}`;
+      if (questionPrev instanceof HTMLButtonElement) questionPrev.disabled = questionIndex === 0;
+      if (questionNext instanceof HTMLButtonElement) questionNext.disabled = questionIndex === questions.length - 1;
+    }
+
+    function refresh() {
+      const allAnswered = questions.length > 0 &&
+        Array.from(questions).every((q) => answers[q.dataset.question]);
+      if (submit instanceof HTMLButtonElement) submit.disabled = !allAnswered;
+    }
+
+    questions.forEach((q) => {
+      const buttons = q.querySelectorAll(".quiz-option");
+      const feedback = q.querySelector("[data-question-feedback]");
+      buttons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const correct = btn.dataset.correct === "1";
+          const optId = btn.dataset.optionId ?? "";
+          const fb = btn.dataset.feedback ?? "";
+          answers[q.dataset.question] = { id: optId, correct };
+          buttons.forEach((b) => {
+            b.removeAttribute("data-state");
+            b.disabled = false;
+          });
+          btn.dataset.state = correct ? "correct" : "wrong";
+          if (feedback instanceof HTMLElement) {
+            feedback.hidden = false;
+            if (fb) feedback.textContent = fb;
+          }
+          refresh();
+        });
+      });
+    });
+
+    questionPrev?.addEventListener("click", () => setQuestion(questionIndex - 1));
+    questionNext?.addEventListener("click", () => setQuestion(questionIndex + 1));
+
+    function closeResult() {
+      if (!(result instanceof HTMLElement)) return;
+      result.removeAttribute("data-open");
+      result.setAttribute("aria-hidden", "true");
+      if (confetti instanceof HTMLElement) confetti.textContent = "";
+    }
+
+    function launchConfetti(strength) {
+      if (!(confetti instanceof HTMLElement)) return;
+      confetti.textContent = "";
+      const colors = ["#312783", "#728efc", "#21c7a8", "#ffbe3d", "#ff6f91", "#f75c03"];
+      const pieces = strength === "full" ? 90 : 46;
+      for (let i = 0; i < pieces; i += 1) {
+        const piece = document.createElement("span");
+        piece.className = "quiz-confetti-piece";
+        piece.style.setProperty("--x", `${Math.random() * 100}%`);
+        piece.style.setProperty("--dx", `${(Math.random() - 0.5) * 220}px`);
+        piece.style.setProperty("--dy", `${260 + Math.random() * 260}px`);
+        piece.style.setProperty("--r", `${Math.random() * 720 - 360}deg`);
+        piece.style.setProperty("--delay", `${Math.random() * 0.18}s`);
+        piece.style.setProperty("--dur", `${0.9 + Math.random() * 0.7}s`);
+        piece.style.background = colors[i % colors.length];
+        confetti.appendChild(piece);
+      }
+      window.setTimeout(() => {
+        if (confetti instanceof HTMLElement) confetti.textContent = "";
+      }, 1900);
+    }
+
+    function openResult({ passed, correct, total }) {
+      if (!(result instanceof HTMLElement)) return;
+      const title = passed ? "Výborně, kvíz je splněný!" : "Ještě kousek a máš to.";
+      const copy = passed
+        ? "Všechny odpovědi sedí. Můžeš s klidem pokračovat do další části."
+        : `Máš ${correct} z ${total} správně. Oprav označené odpovědi a zkus vyhodnocení znovu.`;
+      if (resultKicker instanceof HTMLElement) resultKicker.textContent = passed ? "SKVĚLÁ PRÁCE" : "VÝSLEDEK KVÍZU";
+      if (resultScore instanceof HTMLElement) resultScore.textContent = `${correct}/${total}`;
+      if (resultTitle instanceof HTMLElement) resultTitle.textContent = title;
+      if (resultCopy instanceof HTMLElement) resultCopy.textContent = copy;
+      result.dataset.state = passed ? "passed" : "retry";
+      result.dataset.open = "true";
+      result.setAttribute("aria-hidden", "false");
+      launchConfetti(passed ? "full" : "soft");
+      if (resultClose instanceof HTMLButtonElement) resultClose.focus();
+    }
+
+    submit?.addEventListener("click", async () => {
+      const total = questions.length;
+      let correct = 0;
+      for (const q of questions) {
+        const a = answers[q.dataset.question];
+        if (a?.correct) correct++;
+      }
+      const passed = correct === total;
+      const pct = Math.round((correct / total) * 100);
+      if (status instanceof HTMLElement) {
+        status.textContent = passed
+          ? `Skvělá práce! ${correct}/${total} správně.`
+          : `${correct}/${total} správně (${pct}%). Zkus opravit nesprávné odpovědi.`;
+      }
+      openResult({ passed, correct, total });
+      localStorage.setItem(`guide:lekce:${lekceId}:quiz-passed`, passed ? "1" : "0");
+      if (passed && achievementId) {
+        try {
+          const res = await fetch("/api/achievements/unlock", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ achievement_id: achievementId, lesson_id: lekceId }),
+          });
+          if (res.ok) {
+            window.dispatchEvent(new CustomEvent("guide:achievement", { detail: { id: achievementId } }));
+          }
+        } catch (err) {
+          console.warn("achievement unlock failed", err);
+        }
+      }
+    });
+
+    resultClose?.addEventListener("click", closeResult);
+    result?.addEventListener("click", (event) => {
+      if (event.target === result) closeResult();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeResult();
+    });
+
+    refresh();
+    setQuestion(0);
+  })();
+</script>

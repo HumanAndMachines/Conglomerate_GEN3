@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "launchpad-gen3",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "--cwd", "launchpad", "dev"],
+      "port": 4174
+    },
+    {
+      "name": "dashboard",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "--cwd", "dashboard", "dev"],
+      "port": 4180
+    }
+  ]
+}

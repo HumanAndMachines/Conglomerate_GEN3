@@ -1,0 +1,4064 @@
+/* =========================================================
+   Launchpad GEN3 — local operator shell
+   Visual language adapted from the GEN2 Launchpad:
+   indigo accent (#6058E9), Manrope, restrained workstation
+   surfaces, light + dark via [data-theme]. Behaviour, policy
+   and discovery contracts are unchanged — this is skin + IA.
+   ========================================================= */
+
+:root {
+  /* Accent palette — GEN2 Launchpad ramp (accent-500 #6058E9). The named tokens
+     stay --c-accent-* so a picked accent (data-accent) can override the ramp
+     while the GEN2 default keeps 1:1 visual parity. */
+  --c-accent-200: #bfd1fc;
+  --c-accent-400: #728efc;
+  --c-accent-500: #6058e9;
+  --c-accent-700: #312783;
+  --c-accent-800: #241b63;
+  --c-accent-900: #1b1348;
+
+  /* Neutrals — GEN2 set. */
+  --c-white: #ffffff;
+  --c-neutral-050: #f7f8fb;
+  --c-neutral-100: #f1f3f8;
+  --c-neutral-200: #e5e8f0;
+  --c-neutral-300: #d3d8e3;
+  --c-neutral-500: #6b7385;
+  --c-neutral-700: #3a3f4f;
+
+  /* State */
+  --c-success: #10b981;
+  --c-success-bg: rgba(16, 185, 129, 0.12);
+  --c-warn: #f59e0b;
+  --c-warn-bg: rgba(245, 158, 11, 0.14);
+  --c-danger: #ef4444;
+  --c-danger-bg: rgba(239, 68, 68, 0.12);
+
+  /* Semantic (light) */
+  --bg: var(--c-white);
+  --bg-elevated: var(--c-white);
+  --bg-subtle: var(--c-neutral-100);
+  --bg-muted: var(--c-neutral-050);
+  --surface: var(--c-white);
+  --surface-console: #0f1020;
+  /* Ink is intentionally decoupled from the accent ramp so swapping the accent
+     (light/dark or a future picked colour) never tints body text. */
+  --text: #1b1348;
+  --text-muted: #525b70;
+  --text-subtle: #838ba3;
+  --line: rgba(27, 19, 72, 0.08);
+  --line-strong: rgba(27, 19, 72, 0.16);
+  /* Accent is driven by a single ramp. Everything accent-flavoured (soft fills,
+     focus rings, the primary button, the brand mark) derives from --accent via
+     color-mix, so a theme/accent switch only has to change the ramp below. */
+  --accent: var(--c-accent-500);
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
+  --accent-ring: color-mix(in srgb, var(--accent) 35%, transparent);
+
+  /* Shape — GEN2 keeps a single restrained 8px radius across surfaces; cards
+     round a touch more (12px) via their own rule, matching GEN2. */
+  --r-sm: 8px;
+  --r-md: 8px;
+  --r-lg: 8px;
+  --r-pill: 999px;
+
+  /* Motion */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --t-fast: 160ms;
+  --t-med: 260ms;
+
+  /* Sticky topbar height — every in-page scroll target offsets by this (plus a
+     small breathing gap) via scroll-margin-top so smooth-scrolled panels land
+     below the sticky .topbar instead of underneath it. app.js measures the real
+     topbar and overwrites --topbar-h at runtime; this value is the pre-JS
+     fallback (matches the default 38px brand mark + 0.55rem vertical padding +
+     1px border), so the offset is correct even before the script runs and stays
+     correct if the topbar reflows (responsive padding, wrapped bar). */
+  --topbar-h: 57px;
+  --scroll-offset: calc(var(--topbar-h) + 0.75rem);
+
+  /* Fonts */
+  --font-body: "Manrope", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-heading: var(--font-body);
+  --font-mono: "JetBrains Mono", "SF Mono", "Menlo", "Consolas", monospace;
+  --launchpad-body-background: color-mix(in srgb, var(--bg) 96%, #000);
+
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --bg: #0b0e14;
+  --bg-elevated: #12161e;
+  --bg-subtle: #161b25;
+  --bg-muted: #0f131b;
+  --surface: #151a24;
+  --surface-console: #0a0d14;
+  --text: #f3f4f8;
+  --text-muted: #a2a9bb;
+  --text-subtle: #6b7385;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  /* Only the accent endpoint changes for dark; --accent-soft / --accent-ring
+     inherit the color-mix definitions from :root and re-resolve against it. */
+  --accent: var(--c-accent-400);
+
+  color-scheme: dark;
+}
+
+/* ---------- Accent presets ----------------------------------------------
+   A future appearance/settings panel can switch the whole accent by setting
+   data-accent on <html> (see window.LaunchpadTheme.setAccent). Each preset only
+   overrides the accent ramp; every accent-derived token follows automatically,
+   in both light and dark mode. Add a new accent by adding one block here. */
+[data-accent="emerald"] {
+  --c-accent-200: #a7f3d0;
+  --c-accent-400: #34d399;
+  --c-accent-500: #10b981;
+  --c-accent-700: #047857;
+  --c-accent-900: #064e3b;
+}
+
+[data-accent="amber"] {
+  --c-accent-200: #fde68a;
+  --c-accent-400: #fbbf24;
+  --c-accent-500: #f59e0b;
+  --c-accent-700: #b45309;
+  --c-accent-900: #78350f;
+}
+
+[data-accent="rose"] {
+  --c-accent-200: #fecdd3;
+  --c-accent-400: #fb7185;
+  --c-accent-500: #f43f5e;
+  --c-accent-700: #be123c;
+  --c-accent-900: #881337;
+}
+
+[data-accent="slate"] {
+  --c-accent-200: #cbd5e1;
+  --c-accent-400: #64748b;
+  --c-accent-500: #475569;
+  --c-accent-700: #334155;
+  --c-accent-900: #1e293b;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--launchpad-body-background);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  /* GEN2 body weight — Manrope sits a touch heavier than 500 for the
+     workstation feel. */
+  font-weight: 520;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+[data-theme="dark"] body {
+  background: var(--launchpad-body-background);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-heading, var(--font-body));
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button,
+select,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+button:focus-visible,
+a:focus-visible,
+select:focus-visible,
+input:focus-visible,
+.segment:focus-visible,
+.app-card:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  left: -10000px;
+  top: 0;
+  z-index: 100;
+  padding: 0.5rem 1rem;
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--r-sm);
+}
+
+.skip-link:focus {
+  left: 1rem;
+  top: 1rem;
+}
+
+/* ---------- Topbar ---------- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  backdrop-filter: saturate(180%) blur(16px);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  border-bottom: 1px solid var(--line);
+}
+
+.topbar-inner {
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 0.55rem clamp(2rem, 3vw, 3.5rem);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.space-switcher {
+  position: relative;
+  min-width: 0;
+}
+
+.space-switcher-button {
+  min-height: 34px;
+  max-width: min(320px, 48vw);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.2rem 0.48rem 0.2rem 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg-muted);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.space-switcher-button:hover,
+.space-switcher-button:focus-visible,
+.space-switcher-button.is-open {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--line));
+  background: var(--surface);
+}
+
+.space-switcher-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.space-switcher-chevron {
+  flex: 0 0 auto;
+  color: var(--text-subtle);
+  transition: transform var(--t-fast) var(--ease);
+}
+
+.space-switcher-button.is-open .space-switcher-chevron {
+  transform: rotate(180deg);
+}
+
+.space-logo {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+.space-logo-personal {
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--line));
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.space-logo-organization {
+  border-color: hsl(var(--space-logo-hue, 250) 45% 78%);
+  background: hsl(var(--space-logo-hue, 250) 62% 93%);
+  color: hsl(var(--space-logo-hue, 250) 52% 32%);
+}
+
+.space-logo img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: var(--surface);
+}
+
+.space-logo svg {
+  width: 15px;
+  height: 15px;
+}
+
+.space-switcher-menu {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  z-index: 80;
+  width: min(280px, calc(100vw - 2rem));
+  max-height: calc(100vh - 5.5rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.3rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.space-switcher-menu[hidden] {
+  display: none;
+}
+
+.space-profile-card {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.62rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+}
+
+.space-profile-photo {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.74rem;
+  font-weight: 850;
+}
+
+.space-profile-photo img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.space-profile-copy {
+  min-width: 0;
+  display: grid;
+  gap: 0.12rem;
+}
+
+.space-profile-name,
+.space-profile-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.space-profile-name {
+  display: block;
+  color: inherit;
+  font-size: 0.9rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.space-profile-name:hover,
+.space-profile-name:focus-visible {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}
+
+.space-profile-email {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+}
+
+.space-profile-settings {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.35rem 0.48rem;
+  border-radius: var(--r-md);
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.space-profile-settings.is-disabled {
+  color: var(--text-muted);
+  cursor: default;
+  user-select: none;
+}
+
+.space-profile-settings svg {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+
+.space-switcher-divider {
+  height: 1px;
+  margin: 0.2rem 0.15rem;
+  background: var(--line);
+}
+
+.space-switcher-options {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.space-switcher-option {
+  width: 100%;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.28rem 0.38rem;
+  border-radius: var(--r-md);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.space-switcher-option:hover,
+.space-switcher-option:focus-visible {
+  background: var(--bg-muted);
+}
+
+.space-switcher-option[aria-selected="true"] {
+  background: var(--accent-soft);
+}
+
+.space-switcher-option-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.84rem;
+  font-weight: 750;
+}
+
+.topbar-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.topbar-overflow,
+.topbar-overflow-menu {
+  display: contents;
+}
+
+.topbar-overflow-toggle {
+  display: none;
+}
+
+.runtime-root-badge {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-subtle);
+  background: var(--bg-subtle);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.privacy-pill {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--c-success) 25%, var(--line));
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--c-success) 10%, var(--surface));
+  color: color-mix(in srgb, var(--c-success) 70%, #064e3b);
+  font-size: 0.76rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 0.7rem;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.status-pill:not(:disabled) {
+  cursor: pointer;
+}
+
+.status-ok {
+  border-color: transparent;
+  background: var(--c-success-bg);
+  color: #047857;
+}
+
+.status-warn {
+  border-color: transparent;
+  background: var(--c-warn-bg);
+  color: #9a5b00;
+}
+
+.status-fail {
+  border-color: transparent;
+  background: var(--c-danger-bg);
+  color: #b91c1c;
+}
+
+.status-unknown {
+  border-color: var(--line);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+}
+
+[data-theme="dark"] .status-ok {
+  color: #6ee7b7;
+}
+[data-theme="dark"] .status-warn {
+  color: #fbbf24;
+}
+[data-theme="dark"] .status-fail {
+  color: #fca5a5;
+}
+
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: var(--r-pill);
+  color: var(--text-muted);
+  border: 1px solid var(--line);
+  background: var(--bg-elevated);
+  transition: all var(--t-fast) var(--ease);
+}
+
+.icon-btn:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+  background: var(--bg-subtle);
+}
+
+.icon-btn.is-busy .refresh-icon {
+  animation: icon-spin 0.85s linear infinite;
+  transform-origin: center;
+}
+
+/* ---------- Scroll targets ----------
+   Any element the hero CTA (or another in-page jump) scrolls into view must
+   clear the sticky topbar. A single scroll-margin-top driven by --scroll-offset
+   keeps every target — problems panel, apps grid, action result, detail — from
+   settling underneath the bar, and stays correct if the topbar height changes.
+   This is the offset-aware fix for the "Zobrazit problémy scrolls under the
+   topbar" report; it replaces per-call magic pixel offsets. */
+#appsGrid,
+#problemsPanel,
+#actionPanel,
+#appDetail {
+  scroll-margin-top: var(--scroll-offset);
+}
+
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.95rem;
+  border-radius: var(--r-pill);
+  font-weight: 700;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  transition: transform var(--t-fast) var(--ease), background var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-sm {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.8rem;
+}
+
+.btn-primary {
+  background: var(--c-accent-500);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--c-accent-700);
+  transform: translateY(-1px);
+}
+
+[data-theme="dark"] .btn-primary {
+  background: linear-gradient(135deg, var(--c-accent-400), var(--c-accent-500));
+}
+
+.btn-secondary {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--line);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: var(--bg-subtle);
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+/* ---------- Page container ---------- */
+.page {
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 0 clamp(2rem, 3vw, 3.5rem) 3rem;
+  display: grid;
+  gap: 1rem;
+}
+
+/* ---------- Agregovaný stav prostoru v pravém sloupci ---------- */
+.hero {
+  position: relative;
+  min-width: 0;
+  gap: 0.55rem;
+  background: var(--surface);
+}
+
+.hero-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.hero.hero-ok {
+  border-color: color-mix(in srgb, var(--c-success) 30%, var(--line));
+}
+.hero.hero-warn {
+  border-color: color-mix(in srgb, var(--c-warn) 34%, var(--line));
+}
+.hero.hero-danger {
+  border-color: color-mix(in srgb, var(--c-danger) 34%, var(--line));
+}
+
+.hero-indicator {
+  width: 0.55rem;
+  height: 0.55rem;
+  flex: 0 0 0.55rem;
+  border-radius: 50%;
+  background: var(--text-subtle);
+}
+
+.hero.hero-ok .hero-indicator {
+  background: var(--c-success);
+}
+.hero.hero-warn .hero-indicator {
+  background: var(--c-warn);
+}
+.hero.hero-danger .hero-indicator {
+  background: var(--c-danger);
+}
+.hero.hero-loading .hero-indicator {
+  background: var(--accent);
+  animation: hero-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes hero-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.hero-title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 750;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+
+.hero-panel {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.hero .btn-sm {
+  padding: 0.28rem 0.65rem;
+  font-size: 0.72rem;
+}
+
+.hero.hero-ok .btn-secondary {
+  border: 1px solid color-mix(in srgb, var(--c-success) 38%, transparent);
+  background: color-mix(in srgb, var(--c-success) 22%, var(--surface));
+  color: color-mix(in srgb, var(--c-success) 72%, #064e3b);
+}
+
+.hero.hero-ok .btn-secondary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--c-success) 32%, var(--surface));
+}
+
+.hero.hero-warn .btn-secondary {
+  border: 1px solid color-mix(in srgb, var(--c-warn) 38%, transparent);
+  background: color-mix(in srgb, var(--c-warn) 13%, var(--surface));
+  color: color-mix(in srgb, var(--c-warn) 74%, #78350f);
+}
+
+.hero.hero-warn .btn-secondary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--c-warn) 22%, var(--surface));
+}
+
+.hero.hero-danger .btn-secondary {
+  border: 1px solid color-mix(in srgb, var(--c-danger) 38%, transparent);
+  background: color-mix(in srgb, var(--c-danger) 12%, var(--surface));
+  color: color-mix(in srgb, var(--c-danger) 76%, #7f1d1d);
+}
+
+.hero.hero-danger .btn-secondary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--c-danger) 21%, var(--surface));
+}
+
+[data-theme="dark"] .hero.hero-ok .btn-secondary {
+  color: #a7f3d0;
+}
+
+[data-theme="dark"] .hero.hero-warn .btn-secondary {
+  color: #fde68a;
+}
+
+[data-theme="dark"] .hero.hero-danger .btn-secondary {
+  color: #fecaca;
+}
+
+.space-health-badge {
+  position: absolute;
+  top: -0.3rem;
+  right: -0.3rem;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  padding: 0 0.25rem;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--surface);
+  border-radius: var(--r-pill);
+  background: var(--c-warn);
+  color: #fff;
+  font-size: 0.58rem;
+  font-weight: 850;
+  line-height: 1;
+}
+
+#drawerToggle {
+  position: relative;
+}
+
+.space-health-badge:not([hidden]) {
+  display: none;
+}
+
+.space-health-badge[data-tone="danger"] {
+  background: var(--c-danger);
+}
+
+/* ---------- Workbench layout: hlavní plocha ---------- */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 300px);
+  gap: 1rem;
+  align-items: start;
+}
+
+.layout.is-personal {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.recent-changes-sidebar {
+  position: sticky;
+  top: calc(var(--topbar-h) + 0.75rem);
+  min-width: 0;
+  max-height: calc(100vh - var(--topbar-h) - 1.5rem);
+  overflow: auto;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.recent-changes-sidebar .side-panel {
+  margin-bottom: 0;
+}
+
+.organization-git-head {
+  gap: 0.5rem;
+}
+
+.organization-git-head .btn {
+  white-space: nowrap;
+}
+
+.organization-git-status,
+.organization-git-card {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.organization-git-card {
+  padding: 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-muted);
+}
+
+.organization-git-card > strong {
+  font-size: 0.84rem;
+}
+
+.organization-git-card p,
+.organization-git-card small,
+.bulk-pull-summary p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.organization-git-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.bulk-pull-summary {
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.76rem;
+}
+
+.bulk-pull-summary summary {
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.bulk-pull-summary ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1rem;
+  color: var(--text-muted);
+}
+
+.recent-changes-sidebar .rail-eyebrow {
+  color: var(--text);
+  font-size: 0.88rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.detail-panel {
+  position: sticky;
+  top: 4.5rem;
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+}
+
+/* The detail panel can grow tall; let it scroll within the sticky frame
+   rather than push the whole page. */
+.detail-panel {
+  max-height: calc(100vh - 5.5rem);
+  overflow: auto;
+}
+
+.rail-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-subtle);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ---------- Workspace panel ---------- */
+.workspace-panel {
+  min-width: 0;
+  display: grid;
+  gap: 0.9rem;
+  align-content: start;
+}
+
+.workspace-welcome {
+  min-width: 0;
+  display: grid;
+  gap: 0.12rem;
+}
+
+.workspace-welcome-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.3rem;
+  font-weight: 720;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+
+.workspace-welcome-copy {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+/* ---------- Apps toolbar ---------- */
+.apps-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.search-field {
+  flex: 1 1 220px;
+  min-width: min(210px, 100%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--text-subtle);
+}
+
+.search-field:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  outline: 3px solid var(--accent-soft);
+  outline-offset: 1px;
+}
+
+.search-field input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
+.search-field input::placeholder {
+  color: var(--text-subtle);
+}
+
+.segmented-control {
+  flex: 0 0 auto;
+  display: inline-flex;
+  padding: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--bg-subtle);
+}
+
+.filter-controls {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.segment {
+  padding: 0.4rem 0.7rem;
+  border-radius: var(--r-pill);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.segment.is-active {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.attention-toggle {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.attention-toggle-check {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--bg-muted);
+  color: transparent;
+}
+
+.attention-toggle:hover,
+.attention-toggle:focus-visible {
+  border-color: color-mix(in srgb, var(--c-warn) 45%, var(--line));
+  color: var(--text);
+}
+
+.attention-toggle.is-active {
+  border-color: color-mix(in srgb, var(--c-warn) 48%, var(--line));
+  background: var(--c-warn-bg);
+  color: color-mix(in srgb, var(--c-warn) 72%, #5b3900);
+}
+
+.attention-toggle.is-active .attention-toggle-check {
+  border-color: var(--c-warn);
+  background: var(--c-warn);
+  color: #fff;
+}
+
+/* ---------- Problems / action panels ---------- */
+.problems-panel {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+/* Personalspace schovává hero i toolbar, takže diagnostika je první blok pod
+   sticky topbarem. Vlastní mezera zabrání tomu, aby se jeho horní hrana při
+   scrollu nebo krátké stránce opticky zasunula pod topbar. */
+.layout.is-personal .problems-panel:not(.hidden) {
+  margin-top: 0.75rem;
+}
+
+.problems-panel.is-danger {
+  border-color: color-mix(in srgb, var(--c-danger) 40%, var(--line));
+  background: color-mix(in srgb, var(--c-danger) 5%, var(--surface));
+}
+
+.problems-panel.is-warn {
+  border-color: color-mix(in srgb, var(--c-warn) 40%, var(--line));
+  background: color-mix(in srgb, var(--c-warn) 5%, var(--surface));
+}
+
+.problems-details summary {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  cursor: pointer;
+  padding: 0.6rem 0.85rem;
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 650;
+  list-style: none;
+}
+
+.problems-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.problems-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--c-warn);
+}
+
+.problems-panel.is-danger .problems-dot {
+  background: var(--c-danger);
+}
+
+.problems-summary-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.problems-summary-hint {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--text-subtle);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.problems-summary-hint::before {
+  content: "▸";
+  display: inline-block;
+  transition: transform var(--t-fast) var(--ease);
+}
+
+.problems-details[open] .problems-summary-hint::before {
+  transform: rotate(90deg);
+}
+
+.problems-list {
+  max-height: 320px;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+}
+
+.problem-item {
+  padding: 0.7rem 0.9rem;
+  border-top: 1px solid var(--line);
+  color: var(--text);
+  font-size: 0.84rem;
+}
+
+.problems-list > .problem-item:first-child {
+  border-top: 0;
+}
+
+.problem-item strong {
+  display: block;
+  font-weight: 800;
+}
+
+.problem-meta {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+}
+
+.action-panel {
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.action-ok {
+  border-color: color-mix(in srgb, var(--c-success) 40%, var(--line));
+  background: color-mix(in srgb, var(--c-success) 6%, var(--surface));
+  color: #047857;
+}
+
+.action-fail {
+  border-color: color-mix(in srgb, var(--c-danger) 40%, var(--line));
+  background: color-mix(in srgb, var(--c-danger) 6%, var(--surface));
+  color: #b91c1c;
+}
+
+[data-theme="dark"] .action-ok {
+  color: #6ee7b7;
+}
+[data-theme="dark"] .action-fail {
+  color: #fca5a5;
+}
+
+/* ---------- App cards ---------- */
+.apps-stack {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.apps-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+/* ---------- Workspace / Productionspace sections ---------- */
+.app-section {
+  display: grid;
+  gap: 0.7rem;
+}
+
+/* Section header — GEN2 app-group-head look: eyebrow, then a title-row with the
+   title + a round count badge, then a description line. */
+.app-section-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+}
+
+.app-section-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.5rem;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.app-section-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.app-section-title {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 900;
+}
+
+/* GEN2 app-group-count: round count pill next to the section title. */
+.app-section-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.35rem;
+  border-radius: var(--r-pill);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.app-section-meta {
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: normal;
+}
+
+.app-section-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+/* Productionspace is risk-tinted and visibly distinct from office workspaces. */
+.app-section-productionspace {
+  padding: 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--c-warn) 32%, var(--line));
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--c-warn) 4%, var(--surface));
+}
+
+.app-section-productionspace .app-section-eyebrow {
+  background: var(--c-warn-bg);
+  color: #9a5b00;
+}
+
+[data-theme="dark"] .app-section-productionspace .app-section-eyebrow {
+  color: #fbbf24;
+}
+
+.chip-prod {
+  background: var(--c-warn-bg);
+  color: #9a5b00;
+}
+
+[data-theme="dark"] .chip-prod {
+  color: #fbbf24;
+}
+
+/* ---------- Personalspace section (private, in the main plane) ----------
+   Visually distinct group like productionspace, but with the private accent
+   treatment. The layout moved out of the cramped rail; the DATA isolation
+   (separate /api/personalspace lane + Private badge) is unchanged. */
+.app-section-personalspace {
+  padding: 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+}
+
+.app-section-personalspace .app-section-eyebrow {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.app-section-personalspace .app-section-eyebrow::before {
+  content: "🔒";
+  margin-right: 0.3rem;
+  font-size: 0.85em;
+}
+
+.personalspace-body,
+.personalspace-body-inner {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.personalspace-space-block {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.personalspace-space-subhead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+}
+
+.personalspace-space-subhead strong {
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+/* ---------- Right-panel drawer (Nejčastější / detail) ----------
+   Poslední změny jsou trvale v pravém sloupci hlavního layoutu. */
+.detail-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 60;
+  width: min(420px, 92vw);
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  transform: translateX(102%);
+  transition: transform 0.22s ease;
+}
+
+.detail-drawer.is-open {
+  transform: none;
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+
+.drawer-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 1rem;
+  display: grid;
+  gap: 0.85rem;
+  align-content: start;
+}
+
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgba(15, 17, 21, 0.34);
+}
+
+.drawer-backdrop[hidden] {
+  display: none;
+}
+
+.icon-btn.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* Read-only productionspace system card — no lifecycle actions. */
+.system-card {
+  cursor: default;
+}
+
+.system-card::before {
+  background: var(--c-warn);
+}
+
+.system-card:hover,
+.system-card:focus-within {
+  transform: none;
+}
+
+.system-card .app-card-endpoint {
+  opacity: 0.85;
+}
+
+/* Unified organization card: surface contrast and state strips replace framing. */
+.app-card {
+  position: relative;
+  min-width: 0;
+  min-height: 148px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-content: start;
+  padding: 0.85rem;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--surface);
+  cursor: pointer;
+  transition: transform var(--t-fast) var(--ease);
+}
+
+.app-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 12px 0 0 12px;
+  background: transparent;
+}
+
+.app-card:hover,
+.app-card:focus-within {
+  transform: translateY(-1px);
+}
+
+.app-card.selected {
+  outline: 2px solid color-mix(in srgb, var(--accent) 58%, var(--line));
+  outline-offset: -2px;
+}
+
+.app-card.selected:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
+}
+
+.app-card.is-running::before {
+  background: var(--c-success);
+}
+.app-card.is-attention::before {
+  background: var(--c-warn);
+}
+.app-card.is-blocked::before {
+  background: var(--c-danger);
+}
+
+.empty-card {
+  padding: 2rem 1rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.app-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.55rem;
+}
+
+/* GEN2 title block: icon tile stacked above the title/sub/desc/chips column. */
+.app-title-block {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+/* Plain block: child margins (sub, desc, badges) drive vertical rhythm exactly
+   like GEN2, so spacing doesn't double up against a grid gap. */
+.app-title-body {
+  min-width: 0;
+  width: 100%;
+}
+
+.app-card-icon {
+  --app-icon-color: #5f5147;
+  --app-icon-bg: #eadfd2;
+  --app-icon-border: #d3c0ad;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  border: 1px solid var(--app-icon-border);
+  border-radius: var(--r-sm);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--app-icon-bg) 72%, #fff), var(--app-icon-bg));
+  color: var(--app-icon-color);
+}
+
+.app-card-icon svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* Kept for the manifest-only / productionspace system cards, which build their
+   own .app-card-titles wrapper (icon beside title). */
+.app-card-titles {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.app-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  min-width: 0;
+}
+
+.app-card-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 760;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* GEN2 version badge: soft accent-tinted pill on the title row. */
+.app-version-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: max-content;
+  padding: 0.1rem 0.36rem;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--accent) 9%, var(--bg-muted));
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  font-weight: 760;
+  line-height: 1.15;
+  text-transform: lowercase;
+  white-space: nowrap;
+}
+
+/* ---------- Version family "more" menu ---------- */
+.app-version-menu {
+  position: relative;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.app-card:has(.app-version-menu[open]) {
+  z-index: 5;
+}
+
+.app-version-menu > summary {
+  list-style: none;
+}
+
+.app-version-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.app-more-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--t-fast) var(--ease);
+}
+
+.app-more-button:hover,
+.app-version-menu[open] > .app-more-button {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+  background: var(--bg-subtle);
+}
+
+/* Subtle signal that a hidden (non-default) version is currently running. */
+.app-more-button.has-running {
+  position: relative;
+}
+
+.app-more-button.has-running::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 5px;
+  height: 5px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--c-success);
+}
+
+.app-version-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.4rem);
+  z-index: 20;
+  width: min(300px, calc(100vw - 2rem));
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.55rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.app-version-menu-note {
+  margin: 0 0 0.15rem;
+  padding: 0 0.15rem;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+/* ⋯ menu: runtime / detail akce (Zastavit, Restart, Zobrazit detail a logy).
+   Prostý řádkový button, odlišený od bohatého variant-option řádku. */
+.app-menu-action {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+
+.app-menu-action:not(:disabled):hover,
+.app-menu-action:not(:disabled):focus-visible {
+  background: var(--bg-subtle);
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--line));
+}
+
+.app-menu-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.app-menu-divider {
+  height: 1px;
+  margin: 0.15rem 0;
+  background: var(--line);
+}
+
+.app-version-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-muted);
+}
+
+.app-version-option-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 0.1rem;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.app-version-option-info strong {
+  font-size: 0.82rem;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-version-option-info small {
+  color: var(--text-subtle);
+  font-size: 0.72rem;
+}
+
+.app-version-option-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.app-version-option-actions .app-version-option-action {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 0.6rem;
+  font-size: 0.74rem;
+}
+
+.app-version-option-actions .ghost-action {
+  min-height: 28px;
+}
+
+.app-card-sub {
+  margin: 0.05rem 0 0;
+  color: var(--text-subtle);
+  font-size: 0.74rem;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Org kicker: nenápadná značka Organizace nad názvem, jen v multi-org „Vše"
+   pohledu (viz shouldShowCardOrg). Malé, tlumené, jeden řádek. */
+.app-card-org {
+  margin: 0 0 0.2rem;
+  color: var(--text-subtle);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Chips row sits where GEN2 puts the status chip — below the description. */
+.app-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.42rem;
+}
+
+/* Chips ported from GEN2 (style.css .chip*): pill, 0.74rem, vivid state colour
+   on a soft tinted fill. The running-state dot pulses like GEN2's card-running-dot. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--r-pill);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.005em;
+  white-space: nowrap;
+}
+
+.chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Running chip keeps motion as its non-elevated status cue. */
+.chip-success .chip-dot {
+  animation: pulse 1.8s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.chip-surface {
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  border: 1px solid var(--line);
+}
+
+.chip-success {
+  background: var(--c-success-bg);
+  color: var(--c-success);
+}
+
+.chip-warn {
+  background: var(--c-warn-bg);
+  color: var(--c-warn);
+}
+
+.chip-danger {
+  background: var(--c-danger-bg);
+  color: var(--c-danger);
+}
+
+.chip-muted {
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  border: 1px solid var(--line);
+}
+
+.chip-accent {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.app-card-endpoint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-subtle);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-card-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  /* GEN2 card-actions pin to the bottom of the flex-column card. */
+  margin-top: auto;
+}
+
+.primary-action {
+  flex: 1 1 auto;
+  min-height: 34px;
+  justify-content: center;
+}
+
+.ghost-action {
+  min-height: 30px;
+  padding: 0 0.6rem;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  transition: all var(--t-fast) var(--ease);
+}
+
+.ghost-action:not(:disabled):hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+  background: var(--bg-subtle);
+}
+
+.ghost-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+a.primary-action {
+  text-decoration: none;
+}
+
+a.primary-action:hover {
+  text-decoration: none;
+}
+
+/* ---------- Skeleton loading ---------- */
+.skeleton-card {
+  min-height: 148px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: linear-gradient(100deg, var(--bg-subtle) 0%, var(--bg-muted) 40%, var(--bg-subtle) 80%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite linear;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes icon-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---------- Debug table (collapsed by default) ---------- */
+.debug-table {
+  margin-top: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.debug-table > summary {
+  cursor: pointer;
+  padding: 0.65rem 0.85rem;
+  color: var(--text-subtle);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  list-style: none;
+}
+
+.debug-table > summary::-webkit-details-marker {
+  display: none;
+}
+
+.debug-table > summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 0.45rem;
+  transition: transform var(--t-fast) var(--ease);
+}
+
+.debug-table[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.table-shell {
+  overflow: auto;
+  border-top: 1px solid var(--line);
+}
+
+table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+  font-size: 0.8rem;
+}
+
+th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-subtle);
+  color: var(--text-subtle);
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+tbody tr {
+  cursor: pointer;
+}
+
+tbody tr:hover,
+tbody tr.selected {
+  background: var(--bg-muted);
+}
+
+.app-title {
+  display: block;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.app-subtitle,
+.path-text,
+.tag-list {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+}
+
+.path-text {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+}
+
+.tag {
+  padding: 0.05rem 0.4rem;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--bg-muted);
+  font-size: 0.7rem;
+}
+
+.open-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 0.55rem;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.76rem;
+  text-decoration: none;
+}
+
+.open-link:hover {
+  text-decoration: none;
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+  background: var(--accent-soft);
+}
+
+.action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-width: 180px;
+}
+
+.small-button {
+  min-height: 28px;
+  padding: 0 0.55rem;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.small-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.small-button:not(:disabled):hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+  background: var(--bg-subtle);
+}
+
+.runtime-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 22px;
+  margin-bottom: 0.3rem;
+  padding: 0 0.5rem;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.runtime-healthy {
+  border-color: transparent;
+  background: var(--c-success-bg);
+  color: #047857;
+}
+
+.runtime-starting {
+  border-color: transparent;
+  background: var(--c-warn-bg);
+  color: #9a5b00;
+}
+
+.runtime-stopped,
+.runtime-unknown {
+  border-color: var(--line);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+}
+
+.runtime-unhealthy {
+  border-color: transparent;
+  background: var(--c-danger-bg);
+  color: #b91c1c;
+}
+
+/* ---------- Detail panel (explainability surface) ---------- */
+.empty-detail {
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+  color: var(--text-subtle);
+  font-size: 0.9rem;
+}
+
+.detail-block {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.detail-header {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.detail-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.detail-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.detail-header .app-card-sub {
+  white-space: normal;
+}
+
+.detail-section {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-muted);
+}
+
+.detail-section-title {
+  margin: 0;
+  color: var(--text-subtle);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.detail-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.detail-next {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.detail-next p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.detail-list {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+}
+
+.detail-list div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.detail-list dt {
+  color: var(--text-subtle);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.detail-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
+}
+
+.detail-list dd.is-mono {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.worktree-list {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.worktree-item {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-muted);
+}
+
+.worktree-item.is-owned {
+  border-color: color-mix(in srgb, var(--c-success) 24%, var(--line));
+  background: color-mix(in srgb, var(--c-success) 7%, var(--bg-muted));
+}
+
+.worktree-item.is-orphan {
+  border-color: color-mix(in srgb, var(--c-warn) 28%, var(--line));
+  background: color-mix(in srgb, var(--c-warn) 9%, var(--bg-muted));
+}
+
+.worktree-item strong {
+  font-size: 0.86rem;
+}
+
+.worktree-meta,
+.worktree-message {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.runtime-source-chooser {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.runtime-source-option {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+
+.runtime-source-option:hover,
+.runtime-source-option.is-active {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+}
+
+.runtime-source-option.is-active {
+  transform: translateY(-1px);
+}
+
+.runtime-source-badge {
+  flex: 0 0 auto;
+  padding: 0.25rem 0.42rem;
+  border-radius: 999px;
+  background: var(--bg-muted);
+  color: var(--text-subtle);
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}
+
+.runtime-source-option.is-active .runtime-source-badge {
+  background: var(--accent);
+  color: white;
+}
+
+.runtime-source-text {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.runtime-source-text strong,
+.runtime-source-text small {
+  overflow-wrap: anywhere;
+}
+
+.runtime-source-text small {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
+.worktree-builder-actions {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.git-builder-actions {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.git-change-list {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.git-change-list strong {
+  font-size: 0.82rem;
+}
+
+.git-change-list ul {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.git-change-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.git-change-list code {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  overflow-wrap: anywhere;
+}
+
+.git-change-list span {
+  flex: 0 0 auto;
+  color: var(--text-subtle);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+}
+
+.builder-action-card {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--surface) 92%, var(--accent));
+}
+
+.builder-action-card strong {
+  color: var(--text);
+  font-size: 0.86rem;
+}
+
+.builder-action-card p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.builder-action-button {
+  justify-self: start;
+}
+
+.plugin-block {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.plugin-block h3 {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.plugin-block p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.plugin-links {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plugin-links li {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.plugin-links a {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+
+.detail-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+/* Collapsed technical drawer — endpoints, paths, packages, raw JSON kept
+   out of the everyday detail view but one click away. */
+.detail-tech {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.detail-tech > summary {
+  cursor: pointer;
+  padding: 0.65rem 0.85rem;
+  color: var(--text-subtle);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  list-style: none;
+}
+
+.detail-tech > summary::-webkit-details-marker {
+  display: none;
+}
+
+.detail-tech > summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 0.45rem;
+  transition: transform var(--t-fast) var(--ease);
+}
+
+.detail-tech[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.detail-tech-body {
+  display: grid;
+  gap: 0.7rem;
+  padding: 0.1rem 0.7rem 0.7rem;
+}
+
+.logs-block {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.console {
+  margin: 0;
+  padding: 0.8rem 0.9rem;
+  background: var(--surface-console);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  color: #d7dcea;
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow: auto;
+  max-height: 320px;
+}
+
+.debug-payload {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-muted);
+}
+
+.debug-payload > summary {
+  cursor: pointer;
+  padding: 0.6rem 0.8rem;
+  color: var(--text-subtle);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  list-style: none;
+}
+
+.debug-payload > summary::-webkit-details-marker {
+  display: none;
+}
+
+.debug-payload > summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 0.45rem;
+  transition: transform var(--t-fast) var(--ease);
+}
+
+.debug-payload[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.debug-payload pre {
+  margin: 0;
+  padding: 0.8rem;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 var(--r-md) var(--r-md);
+  background: var(--surface-console);
+  color: #d7dcea;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  max-height: 320px;
+  overflow: auto;
+}
+
+/* ---------- Toasts ---------- */
+.toast-root {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 60;
+  display: grid;
+  gap: 0.5rem;
+  max-width: min(360px, calc(100vw - 2rem));
+}
+
+.toast {
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 700;
+  animation: toast-in 0.22s var(--ease);
+}
+
+.toast.is-ok,
+.toast.is-success {
+  border-color: color-mix(in srgb, var(--c-success) 45%, var(--line));
+  background: color-mix(in srgb, var(--c-success) 8%, var(--surface));
+}
+
+.toast.is-fail,
+.toast.is-error {
+  border-color: color-mix(in srgb, var(--c-danger) 45%, var(--line));
+  background: color-mix(in srgb, var(--c-danger) 8%, var(--surface));
+}
+
+.toast.is-info {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1400px) {
+  .apps-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1100px) {
+  .apps-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .detail-panel {
+    position: static;
+    grid-column: 1 / -1;
+    max-height: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .topbar-inner {
+    flex-wrap: nowrap;
+    gap: 0.65rem;
+  }
+
+  .space-switcher {
+    flex: 1 1 auto;
+  }
+
+  .space-switcher-button {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .topbar-actions {
+    flex: 0 0 auto;
+  }
+
+  .topbar-overflow {
+    position: relative;
+    display: block;
+  }
+
+  .topbar-overflow-toggle {
+    display: inline-flex;
+    list-style: none;
+  }
+
+  .topbar-overflow-toggle::-webkit-details-marker {
+    display: none;
+  }
+
+  .topbar-overflow-menu {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: 0;
+    z-index: 35;
+    min-width: min(260px, calc(100vw - 2rem));
+    display: grid;
+    gap: 0.45rem;
+    padding: 0.65rem;
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--surface);
+  }
+
+  .topbar-overflow:not([open]) .topbar-overflow-menu {
+    display: none;
+  }
+
+  .topbar-overflow-menu .runtime-root-badge,
+  .topbar-overflow-menu .status-pill {
+    width: 100%;
+    max-width: none;
+    min-height: 38px;
+    justify-content: flex-start;
+  }
+
+  .topbar-overflow-menu .icon-btn {
+    width: 100%;
+    height: 38px;
+    justify-content: flex-start;
+    gap: 0.6rem;
+    padding: 0 0.7rem;
+    border-radius: var(--r-sm);
+  }
+
+  .topbar-overflow-menu .icon-btn::after {
+    content: attr(data-overflow-label);
+    font-size: 0.78rem;
+    font-weight: 750;
+  }
+
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .recent-changes-sidebar {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .space-health-badge:not([hidden]) {
+    display: inline-flex;
+  }
+
+  .detail-drawer.is-bottom-sheet {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: min(78dvh, 640px);
+    border-top: 1px solid var(--line);
+    border-left: 0;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    transform: translateY(102%);
+  }
+
+  .detail-drawer.is-bottom-sheet.is-open {
+    transform: none;
+  }
+
+  .detail-drawer.is-bottom-sheet .drawer-head {
+    position: relative;
+    padding-top: 0.65rem;
+  }
+
+  .detail-drawer.is-bottom-sheet .drawer-head::before {
+    content: "";
+    position: absolute;
+    top: 0.35rem;
+    left: 50%;
+    width: 38px;
+    height: 4px;
+    border-radius: var(--r-pill);
+    background: var(--line-strong);
+    transform: translateX(-50%);
+  }
+
+  body.drawer-open {
+    overflow: hidden;
+  }
+}
+
+@media (max-width: 760px) {
+  .topbar-inner {
+    padding: 0.5rem 1rem;
+  }
+
+  .page {
+    padding: 0 1rem 2.5rem;
+  }
+
+  .apps-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-field {
+    width: 100%;
+    min-width: 0;
+    min-height: 46px;
+    max-height: 46px;
+    flex: 0 0 46px;
+    border-radius: var(--r-md);
+  }
+
+  .segmented-control {
+    width: 100%;
+    min-height: 44px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .filter-controls {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .segmented-control::-webkit-scrollbar {
+    display: none;
+  }
+
+  .segment {
+    min-height: 36px;
+    flex: 1 1 0;
+  }
+
+  .attention-toggle {
+    width: 100%;
+    min-height: 42px;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 680px) {
+  .apps-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* =========================================================
+   CAC-0044 builder UX z GEN2: one-click karty, ⋯ menu varianty,
+   git chip, pravé panely Poslední změny + Nejčastější.
+   ========================================================= */
+
+/* Popis karty z manifestu s čitelným fallbackem: dva řádky a lehká váha. */
+.app-card-desc {
+  display: -webkit-box;
+  margin: 0.18rem 0 0;
+  color: var(--text-muted);
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 0.78rem;
+  font-weight: 400;
+  line-height: 1.42;
+}
+
+/* Openable karta: naznač otevření cursor + open cue. */
+.app-card.is-openable {
+  cursor: pointer;
+}
+.app-card.is-readonly {
+  cursor: default;
+}
+
+/* Top-right actions: open cue ↗ + ⋯ menu, pinned to the head (GEN2 anatomy). */
+.app-card-top-actions {
+  position: relative;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  flex: 0 0 auto;
+}
+
+/* GEN2 open cue: a subtle 2rem pill that fills with accent-soft on hover, not a
+   fade-in — it reads as a persistent "opens on click" affordance. */
+.app-open-cue {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--r-pill);
+  color: var(--text-subtle);
+  flex-shrink: 0;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.app-card.is-openable:hover .app-open-cue,
+.app-card.is-openable:focus-within .app-open-cue {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* Git chip na kartě — lidský text stavu (CAC-0044/CAC-0042). */
+.git-chip {
+  cursor: help;
+}
+
+/* Inline warning panel na kartě (owner request 2026-07-05): „sofistikovanější"
+   afordance, která se objeví jen když je co řešit — stáhnout novější verzi,
+   nainstalovat/opravit balíčky, nebo vysvětlit blokující/failed stav. Ikona +
+   nadpis/vysvětlení vlevo, akční tlačítko vpravo (zalomí se pod text na úzké
+   kartě). Tón (warn/danger) sdílí barvy s chip- stavy. */
+.card-warning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.6rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-muted);
+}
+
+.card-warning.is-warn {
+  border-color: color-mix(in srgb, var(--c-warn) 42%, var(--line));
+  background: var(--c-warn-bg);
+}
+
+.card-warning.is-danger {
+  border-color: color-mix(in srgb, var(--c-danger) 42%, var(--line));
+  background: var(--c-danger-bg);
+}
+
+.card-warning-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  margin-top: 0.1rem;
+}
+
+.card-warning.is-warn .card-warning-icon {
+  color: var(--c-warn);
+}
+
+.card-warning.is-danger .card-warning-icon {
+  color: var(--c-danger);
+}
+
+.card-warning-body {
+  flex: 1 1 140px;
+  min-width: 0;
+  display: grid;
+  gap: 0.12rem;
+}
+
+.card-warning-title {
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.card-warning-detail {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.card-warning-action {
+  flex: 0 0 auto;
+  margin-left: auto;
+  align-self: center;
+}
+
+/* Runtime stages (founder 2026-07-15/16, refactor 2026-07-16 densita): JEDEN
+   kompaktní řádek pilulek „kde spustit" pod kartou — čtyři runy jednoho modulu
+   (PROD · MAIN · DEV remote · DEV local). Vertikální stopa ≤ ~40px (byla ~180px).
+   Popisky i důvody žijí v tooltipu/aria-label, ne jako viditelný text. Řádek
+   se přirozeně zalomí do 2 řádků pod ~520px. Actionable = accent pilulka,
+   disabled = ztlumená pilulka s cursor default. */
+.runtime-stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.1rem;
+}
+.runtime-stage {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.5;
+  white-space: nowrap;
+  text-decoration: none;
+}
+a.runtime-stage.is-available,
+button.runtime-stage.is-available {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-muted));
+  cursor: pointer;
+}
+a.runtime-stage.is-available:hover,
+button.runtime-stage.is-available:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, var(--surface));
+}
+.runtime-stage.is-available:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
+}
+.runtime-stage.is-disabled {
+  opacity: 0.6;
+  cursor: default;
+  background: transparent;
+}
+
+/* Průběh one-click chainu na kartě — GEN2 card-feedback / progress-note:
+   dashed, italic panel na bg-muted. */
+.card-feedback {
+  display: block;
+}
+.card-feedback.empty {
+  display: none;
+}
+.progress-note {
+  margin: 0;
+  padding: 0.6rem 0.85rem;
+  background: var(--bg-muted);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-sm);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-style: italic;
+}
+.loading-dots::after {
+  content: "…";
+  animation: launchpad-dots 1.2s steps(4, end) infinite;
+}
+@keyframes launchpad-dots {
+  0% { content: ""; }
+  25% { content: "."; }
+  50% { content: ".."; }
+  75% { content: "…"; }
+}
+
+/* ⋯ menu varianta jako one-click open položka — GEN2 popover row: bordered,
+   filled, text left + open glyph right, accent-soft on hover. */
+.app-version-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-muted);
+  color: var(--text);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.app-version-option:hover,
+.app-version-option:focus-visible {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+}
+.app-version-option-text {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.app-version-option-text strong {
+  font-size: 0.84rem;
+  font-weight: 850;
+}
+.app-version-option-text small {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+.app-version-option-cue {
+  flex: 0 0 auto;
+  color: var(--text-subtle);
+}
+
+/* ---------- Pravé panely ---------- */
+.side-panel {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  margin-bottom: 0.9rem;
+}
+.side-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.rail-copy {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+.rail-copy-hint {
+  color: var(--text-subtle);
+  font-size: 0.76rem;
+}
+
+.recent-modules,
+.most-used {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.recent-module-item,
+.quick-app {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-muted);
+  color: inherit;
+  cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+.recent-module-item:hover,
+.quick-app:hover,
+.recent-module-item:focus-visible,
+.quick-app:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+  transform: translateY(-1px);
+}
+.quick-app:disabled {
+  cursor: default;
+  opacity: 0.75;
+  transform: none;
+}
+.recent-module-icon,
+.quick-app-mark {
+  width: 2rem;
+  height: 2rem;
+}
+.recent-module-icon svg,
+.quick-app-mark svg {
+  width: 18px;
+  height: 18px;
+}
+.recent-module-copy,
+.quick-app-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.recent-module-name,
+.quick-app-text strong {
+  font-size: 0.86rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-module-meta,
+.quick-app-text small {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+.quick-app-action {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+/* ---------- Modal Poslední změny detail ---------- */
+.recent-module-modal {
+  border: none;
+  border-radius: var(--r-md);
+  padding: 0;
+  max-width: min(560px, 92vw);
+  width: 100%;
+  background: var(--surface);
+  color: var(--text);
+}
+.recent-module-modal::backdrop {
+  background: color-mix(in srgb, #0b0e14 55%, transparent);
+}
+.recent-module-modal-inner {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1.2rem;
+  max-height: 80vh;
+  overflow: auto;
+}
+.recent-module-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+.recent-module-modal-head h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+.recent-module-modal-sub {
+  margin: 0.2rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+.recent-module-commits {
+  display: grid;
+  gap: 0.5rem;
+}
+.module-commit-item {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.module-commit-toggle {
+  display: grid;
+  gap: 0.2rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.6rem 0.7rem;
+  border: none;
+  background: var(--bg-muted);
+  color: inherit;
+  cursor: pointer;
+}
+.module-commit-toggle strong {
+  font-size: 0.88rem;
+}
+.module-commit-toggle span {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+}
+.module-commit-detail {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.7rem;
+  border-top: 1px solid var(--line);
+}
+.module-commit-description {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+}
+.module-commit-full-hash {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+  color: var(--text-subtle);
+  word-break: break-all;
+}
+
+/* =========================================================
+   Personalspace rail (CAC-0048)
+   Privátní osobní prostory vlastníka mašiny + nasdílené prostory.
+   Oddělený povrch od Organization discovery; Private badge, gbrain browser.
+   ========================================================= */
+.personalspace-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.personalspace-space-mount {
+  color: var(--text-subtle);
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.personalspace-owner-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--r-pill);
+  font-size: 0.66rem;
+  font-weight: 800;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.personalspace-invalid {
+  margin: 0;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--r-sm);
+  background: var(--c-danger-bg);
+  color: var(--c-danger);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.personalspace-apps-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+.personalspace-app {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-elevated);
+}
+.personalspace-app.is-running {
+  border-color: color-mix(in srgb, var(--c-success, #10b981) 40%, var(--line));
+}
+.personalspace-app.is-blocked {
+  border-color: color-mix(in srgb, var(--c-danger) 35%, var(--line));
+}
+.personalspace-app.is-attention {
+  border-color: color-mix(in srgb, var(--c-warn, #f59e0b) 40%, var(--line));
+}
+/* GEN2-minimal dlaždice (port appCardu z GEN2-minimal karty): klik na plochu spustí a
+   otevře; ⋯ menu musí překrýt sousední dlaždice. */
+.personalspace-app.is-openable {
+  cursor: pointer;
+}
+.personalspace-app.is-readonly {
+  cursor: default;
+}
+.personalspace-app:has(.app-version-menu[open]) {
+  position: relative;
+  z-index: 5;
+}
+.personalspace-app-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+/* Ikona nad názvem: kompaktní dlaždice vlevo, tělo (název, popis, chip) vpravo. */
+.personalspace-app-titleblock {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+}
+.personalspace-app-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent);
+}
+.personalspace-app-icon svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+.personalspace-app-titles {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.personalspace-app-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.personalspace-app-title {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.personalspace-app-desc {
+  margin: 0.15rem 0 0;
+  color: var(--text-subtle);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.personalspace-private-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--r-pill);
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+.personalspace-app-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+/* Top-right akce dlaždice: ↗ open cue + ⋯ menu (reuse .app-open-cue /
+   .app-version-menu z GEN2-minimal karty). Open cue se rozsvítí accent-soft na hoveru
+   openable dlaždice — stejná afordance „otevře na klik" jako firemní karta. */
+.personalspace-app-top-actions {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.personalspace-app.is-openable:hover .app-open-cue,
+.personalspace-app.is-openable:focus-within .app-open-cue {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.personalspace-slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.personalspace-slot-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.5rem;
+  border-radius: var(--r-pill);
+  font-size: 0.68rem;
+  font-weight: 700;
+  border: 1px dashed var(--line-strong);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.personalspace-slot-chip.is-missing_access {
+  border-color: color-mix(in srgb, var(--c-warn, #f59e0b) 45%, var(--line));
+  color: #9a5b00;
+}
+
+/* gbrain */
+.personalspace-gbrain {
+  display: grid;
+  gap: 0.4rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--line);
+}
+.personalspace-gbrain-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-subtle);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.personalspace-gbrain-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.personalspace-gbrain-path,
+.personalspace-gbrain-private,
+.personalspace-gbrain-missing {
+  margin: 0;
+  color: var(--text-subtle);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+.personalspace-gbrain-path {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.personalspace-gbrain-missing {
+  color: #9a5b00;
+}
+.personalspace-gbrain-browser {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+  padding: 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-muted);
+}
+.personalspace-gbrain-search {
+  display: flex;
+  gap: 0.4rem;
+}
+.personalspace-gbrain-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.78rem;
+}
+.personalspace-gbrain-error {
+  margin: 0;
+  color: var(--c-danger);
+  font-size: 0.74rem;
+}
+.personalspace-gbrain-loading,
+.personalspace-gbrain-count,
+.personalspace-gbrain-note-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+}
+.personalspace-gbrain-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+}
+@media (min-width: 1100px) {
+  .personalspace-gbrain-columns {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  }
+}
+.personalspace-gbrain-list {
+  max-height: 340px;
+  overflow: auto;
+}
+.personalspace-gbrain-tree,
+.personalspace-gbrain-tree ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 0.6rem;
+}
+.personalspace-gbrain-tree summary {
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0.15rem 0;
+}
+.personalspace-gbrain-file {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.2rem 0.35rem;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: 0.76rem;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.personalspace-gbrain-file:hover {
+  background: var(--bg-subtle);
+}
+.personalspace-gbrain-file.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+}
+.personalspace-gbrain-results-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+.personalspace-gbrain-result {
+  margin-bottom: 0.5rem;
+}
+.personalspace-gbrain-snippet {
+  margin: 0.1rem 0 0 0.4rem;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.personalspace-gbrain-note {
+  max-height: 340px;
+  overflow: auto;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+.personalspace-gbrain-note-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-subtle);
+  font-family: var(--font-mono);
+  margin-bottom: 0.4rem;
+  overflow-wrap: anywhere;
+}
+.personalspace-gbrain-note-body {
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+.personalspace-gbrain-note-body h1,
+.personalspace-gbrain-note-body h2,
+.personalspace-gbrain-note-body h3,
+.personalspace-gbrain-note-body h4 {
+  margin: 0.6rem 0 0.3rem;
+  line-height: 1.3;
+}
+.personalspace-gbrain-note-body h1 { font-size: 1.05rem; }
+.personalspace-gbrain-note-body h2 { font-size: 0.98rem; }
+.personalspace-gbrain-note-body h3 { font-size: 0.9rem; }
+.personalspace-gbrain-note-body p { margin: 0.35rem 0; }
+.personalspace-gbrain-note-body ul { margin: 0.35rem 0; padding-left: 1.1rem; }
+.personalspace-gbrain-note-body code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: var(--bg-subtle);
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+}
+.personalspace-gbrain-note-body pre {
+  overflow-x: auto;
+  padding: 0.5rem;
+  border-radius: var(--r-sm);
+  background: var(--surface-console);
+  color: #e6e8f0;
+}
+.personalspace-gbrain-note-body pre code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+}
+
+/* =========================================================
+   Buddy-first Personalspace (CAC-0044 P1)
+   První pohled je produktový; runtime cesty a gbrain diagnostika jsou až
+   v rozbalovací technické sekci.
+   ========================================================= */
+.app-section-personalspace {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.personalspace-body-inner,
+.personalspace-space-block {
+  gap: 1.5rem;
+}
+
+.layout.is-personal .debug-table {
+  display: none !important;
+}
+
+.personalspace-friendly-empty,
+.buddy-card,
+.buddy-routines,
+.personal-support-card,
+.personalspace-apps-empty {
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.personalspace-friendly-empty {
+  padding: clamp(1.5rem, 4vw, 3rem);
+  border-radius: var(--r-lg);
+  text-align: center;
+}
+
+.personalspace-friendly-empty h2,
+.personalspace-friendly-empty p,
+.buddy-card h2,
+.buddy-routines h2,
+.buddy-routines p,
+.personal-apps-section h2,
+.personal-support-card h2,
+.personal-support-card p {
+  margin: 0;
+}
+
+.personalspace-friendly-empty p,
+.buddy-routines > p,
+.personal-support-card p {
+  margin-top: 0.45rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.personalspace-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 2.25fr) minmax(280px, 0.95fr);
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.buddy-card {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.78fr) minmax(0, 2fr);
+  gap: clamp(1.25rem, 3vw, 2rem);
+  padding: clamp(1.2rem, 2.5vw, 2rem);
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: var(--r-lg);
+}
+
+.buddy-portrait {
+  position: relative;
+  min-height: 290px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line));
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, #f4d8cc 46%, var(--bg-muted));
+}
+
+.buddy-portrait-placeholder,
+.buddy-portrait img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.buddy-portrait-placeholder {
+  display: grid;
+  place-items: end center;
+  padding: 1rem 0.7rem 0;
+}
+
+.buddy-portrait-placeholder svg {
+  width: min(100%, 250px);
+  height: 100%;
+}
+
+.buddy-portrait img {
+  object-fit: cover;
+}
+
+.buddy-card-content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.buddy-eyebrow {
+  color: color-mix(in srgb, var(--accent) 74%, #8c3b1f);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.buddy-card h2 {
+  margin-top: 0.45rem;
+  font-size: clamp(2rem, 4vw, 3.1rem);
+  line-height: 1.05;
+  letter-spacing: -0.045em;
+}
+
+.buddy-status,
+.buddy-application-state {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border-radius: var(--r-pill);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.buddy-status {
+  margin-top: 0.85rem;
+  padding: 0.3rem 0.65rem;
+  background: var(--c-success-bg);
+  color: var(--c-success);
+}
+
+.buddy-description {
+  max-width: 62ch;
+  margin: 1rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.98rem;
+  line-height: 1.6;
+}
+
+.buddy-application {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1.15rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-muted);
+}
+
+.buddy-application-icon {
+  width: 2.7rem;
+  height: 2.7rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.buddy-application-icon.is-telegram {
+  background: #229ed9;
+  color: #fff;
+}
+
+.buddy-application-icon svg {
+  width: 1.45rem;
+  height: 1.45rem;
+}
+
+.buddy-application-copy {
+  min-width: 0;
+  display: grid;
+  gap: 0.12rem;
+}
+
+.buddy-application-copy span {
+  color: var(--text-subtle);
+  font-size: 0.72rem;
+}
+
+.buddy-application-copy strong {
+  font-size: 0.92rem;
+}
+
+.buddy-application-state {
+  padding: 0.25rem 0.55rem;
+  background: var(--c-success-bg);
+  color: var(--c-success);
+}
+
+.buddy-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: auto;
+  padding-top: 1.2rem;
+}
+
+.buddy-routines {
+  min-width: 0;
+  padding: clamp(1rem, 2.4vw, 1.5rem);
+  border-radius: var(--r-lg);
+}
+
+.buddy-routines h2,
+.personal-apps-section > h2,
+.personal-support-card h2 {
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+}
+
+.buddy-routine-list {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.buddy-routine {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-muted);
+}
+
+.buddy-routine h3,
+.buddy-routine p {
+  margin: 0;
+}
+
+.buddy-routine h3 {
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.buddy-routine p {
+  margin-top: 0.2rem;
+  color: var(--text-subtle);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.buddy-routine-schedule {
+  padding: 0.2rem 0.45rem;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.personal-apps-section {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.personalspace-apps-empty {
+  display: grid;
+  gap: 0.35rem;
+  padding: 1.25rem 1.4rem;
+  border-style: dashed;
+  border-radius: var(--r-md);
+  color: var(--text);
+}
+
+.personalspace-apps-empty strong {
+  font-size: 0.95rem;
+}
+
+.personalspace-apps-empty p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.personal-support-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.personal-support-card {
+  padding: 1.2rem 1.3rem;
+  border-radius: var(--r-md);
+}
+
+.personalspace-technical {
+  border-top: 1px solid var(--line);
+  color: var(--text-muted);
+}
+
+.personalspace-technical > summary {
+  width: fit-content;
+  padding: 0.85rem 0;
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.personalspace-technical-inner {
+  display: grid;
+  gap: 0.8rem;
+  padding: 0.2rem 0 0.8rem;
+}
+
+@media (max-width: 980px) {
+  .personalspace-overview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .buddy-routines {
+    order: 2;
+  }
+}
+
+@media (max-width: 680px) {
+  .privacy-pill {
+    width: 34px;
+    min-height: 34px;
+    justify-content: center;
+    padding: 0;
+    overflow: hidden;
+    font-size: 0;
+  }
+
+  .buddy-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .buddy-portrait {
+    min-height: 260px;
+  }
+
+  .buddy-application {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .buddy-application-state {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .buddy-routine {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .buddy-routine-schedule {
+    grid-column: 1;
+    justify-self: start;
+  }
+
+  .buddy-actions,
+  .buddy-actions .btn {
+    width: 100%;
+  }
+
+  .personal-support-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

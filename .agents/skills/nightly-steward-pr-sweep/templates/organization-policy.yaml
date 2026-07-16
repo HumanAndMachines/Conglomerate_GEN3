@@ -1,0 +1,27 @@
+schema_version: humanandmachine.nightly_steward_pr_sweep.policy.v1
+organization_slug: replace-me
+display_name: Replace Me
+steward:
+  seat: replace-me-steward
+  os_user: replace-me
+  github_login: replace-me
+  role: organization-steward
+github_organizations:
+  - ReplaceMe
+workspace_roots:
+  gen3: /absolute/path/to/Conglomerate/organizations/ReplaceMe_GEN3
+scope:
+  repository_mode: all-visible-active-in-configured-orgs
+  excluded_repositories: []
+  explicit_no_touch_prs: []
+routing:
+  organization_admin: replace-me
+reporting:
+  mode: mission-control-steward-reporting
+  target: Replace Me Mission Control
+  repository_db_root: /absolute/path/to/Conglomerate/organizations/ReplaceMe_GEN3/mission-control/db
+  idempotency_scope: organization-seat-date
+  legacy_clickup_reporting: forbidden
+schedule:
+  timezone: Europe/Prague
+  cron: "0 2 * * *"

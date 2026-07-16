@@ -1,0 +1,30 @@
+{
+  "questions": [
+    {
+      "id": "q1",
+      "text": "Když nevidíš nějakou část kanceláře, co to může znamenat?",
+      "type": "single",
+      "options": [
+        {
+          "id": "a",
+          "text": "Může to být normální podle role nebo přístupu.",
+          "correct": true,
+          "feedback": "Ano. Tohle je správný a bezpečný směr."
+        },
+        {
+          "id": "b",
+          "text": "Určitě je všechno rozbité.",
+          "correct": false,
+          "feedback": "Tohle by spíš přidalo zmatek nebo riziko."
+        },
+        {
+          "id": "c",
+          "text": "Musíš si ji okamžitě ručně vytvořit.",
+          "correct": false,
+          "feedback": "Tohle není dobrý běžný postup."
+        }
+      ],
+      "explanation": "Cílem je pracovat jednoduše, čitelně a bezpečně."
+    }
+  ]
+}

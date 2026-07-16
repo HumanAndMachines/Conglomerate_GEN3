@@ -1,0 +1,30 @@
+{
+  "questions": [
+    {
+      "id": "q1",
+      "text": "Proč chtít kontrolu důležité změny?",
+      "type": "single",
+      "options": [
+        {
+          "id": "a",
+          "text": "Protože chrání tým před omylem a zmatkem.",
+          "correct": true,
+          "feedback": "Ano. Tohle je správný a bezpečný směr."
+        },
+        {
+          "id": "b",
+          "text": "Protože nikomu nevěříme.",
+          "correct": false,
+          "feedback": "Tohle by spíš přidalo zmatek nebo riziko."
+        },
+        {
+          "id": "c",
+          "text": "Protože každá drobnost má trvat týden.",
+          "correct": false,
+          "feedback": "Tohle není dobrý běžný postup."
+        }
+      ],
+      "explanation": "Cílem je pracovat jednoduše, čitelně a bezpečně."
+    }
+  ]
+}

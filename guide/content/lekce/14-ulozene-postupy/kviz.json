@@ -1,0 +1,30 @@
+{
+  "questions": [
+    {
+      "id": "q1",
+      "text": "Kdy má smysl uložit postup?",
+      "type": "single",
+      "options": [
+        {
+          "id": "a",
+          "text": "Když se užitečná věc opakuje a nechci ji pokaždé vysvětlovat znovu.",
+          "correct": true,
+          "feedback": "Ano. Tohle je správný a bezpečný směr."
+        },
+        {
+          "id": "b",
+          "text": "Nikdy, všechno má zůstat v hlavě.",
+          "correct": false,
+          "feedback": "Tohle by spíš přidalo zmatek nebo riziko."
+        },
+        {
+          "id": "c",
+          "text": "Jen když má přes sto kroků.",
+          "correct": false,
+          "feedback": "Tohle není dobrý běžný postup."
+        }
+      ],
+      "explanation": "Cílem je pracovat jednoduše, čitelně a bezpečně."
+    }
+  ]
+}

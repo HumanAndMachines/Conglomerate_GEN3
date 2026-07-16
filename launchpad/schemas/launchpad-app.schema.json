@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rozjedeme.ai/schemas/launchpad-app.schema.json",
+  "title": "Launchpad app manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "id",
+    "title",
+    "company",
+    "surface",
+    "port",
+    "host",
+    "health_path",
+    "dev_script",
+    "tags"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "companyascode.launchpad_app.v1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "company": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*$"
+    },
+    "module": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "surface": {
+      "enum": [
+        "internal",
+        "manual",
+        "admin",
+        "public-preview"
+      ]
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 1024,
+      "maximum": 65535
+    },
+    "host": {
+      "enum": [
+        "127.0.0.1",
+        "localhost"
+      ]
+    },
+    "health_path": {
+      "type": "string",
+      "pattern": "^/"
+    },
+    "dev_script": {
+      "type": "string",
+      "minLength": 1
+    },
+    "preview_script": {
+      "type": "string",
+      "minLength": 1
+    },
+    "build_script": {
+      "type": "string",
+      "minLength": 1
+    },
+    "plugin": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\.json$"
+    },
+    "icon": {
+      "description": "Builder-friendly icon key. Known keys render a dedicated glyph; anything else falls back to the tag/module heuristic with a warning.",
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "description": "Human, non-technical one-line popis pro builder karty (čeština). Fallback je surface/module heuristika.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240
+    },
+    "group": {
+      "description": "Builder-friendly sekce karty (např. 'Denní práce'). Autorita je manifest; missing = default workspace grouping.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "production_url": {
+      "description": "Veřejná produkční adresa nasazené instance modulu (PROD run), např. https://deals.exampleorg.com. Karta i Dashboard z ní staví PROD odkaz; když chybí, PROD zůstává honest disabled stub. Warning-first: nevalidní hodnota se ignoruje a spadne na fallback.",
+      "type": "string",
+      "pattern": "^https?://"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9-]*$"
+      }
+    }
+  },
+  "additionalProperties": false
+}

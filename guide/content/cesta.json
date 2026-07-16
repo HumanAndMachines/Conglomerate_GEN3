@@ -1,0 +1,68 @@
+{
+  "title": "Průvodce digitální kanceláří",
+  "intro": "Cesta pro nové kolegy, kteří chtějí vědět, jak s digitální kanceláří pracovat každý den — lidsky, prakticky a bez technických detailů.",
+  "welcome": "Začni tady. Tohle není technická dokumentace. Je to průvodce pro první dny v digitální kanceláři: co kde najdeš, jak mluvit s AI kolegou, jak si hlídat bezpečí a jak po sobě nechávat práci čitelnou pro ostatní.",
+  "sections": [
+    {
+      "id": "1-mindset",
+      "title": "Proč to celé dává smysl",
+      "description": "Nejdřív pochopíš, proč digitální kancelář existuje a jak poznat dobrý výstup od AI.",
+      "lessons": [
+        "01-vitej-v-digitalni-kancelari",
+        "02-tri-stupne-prace-s-ai",
+        "03-od-chatu-k-pracovnimu-asistentovi",
+        "04-co-je-digitalni-kancelar",
+        "05-ai-vata-a-jak-se-ji-vyhnout"
+      ]
+    },
+    {
+      "id": "2-prvni-orientace",
+      "title": "První orientace",
+      "description": "Kde co najdeš, co znamenají základní rozcestníky a jak si ověřit, že je vše připravené.",
+      "lessons": [
+        "06-co-je-kde",
+        "07-rozcestniky-ktere-te-navedou",
+        "08-slovnik-firmy",
+        "09-rychla-kontrola-stavu",
+        "10-prvni-prochazka"
+      ]
+    },
+    {
+      "id": "3-komunikace-s-ai",
+      "title": "Jak mluvit s AI kolegou",
+      "description": "Jak zadávat práci, diktovat česky, používat uložené postupy a chápat napojení na služby.",
+      "lessons": [
+        "11-ai-kolegove-a-nastroje",
+        "12-jak-zadat-praci",
+        "13-diktovani-v-cestine",
+        "14-ulozene-postupy",
+        "15-napojene-sluzby"
+      ]
+    },
+    {
+      "id": "4-tvoje-prace",
+      "title": "Tvoje práce v kanceláři",
+      "description": "Tvůj profil, role, první úkol, denní rytmus a bezpečné uložení výsledku.",
+      "lessons": [
+        "16-tvoje-misto",
+        "17-tvoje-role",
+        "18-prvni-ukol",
+        "26-denni-pracovni-rytmus",
+        "19-jak-se-prace-ulozi-a-zkontroluje",
+        "20-kdyz-se-neco-rozbije"
+      ]
+    },
+    {
+      "id": "5-soucast-tymu",
+      "title": "Jsi součást systému",
+      "description": "Jak přidávat poznatky, rozlišit znalosti a návody, vytvořit postup a pomáhat kolegům.",
+      "lessons": [
+        "21-kam-pridat-novou-vec",
+        "22-znalosti-navody-a-dokumentace",
+        "23-vytvor-prvni-postup",
+        "24-pomoc-kolegum",
+        "25-co-dal"
+      ]
+    }
+  ]
+}

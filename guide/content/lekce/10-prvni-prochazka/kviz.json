@@ -1,0 +1,30 @@
+{
+  "questions": [
+    {
+      "id": "q1",
+      "text": "Jaký je cíl první procházky?",
+      "type": "single",
+      "options": [
+        {
+          "id": "a",
+          "text": "Najít základní orientaci, ne všechno hned zvládnout.",
+          "correct": true,
+          "feedback": "Ano. Tohle je správný a bezpečný směr."
+        },
+        {
+          "id": "b",
+          "text": "Kliknout na všechno najednou.",
+          "correct": false,
+          "feedback": "Tohle by spíš přidalo zmatek nebo riziko."
+        },
+        {
+          "id": "c",
+          "text": "Přepsat všechny návody.",
+          "correct": false,
+          "feedback": "Tohle není dobrý běžný postup."
+        }
+      ],
+      "explanation": "Cílem je pracovat jednoduše, čitelně a bezpečně."
+    }
+  ]
+}

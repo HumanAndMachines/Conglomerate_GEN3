@@ -1,0 +1,120 @@
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Dependencies and generated output
+node_modules/
+**/node_modules/
+coverage/
+dist/
+build/
+out/
+.next/
+.turbo/
+.cache/
+*.tsbuildinfo
+.eslintcache
+
+# Python caches
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.venv/
+
+# Launchpad root local override (per-machine personalspace_owner, extra local mounts).
+# Never tracked: it carries machine-specific data. Seed it by hand from the .example.
+launchpad.gen3.local.json
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*-service-account*.json
+firebase-admin*.json
+serviceAccountKey.json
+
+# Logs and reports
+*.log
+logs/
+*.lcov
+report.*.json
+playwright-report/
+test-results/
+
+# Launchpad runtime
+launchpad/.local/
+launchpad/logs/
+launchpad/runtime/
+launchpad/app/v1/.local/
+launchpad/app/v1/logs/
+launchpad/app/v1/runtime/
+launchpad/app/v1/target/
+
+# Local-only delivery checkouts
+ClientCompanies/
+ClientCompanies/**
+client-companies/
+client-companies/**
+
+# IDE local state
+.idea/
+.cursor/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Provider caches
+**/.wrangler/
+.wrangler/
+.pulumi/
+.pulumi.*
+.vercel/
+.serverless/
+
+# Local archives and packaged artifacts
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.tar.bz2
+*.tbz2
+*.7z
+*.rar
+*.dmg
+*.pkg
+*.iso
+
+# Personalspace private mount (README zustava trackovane)
+personalspace/*
+!personalspace/README.md
+
+
+# Doctor-managed Organization GEN3 mount checkouts
+# The Launchpad root tracks the registry and organizations/README.md, not nested organization Git histories.
+organizations/*
+!organizations/README.md
+
+# Local template mount checkouts required by first-client Doctor gates.
+# Template source lives in separate template repositories; root tracks only registry/runbook references.
+templates/TemplatesRozjedeme-ai/
+
+# Conglomerate Dashboard GEN3 — separatni privatni repo mount (v1 spike)
+dashboard/
+
+# Organization-local private mounts
+organizations/*/private/
+organizations/*/archive/
+organizations/*/workspace/private/
+organizations/*/productionspace/private/
+organizations/*/company/colleagues/*/private/
+organizations/*/company/colleagues/*/archive/
+organizations/*/company/colleagues/*/archiv/
+
+# Lokální drafty — po curated history cutu 2026-07-16 jsou drafts/ jen
+# lokální netrackovaná plocha; sdílené návrhy patří do privátního
+# Rozjedeme-ai/HumanAndMachines (conglomerate-ops/drafts/).
+drafts/

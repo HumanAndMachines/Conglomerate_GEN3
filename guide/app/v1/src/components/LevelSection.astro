@@ -1,0 +1,56 @@
+---
+import type { CestaSection, Lekce } from "@/lib/types";
+import LessonCard from "./LessonCard.astro";
+
+interface Props {
+  section: CestaSection;
+  lessons: Lekce[];
+  byId: Map<string, Lekce>;
+  index?: number;
+}
+
+const { section, lessons, byId, index } = Astro.props;
+---
+
+<section class="map-section" id={section.id} data-map-section={section.id}>
+  <header class="map-section-header">
+    <div>
+      <div class="level-kicker text-xs tracking-[0.3em] text-[var(--surface-muted)] mb-2">
+        LEVEL {index ?? section.id}
+      </div>
+      <h2>{section.title}</h2>
+      {section.description && <p>{section.description}</p>}
+    </div>
+    <div class="section-progress-card">
+      <div class="section-progress-label" data-section-progress-text>0/{lessons.length} lekcí · 0%</div>
+      <div class="section-progress"><span data-section-progress-bar style="width:0%"></span></div>
+    </div>
+  </header>
+
+  {
+    lessons.length === 0 ? (
+      <p class="text-sm text-[var(--surface-muted)] italic">
+        Lekce této etapy zatím nejsou připravené.
+      </p>
+    ) : (
+      <div class="map-path">
+        {lessons.map((l, lessonIndex) => (
+          <LessonCard
+            lekce={l}
+            index={lessonIndex}
+            prereqTitles={l.prerequisites
+              .map((p) => byId.get(p)?.title)
+              .filter((t): t is string => Boolean(t))}
+          />
+        ))}
+        <div class="section-checkpoint" data-section-checkpoint>
+          <div class="checkpoint-icon" aria-hidden="true">◆</div>
+          <div>
+            <strong>Checkpoint</strong>
+            <span>Dokonči část a odemkni odznak.</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+</section>

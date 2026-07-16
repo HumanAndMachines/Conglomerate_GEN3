@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="cs" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Launchpad GEN3</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#workspaceMain">Přeskočit na obsah</a>
+
+    <header class="topbar" role="banner">
+      <div class="topbar-inner">
+        <div id="spaceSwitcher" class="space-switcher">
+          <button
+            id="spaceSwitcherButton"
+            type="button"
+            class="space-switcher-button"
+            aria-haspopup="dialog"
+            aria-expanded="false"
+            aria-controls="spaceSwitcherMenu"
+          >
+            <span id="currentSpaceLogo" class="space-logo space-logo-personal" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="8" r="4" />
+                <path d="M4 21a8 8 0 0 1 16 0" />
+              </svg>
+            </span>
+            <span id="currentSpaceLabel" class="space-switcher-label">Osobní</span>
+            <svg class="space-switcher-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+          <div id="spaceSwitcherMenu" class="space-switcher-menu" role="dialog" aria-label="Profil a prostory" hidden></div>
+        </div>
+
+        <nav class="topbar-actions" aria-label="Akce">
+          <span id="personalPrivacyBadge" class="privacy-pill" hidden>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="4" y="10" width="16" height="11" rx="2" />
+              <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+            </svg>
+            Soukromé
+          </span>
+          <button
+            id="drawerToggle"
+            type="button"
+            class="icon-btn"
+            title="Panely — stav prostoru, poslední změny, nejčastější, detail"
+            aria-label="Panely"
+            aria-expanded="false"
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <line x1="15" y1="4" x2="15" y2="20" />
+            </svg>
+            <span id="spaceHealthBadge" class="space-health-badge" aria-hidden="true" hidden></span>
+          </button>
+          <details id="topbarOverflow" class="topbar-overflow">
+            <summary class="icon-btn topbar-overflow-toggle" title="Další možnosti" aria-label="Další možnosti">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                <circle cx="5" cy="12" r="1.7" />
+                <circle cx="12" cy="12" r="1.7" />
+                <circle cx="19" cy="12" r="1.7" />
+              </svg>
+            </summary>
+            <div class="topbar-overflow-menu">
+              <span id="runtimeRootBadge" class="runtime-root-badge" hidden></span>
+              <button
+                id="doctorStatus"
+                type="button"
+                class="status-pill status-unknown"
+                aria-controls="problemsPanel"
+                aria-expanded="false"
+              >
+                Doktor
+              </button>
+              <button
+                id="themeToggle"
+                type="button"
+                class="icon-btn"
+                data-overflow-label="Vzhled"
+                title="Přepnout světlý / tmavý režim"
+                aria-label="Přepnout světlý / tmavý režim"
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />
+                </svg>
+              </button>
+              <button
+                id="reloadButton"
+                type="button"
+                class="icon-btn"
+                data-overflow-label="Synchronizovat"
+                title="Synchronizovat — znovu objevit lokální Organizace a appky"
+                aria-label="Synchronizovat"
+              >
+                <svg class="refresh-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 12a9 9 0 0 1 15.5-6.3L21 8" />
+                  <path d="M21 3v5h-5" />
+                  <path d="M21 12a9 9 0 0 1-15.5 6.3L3 16" />
+                  <path d="M3 21v-5h5" />
+                </svg>
+              </button>
+            </div>
+          </details>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="layout">
+        <section id="workspaceMain" class="workspace-panel" aria-label="Aplikace">
+          <section id="workspaceWelcome" class="workspace-welcome" aria-labelledby="workspaceWelcomeTitle">
+            <h1 id="workspaceWelcomeTitle" class="workspace-welcome-title">Vítejte v pracovním prostoru</h1>
+            <p class="workspace-welcome-copy">Vyberte aplikaci a pokračujte tam, kde potřebujete.</p>
+          </section>
+
+          <div id="appsToolbar" class="apps-toolbar" aria-label="Filtrování aplikací">
+            <label class="search-field">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.35-4.35" />
+              </svg>
+              <span class="sr-only">Hledat aplikaci</span>
+              <input id="appsSearch" type="search" autocomplete="off" placeholder="Hledat aplikaci…" />
+            </label>
+            <div class="filter-controls">
+              <div class="segmented-control" role="group" aria-label="Stav běhu aplikací">
+                <button type="button" class="segment is-active" data-status-segment="all" aria-pressed="true">Vše</button>
+                <button type="button" class="segment" data-status-segment="healthy" aria-pressed="false">Běží</button>
+                <button type="button" class="segment" data-status-segment="stopped" aria-pressed="false">Zastavené</button>
+              </div>
+              <button id="attentionToggle" type="button" class="attention-toggle" aria-pressed="false">
+                <span class="attention-toggle-check" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m5 12 4 4L19 6" />
+                  </svg>
+                </span>
+                Jen vyžadující kontrolu
+              </button>
+            </div>
+          </div>
+
+          <section id="problemsPanel" class="problems-panel hidden" aria-label="Problémy"></section>
+          <section id="actionPanel" class="action-panel hidden" aria-label="Výsledek akce"></section>
+
+          <section id="appsGrid" class="apps-stack" aria-label="Workspace aplikace"></section>
+
+          <details class="debug-table">
+            <summary>Debug table</summary>
+            <div class="table-shell">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Aplikace</th>
+                    <th>Organizace</th>
+                    <th>Surface</th>
+                    <th>Port</th>
+                    <th>Health</th>
+                    <th>Deps</th>
+                    <th>Source</th>
+                    <th>Akce</th>
+                  </tr>
+                </thead>
+                <tbody id="appsTable"></tbody>
+              </table>
+            </div>
+          </details>
+        </section>
+
+        <aside id="recentChangesSidebar" class="recent-changes-sidebar hidden" aria-label="Poslední změny">
+          <section id="hero" class="hero side-panel hero-loading" aria-live="polite" aria-label="Stav prostoru">
+            <div class="hero-head">
+              <span class="rail-eyebrow">Stav prostoru</span>
+              <span class="hero-indicator" aria-hidden="true"></span>
+            </div>
+            <h2 id="heroTitle" class="hero-title">Načítám stav…</h2>
+            <div class="hero-panel">
+              <button id="heroCta" type="button" class="btn btn-secondary btn-sm">Zkontrolovat stav</button>
+            </div>
+          </section>
+          <section id="organizationGitPanel" class="side-panel organization-git-panel" aria-label="Git Organizace">
+            <div class="side-panel-head organization-git-head">
+              <span class="rail-eyebrow">Git Organizace</span>
+              <button id="pullAllButton" type="button" class="btn btn-secondary btn-sm">Pullnout vše</button>
+            </div>
+            <div id="organizationGitStatus" class="organization-git-status"></div>
+          </section>
+          <section id="recentChangesPanel" class="side-panel" aria-label="Poslední změny">
+            <div class="side-panel-head">
+              <span class="rail-eyebrow">Poslední změny</span>
+            </div>
+            <div id="recentModules" class="recent-modules"></div>
+          </section>
+        </aside>
+
+        <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
+        <aside class="detail-drawer" id="detailDrawer" role="dialog" aria-label="Panely" aria-hidden="true" aria-modal="false" tabindex="-1" inert>
+          <div class="drawer-head">
+            <span class="rail-eyebrow">Panely</span>
+            <button id="drawerClose" type="button" class="icon-btn" title="Zavřít panely" aria-label="Zavřít panely">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+              </svg>
+            </button>
+          </div>
+          <div class="drawer-body">
+            <section id="mostUsedPanel" class="side-panel" aria-label="Nejčastější">
+              <div class="side-panel-head">
+                <span class="rail-eyebrow">Nejčastější</span>
+              </div>
+              <div id="mostUsed" class="most-used"></div>
+            </section>
+
+            <div id="appDetail" class="empty-detail">Vyber aplikaci</div>
+          </div>
+        </aside>
+      </div>
+    </main>
+
+    <dialog id="recentModuleModal" class="recent-module-modal">
+      <form method="dialog" class="recent-module-modal-inner">
+        <div class="recent-module-modal-head">
+          <div>
+            <h2 id="recentModuleTitle">Modul</h2>
+            <p id="recentModuleSubtitle" class="recent-module-modal-sub"></p>
+          </div>
+          <button type="submit" class="icon-btn" aria-label="Zavřít">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+            </svg>
+          </button>
+        </div>
+        <div id="recentModuleCommits" class="recent-module-commits"></div>
+      </form>
+    </dialog>
+
+    <div id="toastRoot" class="toast-root" aria-live="polite" aria-atomic="true"></div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
