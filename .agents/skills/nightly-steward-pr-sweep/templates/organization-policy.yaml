@@ -12,14 +12,22 @@ workspace_roots:
   gen3: /absolute/path/to/Conglomerate/organizations/ReplaceMe_GEN3
 scope:
   repository_mode: all-visible-active-in-configured-orgs
+  # Repositories whose visibility is required to claim complete Organization coverage.
+  # Keep owner-lane repositories here even when the Steward must not mutate them.
+  required_read_repositories: []
   excluded_repositories: []
   explicit_no_touch_prs: []
 routing:
   organization_admin: replace-me
 reporting:
   mode: mission-control-steward-reporting
-  target: Replace Me Mission Control
-  repository_db_root: /absolute/path/to/Conglomerate/organizations/ReplaceMe_GEN3/mission-control/db
+  organization_reports:
+    - organization_slug: replace-me
+      github_organization: ReplaceMe
+      steward_seat: replace-me-steward
+      target: Replace Me Mission Control
+      repository_db_root: /absolute/path/to/Conglomerate/organizations/ReplaceMe_GEN3/mission-control/db
+  one_append_only_report_per_organization: true
   idempotency_scope: organization-seat-date
   legacy_clickup_reporting: forbidden
 schedule:

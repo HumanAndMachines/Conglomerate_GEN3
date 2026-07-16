@@ -1,7 +1,7 @@
 ---
 name: nightly-steward-pr-sweep
 description: Use when an Organization Steward must run the daily 02:00 PR closeout for exactly the GitHub Organizations assigned to that seat. Inventories the live queue, applies exact-head review and CI gates, actively fixes or routes bounded work, merges only within Steward authority, and writes one idempotent Mission Control Steward Report.
-version: 1.0.0
+version: 1.0.1
 author: HumanAndMachine GEN3
 license: MIT
 metadata:
@@ -25,13 +25,16 @@ Steward seatem. Nepoužívej jako centrální cross-Organization sweep Buddyho,
 jako náhradu aktivního reviewera ani pro Release/deploy. Před instalací
 materializuj `templates/organization-policy.yaml` do lokálního
 `references/organization-policy.yaml` a vyplň pouze jednu autorizovanou
-Organization hranici (výjimkou je explicitní founder governance rozhodnutí).
+Organization hranici. Když explicitní founder governance rozhodnutí přiřadí
+jednomu AI Kolegovi více Organization seatů, musí mít každá Organization
+v `reporting.organization_reports[]` vlastní `steward_seat`, report target a
+idempotency scope; globální `steward.seat` je pouze single-Organization fallback.
 
 ## Completion contract
 
 A run is complete only when all are true:
 
-1. Every live open PR in the configured GitHub Organization(s) was inventoried after the run began.
+1. Every live open PR in the configured GitHub Organization(s) was inventoried after the run began. A repository that belongs to another owner lane is still inventoried and routed; it is not silently omitted.
 2. Every non-draft PR has a live exact-head classification based on head SHA, base, reviews tied to that SHA, checks, mergeability and unresolved threads.
 3. Every safe merge candidate was either merged and read back, or has a named policy/human blocker.
 4. Every remaining change request has a durable owner/handoff; plain `DIRTY`, `BLOCKED`, `CHANGES_REQUESTED` or `REVIEW_REQUIRED` is not a final blocker class.
@@ -50,8 +53,10 @@ A run is complete only when all are true:
 1. Read the nearest Organization `AGENTS.md`, source-of-truth guide, governance manifest and `references/organization-policy.yaml`.
 2. Verify `hostname`, OS user, local timezone, `gh api user`, Git protocol, workspace paths, clean reference checkouts and Mission Control report target. Never print credentials.
 3. Verify the current seat login equals `steward.github_login`. A mismatch or invalid GitHub auth is `BLOCKED`; do not borrow Admin credentials.
-4. Reconcile explicit owner/no-touch declarations from the policy file, PR body/comments/labels and current Mission Control tasks. A no-touch item is read-only inventory: no review, comment, reviewer request, rebase, push or merge.
-5. If the same `report_date + steward seat + scope` already has a terminal Mission Control report, do not mutate GitHub. Read the report back and finish idempotently when it matches. If the live queue changed, stop as `BLOCKED` with `report_slot_closed`, preserve only a local redacted retry note and defer durable reporting to the next supported run slot. The v1 writer cannot reconcile different content into the same Organization/seat/date key; never rewrite or duplicate the report.
+4. Verify read visibility for every `scope.required_read_repositories` entry. An inaccessible required repository is `BLOCKED` **before any GitHub mutation**. Never call an all-Organization inventory complete from only the repositories visible to the current credential.
+5. Resolve one `steward_seat` per configured Organization. For multi-Organization assignments, require a matching `reporting.organization_reports[]` entry with `organization_slug`, `github_organization`, `steward_seat` and `repository_db_root`. Missing, duplicate or shared seat mappings are `BLOCKED`; do not infer the second Organization's seat from the first one's global fallback.
+6. Reconcile explicit owner/no-touch declarations from the policy file, PR body/comments/labels and current Mission Control tasks. A no-touch item is read-only inventory: no review, comment, reviewer request, rebase, push or merge.
+7. If the same `report_date + steward seat + scope` already has a terminal Mission Control report, do not mutate GitHub. Read the report back and finish idempotently when it matches. If the live queue changed, stop as `BLOCKED` with `report_slot_closed`, preserve only a local redacted retry note and defer durable reporting to the next supported run slot. The v1 writer cannot reconcile different content into the same Organization/seat/date key; never rewrite or duplicate the report.
 
 **Preflight completion:** identity and scope match, report target is writable, and the exact inventory start time is recorded.
 
@@ -67,6 +72,19 @@ For every configured GitHub Organization, query all open PRs live. The pre-run l
 - requested reviewers, labels and explicit ownership comments;
 - linked plan/task when the Organization contract requires one.
 
+Inventory is Organization-wide, not owner-lane-wide. Workspace, Productionspace,
+domain-owner and explicit no-touch PRs all remain in the inventory; route them to
+the named owner and preserve their no-mutation boundary. If the seat cannot read a
+required repository, return `BLOCKED` instead of publishing a partial inventory.
+
+Track review-thread counts separately:
+
+- `active_unresolved_threads`: unresolved and not outdated — live feedback to fix;
+- `all_unresolved_threads`: every unresolved thread, including outdated — merge/report closeout gate.
+
+The strict v1 report field `unresolved_threads` means **all unresolved threads**.
+Do not write the active-only count into that field.
+
 Re-run the complete open-PR inventory before final reporting so late PRs are not missed.
 
 **Draft rule:** never mutate GitHub draft PRs. List them as `draft_untouched`.
@@ -81,6 +99,7 @@ Before approving or merging, require:
 - no current-head `CHANGES_REQUESTED` verdict;
 - required checks green; no pending/failing required check;
 - zero active unresolved blocking threads;
+- zero all unresolved threads before merge; an outdated but unresolved thread must be explicitly resolved after proving the current head addresses it;
 - branch clean/mergeable against the current base;
 - scope and linked plan/decision still match;
 - no owner/no-touch hold.
@@ -162,10 +181,16 @@ Write exactly one append-only report per Organization seat and run slot through 
 
 `<organization_slug>:<steward_seat>:<YYYY-MM-DD>`
 
+Read `steward_seat` from that Organization's
+`reporting.organization_reports[]` entry. The global `steward.seat` may be used
+only when exactly one Organization is configured. Never reuse one seat ID across
+two Organization reports.
+
 The report contains no secrets, raw logs, tokens or copied business payloads. It must match the strict v1 schema (`additionalProperties: false`) exactly:
 
 - `schema_version`, `id`, `organization`, `steward_seat`, `report_date`, `run_slot`, `idempotency_key`, `status`, `summary` and `created_at`;
 - `inventory.open_pull_requests` plus schema-valid `inventory.pull_requests` entries;
+- every `inventory.pull_requests[].unresolved_threads` value is the all-unresolved count, including outdated threads;
 - `actions` using only `reviewed`, `commented`, `pushed_fix`, `requested_review` or `no_action`;
 - schema-valid `blockers` and `evidence` entries.
 
@@ -198,12 +223,20 @@ Before enabling the 02:00 job:
 - Writing the report only to chat, ClickUp or local disk.
 - Counting a Mission Control write as delivered without read-back.
 - Expanding scope to another Organization visible to the GitHub account.
+- Treating another owner lane (for example Productionspace) as permission to omit the PR instead of inventorying and routing it read-only.
+- Calling a partial visible-repository list complete when `required_read_repositories` contains an inaccessible repository.
+- Reusing one global Steward seat ID for two Organization-local reports.
+- Recording only active unresolved threads while outdated unresolved threads still exist.
 
 ## Ověření
 
 - [ ] Seat identity equals policy.
+- [ ] Every required repository is readable, or the run stopped `BLOCKED` before mutation.
+- [ ] Every configured Organization has one distinct report entry and Steward seat.
 - [ ] Full live inventory was loaded twice.
 - [ ] Every non-draft PR has exact-head evidence.
+- [ ] Owner-lane/no-touch PRs are inventoried and routed rather than omitted.
+- [ ] Active and all unresolved thread counts were kept separate; report counts mean all unresolved.
 - [ ] Drafts and no-touch items were untouched.
 - [ ] At most three bounded fix slices ran.
 - [ ] Every merge was read back with commit evidence.
