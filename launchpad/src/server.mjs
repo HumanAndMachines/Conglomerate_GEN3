@@ -643,6 +643,11 @@ function startServer(startPort) {
         // Update lane Conglomerate rootu (decision 0059, draft 0078): oddělená
         // od org git inventáře; mutace jde přes trusted-local guard výše a
         // serializuje se s background fetchi přes withRemoteRefreshPaused.
+        // I GET status je trusted-local: dělá git fetch (síť + credentials),
+        // cizí origin ho nesmí spouštět ani jako drive-by bez čtení odpovědi.
+        if (url.pathname.startsWith("/api/update") && !isTrustedLocalRequest(request, url)) {
+          return jsonResponse({ error: "update_request_forbidden" }, 403);
+        }
         if (url.pathname === "/api/update/status" && request.method === "GET") {
           return jsonResponse(await gitStatusService.withRemoteRefreshPaused(() =>
             readRootUpdateStatus({ rootPath: companiesRoot })));
