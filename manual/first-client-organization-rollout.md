@@ -204,6 +204,11 @@ Kontrolní pravidla:
 
 - `company` je čistá Organization identity, ne `workspace`, ne filesystem slug s `_GEN3`.
 - `module` je modul/app surface identita; příslušnost k Teamům patří do `company.gen3.json` / `modules.manifest.json`, ne do app manifestu.
+- Slot se stavem `planned` / `planned_slot` před skutečným založením repozitáře
+  nemá `git`, `repo` ani `repository` URL. Deklarovaná URL znamená, že checkout
+  už je očekávaný; jeho absence je proto `missing_access`, ne plán. URL doplň až
+  po klientském založení repozitáře a ve stejném rollout kroku slot aktivuj a
+  materializuj.
 - Porty jsou unikátní napříč lokálním rootem. Pro prvního klienta začínej v klientském bloku okolo `5500+` a ověř kolize přes Launchpad `/api/apps`.
 - Productionspace systémy nesmí získat hosted/public exposure jen tím, že existuje manifest. Sdílený Launchpad defaultně `productionspace/` app package discovery neprochází.
 
@@ -223,7 +228,7 @@ Povinný výsledek pro klientský handoff:
 |---|---|
 | Git root | čistý root checkout, žádné Organization submoduly |
 | Mounts | Organization mountpoint je Git checkout |
-| Discovery | klientská Organization je objevená nebo planned s jasným `missing_access` stavem |
+| Discovery | klientská Organization je objevená; nezaložený modul je `planned_slot` bez repo URL, zatímco `missing_access` má vždy vlastní next action |
 | Runtime | žádné `invalid_manifest`, port collision nebo dependency warning bez next action |
 | Support loop | Doctor/Launchpad hlášky jsou `ok` nebo explicitně akceptované planned/stopped stavy |
 
