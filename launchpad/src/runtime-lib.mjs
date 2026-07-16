@@ -2,7 +2,7 @@ import { existsSync } from "fs";
 import { appendFile, mkdir, readFile, realpath, stat, utimes, writeFile } from "fs/promises";
 import { randomUUID } from "crypto";
 import { createServer } from "net";
-import { dirname, join, relative, resolve } from "path";
+import { dirname, isAbsolute, join, relative, resolve, win32 } from "path";
 import { discoverLaunchpadApps } from "./discovery-lib.mjs";
 import { recordAppOpen } from "./usage-lib.mjs";
 import { buildWorktreeIndex } from "./worktree-lib.mjs";
@@ -113,21 +113,21 @@ export function createRuntimeManager({
     const logPath = logPathForApp(runtimeKey);
     const startedAt = new Date().toISOString();
     await appendLog(logPath, `\n[launchpad] ${startedAt} start ${app.id} source=${runtimeSource.type} key=${runtimeKey}\n`);
+    const childEnv = runtimeProcessEnv(app, {
+      PORT: String(app.port),
+      HOST: app.host,
+      COMPANIES_WORKSPACE_ROOT: companiesRoot,
+      COMPANYASCODE_APP_ID: app.id,
+      COMPANYASCODE_RUNTIME_KEY: runtimeKey,
+      COMPANYASCODE_RUNTIME_SOURCE: runtimeSource.type,
+      ...(runtimeSource.slug ? { COMPANYASCODE_WORKTREE_SLUG: runtimeSource.slug } : {}),
+    });
 
     let child;
     try {
       child = Bun.spawn(["bun", "run", app.dev_script], {
         cwd: join(companiesRoot, app.cwd),
-        env: {
-          ...process.env,
-          PORT: String(app.port),
-          HOST: app.host,
-          COMPANIES_WORKSPACE_ROOT: companiesRoot,
-          COMPANYASCODE_APP_ID: app.id,
-          COMPANYASCODE_RUNTIME_KEY: runtimeKey,
-          COMPANYASCODE_RUNTIME_SOURCE: runtimeSource.type,
-          ...(runtimeSource.slug ? { COMPANYASCODE_WORKTREE_SLUG: runtimeSource.slug } : {}),
-        },
+        env: childEnv,
         stdout: "pipe",
         stderr: "pipe",
       });
@@ -281,14 +281,13 @@ export function createRuntimeManager({
 
     const child = Bun.spawn(dependencies.install_command, {
       cwd,
-      env: {
-        ...process.env,
+      env: runtimeProcessEnv(app, {
         COMPANIES_WORKSPACE_ROOT: companiesRoot,
         COMPANYASCODE_APP_ID: app.id,
         COMPANYASCODE_RUNTIME_KEY: runtimeKey,
         COMPANYASCODE_RUNTIME_SOURCE: runtimeSource.type,
         ...(runtimeSource.slug ? { COMPANYASCODE_WORKTREE_SLUG: runtimeSource.slug } : {}),
-      },
+      }),
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -817,6 +816,52 @@ export function createRuntimeManager({
       throw new RuntimeActionError(400, "invalid_runtime_source", "Worktree runtime source vyžaduje slug.");
     }
     return { type: "worktree", slug: source.slug.trim() };
+  }
+
+  function runtimeProcessEnv(app, overrides) {
+    const env = { ...process.env };
+    // Launchpad může být sám spuštěný v Organization-scoped procesu. Každý
+    // child dostane scope znovu odvozený z discovery; Personalspace a lokální
+    // surfaces nesmí zdědit Organization root rodiče.
+    delete env.COMPANYASCODE_ORGANIZATION_ROOT;
+    return {
+      ...env,
+      ...organizationRuntimeEnv(app),
+      ...overrides,
+    };
+  }
+
+  function organizationRuntimeEnv(app) {
+    if (app.organization_kind !== "organization") return {};
+
+    const declaredPath = typeof app.organization_path === "string" ? app.organization_path.trim() : "";
+    if (!declaredPath || isAbsolute(declaredPath) || win32.isAbsolute(declaredPath)) {
+      throw new RuntimeActionError(
+        409,
+        "invalid_organization_path",
+        `Aplikace ${app.id} má nebezpečný organization_path.`,
+        [`organization_path: ${app.organization_path ?? "<missing>"}`],
+      );
+    }
+
+    const organizationRoot = resolve(companiesRoot, declaredPath);
+    const organizationBoundary = relative(companiesRoot, organizationRoot);
+    if (
+      !organizationBoundary ||
+      isAbsolute(organizationBoundary) ||
+      win32.isAbsolute(organizationBoundary) ||
+      organizationBoundary.startsWith("..") ||
+      resolve(companiesRoot, organizationBoundary) !== organizationRoot
+    ) {
+      throw new RuntimeActionError(
+        409,
+        "invalid_organization_path",
+        `Aplikace ${app.id} má nebezpečný organization_path.`,
+        [`organization_path: ${app.organization_path}`],
+      );
+    }
+
+    return { COMPANYASCODE_ORGANIZATION_ROOT: organizationRoot };
   }
 
   async function worktreeRuntimeApp(app, source) {

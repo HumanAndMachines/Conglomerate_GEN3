@@ -508,6 +508,12 @@ lives in the private `Rozjedeme-ai/HumanAndMachines` repo):
 - DEV instances get their port from Launchpad via the `PORT` env contract; an
   app manifest declares support. A DEV instance never takes the main runtime's
   port — collision is a blocking state.
+- Main i worktree runtime dostává absolutní
+  `COMPANYASCODE_ORGANIZATION_ROOT`. Appka používá tento kontrakt pro
+  Organization-level manifesty, `infra/`, shared compatibility soubory a
+  cesty do jiných modulů; nesmí Organization root odvozovat z worktree `cwd`
+  ani zaměnit za Conglomerate-level `COMPANIES_WORKSPACE_ROOT`. Stejný env je
+  dostupný i dependency install procesu.
 - Launchpad may create a worktree from a planned Mission Control plan (guarded:
   valid plan, clean-enough main, canonical path, sidecar metadata).
 - `Publikovat` means: commit the local draft and push the branch to GitHub.
