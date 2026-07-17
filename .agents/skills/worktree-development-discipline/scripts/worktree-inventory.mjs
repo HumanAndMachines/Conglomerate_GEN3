@@ -27,10 +27,13 @@ export async function auditRepository(startPath = process.cwd(), options = {}) {
   const primaryRoot = basename(commonDir) === ".git"
     ? dirname(commonDir)
     : currentTop;
+  const authorityRoot = options.authorityRoot
+    ? resolve(options.authorityRoot)
+    : resolveAuthorityRoot(primaryRoot);
   const records = parseWorktreePorcelain(
     await gitText(primaryRoot, ["worktree", "list", "--porcelain", "-z"]),
   );
-  const orphanScan = await scanLocalOrphans(primaryRoot, commonDir, records);
+  const orphanScan = await scanLocalOrphans(primaryRoot, commonDir, records, options);
   const orphanEntries = orphanScan.entries;
   const primaryRecord = records.find((record) => resolve(record.path) === resolve(primaryRoot))
     ?? records[0];
@@ -48,7 +51,7 @@ export async function auditRepository(startPath = process.cwd(), options = {}) {
       : join(dirname(record.path), `${basename(record.path)}.worktree.json`);
     const sidecarExists = sidecarPath ? await pathExists(sidecarPath) : false;
     const sidecar = sidecarExists
-      ? await validateSidecar(primaryRoot, record, sidecarPath)
+      ? await validateSidecar(primaryRoot, authorityRoot, record, sidecarPath)
       : { valid: false, error: "missing sidecar", planPath: null };
     const status = exists
       ? await runGit(["status", "--porcelain=v1", "--untracked-files=all"], record.path)
@@ -68,6 +71,7 @@ export async function auditRepository(startPath = process.cwd(), options = {}) {
       sidecar_exists: sidecarExists,
       sidecar_valid: sidecarPath ? sidecar.valid : null,
       sidecar_error: sidecarPath && !sidecar.valid ? sidecar.error : null,
+      sidecar_advisories: sidecar.advisories ?? [],
       plan_path: sidecar.planPath,
       dirty,
       status_error: status.ok ? null : status.timedOut ? "git timeout" : status.stderr.trim(),
@@ -168,6 +172,7 @@ export async function auditRepository(startPath = process.cwd(), options = {}) {
     worktrees: enriched,
     orphan_entries: orphanEntries,
     orphan_scan_complete: orphanScan.complete,
+    global_orphan_scan_complete: orphanScan.globalComplete,
     violations,
     summary: {
       registered: enriched.length,
@@ -184,6 +189,11 @@ export async function auditRepository(startPath = process.cwd(), options = {}) {
       orphan_directories: orphanEntries.filter((item) => item.kind === "worktree directory").length,
       orphan_sidecars: orphanEntries.filter((item) => item.kind === "sidecar").length,
       orphan_scan_complete: orphanScan.complete,
+      global_orphan_scan_complete: orphanScan.globalComplete,
+      operational_metadata_advisories: enriched.reduce(
+        (sum, item) => sum + item.sidecar_advisories.length,
+        0,
+      ),
       no_upstream: enriched.filter(
         (item) => item.path_class === "canonical" && item.branch && !item.upstream,
       ).length,
@@ -275,7 +285,7 @@ function classifyLifecycle({
   return "active";
 }
 
-async function validateSidecar(primaryRoot, record, sidecarPath) {
+async function validateSidecar(primaryRoot, authorityRoot, record, sidecarPath) {
   let data;
   try {
     data = JSON.parse(await readFile(sidecarPath, "utf8"));
@@ -306,10 +316,7 @@ async function validateSidecar(primaryRoot, record, sidecarPath) {
     "worktree_path",
     "created_at",
     "created_by",
-    "last_touched",
     "status",
-    "purpose",
-    "cleanup_rule",
   ]) {
     if (typeof data[field] !== "string" || data[field].trim() === "") {
       return { valid: false, error: `missing ${field}`, planPath: null };
@@ -327,12 +334,11 @@ async function validateSidecar(primaryRoot, record, sidecarPath) {
   if (isAbsolute(data.mission_control_plan_path)) {
     return { valid: false, error: "mission_control_plan_path must be relative", planPath: null };
   }
-  const planPath = resolve(primaryRoot, data.mission_control_plan_path);
-  const authorityRoot = basename(primaryRoot) === "HumanAndMachines"
-    ? primaryRoot
-    : process.env.HUMANANDMACHINES_ROOT
-      ? resolve(process.env.HUMANANDMACHINES_ROOT)
-      : join(dirname(primaryRoot), "HumanAndMachines");
+  const planPath = resolveAuthorityPlanPath(
+    primaryRoot,
+    data.mission_control_plan_path,
+    authorityRoot,
+  );
   const acceptedPlanRoots = [
     join(authorityRoot, "mission-control", "db", "data", "mission-control", "plans"),
     join(authorityRoot, "mission-control", "plans"),
@@ -381,29 +387,61 @@ async function validateSidecar(primaryRoot, record, sidecarPath) {
   if (!allowedStatuses.has(data.status)) {
     return { valid: false, error: "status is not canonical", planPath };
   }
-  if (!Object.hasOwn(data, "pr_url") || (data.pr_url !== null && typeof data.pr_url !== "string")) {
-    return { valid: false, error: "pr_url must be present as a string or null", planPath };
+  if (Object.hasOwn(data, "pr_url") && data.pr_url !== null && typeof data.pr_url !== "string") {
+    return { valid: false, error: "pr_url must be a string or null", planPath };
   }
-  if (!Number.isFinite(Date.parse(data.created_at)) || !Number.isFinite(Date.parse(data.last_touched))) {
-    return { valid: false, error: "created_at or last_touched is not a date", planPath };
+  if (!Number.isFinite(Date.parse(data.created_at))) {
+    return { valid: false, error: "created_at is not a date", planPath };
   }
-  try {
-    const stat = await lstat(planPath);
-    if (!stat.isFile()) {
-      return { valid: false, error: "Mission Control plan is not a file", planPath };
+  if (
+    Object.hasOwn(data, "last_touched")
+    && (
+      typeof data.last_touched !== "string"
+      || !Number.isFinite(Date.parse(data.last_touched))
+    )
+  ) {
+    return { valid: false, error: "last_touched is not a date", planPath };
+  }
+  for (const field of ["purpose", "cleanup_rule"]) {
+    if (
+      Object.hasOwn(data, field)
+      && (typeof data[field] !== "string" || data[field].trim() === "")
+    ) {
+      return { valid: false, error: `${field} must be a non-empty string`, planPath };
     }
-  } catch {
-    return { valid: false, error: "Mission Control plan does not exist", planPath };
   }
-  return { valid: true, error: null, planPath };
+  const authorityAvailable = await pathExists(authorityRoot);
+  if (authorityAvailable) {
+    try {
+      const stat = await lstat(planPath);
+      if (!stat.isFile()) {
+        return { valid: false, error: "Mission Control plan is not a file", planPath };
+      }
+    } catch {
+      return { valid: false, error: "Mission Control plan does not exist", planPath };
+    }
+  }
+  const advisories = ["last_touched", "pr_url", "purpose", "cleanup_rule"]
+    .filter((field) => !Object.hasOwn(data, field))
+    .map((field) => `recommended operational field is missing: ${field}`);
+  if (!authorityAvailable) {
+    advisories.push(
+      "HumanAndMachines authority checkout is unavailable; plan existence was not verified",
+    );
+  }
+  return { valid: true, error: null, planPath, advisories };
 }
 
-async function scanLocalOrphans(primaryRoot, commonDir, records) {
+async function scanLocalOrphans(primaryRoot, commonDir, records, options = {}) {
   const registered = new Set(records.map((record) => resolve(record.path)));
   const found = [];
-  const budget = {
+  const localBudget = {
     deadline: Date.now() + ORPHAN_SCAN_BUDGET_MS,
-    remainingEntries: ORPHAN_SCAN_ENTRY_BUDGET,
+    remainingEntries: options.orphanLocalEntryBudget ?? ORPHAN_SCAN_ENTRY_BUDGET,
+  };
+  const globalBudget = {
+    deadline: Date.now() + ORPHAN_SCAN_BUDGET_MS,
+    remainingEntries: options.orphanGlobalEntryBudget ?? ORPHAN_SCAN_ENTRY_BUDGET,
   };
   const containers = [
     {
@@ -461,6 +499,7 @@ async function scanLocalOrphans(primaryRoot, commonDir, records) {
     },
   ];
   let complete = true;
+  let globalComplete = true;
   const seenContainers = new Set();
   for (const container of containers) {
     const containerPath = resolve(container.path);
@@ -473,9 +512,11 @@ async function scanLocalOrphans(primaryRoot, commonDir, records) {
       continue;
     }
     try {
+      const budget = container.ownerOnly ? globalBudget : localBudget;
       for await (const entry of directory) {
         if (Date.now() >= budget.deadline || budget.remainingEntries <= 0) {
-          complete = false;
+          if (container.ownerOnly) globalComplete = false;
+          else complete = false;
           break;
         }
         budget.remainingEntries--;
@@ -512,9 +553,8 @@ async function scanLocalOrphans(primaryRoot, commonDir, records) {
     } catch (error) {
       if (error?.code !== "ENOENT") throw error;
     }
-    if (!complete) break;
   }
-  return { entries: found, complete };
+  return { entries: found, complete, globalComplete };
 }
 
 async function isLinkedToCommonDir(worktreePath, commonDir) {
@@ -550,7 +590,9 @@ async function inspectRemoteState(worktreePath) {
       upstream: null,
       ahead: null,
       behind: null,
-      error: upstream.timedOut ? "upstream lookup timed out" : null,
+      error: upstream.timedOut
+        ? "upstream lookup timed out"
+        : upstream.stderr.trim() || "upstream lookup failed",
     };
   }
   const counts = await runGit(
@@ -587,6 +629,21 @@ async function inspectRemoteState(worktreePath) {
 function isWithin(parent, child) {
   const rel = relative(resolve(parent), resolve(child));
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+function resolveAuthorityRoot(primaryRoot) {
+  if (basename(primaryRoot) === "HumanAndMachines") return primaryRoot;
+  if (process.env.HUMANANDMACHINES_ROOT) {
+    return resolve(process.env.HUMANANDMACHINES_ROOT);
+  }
+  return join(dirname(primaryRoot), "HumanAndMachines");
+}
+
+export function resolveAuthorityPlanPath(primaryRoot, planPath, authorityRoot) {
+  const resolvedAuthority = authorityRoot
+    ? resolve(authorityRoot)
+    : resolveAuthorityRoot(primaryRoot);
+  return resolve(resolvedAuthority, planPath);
 }
 
 async function gitText(cwd, args) {
@@ -746,7 +803,11 @@ export function formatHuman(report) {
   }
   if (!report.orphan_scan_complete) {
     lines.push("");
-    lines.push("Bounded orphan scan: INCOMPLETE");
+    lines.push("Bounded repo-local orphan scan: INCOMPLETE");
+  }
+  if (!report.global_orphan_scan_complete) {
+    lines.push("");
+    lines.push("Global leftover scan: PARTIAL (advisory only)");
   }
   lines.push("");
   if (report.violations.length === 0) {

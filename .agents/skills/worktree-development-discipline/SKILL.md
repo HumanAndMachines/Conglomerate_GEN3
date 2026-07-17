@@ -28,9 +28,11 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
 4. Vedle worktree vytvoř
    `<canonical-plan-basename>.worktree.json` podle
    `companiesascode.worktree.v1` s kanonickými identity/path poli, přesným
-   HumanAndMachines plánem, branchí/base, `created_at`, `created_by`,
-   `last_touched`, stavem, PR URL, purpose a cleanup pravidlem. Owner se čte z
-   plánu, sidecar není druhá autorita.
+   HumanAndMachines plánem, branchí/base, `created_at`, `created_by` a stavem.
+   Pro bezpečný provoz nový agent doplní také `last_touched`, PR URL, purpose
+   a cleanup pravidlo; u staršího schema-valid sidecaru jsou jejich absence
+   advisory, ne falešná nevalidita. Owner se čte z plánu, sidecar není druhá
+   autorita.
 5. Nevytvářej nové worktrees v `/tmp`, vedle repa, v
    `~/.hermes/worktrees`, `.claude/worktrees`, `.codex-tmp`,
    `.pr-worktrees`, legacy `.worktrees/<code>` ani uvnitř jiného repa.
