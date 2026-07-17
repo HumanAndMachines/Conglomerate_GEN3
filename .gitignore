@@ -118,3 +118,6 @@ organizations/*/company/colleagues/*/archiv/
 # lokální netrackovaná plocha; sdílené návrhy patří do privátního
 # Rozjedeme-ai/HumanAndMachines (conglomerate-ops/drafts/).
 drafts/
+
+# Canonical local task worktrees and sidecars (decision 0049 / CAC-0065).
+.worktrees/

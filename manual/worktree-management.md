@@ -68,7 +68,34 @@ adresář ani branch.
     Shared změnu vlastní `CAC-XXXX`; Organization rollout má vlastní plán a
     prefix.
 
-## Dva podporované typy environmentu
+## Tři podporované typy environmentu
+
+### Standalone top-level repo environment
+
+Agenti mohou začít přímo v top-level repozitářích HumanAndMachines,
+Conglomerate nebo Dashboard. Každý z nich drží vlastní Git/access hranici a
+vlastní primary checkout. Pro změnu uvnitř jediného takového repa je kanonická
+cesta:
+
+```text
+<repo>/.worktrees/root/<canonical-plan-basename>/
+<repo>/.worktrees/root/<canonical-plan-basename>.worktree.json
+```
+
+Agent nesmí založit sibling složku `<repo>-worktrees`, worktree v home,
+`~/.hermes/worktrees`, `/tmp` ani worktree jednoho repa uvnitř `.worktrees`
+jiného repa. Jeden cross-repo plán smí vlastnit po jednom environmentu v každém
+dotčeném repu, ale každý zůstává samostatná Git historie, branch a PR. Sidecar
+v consumer repu odkazuje na authority-relative Mission Control plán; samotný
+consumer repo nezačne držet jeho kopii.
+
+Dokud CAC-0065 nedodá guarded Doctor create akci, agent smí pro top-level repo
+použít ruční `git worktree add` jen na této cestě, se sidecarem a následnou
+inventurou `bun run worktrees:status`. Informativní status nezakrývá existující
+legacy stav; fail-closed `bun run worktrees:check` ověřuje umístění, metadata a
+Git zachování, ale jeho PASS není cleanup autorizace bez živého
+PR/runtime/writer gate. Toto je přechodový bootstrap, ne druhý
+dlouhodobý action layer.
 
 ### Conglomerate root environment
 
