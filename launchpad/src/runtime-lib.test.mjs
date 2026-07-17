@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { createServer } from "net";
 import { tmpdir } from "os";
 import { join } from "path";
-import { chmod, cp, mkdir, mkdtemp, rm, utimes, writeFile } from "fs/promises";
+import { chmod, cp, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "fs/promises";
 import { RuntimeActionError, createRuntimeManager } from "./runtime-lib.mjs";
 
 const tempRoots = [];
@@ -28,6 +28,8 @@ test("runtime manager spustí, změří a zastaví managed aplikaci", async () =
   const healthy = await waitForStatus(() => runtime.health("test-company-demo-v1"), "healthy");
   expect(healthy.managed).toBe(true);
   expect(healthy.pid).toBeNumber();
+  const runtimeEnv = await (await fetch(`http://127.0.0.1:${port}/runtime-env`)).json();
+  expect(runtimeEnv.organizationRoot).toBe(join(root, "organizations", "TestCompany"));
 
   const stopped = await runtime.stop("test-company-demo-v1");
   expect(stopped.action).toBe("stop");
@@ -35,6 +37,63 @@ test("runtime manager spustí, změří a zastaví managed aplikaci", async () =
   expect(logs.log_path).toBe("logs/apps/test-company-demo-v1.log");
   expect(logs.content).toContain("stop test-company-demo-v1");
   expect((await runtime.health("test-company-demo-v1")).status).toBe("stopped");
+});
+
+test("runtime manager nepředá stale Organization root lokálnímu surface ani Personalspace lane", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port });
+  const previousOrganizationRoot = process.env.COMPANYASCODE_ORGANIZATION_ROOT;
+  process.env.COMPANYASCODE_ORGANIZATION_ROOT = join(root, "organizations", "ForeignCompany");
+  const app = fixtureDiscoveryApp({
+    port,
+    overrides: {
+      organization_path: "guide",
+      organization_kind: null,
+      discovery_source: "local_surface",
+    },
+  });
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "test-instance",
+    discover: discoveryWithApp(app),
+  });
+
+  let started = false;
+  try {
+    await runtime.start(app.id);
+    started = true;
+    await waitForStatus(() => runtime.health(app.id), "healthy");
+    const runtimeEnv = await (await fetch(`http://127.0.0.1:${port}/runtime-env`)).json();
+    expect(runtimeEnv.organizationRoot).toBeNull();
+  } finally {
+    if (started) await runtime.stop(app.id);
+    if (previousOrganizationRoot === undefined) delete process.env.COMPANYASCODE_ORGANIZATION_ROOT;
+    else process.env.COMPANYASCODE_ORGANIZATION_ROOT = previousOrganizationRoot;
+  }
+});
+
+test("runtime manager odmítne Windows drive path mimo Organization boundary", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port });
+  const app = fixtureDiscoveryApp({
+    port,
+    overrides: {
+      organization_path: "D:\\outside\\Macano-Tech_GEN3",
+      organization_kind: "organization",
+    },
+  });
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "test-instance",
+    discover: discoveryWithApp(app),
+  });
+
+  await expect(runtime.start(app.id)).rejects.toMatchObject({
+    status: 409,
+    code: "invalid_organization_path",
+  });
 });
 
 test("runtime manager adoptuje app-owned port a Stop ukončí proces z jiné Launchpad instance", async () => {
@@ -294,6 +353,35 @@ test("runtime manager umí nainstalovat balíčky aplikace a zapsat install log"
   expect(logs.content).toContain("install test-company-demo-v1 command=bun install");
   expect(logs.content).toContain("repair test-company-demo-v1 command=bun install");
   expect(logs.content).toContain("code=0");
+});
+
+test("runtime manager předá absolutní Organization root i install lifecycle procesu", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({
+    port,
+    installScripts: { preinstall: "bun capture-install-env.mjs" },
+  });
+  const appRoot = join(root, "organizations", "TestCompany", "modules", "demo", "app", "v1");
+  await writeFile(
+    join(appRoot, "capture-install-env.mjs"),
+    [
+      "await Bun.write(",
+      "  'install-env.json',",
+      "  JSON.stringify({ organizationRoot: process.env.COMPANYASCODE_ORGANIZATION_ROOT ?? null }),",
+      ");",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "test-instance",
+  });
+
+  await runtime.install("test-company-demo-v1");
+  const captured = JSON.parse(await readFile(join(appRoot, "install-env.json"), "utf8"));
+  expect(captured.organizationRoot).toBe(join(root, "organizations", "TestCompany"));
 });
 
 test("runtime manager classifyuje selhaný Install/Repair s failure_kind", async () => {
@@ -670,6 +758,8 @@ test("runtime manager spustí worktree DEV instanci vedle main runtime bez port 
   expect(worktree.runtime.runtime_key).toBe(`test-company-demo-v1--worktree--${worktreeSlug}`);
   expect(worktree.runtime.port).not.toBe(mainPort);
   expect(worktree.runtime.dependencies.cwd).toContain(`.worktrees/workspace/demo/${worktreeSlug}/app/v1`);
+  const worktreeEnv = await (await fetch(`${worktree.url}/runtime-env`)).json();
+  expect(worktreeEnv.organizationRoot).toBe(orgRoot);
 
   await runtime.stop("test-company-demo-v1", { source: { type: "worktree", slug: worktreeSlug } });
   await runtime.stop("test-company-demo-v1");
@@ -802,6 +892,7 @@ async function createCompaniesWorkspaceFixture({
       "  fetch(request) {",
       "    const url = new URL(request.url);",
       "    if (url.pathname === '/health') return Response.json({ status: 'ok' });",
+      "    if (url.pathname === '/runtime-env') return Response.json({ organizationRoot: process.env.COMPANYASCODE_ORGANIZATION_ROOT ?? null });",
       "    return new Response('ok');",
       "  },",
       "});",
@@ -812,6 +903,33 @@ async function createCompaniesWorkspaceFixture({
     "utf8",
   );
   return root;
+}
+
+function fixtureDiscoveryApp({ port, overrides = {} }) {
+  return {
+    id: "test-company-demo-v1",
+    title: "Demo v1",
+    company: "test-company",
+    module: "demo",
+    surface: "internal",
+    port,
+    host: "127.0.0.1",
+    health_path: "/health",
+    dev_script: "dev",
+    plugin: null,
+    package_path: "organizations/TestCompany/modules/demo/app/v1/package.json",
+    organization_path: "organizations/TestCompany",
+    organization_kind: "organization",
+    discovery_source: "filesystem",
+    company_workspace_path: "organizations/TestCompany",
+    cwd: "organizations/TestCompany/modules/demo/app/v1",
+    tags: ["test"],
+    ...overrides,
+  };
+}
+
+function discoveryWithApp(app) {
+  return async () => ({ apps: [app], invalid_apps: [], failures: [], warnings: [] });
 }
 
 async function writeJson(path, data) {
