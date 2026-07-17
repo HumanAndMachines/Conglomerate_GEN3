@@ -410,24 +410,22 @@ async function validateSidecar(primaryRoot, authorityRoot, record, sidecarPath) 
       return { valid: false, error: `${field} must be a non-empty string`, planPath };
     }
   }
-  const authorityAvailable = await pathExists(authorityRoot);
-  if (authorityAvailable) {
-    try {
-      const stat = await lstat(planPath);
-      if (!stat.isFile()) {
-        return { valid: false, error: "Mission Control plan is not a file", planPath };
-      }
-    } catch {
-      return { valid: false, error: "Mission Control plan does not exist", planPath };
-    }
-  }
   const advisories = ["last_touched", "pr_url", "purpose", "cleanup_rule"]
     .filter((field) => !Object.hasOwn(data, field))
     .map((field) => `recommended operational field is missing: ${field}`);
+  const authorityAvailable = await pathExists(authorityRoot);
   if (!authorityAvailable) {
-    advisories.push(
-      "HumanAndMachines authority checkout is unavailable; plan existence was not verified",
-    );
+    const error = "HumanAndMachines authority checkout is unavailable; plan ownership was not verified";
+    advisories.push(error);
+    return { valid: false, error, planPath, advisories };
+  }
+  try {
+    const stat = await lstat(planPath);
+    if (!stat.isFile()) {
+      return { valid: false, error: "Mission Control plan is not a file", planPath, advisories };
+    }
+  } catch {
+    return { valid: false, error: "Mission Control plan does not exist", planPath, advisories };
   }
   return { valid: true, error: null, planPath, advisories };
 }
