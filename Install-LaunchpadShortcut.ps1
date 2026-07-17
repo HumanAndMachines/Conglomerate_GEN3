@@ -131,25 +131,25 @@ $startMenuShortcut = Join-Path $StartMenuRoot $shortcutName
 $taskbarShortcut = Join-Path $TaskbarRoot $shortcutName
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $backupRoot = Join-Path (Join-Path $env:LOCALAPPDATA 'HumanAndMachine\Launchpad\shortcut-backups') $timestamp
+$startMenuBackupRoot = Join-Path $backupRoot 'start-menu'
+$taskbarBackupRoot = Join-Path $backupRoot 'taskbar'
 $backups = New-Object System.Collections.Generic.List[string]
+$installApplied = $false
+$taskbarStatus = if ($StartMenuOnly) { 'not_requested' } else { 'not_applied' }
 
-if ($PSCmdlet.ShouldProcess($iconPath, 'Install HumanAndMachine Launchpad icon')) {
+if ($PSCmdlet.ShouldProcess($resolvedRoot, 'Install HumanAndMachine Launchpad icon and shortcuts')) {
+    $installApplied = $true
     if (-not (Test-Path -LiteralPath $InstalledAssetRoot -PathType Container)) {
         New-Item -ItemType Directory -Path $InstalledAssetRoot -Force | Out-Null
     }
     Copy-Item -LiteralPath $sourceIconPath -Destination $iconPath -Force
-}
 
-if ($PSCmdlet.ShouldProcess($startMenuShortcut, 'Install HumanAndMachine Launchpad shortcut')) {
-    $backup = Backup-ExistingShortcut -ShortcutPath $startMenuShortcut -BackupRoot $backupRoot
+    $backup = Backup-ExistingShortcut -ShortcutPath $startMenuShortcut -BackupRoot $startMenuBackupRoot
     if ($null -ne $backup) { $backups.Add($backup) }
     New-LaunchpadShortcut -ShortcutPath $startMenuShortcut -LaunchpadRoot $resolvedRoot -PowerShellPath $powerShellPath -IconPath $iconPath
-}
 
-$taskbarStatus = 'not_requested'
-if (-not $StartMenuOnly) {
-    if ($PSCmdlet.ShouldProcess($taskbarShortcut, 'Install HumanAndMachine Launchpad taskbar shortcut')) {
-        $backup = Backup-ExistingShortcut -ShortcutPath $taskbarShortcut -BackupRoot $backupRoot
+    if (-not $StartMenuOnly) {
+        $backup = Backup-ExistingShortcut -ShortcutPath $taskbarShortcut -BackupRoot $taskbarBackupRoot
         if ($null -ne $backup) { $backups.Add($backup) }
         New-LaunchpadShortcut -ShortcutPath $taskbarShortcut -LaunchpadRoot $resolvedRoot -PowerShellPath $powerShellPath -IconPath $iconPath
         $taskbarStatus = 'shortcut_installed'
@@ -171,10 +171,18 @@ if (-not $StartMenuOnly) {
     }
 }
 
-$startMenuValid = Test-LaunchpadShortcut -ShortcutPath $startMenuShortcut -LaunchpadRoot $resolvedRoot -PowerShellPath $powerShellPath -IconPath $iconPath
-$taskbarValid = $StartMenuOnly -or (Test-LaunchpadShortcut -ShortcutPath $taskbarShortcut -LaunchpadRoot $resolvedRoot -PowerShellPath $powerShellPath -IconPath $iconPath)
+$startMenuValid = if ($installApplied) {
+    Test-LaunchpadShortcut -ShortcutPath $startMenuShortcut -LaunchpadRoot $resolvedRoot -PowerShellPath $powerShellPath -IconPath $iconPath
+} else {
+    $null
+}
+$taskbarValid = if (-not $installApplied -or $StartMenuOnly) {
+    $null
+} else {
+    Test-LaunchpadShortcut -ShortcutPath $taskbarShortcut -LaunchpadRoot $resolvedRoot -PowerShellPath $powerShellPath -IconPath $iconPath
+}
 
-if (-not $startMenuValid -or -not $taskbarValid) {
+if ($installApplied -and (-not $startMenuValid -or (-not $StartMenuOnly -and -not $taskbarValid))) {
     throw 'Launchpad shortcut validation failed.'
 }
 

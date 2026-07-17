@@ -85,8 +85,9 @@ bun run install:windows-shortcut
 
 Instalátor vytvoří položku `HumanAndMachine Launchpad GEN3` ve Start Menu,
 nastaví pracovní složku na tento Conglomerate root, použije dodanou ikonu a
-požádá Windows o připnutí na hlavní panel. Případnou existující stejnojmennou
-zkratku nejdřív zálohuje do
+požádá Windows o připnutí na hlavní panel. Existující aktivní zkratku
+se stejným názvem instalátor nahradí; její původní podobu nejdřív zachová
+v oddělené záloze pro Start Menu nebo taskbar pod
 `%LOCALAPPDATA%\HumanAndMachine\Launchpad\shortcut-backups\<timestamp>`.
 
 Windows 11 může programové připnutí na hlavní panel podle místní policy
