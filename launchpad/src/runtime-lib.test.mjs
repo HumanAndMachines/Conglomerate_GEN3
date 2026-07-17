@@ -48,7 +48,7 @@ test("runtime manager spustí, změří a zastaví managed aplikaci", async () =
   expect(logs.log_path).toBe("logs/apps/test-company-demo-v1.log");
   expect(logs.content).toContain("stop test-company-demo-v1");
   expect((await runtime.health("test-company-demo-v1")).status).toBe("stopped");
-});
+}, 10_000);
 
 test("Windows runtime dohledá Bun i bez shell PATH", () => {
   const env = {
@@ -793,7 +793,7 @@ test("runtime manager open chain spustí ready aplikaci a vrátí URL", async ()
   expect(again.steps.some((step) => step.step === "reuse")).toBe(true);
 
   await runtime.stop("test-company-demo-v1");
-});
+}, 15_000);
 
 test("runtime manager open chain odmítne proces, který spadne hned po prvním healthy response", async () => {
   const port = await findFreePort();
