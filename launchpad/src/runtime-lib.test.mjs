@@ -99,8 +99,6 @@ test("Windows port ownership používá rychlý systémový netstat a ne lokaliz
   expect(windowsNetstatCommand({ SystemRoot: "C:\\Windows" })).toEqual([
     "C:\\Windows\\System32\\netstat.exe",
     "-ano",
-    "-p",
-    "tcp",
   ]);
   expect(parseWindowsListeningPid([
     "  TCP    127.0.0.1:5797       0.0.0.0:0       LISTENING       4312",

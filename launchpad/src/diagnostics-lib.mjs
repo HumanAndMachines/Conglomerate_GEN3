@@ -210,6 +210,10 @@ export async function buildLaunchpadDoctorReport(options = {}) {
         ...(appsResponse.organizations ?? []),
         ...(appsResponse.template_mounts ?? []),
       ],
+      agentCapabilityMode:
+        options.agentCapabilityMode
+        ?? process.env.COMPANYASCODE_AGENT_CAPABILITY_MODE
+        ?? "claude-compatible",
     }),
   ];
   return buildDoctorReportFromAppsResponse(appsResponse, {

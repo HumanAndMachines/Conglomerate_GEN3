@@ -1856,7 +1856,9 @@ export function windowsNetstatCommand(env = process.env) {
   const executable = env.SystemRoot
     ? win32.join(env.SystemRoot, "System32", "netstat.exe")
     : "netstat.exe";
-  return [executable, "-ano", "-p", "tcp"];
+  // Bez `-p tcp`: Windows rozlišuje filtry `tcp` a `tcpv6`, zatímco
+  // nefiltrovaný výstup obsahuje listenery obou rodin a parser si vybírá TCP.
+  return [executable, "-ano"];
 }
 
 export function parseWindowsListeningPid(output, port) {

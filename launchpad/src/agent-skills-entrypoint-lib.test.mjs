@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  AGENT_CAPABILITY_MODES,
   agentSkillsEntrypointsDoctorCheck,
   inspectAgentSkillsEntrypoint,
 } from "./agent-skills-entrypoint-lib.mjs";
@@ -39,6 +40,7 @@ test("Windows Codex-only checkout nevyžaduje .claude/skills symlink ani jeho pl
     companiesRoot,
     mounts: [{ path: "organizations/Example_GEN3", status: "mounted" }],
     platform: "win32",
+    agentCapabilityMode: AGENT_CAPABILITY_MODES.CODEX_ONLY,
   });
   expect(missingCheck.status).toBe("ok");
   expect(missingCheck.details[0]).toContain("ok/codex_entrypoint_ready");
@@ -49,9 +51,33 @@ test("Windows Codex-only checkout nevyžaduje .claude/skills symlink ani jeho pl
     companiesRoot,
     mounts: [{ path: "organizations/Example_GEN3", status: "mounted" }],
     platform: "win32",
+    agentCapabilityMode: AGENT_CAPABILITY_MODES.CODEX_ONLY,
   });
   expect(placeholderCheck.status).toBe("ok");
   expect(placeholderCheck.details[0]).toContain("ok/codex_entrypoint_ready");
+});
+
+test("Windows Claude-compatible checkout vyžaduje funkční .claude/skills entrypoint", async () => {
+  const { companiesRoot, organizationRoot } = await organizationFixture("claude-compatible");
+  const missingCheck = await agentSkillsEntrypointsDoctorCheck({
+    companiesRoot,
+    mounts: [{ path: "organizations/Example_GEN3", status: "mounted" }],
+    platform: "win32",
+    agentCapabilityMode: AGENT_CAPABILITY_MODES.CLAUDE_COMPATIBLE,
+  });
+  expect(missingCheck.status).toBe("warn");
+  expect(missingCheck.details[0]).toContain("repair_needed/entrypoint_missing");
+
+  await mkdir(join(organizationRoot, ".claude"), { recursive: true });
+  await writeFile(join(organizationRoot, ".claude", "skills"), "../.agents/skills\n");
+  const placeholderCheck = await agentSkillsEntrypointsDoctorCheck({
+    companiesRoot,
+    mounts: [{ path: "organizations/Example_GEN3", status: "mounted" }],
+    platform: "win32",
+    agentCapabilityMode: AGENT_CAPABILITY_MODES.CLAUDE_COMPATIBLE,
+  });
+  expect(placeholderCheck.status).toBe("warn");
+  expect(placeholderCheck.details[0]).toContain("repair_needed/entrypoint_legacy_placeholder");
 });
 
 test("Doctor přijme symlink nebo Windows junction na kanonické skilly", async () => {
