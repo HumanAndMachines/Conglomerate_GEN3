@@ -1,10 +1,17 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { relative, resolve, join, dirname } from 'node:path';
+import { homedir } from 'node:os';
+import { relative, resolve, join, dirname, basename } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import {
+  GIT_LOCAL_TIMEOUT_MS,
+  resolveGitExecutableSync,
+  safeGitCommandEnv,
+} from '../launchpad/src/git-lib.mjs';
 
-const ROOT = resolve(dirname(new URL(import.meta.url).pathname), '..');
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const SKIP_DIRS = new Set([
   '.git',
@@ -106,7 +113,7 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-  console.log(`Usage: node scripts/gen2-gen3-sync-inventory.mjs --gen2 <path> --gen3 <path> [--label <name>] [--json] [--include-same] [--include-shared-surfaces]\n       node scripts/gen2-gen3-sync-inventory.mjs --pairs-file <json> [--json] [--include-shared-surfaces]\n\nRead-only dry-run inventory for a local GEN2 -> GEN3 organization sync.\nIt never copies, deletes or edits files. It compares allowlisted source-of-truth files and labels whether a delta is likely organization-local, a template-baseline candidate, or a shared-root mechanism candidate.\n\nThe shared HumanAndMachine root must not carry organization-specific data. Shared-root and template hints are only extraction prompts: promote mechanisms after anonymizing names, paths, ports, people, business records and secrets.`);
+  console.log(`Usage: bun scripts/gen2-gen3-sync-inventory.mjs --gen2 <path> --gen3 <path> [--label <name>] [--json] [--include-same] [--include-shared-surfaces]\n       bun scripts/gen2-gen3-sync-inventory.mjs --pairs-file <json> [--json] [--include-shared-surfaces]\n\nRead-only dry-run inventory for a local GEN2 -> GEN3 organization sync.\nIt never copies, deletes or edits files. It compares allowlisted source-of-truth files and labels whether a delta is likely organization-local, a template-baseline candidate, or a shared-root mechanism candidate.\n\nThe shared HumanAndMachine root must not carry organization-specific data. Shared-root and template hints are only extraction prompts: promote mechanisms after anonymizing names, paths, ports, people, business records and secrets.`);
 }
 
 function loadPairs(args) {
@@ -137,16 +144,25 @@ function normalizePair(row, fallbackKey) {
 }
 
 function resolvePath(input) {
-  if (input.startsWith('~/')) return resolve(process.env.HOME || '.', input.slice(2));
-  if (input === '~') return resolve(process.env.HOME || '.');
+  if (/^~[\\/]/.test(input)) return resolve(homedir(), input.slice(2));
+  if (input === '~') return resolve(homedir());
   return resolve(ROOT, input);
 }
 
 function gitInfo(root) {
   if (!existsSync(root)) return { exists: false };
+  const gitExecutable = resolveGitExecutableSync();
   const run = (args) => {
+    if (!gitExecutable) return null;
     try {
-      return execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+      return execFileSync(gitExecutable, args, {
+        cwd: root,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: safeGitCommandEnv(),
+        timeout: GIT_LOCAL_TIMEOUT_MS,
+        windowsHide: true,
+      }).trim();
     } catch (_error) {
       return null;
     }
@@ -182,7 +198,7 @@ function walkFiles(root, options, base = root, out = new Map()) {
   if (!existsSync(root)) return out;
   const st = statSync(root);
   if (st.isDirectory()) {
-    const name = root === base ? '' : root.split('/').pop();
+    const name = root === base ? '' : basename(root);
     if (name && SKIP_DIRS.has(name)) return out;
     for (const entry of readdirSync(root)) {
       walkFiles(join(root, entry), options, base, out);

@@ -2,10 +2,21 @@ import { afterAll, expect, test } from "bun:test";
 import { createServer } from "net";
 import { tmpdir } from "os";
 import { join } from "path";
-import { chmod, cp, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "fs/promises";
-import { RuntimeActionError, createRuntimeManager } from "./runtime-lib.mjs";
+import { cp, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "fs/promises";
+import {
+  RuntimeActionError,
+  bunExecutableCandidates,
+  createRuntimeManager,
+  resolveBunExecutable,
+  windowsPowerShellExecutable,
+  windowsTaskkillCommand,
+} from "./runtime-lib.mjs";
 
 const tempRoots = [];
+// Windows záměrně neumí z vestavěného resolveru ověřit CWD cizího procesu,
+// takže adopted/foreign klasifikaci fail-closed drží jako unknown-port. Testy
+// pozitivní CWD adopce patří na OS, kde je skutečný process CWD čitelný.
+const testWithInspectableProcessCwd = process.platform === "win32" ? test.skip : test;
 
 afterAll(async () => {
   await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
@@ -37,6 +48,138 @@ test("runtime manager spustí, změří a zastaví managed aplikaci", async () =
   expect(logs.log_path).toBe("logs/apps/test-company-demo-v1.log");
   expect(logs.content).toContain("stop test-company-demo-v1");
   expect((await runtime.health("test-company-demo-v1")).status).toBe("stopped");
+});
+
+test("Windows runtime dohledá Bun i bez shell PATH", () => {
+  const env = {
+    USERPROFILE: "C:\\Users\\builder",
+    LOCALAPPDATA: "C:\\Users\\builder\\AppData\\Local",
+  };
+  const candidates = bunExecutableCandidates({ platform: "win32", env });
+
+  expect(candidates).toEqual([
+    "C:\\Users\\builder\\.bun\\bin\\bun.exe",
+    "C:\\Users\\builder\\AppData\\Local\\bun\\bin\\bun.exe",
+  ]);
+  expect(resolveBunExecutable({
+    platform: "win32",
+    env,
+    execPath: "C:\\Program Files\\Launchpad\\Launchpad.exe",
+    which: () => null,
+    pathExists: (candidate) => candidate === candidates[0],
+    probe: (candidate) => candidate === candidates[0],
+  })).toBe(candidates[0]);
+});
+
+test("Windows runtime přeskočí nefunkční Bun alias a validuje user-local instalaci", () => {
+  const broken = "C:\\Users\\builder\\AppData\\Local\\Microsoft\\WindowsApps\\bun.exe";
+  const working = "C:\\Users\\builder\\.bun\\bin\\bun.exe";
+  const probes = [];
+
+  const resolved = resolveBunExecutable({
+    platform: "win32",
+    env: { USERPROFILE: "C:\\Users\\builder" },
+    execPath: "C:\\Program Files\\Launchpad\\Launchpad.exe",
+    which: () => broken,
+    pathExists: (candidate) => candidate === working,
+    probe: (candidate) => {
+      probes.push(candidate);
+      return candidate === working;
+    },
+  });
+
+  expect(resolved).toBe(working);
+  expect(probes).toEqual([broken, working]);
+});
+
+test("Windows managed Stop používá taskkill jen nad známým PID a celým stromem", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port });
+  const commands = [];
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "windows-test-instance",
+    platform: "win32",
+    bunExecutable: process.execPath,
+    resolvePortOwnerFn: async () => null,
+    runSystemCommandFn: async (command) => {
+      commands.push(command);
+      return executeWindowsStopCommand(command);
+    },
+  });
+
+  await runtime.start("test-company-demo-v1");
+  await waitForStatus(() => runtime.health("test-company-demo-v1"), "healthy");
+  const stopped = await runtime.stop("test-company-demo-v1");
+
+  expect(stopped.runtime.status).toBe("stopped");
+  expect(commands).toHaveLength(1);
+  expect(commands[0]).toContain("/T");
+  expect(commands[0]).not.toContain("/F");
+  expect(commands[0][commands[0].indexOf("/PID") + 1]).toBe(String(stopped.pid));
+  expect(windowsTaskkillCommand(123, {
+    force: true,
+    env: { SystemRoot: "C:\\Windows" },
+  })).toEqual(["C:\\Windows\\System32\\taskkill.exe", "/PID", "123", "/T", "/F"]);
+  expect(windowsPowerShellExecutable({ SystemRoot: "C:\\Windows" }))
+    .toBe("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+});
+
+test("Windows Stop nikdy nepoužije taskkill jen podle neověřeného portu", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port });
+  const commands = [];
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "windows-test-instance",
+    platform: "win32",
+    resolvePortOwnerFn: async () => ({ pid: 42_424, cwd_matches: null }),
+    runSystemCommandFn: async (command) => {
+      commands.push(command);
+      return { ok: true, exitCode: 0, stdout: "", stderr: "" };
+    },
+  });
+
+  await expect(runtime.stop("test-company-demo-v1")).rejects.toMatchObject({
+    status: 409,
+    code: "app_not_managed",
+    metadata: { owner: "unknown-port" },
+  });
+  expect(commands).toEqual([]);
+});
+
+test("Windows managed Stop po taskkill fail-closed ověří, že app-owned port nezůstal obsazený", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port });
+  let signalSent = false;
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "windows-test-instance",
+    platform: "win32",
+    bunExecutable: process.execPath,
+    resolvePortOwnerFn: async () => signalSent
+      ? { pid: 54_321, cwd_matches: null }
+      : null,
+    runSystemCommandFn: async (command) => {
+      signalSent = true;
+      return executeWindowsStopCommand(command);
+    },
+  });
+
+  await runtime.start("test-company-demo-v1");
+  await waitForStatus(() => runtime.health("test-company-demo-v1"), "healthy");
+  await expect(runtime.stop("test-company-demo-v1")).rejects.toMatchObject({
+    status: 500,
+    code: "app_stop_failed",
+    metadata: {
+      failure_kind: "stop_failed",
+      port_owner_pid: 54_321,
+      port,
+    },
+  });
 });
 
 test("runtime manager nepředá stale Organization root lokálnímu surface ani Personalspace lane", async () => {
@@ -96,7 +239,7 @@ test("runtime manager odmítne Windows drive path mimo Organization boundary", a
   });
 });
 
-test("runtime manager adoptuje app-owned port a Stop ukončí proces z jiné Launchpad instance", async () => {
+testWithInspectableProcessCwd("runtime manager adoptuje app-owned port a Stop ukončí proces z jiné Launchpad instance", async () => {
   const port = await findFreePort();
   const root = await createCompaniesWorkspaceFixture({ port });
   const appRoot = join(root, "organizations", "TestCompany", "modules", "demo", "app", "v1");
@@ -144,7 +287,7 @@ test("runtime manager adoptuje app-owned port a Stop ukončí proces z jiné Lau
   }
 });
 
-test("runtime manager neadoptuje zdravý app-owned port z jiného checkoutu", async () => {
+testWithInspectableProcessCwd("runtime manager neadoptuje zdravý app-owned port z jiného checkoutu", async () => {
   const port = await findFreePort();
   const root = await createCompaniesWorkspaceFixture({ port });
   const appRoot = join(root, "organizations", "TestCompany", "modules", "demo", "app", "v1");
@@ -279,7 +422,7 @@ test("adopted Stop odmítne signál, když opakované CWD ověření přejde na 
   }
 });
 
-test("runtime manager po timeoutu ukončí stále stejného adopted vlastníka přes SIGKILL", async () => {
+testWithInspectableProcessCwd("runtime manager po timeoutu ukončí stále stejného adopted vlastníka přes SIGKILL", async () => {
   const port = await findFreePort();
   const root = await createCompaniesWorkspaceFixture({
     port,
@@ -474,33 +617,27 @@ test("runtime manager Repair pro stale lockfile obnoví dependency state na read
     withNodeModules: true,
     staleLockfile: true,
   });
-  const runtime = createRuntimeManager({
+  const runtimeWithNoopInstall = createRuntimeManager({
     companiesRoot: root,
     launchpadRoot: join(root, "launchpad"),
     instanceId: "test-instance",
+    spawnProcess: (command, options) => Bun.spawn(
+      command.slice(1).includes("install")
+        ? [process.execPath, "-e", "console.log('fake bun install no changes')"]
+        : command,
+      options,
+    ),
   });
 
-  const fakeBin = await mkdtemp(join(tmpdir(), "launchpad-fake-bun-"));
-  tempRoots.push(fakeBin);
-  const fakeBun = join(fakeBin, "bun");
-  await writeFile(fakeBun, "#!/bin/sh\necho 'fake bun install no changes'\nexit 0\n", "utf8");
-  await chmod(fakeBun, 0o755);
-  const originalPath = process.env.PATH;
+  expect((await runtimeWithNoopInstall.health("test-company-demo-v1")).dependencies.state).toBe("stale_lockfile");
 
-  expect((await runtime.health("test-company-demo-v1")).dependencies.state).toBe("stale_lockfile");
+  const result = await runtimeWithNoopInstall.install("test-company-demo-v1", { action: "repair" });
 
-  try {
-    process.env.PATH = `${fakeBin}:${originalPath}`;
-    const result = await runtime.install("test-company-demo-v1", { action: "repair" });
-
-    expect(result.action).toBe("repair");
-    expect(result.exit_code).toBe(0);
-    expect(result.log_excerpt).toContain("repair test-company-demo-v1 code=0");
-    expect(result.runtime.dependencies.state).toBe("ready");
-    expect((await runtime.health("test-company-demo-v1")).dependencies.state).toBe("ready");
-  } finally {
-    process.env.PATH = originalPath;
-  }
+  expect(result.action).toBe("repair");
+  expect(result.exit_code).toBe(0);
+  expect(result.log_excerpt).toContain("repair test-company-demo-v1 code=0");
+  expect(result.runtime.dependencies.state).toBe("ready");
+  expect((await runtimeWithNoopInstall.health("test-company-demo-v1")).dependencies.state).toBe("ready");
 });
 
 test("runtime manager dependency model hlásí missing package a unknown package manager", async () => {
@@ -992,4 +1129,28 @@ async function findFreePort() {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function executeWindowsStopCommand(command) {
+  if (process.platform === "win32") {
+    const child = Bun.spawn(command, {
+      stdout: "pipe",
+      stderr: "pipe",
+      windowsHide: true,
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    return { ok: exitCode === 0, exitCode, stdout, stderr };
+  }
+
+  const pid = Number(command[command.indexOf("/PID") + 1]);
+  try {
+    process.kill(pid, command.includes("/F") ? "SIGKILL" : "SIGTERM");
+  } catch (error) {
+    if (error?.code !== "ESRCH") throw error;
+  }
+  return { ok: true, exitCode: 0, stdout: "", stderr: "" };
 }

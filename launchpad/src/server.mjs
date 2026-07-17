@@ -27,6 +27,11 @@ import {
 } from "./personalspace-runtime-lib.mjs";
 import { GbrainAccessError, gbrainFile, gbrainSearch, gbrainTree } from "./gbrain-lib.mjs";
 import { readOrganizationLaunchpadTheme } from "./organization-theme-lib.mjs";
+import {
+  GIT_LOCAL_TIMEOUT_MS,
+  resolveGitExecutableSync,
+  safeGitCommandEnv,
+} from "./git-lib.mjs";
 
 const defaultHost = "127.0.0.1";
 const defaultPort = 4174;
@@ -202,15 +207,15 @@ async function buildPersonalspace() {
 
 function resolvePrincipalEmail() {
   try {
-    const result = Bun.spawnSync(["git", "config", "user.email"], {
+    const gitExecutable = resolveGitExecutableSync();
+    if (!gitExecutable) return null;
+    const result = Bun.spawnSync([gitExecutable, "config", "user.email"], {
       cwd: companiesRoot,
       stdout: "pipe",
       stderr: "pipe",
-      env: {
-        ...process.env,
-        GIT_TERMINAL_PROMPT: "0",
-        GCM_INTERACTIVE: "never",
-      },
+      env: safeGitCommandEnv(),
+      windowsHide: true,
+      timeout: GIT_LOCAL_TIMEOUT_MS,
     });
     if (result.exitCode !== 0) return null;
     const email = new TextDecoder().decode(result.stdout).trim();
@@ -357,7 +362,7 @@ async function isRunningLaunchpad(url) {
 async function openBrowser(url) {
   const commands = {
     darwin: ["open", url],
-    win32: ["cmd", "/c", "start", "", url],
+    win32: [process.env.ComSpec || "cmd.exe", "/c", "start", "", url],
     linux: ["xdg-open", url],
   };
   const command = commands[process.platform];
@@ -365,6 +370,7 @@ async function openBrowser(url) {
   const child = Bun.spawn(command, {
     stdout: "ignore",
     stderr: "ignore",
+    windowsHide: true,
   });
   await child.exited;
 }

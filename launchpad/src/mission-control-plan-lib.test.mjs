@@ -21,7 +21,7 @@ async function createEscapedOrganizationFixture() {
     join(externalOrganizationRoot, "mission-control", "plans", "DEV-ESCAPE.yaml"),
     "dev_code: DEV-ESCAPE\ntitle: Escaped Organization plan\n",
   );
-  await symlink(externalOrganizationRoot, organizationRoot, "dir");
+  await symlink(externalOrganizationRoot, organizationRoot, process.platform === "win32" ? "junction" : "dir");
   return { root };
 }
 
@@ -137,7 +137,11 @@ test("Mission Control direct read fails closed when an allowed plan root is a sy
   await mkdir(externalPlansRoot, { recursive: true });
   await writeFile(join(externalPlansRoot, "DEV-6416.yaml"), "dev_code: DEV-6416\ntitle: Escaped plan\n");
   await rm(join(orgRoot, "mission-control", "plans"), { recursive: true, force: true });
-  await symlink(externalPlansRoot, join(orgRoot, "mission-control", "plans"));
+  await symlink(
+    externalPlansRoot,
+    join(orgRoot, "mission-control", "plans"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
 
   const invalid = await readMissionControlPlanAt({
     companiesRoot: root,
