@@ -140,10 +140,12 @@ function pluralRunningApp(count) {
 // One module = one tile. A module can expose several apps ("variants"):
 //   - versions of one app, e.g. "Invoices v1" / "Invoices v2", or
 //   - named sub-apps, e.g. "Content catalog" / "Content editor".
-// They all share company + module, so that is the grouping key. The tile shows a
-// default variant and the rest sit behind a "more" menu. The module display name
-// and the per-variant tag are derived so versions read as "v2" and named
-// sub-apps read as "Catalog" / "Editor".
+// They share company + module + Organization/Team section, so that is the
+// grouping key. Scope is part of the key: a root app must never collapse with
+// a Team app of the same module. The tile shows a default variant and the rest
+// sit behind a "more" menu. The module display name and the per-variant tag are
+// derived so versions read as "v2" and named sub-apps read as "Catalog" /
+// "Editor".
 
 function appTitleVersion(app) {
   const match = String(app.title ?? "").match(/\sv(\d+)$/i);
@@ -161,7 +163,13 @@ export function appVersionLabel(app) {
 }
 
 function appFamilyKey(app) {
-  return app.module ? `${app.company}::m:${app.module}` : `${app.company}::i:${app.id}`;
+  const workspace = app && Object.hasOwn(app, "workspace")
+    ? app.workspace
+    : "workspace";
+  const section = workspace === null ? "root" : `workspace:${workspace}`;
+  return app.module
+    ? `${app.company}::${section}::m:${app.module}`
+    : `${app.company}::${section}::i:${app.id}`;
 }
 
 export function groupAppFamilies(apps) {

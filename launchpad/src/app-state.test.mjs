@@ -158,6 +158,31 @@ test("Module tiles split across the workspaces they belong to, preserving order"
   expect(root).toEqual([{ workspace: null, families: root[0].families }]);
 });
 
+test("Organization-root a Team app stejného modulu zůstávají v oddělených sekcích", () => {
+  const families = groupAppFamilies([
+    {
+      id: "root-mc",
+      company: "AlfaCo",
+      module: "mission-control",
+      title: "Mission Control v3",
+      workspace: null,
+    },
+    {
+      id: "team-mc",
+      company: "AlfaCo",
+      module: "mission-control",
+      title: "Mission Control helper",
+      workspace: "workspace",
+    },
+  ]);
+  const sections = groupFamiliesByWorkspace(families);
+
+  expect(families).toHaveLength(2);
+  expect(sections.map((section) => section.workspace)).toEqual([null, "workspace"]);
+  expect(sections[0].families[0].members.map((app) => app.id)).toEqual(["root-mc"]);
+  expect(sections[1].families[0].members.map((app) => app.id)).toEqual(["team-mc"]);
+});
+
 test("hero agreguje appky i manifestované sloty aktivní Organizace", () => {
   const organization = {
     slug: "OmegaCo",
