@@ -409,9 +409,19 @@ jasný mechanismus:
   Launchpadu zůstane listener `unknown-port` a musí se uvolnit mimo Launchpad.
   Na Windows používá current-instance managed proces cílený
   `taskkill /PID <pid> /T /F` nad PID uloženým v runtime recordu a po ukončení
-  znovu ověří app-owned port. Druhý signál na stejné PID neposílá; při
-  neúspěšném ukončení selže bezpečně podle portu. Nikdy nepoužije `taskkill` jen
-  podle obsazeného portu; neověřený nebo cizí listener zůstává nedotčený.
+  čeká na potvrzení původního child handle. Pokud handle exit nepotvrdí,
+  Launchpad ponechá managed ownership a selže bezpečně bez druhého signálu;
+  opakovaný `Stop` vrátí `app_stop_in_progress`. Managed slot drží až do
+  úspěšného zápisu stavu `stopped`, takže souběžný `Start` nemůže v krátkém
+  okně mezi exitem a finalizací osiřet nový proces. Selhání ještě před signálem
+  nebo potvrzená chyba `taskkill` vrátí živý managed proces do retryable stavu;
+  po potvrzeném exitu opakuje další `Stop` už jen zápis finalizace, nikdy signál.
+  Stejný child-handle kontrakt platí na POSIX po eskalaci `SIGTERM` → `SIGKILL`.
+  Po potvrzeném exitu je každý nový listener na app-owned portu samostatný
+  proces i při numericky shodném reused PID; Launchpad starý record uklidí,
+  listener nezabije a `Start`/`Restart` ho klasifikuje standardním port-conflict
+  guardem. Nikdy nepoužije `taskkill` jen podle obsazeného portu; neověřený
+  nebo cizí listener zůstává nedotčený.
 - `Restart` je `Stop` + `Start` nad app-owned portem.
 - `Logs` čte lokální log mimo Git.
 - `Stáhnout novější verzi` provede pouze fresh-remote-verified
