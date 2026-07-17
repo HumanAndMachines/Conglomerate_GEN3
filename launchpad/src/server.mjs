@@ -64,14 +64,25 @@ if (!allowedHosts.has(host)) {
   process.exit(1);
 }
 
-const server = startServer(port);
+const requestedServerUrl = `http://${host}:${port}`;
+let server;
+try {
+  server = startServer(port);
+} catch (error) {
+  if (options.open && isAddressInUse(error) && await isRunningLaunchpad(requestedServerUrl)) {
+    console.log(`Launchpad GEN3 už běží na ${requestedServerUrl}; otevírám existující instanci.`);
+    await openBrowser(requestedServerUrl);
+    process.exit(0);
+  }
+  throw error;
+}
 
 const serverUrl = `http://${host}:${server.port}`;
 console.log(`Launchpad GEN3 běží na ${serverUrl}`);
 console.log(`Launchpad GEN3 root: ${companiesRoot}`);
 
 if (options.open) {
-  openBrowser(serverUrl);
+  await openBrowser(serverUrl);
 }
 
 setInterval(() => {}, 2_147_483_647);
@@ -328,7 +339,22 @@ function parseArgs(args) {
   return parsed;
 }
 
-function openBrowser(url) {
+function isAddressInUse(error) {
+  return error?.code === "EADDRINUSE" || String(error?.message ?? error).includes("EADDRINUSE");
+}
+
+async function isRunningLaunchpad(url) {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(1_500) });
+    if (!response.ok) return false;
+    const html = await response.text();
+    return html.includes("<title>Launchpad GEN3</title>");
+  } catch {
+    return false;
+  }
+}
+
+async function openBrowser(url) {
   const commands = {
     darwin: ["open", url],
     win32: ["cmd", "/c", "start", "", url],
@@ -336,10 +362,11 @@ function openBrowser(url) {
   };
   const command = commands[process.platform];
   if (!command) return;
-  Bun.spawn(command, {
+  const child = Bun.spawn(command, {
     stdout: "ignore",
     stderr: "ignore",
   });
+  await child.exited;
 }
 
 function appRuntimeRoute(pathname) {

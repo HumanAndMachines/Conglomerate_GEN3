@@ -264,7 +264,9 @@ bun run doctor:json
 
 `dev` spustí webový Launchpad server od `127.0.0.1:4174`; pokud je port
 obsazený a port nebyl zadaný explicitně, použije další volný port. `launch`
-spustí server a pokusí se otevřít prohlížeč. `discover` vypíše nalezené aplikace. Discovery nejdřív načte registry metadata
+spustí server a pokusí se otevřít prohlížeč. Když na stejném portu už běží
+zdravý Launchpad GEN3, druhé spuštění pouze otevře existující instanci.
+`discover` vypíše nalezené aplikace. Discovery nejdřív načte registry metadata
 z `launchpad.gen3.json`, potom automaticky proskenuje lokální
 `organizations/*/company.gen3.json`. `check` validuje `companyascode.app`
 podle `launchpad/schemas/launchpad-app.schema.json`. Nevalidní app manifest
