@@ -749,7 +749,10 @@ async function createCompaniesWorkspaceFixture({
     organization_generation: "gen3",
     company: { slug: "test-company", display_name: "Test Company" },
   });
-  await writeJson(join(companyRoot, "modules.manifest.json"), {});
+  await writeJson(join(companyRoot, "modules.manifest.json"), {
+    company: "test-company",
+    module_slots: [],
+  });
   await writeJson(join(companyRoot, "TODO.tasks.json"), {});
   await writeJson(join(companyRoot, "DONE.tasks.json"), {});
   await writeJson(join(companyRoot, "ISSUES.open.json"), {});

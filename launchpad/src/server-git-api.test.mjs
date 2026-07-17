@@ -28,6 +28,8 @@ test("Launchpad server exposes read-only git and Mission Control routes", async 
   const omegacoRoot = join(root, "organizations", "OmegaCo_GEN3");
   await writeJson(join(omegacoRoot, "modules.manifest.json"), {
     organization_generation: "gen3",
+    company: "OmegaCo",
+    github_org: "OmegaCo",
     module_slots: [
       {
         path: "productionspace/firmware",

@@ -164,6 +164,8 @@ test("pull response refuses productionspace repos even when a fast-forward pull 
   const orgRoot = join(root, "organizations", "OmegaCo_GEN3");
   await writeJson(join(orgRoot, "modules.manifest.json"), {
     organization_generation: "gen3",
+    company: "OmegaCo",
+    github_org: "OmegaCo",
     module_slots: [
       {
         path: "productionspace/firmware",

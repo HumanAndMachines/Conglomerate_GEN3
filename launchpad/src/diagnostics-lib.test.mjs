@@ -147,6 +147,7 @@ test("apps response exposes manifest-only workspace modules and productionspace 
   });
   await writeJson(join(companyRoot, "modules.manifest.json"), {
     organization_generation: "gen3",
+    company: "OmegaCo",
     module_slots: [
       {
         path: "modules/knowledgebase",
@@ -249,6 +250,7 @@ test("Doctor drží missing_access bez autoritativního ACL důkazu fail-closed"
   });
   await writeJson(join(companyRoot, "modules.manifest.json"), {
     organization_generation: "gen3",
+    company: "AccessCo",
     module_slots: [
       {
         path: "workspace/restricted",
@@ -338,6 +340,7 @@ test("Doctor neutralizuje role-based missing_access jen s principal-scoped loká
   });
   await writeJson(join(companyRoot, "modules.manifest.json"), {
     organization_generation: "gen3",
+    company: "AccessCo",
     module_slots: [
       {
         path: "workspace/finance",
@@ -399,6 +402,7 @@ test("vnořený child slot (mission-control/db) není module dlaždice (technick
   });
   await writeJson(join(companyRoot, "modules.manifest.json"), {
     organization_generation: "gen3",
+    company: "OmegaCo",
     module_slots: [
       { path: "mission-control", git: { url: "git@github.com:OmegaCo/mission-control.git", branch: "main" } },
       { path: "mission-control/db", category: "planning-data", git: { url: "git@github.com:OmegaCo/mission-control-data.git", branch: "v3" } },
@@ -457,6 +461,7 @@ test("app workspace se čte z manifest deklarace, ne z filesystem cesty (decisio
   });
   await writeJson(join(companyRoot, "modules.manifest.json"), {
     organization_generation: "gen3",
+    company: "AlfaCo",
     module_slots: [
       {
         path: "workspace/sidebrand-shop",
@@ -537,7 +542,10 @@ test("invalid_manifest appka je viditelná v apps response a doctor ji hlásí j
     organization_generation: "gen3",
     company: { slug: "BrokenCo", display_name: "Broken Co" },
   });
-  await writeJson(join(companyRoot, "modules.manifest.json"), {});
+  await writeJson(join(companyRoot, "modules.manifest.json"), {
+    company: "BrokenCo",
+    module_slots: [],
+  });
   await writeJson(join(companyRoot, "TODO.tasks.json"), {});
   await writeJson(join(companyRoot, "DONE.tasks.json"), {});
   await writeJson(join(companyRoot, "ISSUES.open.json"), {});

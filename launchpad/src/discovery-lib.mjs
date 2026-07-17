@@ -47,7 +47,7 @@ export function organizationMountStructureIssues({ organizationRoot, label }) {
 // invarianty záviset na jiném checkoutu nebo runtime importu. Proto zde držíme
 // malou read-only kontrolu identity, kanonických cest, Team referencí a Git
 // materializace. Platí shodně pro běžnou Organizaci i marker template mount.
-async function organizationMountContractIssues({ organizationRoot, label }) {
+async function organizationMountContractIssues({ organizationRoot, label, warnings }) {
   const issues = organizationMountStructureIssues({ organizationRoot, label });
   if (issues.length > 0) return issues;
 
@@ -65,19 +65,46 @@ async function organizationMountContractIssues({ organizationRoot, label }) {
   }
 
   const company = companyConfig?.company ?? {};
+  const organizationKind = organizationKindFromCompanyJson(companyConfig);
   const companySlug = trimmedString(company.slug);
   const manifestCompany = trimmedString(manifest?.company);
+  if (companySlug && !manifestCompany) {
+    issues.push(`${label}: modules.manifest.json company je povinné, když company.gen3.json deklaruje company.slug`);
+  }
+  if (!companySlug && manifestCompany) {
+    issues.push(`${label}: company.gen3.json company.slug je povinné, když modules.manifest.json deklaruje company`);
+  }
   if (companySlug && manifestCompany && companySlug !== manifestCompany) {
-    issues.push(
-      `${label}: company.gen3.json company.slug "${companySlug}" neodpovídá modules.manifest.json company "${manifestCompany}"`,
+    const tolerableIncrementalMismatch =
+      companySlug.toLowerCase() === manifestCompany.toLowerCase() ||
+      (organizationKind === "template" &&
+        isPlaceholderOrganization({ slug: companySlug }) &&
+        isPlaceholderOrganization({ slug: manifestCompany }));
+    (tolerableIncrementalMismatch ? warnings : issues).push(
+      `${label}: company.gen3.json company.slug "${companySlug}" neodpovídá modules.manifest.json company "${manifestCompany}"${
+        tolerableIncrementalMismatch ? "; během incremental rollout zůstává načtený, sjednoť canonical casing/placeholder" : ""
+      }`,
     );
   }
 
   const companyGithubOrg = trimmedString(company.github_org);
   const manifestGithubOrg = trimmedString(manifest?.github_org);
+  if (companyGithubOrg && !manifestGithubOrg) {
+    issues.push(`${label}: modules.manifest.json github_org je povinné, když company.gen3.json deklaruje company.github_org`);
+  }
+  if (!companyGithubOrg && manifestGithubOrg) {
+    issues.push(`${label}: company.gen3.json company.github_org je povinné, když modules.manifest.json deklaruje github_org`);
+  }
   if (companyGithubOrg && manifestGithubOrg && companyGithubOrg !== manifestGithubOrg) {
-    issues.push(
-      `${label}: company.gen3.json company.github_org "${companyGithubOrg}" neodpovídá modules.manifest.json github_org "${manifestGithubOrg}"`,
+    const tolerableIncrementalMismatch =
+      companyGithubOrg.toLowerCase() === manifestGithubOrg.toLowerCase() ||
+      (organizationKind === "template" &&
+        isPlaceholderOrganization({ slug: companyGithubOrg }) &&
+        isPlaceholderOrganization({ slug: manifestGithubOrg }));
+    (tolerableIncrementalMismatch ? warnings : issues).push(
+      `${label}: company.gen3.json company.github_org "${companyGithubOrg}" neodpovídá modules.manifest.json github_org "${manifestGithubOrg}"${
+        tolerableIncrementalMismatch ? "; během incremental rollout zůstává načtený, sjednoť canonical casing/placeholder" : ""
+      }`,
     );
   }
 
@@ -92,6 +119,7 @@ async function organizationMountContractIssues({ organizationRoot, label }) {
       teamSlugs,
       checkMaterializedGit: true,
       issues,
+      warnings,
     });
   }
 
@@ -108,6 +136,7 @@ async function organizationMountContractIssues({ organizationRoot, label }) {
       teamSlugs,
       checkMaterializedGit: false,
       issues,
+      warnings,
     });
   }
 
@@ -122,13 +151,16 @@ function validateDeclaredModule({
   teamSlugs,
   checkMaterializedGit,
   issues,
+  warnings,
 }) {
   if (!slot || typeof slot !== "object") return;
   const path = trimmedString(slot.path)?.replace(/\\/g, "/") ?? null;
   if (!path) return;
 
   if (path.startsWith("modules/")) {
-    issues.push(`${label}: ${source}.path "${path}" používá deprecated modules/*; použij workspace/<modul>`);
+    warnings.push(
+      `${label}: ${source}.path "${path}" používá deprecated modules/*; během incremental rollout zůstává načtený, ale migruj na workspace/<modul>`,
+    );
   }
 
   for (const team of declaredSlotTeams(slot)) {
@@ -702,6 +734,7 @@ async function walkMountPackages({
   companiesRoot,
   packageEntries,
   failures,
+  warnings,
 }) {
   for (const company of mounts) {
     // Scan-first: mount buď existuje (proto ho vidíme), nebo zmizel mezi skenem a
@@ -713,6 +746,7 @@ async function walkMountPackages({
     const mountContractIssues = await organizationMountContractIssues({
       organizationRoot: companyRoot,
       label: company.path,
+      warnings,
     });
     // Scan-first ignoruje NEPŘÍTOMNOST mountu, ne rozbitou hranici přítomného
     // mountu: namountovaná Organizace bez povinné GEN3 struktury je hard failure
@@ -993,6 +1027,7 @@ export async function discoverLaunchpadApps(
     companiesRoot,
     packageEntries,
     failures,
+    warnings,
   });
   // Template mounty se validují se stejnými strukturálními gates (required paths),
   // ale jejich balíčky jdou do oddělené kolekce — nikdy se nestanou spustitelnými
@@ -1002,6 +1037,7 @@ export async function discoverLaunchpadApps(
     companiesRoot,
     packageEntries: templatePackageEntries,
     failures,
+    warnings,
   });
 
   await discoverLocalSurfacePackages({

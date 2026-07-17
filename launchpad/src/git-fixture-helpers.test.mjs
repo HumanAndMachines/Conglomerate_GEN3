@@ -77,11 +77,13 @@ export async function createOrganization({ root, orgPath, slug, moduleSlots }) {
   await mkdir(join(orgRoot, "mission-control", "plans", "2026", "07"), { recursive: true });
   await writeJson(join(orgRoot, "company.gen3.json"), {
     organization_generation: "gen3",
-    company: { slug, display_name: `${slug} GEN3` },
+    company: { slug, display_name: `${slug} GEN3`, github_org: slug },
     workspaces: [{ slug: "workspace", display_name: `${slug} Workspace`, default: true }],
   });
   await writeJson(join(orgRoot, "modules.manifest.json"), {
     organization_generation: "gen3",
+    company: slug,
+    github_org: slug,
     module_slots: moduleSlots,
   });
   await writeJson(join(orgRoot, "TODO.tasks.json"), {});
