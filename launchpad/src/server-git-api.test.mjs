@@ -65,6 +65,36 @@ test("Launchpad server exposes read-only git and Mission Control routes", async 
   expect(plans.schema_version).toBe("companiesascode.launchpad.mission_control_plans.v1");
 });
 
+test("repeated launcher opens only an existing instance from the same canonical root", async () => {
+  const root = await createLaunchpadGitFixture();
+  const otherRoot = await createLaunchpadGitFixture();
+  tempRoots.push(root, otherRoot);
+  const { port } = await startLaunchpadServer(root);
+
+  const identity = await getJson(port, "/api/launchpad/identity");
+  expect(identity.schema_version).toBe("companiesascode.launchpad.identity.v1");
+  expect(identity.root_id).toMatch(/^[a-f0-9]{64}$/);
+
+  const crossOriginIdentity = await fetch(`http://127.0.0.1:${port}/api/launchpad/identity`, {
+    headers: { origin: "https://evil.invalid", "sec-fetch-site": "cross-site" },
+  });
+  expect(crossOriginIdentity.status).toBe(403);
+
+  const sameRoot = Bun.spawn(
+    ["bun", "src/server.mjs", "--root", root, "--port", String(port), "--open"],
+    { cwd: join(import.meta.dirname, ".."), stdout: "pipe", stderr: "pipe" },
+  );
+  expect(await sameRoot.exited).toBe(0);
+  expect(await new Response(sameRoot.stdout).text()).toContain("otevírám existující instanci");
+
+  const otherRootLauncher = Bun.spawn(
+    ["bun", "src/server.mjs", "--root", otherRoot, "--port", String(port), "--open"],
+    { cwd: join(import.meta.dirname, ".."), stdout: "pipe", stderr: "pipe" },
+  );
+  expect(await otherRootLauncher.exited).not.toBe(0);
+  expect(await new Response(otherRootLauncher.stderr).text()).toContain("EADDRINUSE");
+});
+
 test("organization branding serves local logos and design-system themes without symlink escapes", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);

@@ -14,29 +14,30 @@ metadata:
 
 ## Overview
 
-The **Nightly Steward PR Sweep** is Organization Steward work. Run it once per Organization seat at 02:00 Europe/Prague. The Steward is an AI Kolega with its own identity and authority; Codex/Claude/subagents used during the sweep are Agents whose output stays Draft until the Steward verifies and acts.
+The **Nightly Steward PR Sweep** is Organization Steward work. Run it once per Organization policy and seat at 02:00 Europe/Prague. The Steward is an AI Kolega with its own identity and authority; Codex/Claude/subagents used during the sweep are Agents whose output stays Draft until the Steward verifies and acts.
 
 Load `references/organization-policy.yaml` and `references/live-run-contract.md` before every run. The policy is the hard scope boundary; the live-run contract defines the executable Mission Control writer/readback path. Never inspect or mutate another Organization merely because the GitHub account can see it.
 
 ## Kdy použít
 
 Použij pro denní 02:00 closeout otevřených PR jedním skutečným Organization
-Steward seatem. Nepoužívej jako centrální cross-Organization sweep Buddyho,
-jako náhradu aktivního reviewera ani pro Release/deploy. Před instalací
-materializuj `templates/organization-policy.yaml` do lokálního
-`references/organization-policy.yaml` a vyplň pouze jednu autorizovanou
-Organization hranici. Když explicitní founder governance rozhodnutí přiřadí
-jednomu AI Kolegovi více Organization seatů, musí mít každá Organization
-v `reporting.organization_reports[]` vlastní `steward_seat`, report target a
-idempotency scope. Policy v2 vyžaduje explicitní `organization_reports[]`
-entry pro každou Organizaci — i pro single-Organization setup; globální
-`steward.seat` je jen legacy/informativní pole, nikdy zdroj report identity.
+Steward seatem v právě jedné Organizaci. Nepoužívej jako centrální
+cross-Organization sweep Buddyho, jako náhradu aktivního reviewera ani pro
+Release/deploy. Před instalací materializuj
+`templates/organization-policy.yaml` do Organization-local
+`references/organization-policy.yaml` a vyplň právě jednu autorizovanou
+Organization hranici. Jedna policy nesmí obsahovat více Organizations,
+rosterů ani report targets. Když founder governance přiřadí jednomu AI
+Kolegovi více Organization seatů, vytvoř pro každou Organization samostatný
+policy soubor a samostatný run/outcome. Jeden scheduler je smí spustit
+sekvenčně, ale failure jedné policy nesmí zablokovat, zneplatnit ani
+kontaminovat jinou.
 
 ## Completion contract
 
 A run is complete only when all are true:
 
-1. Every live open PR in the configured GitHub Organization(s) was inventoried after the run began. A repository that belongs to another owner lane is still inventoried and routed; it is not silently omitted.
+1. Every live open PR in the one configured GitHub Organization was inventoried after the run began. A repository that belongs to another owner lane is still inventoried and routed; it is not silently omitted.
 2. Every non-draft PR has a live exact-head classification based on head SHA, base, reviews tied to that SHA, checks, mergeability and unresolved threads.
 3. Every safe merge candidate was either merged and read back, or has a named policy/human blocker.
 4. Every remaining change request has a durable owner/handoff; plain `DIRTY`, `BLOCKED`, `CHANGES_REQUESTED` or `REVIEW_REQUIRED` is not a final blocker class.
@@ -55,9 +56,9 @@ A run is complete only when all are true:
 1. Read the nearest Organization `AGENTS.md`, source-of-truth guide, governance manifest and `references/organization-policy.yaml`.
 2. Verify `hostname`, OS user, local timezone, `gh api user`, Git protocol, workspace paths, clean reference checkouts and Mission Control report target. Never print credentials.
 3. Verify the current seat login equals `steward.github_login`. A mismatch or invalid GitHub auth is `BLOCKED`; do not borrow Admin credentials.
-4. Require policy schema `humanandmachine.nightly_steward_pr_sweep.policy.v2`. For every configured GitHub Organization, resolve exactly one `scope.organization_repository_rosters[]` entry with `github_organization`, a non-placeholder `source`, and a non-empty unique `required_repositories` list of canonical `owner/repo` identifiers belonging to that Organization. Reconcile the list against the authoritative Organization governance source named by `source`. Missing v2 metadata, an empty list, unresolved placeholders, duplicate/mismatched Organizations, or a governance repo absent from the list is `BLOCKED` **before any GitHub mutation**; legacy v1 policies must be migrated, never interpreted permissively.
+4. Require policy schema `humanandmachine.nightly_steward_pr_sweep.policy.v2`, exactly one `github_organizations[]` entry and exactly one matching `scope.organization_repository_rosters[]` entry with `github_organization`, a non-placeholder `source`, and a non-empty unique `required_repositories` list of canonical `owner/repo` identifiers belonging to that Organization. Reconcile the list against the authoritative Organization governance source named by `source`. Missing v2 metadata, zero or multiple configured Organizations/rosters, an empty list, unresolved placeholders, mismatched Organizations, or a governance repo absent from the list is `BLOCKED` **before any GitHub mutation**; legacy v1 policies must be migrated, never interpreted permissively.
 5. Verify read visibility for every repository in the matching Organization roster. An inaccessible required repository is `BLOCKED` **before any GitHub mutation**. Never call an all-Organization inventory complete from only the repositories visible to the current credential.
-6. Resolve one `steward_seat` per configured Organization. Require a matching `reporting.organization_reports[]` entry with `organization_slug`, `github_organization`, `steward_seat`, `target` and `repository_db_root`. Missing, duplicate or shared seat/target mappings are `BLOCKED`; do not infer one Organization's report identity or destination from another Organization or from a global fallback. Require `reporting.one_append_only_report_per_organization: true` — a missing or `false` value is `BLOCKED` (the field is the machine-readable declaration of the append-only report invariant, not a comment).
+6. Require exactly one `reporting.organization_reports[]` entry matching the one configured Organization, with `organization_slug`, `github_organization`, `steward_seat`, `target` and `repository_db_root`. Missing or multiple report entries are `BLOCKED`; never infer report identity or destination from a global fallback or another Organization policy. Require `reporting.one_append_only_report_per_organization: true` — a missing or `false` value is `BLOCKED` (the field is the machine-readable declaration of the append-only report invariant, not a comment).
 7. Reconcile explicit owner/no-touch declarations from the policy file, PR body/comments/labels and current Mission Control tasks. A no-touch item is read-only inventory: no review, comment, reviewer request, rebase, push or merge.
 8. If the same `report_date + steward seat + scope` already has a terminal Mission Control report, do not mutate GitHub. Read the report back and finish idempotently when it matches. If the live queue changed, stop as `BLOCKED` with `report_slot_closed`, preserve only a local redacted retry note and defer durable reporting to the next supported run slot. The v1 writer cannot reconcile different content into the same Organization/seat/date key; never rewrite or duplicate the report.
 
@@ -65,7 +66,7 @@ A run is complete only when all are true:
 
 ## 2. Live Organization inventory
 
-For every configured GitHub Organization, query all open PRs live. The pre-run list is only a hint. Collect at least:
+For the one configured GitHub Organization, query all open PRs live. The pre-run list is only a hint. Collect at least:
 
 - `repo`, PR number/title/URL, author, draft state;
 - `headRefOid`, `baseRefName`, mergeability and merge-state status;

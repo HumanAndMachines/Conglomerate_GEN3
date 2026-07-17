@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { constants, existsSync, lstatSync, realpathSync } from "fs";
 import { open, readFile } from "fs/promises";
 import { isAbsolute, join, normalize, relative, resolve } from "path";
@@ -15,7 +16,6 @@ import {
 } from "./git-api-lib.mjs";
 import { RuntimeActionError, createRuntimeManager } from "./runtime-lib.mjs";
 import { createGitStatusService } from "./git-status-lib.mjs";
-import { performRootUpdate, readRootUpdateStatus } from "./update-lib.mjs";
 import { WorktreeActionError, createWorktreeFromPlan, publishWorktreeDraft } from "./worktree-actions-lib.mjs";
 import { buildRecentModuleChanges } from "./recent-changes-lib.mjs";
 import { buildMostUsedApps } from "./usage-lib.mjs";
@@ -36,6 +36,8 @@ const launchpadRoot = join(import.meta.dirname, "..");
 const publicRoot = join(launchpadRoot, "public");
 const options = parseArgs(Bun.argv.slice(2));
 const companiesRoot = resolve(options.root ?? join(launchpadRoot, ".."));
+const canonicalCompaniesRoot = realpathSync(companiesRoot);
+const launchpadRootId = createHash("sha256").update(canonicalCompaniesRoot).digest("hex");
 const host = options.host ?? defaultHost;
 const port = Number(options.port ?? process.env.PORT ?? defaultPort);
 const principalEmail = resolvePrincipalEmail();
@@ -69,7 +71,7 @@ let server;
 try {
   server = startServer(port);
 } catch (error) {
-  if (options.open && isAddressInUse(error) && await isRunningLaunchpad(requestedServerUrl)) {
+  if (options.open && isAddressInUse(error) && await isRunningLaunchpad(requestedServerUrl, launchpadRootId)) {
     console.log(`Launchpad GEN3 už běží na ${requestedServerUrl}; otevírám existující instanci.`);
     await openBrowser(requestedServerUrl);
     process.exit(0);
@@ -343,12 +345,16 @@ function isAddressInUse(error) {
   return error?.code === "EADDRINUSE" || String(error?.message ?? error).includes("EADDRINUSE");
 }
 
-async function isRunningLaunchpad(url) {
+async function isRunningLaunchpad(url, expectedRootId) {
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(1_500) });
+    const identityUrl = new URL("/api/launchpad/identity", url);
+    const response = await fetch(identityUrl, { signal: AbortSignal.timeout(1_500) });
     if (!response.ok) return false;
-    const html = await response.text();
-    return html.includes("<title>Launchpad GEN3</title>");
+    const identity = await response.json();
+    return (
+      identity?.schema_version === "companiesascode.launchpad.identity.v1" &&
+      identity?.root_id === expectedRootId
+    );
   } catch {
     return false;
   }
@@ -667,25 +673,20 @@ function startServer(startPort) {
         if (runtimeRoute) return handleRuntimeRoute(request, runtimeRoute);
         const gitRoute = gitApiRoute(url.pathname);
         if (gitRoute) return handleGitApiRoute(request, url, gitRoute);
-        // Update lane Conglomerate rootu (decision 0059, draft 0080): oddělená
-        // od org git inventáře; mutace jde přes trusted-local guard výše a
-        // serializuje se s background fetchi přes withRemoteRefreshPaused.
-        // I GET status je trusted-local: dělá git fetch (síť + credentials),
-        // cizí origin ho nesmí spouštět ani jako drive-by bez čtení odpovědi.
-        if (url.pathname.startsWith("/api/update") && !isTrustedLocalRequest(request, url)) {
-          return jsonResponse({ error: "update_request_forbidden" }, 403);
-        }
-        if (url.pathname === "/api/update/status" && request.method === "GET") {
-          return jsonResponse(await gitStatusService.withRemoteRefreshPaused(() =>
-            readRootUpdateStatus({ rootPath: companiesRoot })));
-        }
-        if (url.pathname === "/api/update" && request.method === "POST") {
-          const payload = await request.json().catch(() => ({}));
-          const result = await gitStatusService.withRemoteRefreshPaused(() =>
-            performRootUpdate({ rootPath: companiesRoot, mode: payload?.mode ?? "ff_only" }));
-          return jsonResponse(result, result.ok ? 200 : 409);
+        // Root identity is metadata-only and local. Relaunch uses the hashed
+        // canonical root to avoid opening another Organization/Personalspace
+        // instance that happens to own the same port.
+        if (url.pathname === "/api/launchpad/identity" && request.method === "GET") {
+          if (!isTrustedLocalRequest(request, url)) {
+            return jsonResponse({ error: "identity_request_forbidden" }, 403);
+          }
+          return jsonResponse({
+            schema_version: "companiesascode.launchpad.identity.v1",
+            root_id: launchpadRootId,
+          });
         }
         if (url.pathname === "/api/apps") return jsonResponse(await buildAppsResponse());
+
         // Synchronizovat (decision 0042): znovu projede lokální auto-discovery
         // organizations/*/company.gen3.json bez ruční editace root manifestu.
         // Nový lokální mount (git clone / doctor sync) se objeví bez restartu.
