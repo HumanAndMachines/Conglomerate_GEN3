@@ -1,4 +1,5 @@
-// Launchpad Buddy-first Personalspace + gbrain browser (CAC-0044/CAC-0048,
+// Launchpad owner-first Personalspace + volitelný Buddy + gbrain browser
+// (CAC-0044/CAC-0048,
 // decision 0051).
 //
 // PRIVÁTNÍ POVRCH. Tento modul renderuje osobní prostory vlastníka mašiny (a
@@ -64,9 +65,9 @@ export function hasPersonalspace(data) {
   return (data?.spaces ?? []).length > 0;
 }
 
-// Hlavní vstup: vezme /api/personalspace odpověď a vyrenderuje Buddy-first
-// osobní plochu. Technické názvy, mounty a gbrain diagnostika jsou schované
-// v rozbalovací sekci; první pohled mluví o Buddym, jeho aplikaci a práci.
+// Hlavní vstup: vezme /api/personalspace odpověď a vyrenderuje osobní plochu.
+// Buddy karta se ukáže jen při skutečném bindingu; Personalspace bez Buddyho
+// zůstává plnohodnotný. Technické údaje jsou schované v rozbalovací sekci.
 export function renderPersonalspace(container, data) {
   if (!container) return;
   state.data = data;
@@ -206,9 +207,9 @@ function personalspaceEmptyState() {
   const card = document.createElement("section");
   card.className = "personalspace-friendly-empty";
   const title = document.createElement("h2");
-  title.textContent = "Buddy zatím není nastavený";
+  title.textContent = "Personalspace zatím není vytvořený";
   const copy = document.createElement("p");
-  copy.textContent = "Až si Buddyho připojíš, tady uvidíš, kde s tebou komunikuje a co pro tebe pravidelně dělá.";
+  copy.textContent = "Vytvoř si privátní osobní prostor; Buddyho můžeš připojit až později.";
   card.append(title, copy);
   return card;
 }
@@ -216,8 +217,23 @@ function personalspaceEmptyState() {
 function buddyOverview(space) {
   const overview = document.createElement("div");
   overview.className = "personalspace-overview";
+  if (!space.buddy) {
+    overview.append(noBuddyCard());
+    return overview;
+  }
   overview.append(buddyCard(space), recurringTasksCard(space));
   return overview;
+}
+
+function noBuddyCard() {
+  const card = document.createElement("section");
+  card.className = "personalspace-friendly-empty personalspace-no-buddy";
+  const title = document.createElement("h2");
+  title.textContent = "Personalspace je připravený";
+  const copy = document.createElement("p");
+  copy.textContent = "Buddy není připojený — osobní aplikace i gbrain můžeš používat samostatně a Buddyho přidat později.";
+  card.append(title, copy);
+  return card;
 }
 
 function buddyCard(space) {
@@ -356,7 +372,7 @@ function personalAppsSection(space) {
       : "V tomto prostoru zatím nejsou dostupné aplikace";
     const copy = document.createElement("p");
     copy.textContent = space.is_owner_primary
-      ? "Buddy funguje i bez nich. Až nějakou přidáš, objeví se právě tady."
+      ? "Personalspace funguje i bez nich. Až nějakou přidáš, objeví se právě tady."
       : "Vlastník prostoru sem zatím nepřidal aplikaci nebo ti k ní nenasdílel přístup.";
     emptyApps.append(heading, copy);
     section.append(emptyApps);
@@ -376,10 +392,10 @@ function personalSupportCards(space) {
   grid.className = "personal-support-grid";
   grid.append(
     supportCard(
-      "Paměť Buddyho",
+      "Osobní paměť",
       space.gbrain?.exists
-        ? "Buddy má připojenou dlouhodobou paměť pro navazování na předchozí práci."
-        : "Dlouhodobá paměť zatím není připojená.",
+        ? "Gbrain je připojený jako soukromá dlouhodobá paměť vlastníka."
+        : "Soukromý gbrain zatím není připojený.",
     ),
     supportCard(
       "Osobní účet a soukromí",

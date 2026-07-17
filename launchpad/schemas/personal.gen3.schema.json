@@ -5,9 +5,9 @@
   "title": "Personalspace GEN3 configuration",
   "type": "object",
   "required": [
+    "schema_version",
     "personal_generation",
     "owner",
-    "buddy",
     "repository",
     "privacy",
     "modules_manifest_path",
@@ -16,6 +16,9 @@
     "secrets"
   ],
   "properties": {
+    "schema_version": {
+      "const": "humanandmachines.personal.gen3.v1"
+    },
     "personal_generation": {
       "const": "gen3",
       "description": "Kanonický klíč generace osobního prostoru. Repo i mount používají _GEN3 marker podle decision 0045/0051."
@@ -49,7 +52,11 @@
       "type": "object",
       "required": [
         "slug",
-        "gbrain_path"
+        "gbrain_path",
+        "path",
+        "repository",
+        "runtime",
+        "hermes"
       ],
       "properties": {
         "slug": {
@@ -58,6 +65,73 @@
         },
         "gbrain_path": {
           "const": "gbrain"
+        },
+        "path": {
+          "const": "buddy",
+          "description": "Volitelný Doctor-managed mount private Hermes Profile Distribution."
+        },
+        "repository": {
+          "type": "object",
+          "required": [
+            "github_repo",
+            "visibility",
+            "mount_strategy"
+          ],
+          "properties": {
+            "github_repo": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+            },
+            "visibility": {
+              "const": "private"
+            },
+            "mount_strategy": {
+              "const": "doctor-managed-nested-repo"
+            }
+          },
+          "additionalProperties": true
+        },
+        "runtime": {
+          "type": "object",
+          "required": [
+            "github_repo",
+            "deployment_target",
+            "local_execution"
+          ],
+          "properties": {
+            "github_repo": {
+              "const": "HumanAndMachines/Buddy"
+            },
+            "deployment_target": {
+              "const": "owner-dedicated-personalspace-vps",
+              "description": "Buddy-enabled Personalspace smí aktivovat runtime pouze na dedikované per-owner VPS."
+            },
+            "local_execution": {
+              "const": "forbidden",
+              "description": "Lokální Conglomerate/Personalspace smí držet konfiguraci, ale nesmí spouštět Hermes/Buddy runtime ani poskytovat localhost fallback."
+            }
+          },
+          "additionalProperties": true
+        },
+        "hermes": {
+          "type": "object",
+          "required": [
+            "software_repo",
+            "profile_format",
+            "profile_path"
+          ],
+          "properties": {
+            "software_repo": {
+              "const": "NousResearch/hermes-agent"
+            },
+            "profile_format": {
+              "const": "hermes-profile-distribution"
+            },
+            "profile_path": {
+              "const": "buddy"
+            }
+          },
+          "additionalProperties": true
         }
       },
       "additionalProperties": true
@@ -67,7 +141,8 @@
       "required": [
         "github_repo",
         "mount_path",
-        "visibility"
+        "visibility",
+        "mount_strategy"
       ],
       "properties": {
         "github_repo": {
@@ -80,6 +155,9 @@
         },
         "visibility": {
           "const": "private"
+        },
+        "mount_strategy": {
+          "const": "doctor-managed-nested-repo"
         }
       },
       "additionalProperties": true
@@ -114,6 +192,8 @@
       "type": "object",
       "required": [
         "path",
+        "repository",
+        "software",
         "default_shared",
         "human_editor",
         "agent_access"
@@ -121,6 +201,43 @@
       "properties": {
         "path": {
           "const": "gbrain"
+        },
+        "repository": {
+          "type": "object",
+          "required": [
+            "github_repo",
+            "visibility",
+            "mount_strategy"
+          ],
+          "properties": {
+            "github_repo": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+            },
+            "visibility": {
+              "const": "private"
+            },
+            "mount_strategy": {
+              "const": "doctor-managed-nested-repo"
+            }
+          },
+          "additionalProperties": true
+        },
+        "software": {
+          "type": "object",
+          "required": [
+            "github_repo",
+            "install_source"
+          ],
+          "properties": {
+            "github_repo": {
+              "const": "garrytan/gbrain"
+            },
+            "install_source": {
+              "const": "github:garrytan/gbrain"
+            }
+          },
+          "additionalProperties": true
         },
         "default_shared": {
           "const": false

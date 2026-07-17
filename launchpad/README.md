@@ -206,6 +206,13 @@ personalspace/*/gbrain/                        (Obsidian-compatible markdown vau
   `personalspace/<username>_GEN3` ↔ repo `<username>/<username>_GEN3` musí
   souhlasit. Nesouhlas → prostor se nematerializuje (žádné osobní appky, žádný
   gbrain), jen se nahlásí chyba.
+- Buddy binding je volitelný. Je-li přítomný, validuje se celý; není-li
+  přítomný, vlastník dál používá osobní moduly i gbrain bez placeholder identity.
+- Verzovaný Buddy binding musí mít
+  `deployment_target: owner-dedicated-personalspace-vps` a
+  `local_execution: forbidden`. Buddy není personal app a Launchpad mu
+  neposkytuje Install/Start/Stop/Restart ani localhost fallback; smí zobrazit
+  pouze hosted prezentační metadata a schválený odkaz.
 - `modules.manifest.json` drží **identický kontrakt jako Organizace** (stejné
   `module_slots[]`, stejné readiness stavy `available`/`missing_access`/`planned_slot`).
   Sdílené prostory: modul bez lokálního checkoutu s deklarovaným repo je
@@ -223,11 +230,16 @@ personalspace/*/gbrain/                        (Obsidian-compatible markdown vau
 
 ### gbrain (root-level vrstva prostoru)
 
-gbrain je privátní paměťová vrstva páru Kolega ↔ jeho Buddy (Obsidian-compatible
-markdown vault), analogie `mission-control/` v rootu Organizace — ne modul.
+gbrain je privátní paměťová vrstva vlastníka a volitelně jeho Buddyho
+(Obsidian-compatible markdown vault), analogie `mission-control/` v rootu
+Organizace — ne modul.
 Defaultně se nesdílí. Kanonický mount je `personalspace/<owner>_GEN3/gbrain/`;
 `personal.gen3.json` může přechodně (`gbrain.transitional_source_path`) ukázat
 na živý vault vedle prostoru, dokud neproběhne fyzická migrace.
+
+`gbrain/` je Doctor-managed gitignored checkout samostatného private data repa.
+Veřejný `garrytan/gbrain` je pouze software source; nesmí se zaměnit za
+Markdown data vlastníka.
 
 Agenti pracují s pamětí VÝHRADNĚ přes gbrain MCP server. Launchpad nabízí jen
 read-only lidské rozhraní:

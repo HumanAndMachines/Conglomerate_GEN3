@@ -93,7 +93,7 @@ test("personalspace.js renderuje prostory, Private badge, owner badge a runtime 
   expect(js).toContain("planned_slot");
 });
 
-test("Personalspace je Buddy-first a technické údaje ukazuje až po rozbalení", async () => {
+test("Personalspace je owner-first, Buddy je volitelný a technické údaje jsou až po rozbalení", async () => {
   const [js, css] = await Promise.all([
     readFile(join(publicRoot, "personalspace.js"), "utf8"),
     readFile(join(publicRoot, "styles.css"), "utf8"),
@@ -105,6 +105,11 @@ test("Personalspace je Buddy-first a technické údaje ukazuje až po rozbalení
   expect(js).toContain("Pravidelné úkoly");
   expect(js).toContain("Používáš v aplikaci");
   expect(js).toContain("Buddy je nastavený");
+  expect(js).toContain("function noBuddyCard");
+  expect(js).toContain("Personalspace je připravený");
+  expect(js).toContain("Buddy není připojený");
+  expect(js).toContain("Personalspace zatím není vytvořený");
+  expect(js).toContain("Osobní paměť");
   expect(js).toContain('badge("Nastaveno", "buddy-application-state")');
   expect(js).not.toContain("image.src = avatarUrl");
   expect(js).toContain("Moje aplikace");
@@ -130,6 +135,14 @@ test("Personalspace je Buddy-first a technické údaje ukazuje až po rozbalení
   expect(obsidian).toBeGreaterThan(boundary);
   expect(js.slice(boundary, obsidian)).toContain("return section");
   expect(js).toContain("if (!activeSpaceNames.has(spaceName)) state.gbrain.delete(spaceName)");
+  const buddyCardStart = js.indexOf("function buddyCard");
+  const buddyCardEnd = js.indexOf("function recurringTasksCard", buddyCardStart);
+  const buddyCardSource = js.slice(buddyCardStart, buddyCardEnd);
+  expect(buddyCardSource).not.toContain("/api/personalspace/apps/");
+  expect(buddyCardSource).not.toContain('method: "POST"');
+  expect(buddyCardSource).not.toContain('"start"');
+  expect(buddyCardSource).not.toContain('"stop"');
+  expect(buddyCardSource).not.toContain('"restart"');
 });
 
 test("personalspace.js má gbrain sekci: Obsidian deep link + read-only browser (strom/note/fulltext)", async () => {
@@ -177,12 +190,19 @@ test("kanonická Personalspace schema kopie zůstává base kontraktem s privát
   const schema = JSON.parse(await readFile(join(schemasRoot, "personal.gen3.schema.json"), "utf8"));
   expect(schema.$comment).toContain("Upstream source of truth");
   expect(schema.$id).toBe("https://rozjedeme.ai/schemas/personal.gen3.schema.json");
+  expect(schema.required).toContain("schema_version");
+  expect(schema.properties.schema_version.const).toBe("humanandmachines.personal.gen3.v1");
   // Tvrdá privátní hranice v kontraktu.
   expect(schema.properties.privacy.properties.shared_outputs.const).toBe("metadata-only");
   expect(schema.properties.repository.properties.visibility.const).toBe("private");
   expect(schema.properties.gbrain.properties.default_shared.const).toBe(false);
   expect(schema.properties.gbrain.properties.agent_access.const).toBe("mcp-only");
   expect(schema.properties.buddy.properties.display_name).toBeUndefined();
+  expect(schema.properties.buddy.properties.runtime.required).toContain("deployment_target");
+  expect(schema.properties.buddy.properties.runtime.required).toContain("local_execution");
+  expect(schema.properties.buddy.properties.runtime.properties.deployment_target.const)
+    .toBe("owner-dedicated-personalspace-vps");
+  expect(schema.properties.buddy.properties.runtime.properties.local_execution.const).toBe("forbidden");
   // Identity invariant stavební kameny (patterny na repo/mount).
   expect(schema.properties.repository.properties.github_repo.pattern).toContain("_GEN3");
   expect(schema.properties.repository.properties.mount_path.pattern).toContain("personalspace/");

@@ -196,8 +196,11 @@ export function personalspaceDoctorCheck(personalspaceResponse) {
     }
     const summary = space.module_summary ?? {};
     const gbrain = space.gbrain?.exists ? `gbrain ${space.gbrain.mode}` : "gbrain nedostupný";
+    const gbrainCustody = space.gbrain?.repository?.visibility === "private"
+      ? "gbrain repo deklarováno private"
+      : "gbrain repo privacy neověřena";
     details.push(
-      `${space.mount_path}: ${role}, aplikací ${space.apps?.length ?? 0}, moduly available ${summary.available ?? 0}/missing_access ${summary.missing_access ?? 0}/planned_slot ${summary.planned_slot ?? 0}, ${gbrain}`,
+      `${space.mount_path}: ${role}, aplikací ${space.apps?.length ?? 0}, moduly available ${summary.available ?? 0}/missing_access ${summary.missing_access ?? 0}/planned_slot ${summary.planned_slot ?? 0}, ${gbrain}, ${gbrainCustody}`,
     );
   }
   if (warnings.length) {

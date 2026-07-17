@@ -13,7 +13,7 @@ Conglomerate/
 ├── templates/
 ├── manual/
 ├── launchpad.gen3.json
-├── personalspace/              # lokální gitignored osobní/Buddy mount
+├── personalspace/              # lokální gitignored osobní/config mount
 └── organizations/
     ├── README.md               # jediný soubor trackovaný v root repu
     ├── ExampleOrg_GEN3/        # lokální gitignored Organization repo checkout
@@ -47,7 +47,25 @@ instaluje z veřejného `garrytan/gbrain`, ale osobní Markdown paměť patří 
 odděleného privátního data repa vlastníka mountovaného v `gbrain/`. Detailní
 custody a agentní pravidla drží [personalspace/README.md](personalspace/README.md);
 schválený model drží HumanAndMachines decision 0079 a implementační
-self-service runbook sleduje plán `CAC-0071`.
+self-service runbook je [manual/create-personalspace.md](manual/create-personalspace.md).
+
+Po zveřejnění template spustí vlastník z tohoto rootu:
+
+```text
+bun run personalspace:create -- --display-name "<jméno>" --apply --install-gbrain
+```
+
+Pro třírepo onboarding s private Hermes profilem Buddyho:
+
+```text
+bun run personalspace:create -- --display-name "<jméno>" --with-buddy --apply
+```
+
+Tato varianta lokálně pouze vytvoří tři private Git zdroje. Buddy ani jeho
+aktivní gbrain MCP se na localhostu nespouštějí: manifest vyžaduje
+`deployment_target: owner-dedicated-personalspace-vps` a
+`local_execution: forbidden`. Aktivace pokračuje výhradně na dedikované VPS
+vlastníka podle vygenerovaného hosted runbooku.
 
 ## Hlavní pojmy
 
@@ -59,6 +77,7 @@ self-service runbook sleduje plán `CAC-0071`.
 - `personalspace/` — integrální privátní mountpoint Conglomerate rootu pro
   owner repa lidí a AI kolegů. Nepatří do GitHub organizace firmy, funguje i
   bez Buddyho a drží osobní moduly i Gbrain custody mimo firemní pravdu.
+  Buddy-enabled instance zde lokálně drží jen konfiguraci; runtime je VPS-only.
 - `organizations/` — lokální mountpoint pro Organizace ve smyslu GitHub Organization. V root repu je trackovaný pouze `organizations/README.md`; konkrétní `organizations/<org>/` jsou samostatné nested git checkouty Organizací a jsou gitignored.
 - Workspace uvnitř Organizace — pojmenovaná skupina modulů (digitální kancelář jednoho týmu NEBO značky/venture, „Oddělení“/„Kancelář“) s vlastním doctorem, pravidly a access hranicí. Všechny workspace moduly Organizace žijí fyzicky v jedné ploché složce `workspace/`; Workspace je logická deklarace v manifestu, ne adresář. Modul patří právě do jednoho Workspace; příslušnost deklaruje definice modulu (`modules[].workspace` / `module_slots[].workspace`), deklarace je autorita a UI grupuje podle ní; chybějící deklarace = default Workspace `workspace`; hosted vzor `<modul>.<workspace>.<doména>` se generuje z deklarace (decision 0041 v HumanAndMachines/docs/decisions/).
 - `organizations/<org>/productionspace/` — org-level složka pro repozitáře dané Organizace, které nejsou workspace moduly, například firmware, connect a monorepo. Každé productionspace repo si definuje vlastní pravidla (branch model, release proces); doctor k nim přistupuje jinak než k workspace modulům a vynucuje jen bezpečné minimum (decision 0041 body 6–7 v HumanAndMachines/docs/decisions/).

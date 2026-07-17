@@ -22,10 +22,25 @@ async function writeJson(path, data) {
 
 function personalConfig(username) {
   return {
+    schema_version: "humanandmachines.personal.gen3.v1",
     personal_generation: "gen3",
     owner: { github_username: username, display_name: username, type: "human" },
     buddy: {
       slug: `${username}-buddy`,
+      path: "buddy",
+      repository: {
+        github_repo: `${username}/${username}-buddy`,
+        visibility: "private",
+        mount_strategy: "doctor-managed-nested-repo",
+      },
+      runtime: {
+        github_repo: "HumanAndMachines/Buddy",
+      },
+      hermes: {
+        software_repo: "NousResearch/hermes-agent",
+        profile_format: "hermes-profile-distribution",
+        profile_path: "buddy",
+      },
       display_name: "Demo Buddy",
       application: { name: "Demo chat", type: "web", url: "https://chat.example.test/" },
       recurring_tasks: {
@@ -33,11 +48,30 @@ function personalConfig(username) {
       },
       gbrain_path: "gbrain",
     },
-    repository: { github_repo: `${username}/${username}_GEN3`, mount_path: `personalspace/${username}_GEN3`, visibility: "private" },
+    repository: {
+      github_repo: `${username}/${username}_GEN3`,
+      mount_path: `personalspace/${username}_GEN3`,
+      visibility: "private",
+      mount_strategy: "doctor-managed-nested-repo",
+    },
     privacy: { default_share: "private", agent_boundary: "personal-context-only", shared_outputs: "metadata-only" },
     modules_manifest_path: "modules.manifest.json",
     workspace_path: "workspace",
-    gbrain: { path: "gbrain", default_shared: false, human_editor: "obsidian", agent_access: "mcp-only" },
+    gbrain: {
+      path: "gbrain",
+      repository: {
+        github_repo: `${username}/${username}-gbrain`,
+        visibility: "private",
+        mount_strategy: "doctor-managed-nested-repo",
+      },
+      software: {
+        github_repo: "garrytan/gbrain",
+        install_source: "github:garrytan/gbrain",
+      },
+      default_shared: false,
+      human_editor: "obsidian",
+      agent_access: "mcp-only",
+    },
     secrets: { path: "secrets", custody_pattern: "personalspace/<owner>_GEN3/secrets/<provider>/<scope>/<purpose>", git: "ignored" },
     shared_spaces: [],
   };
