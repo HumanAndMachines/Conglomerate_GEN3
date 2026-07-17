@@ -40,7 +40,7 @@ export async function buildLaunchpadAppsResponse({
     ? await Promise.all(
         discovery.organizations.map(async (organization) => ({
           organization,
-          spaces: await readOrganizationSpaces(companiesRoot, organization),
+          spaces: await readOrganizationSpaces(companiesRoot, organization, discovery.local_config),
         })),
       )
     : [];
@@ -611,7 +611,7 @@ async function readCompaniesConfig(companiesRoot) {
 // and Productionspace systems. Productionspace systems are NOT lifecycle apps —
 // they are externally-developed repos referenced with their own rules, surfaced
 // read-only. Returns empty/null gracefully for planned or config-less orgs.
-async function readOrganizationSpaces(companiesRoot, organization) {
+async function readOrganizationSpaces(companiesRoot, organization, localConfig = null) {
   const empty = { workspaces: [], productionspace: null, module_declarations: [] };
   if (organization.status === "planned" || !organization.path) return empty;
   const configPath = join(companiesRoot, organization.path, "company.gen3.json");
@@ -624,6 +624,7 @@ async function readOrganizationSpaces(companiesRoot, organization) {
   }
 
   const organizationRoot = join(companiesRoot, organization.path);
+  const principalRoles = localConfig?.organization_roles?.[organization.slug];
   const declared = Array.isArray(config?.workspaces) ? config.workspaces : [];
   const productionspaceConfig = config?.productionspace ?? null;
   const productionBoundary = declared.find(
@@ -631,7 +632,7 @@ async function readOrganizationSpaces(companiesRoot, organization) {
   );
   const manifest = await readOrganizationModuleManifest(companiesRoot, organization);
   const moduleSlots = (Array.isArray(manifest?.module_slots) ? manifest.module_slots.map(normalizeModuleSlot).filter(Boolean) : [])
-    .map((slot) => moduleSlotWithReadiness(organizationRoot, slot));
+    .map((slot) => moduleSlotWithReadiness(organizationRoot, slot, principalRoles));
   // Decision 0041: deklarace modules[].workspace v company.gen3.json je druhý
   // deklarativní povrch; manifest module_slots[] má přednost při konfliktu.
   // Config-only sloty (bez manifest protějšku) se počítají do tiles i
@@ -639,7 +640,7 @@ async function readOrganizationSpaces(companiesRoot, organization) {
   const manifestPaths = new Set(moduleSlots.map((slot) => slot.path));
   const configOnlyModules = (Array.isArray(config?.modules) ? config.modules.map(normalizeModuleSlot).filter(Boolean) : [])
     .filter((slot) => !manifestPaths.has(slot.path))
-    .map((slot) => moduleSlotWithReadiness(organizationRoot, slot));
+    .map((slot) => moduleSlotWithReadiness(organizationRoot, slot, principalRoles));
   const moduleDeclarations = [...moduleSlots, ...configOnlyModules];
   // Vnořený child slot (např. mission-control/db — repository-db data
   // checkout uvnitř app mountu) je technický mount pro Doctor/search/publish
@@ -674,7 +675,7 @@ async function readOrganizationSpaces(companiesRoot, organization) {
     productionspaceConfig,
   }).map((slot) => slot.readiness
     ? slot
-    : moduleSlotWithReadiness(organizationRoot, slot));
+    : moduleSlotWithReadiness(organizationRoot, slot, principalRoles));
   const productionspace =
     productionBoundary || productionspaceConfig || productionSystems.length > 0
       ? {
@@ -754,12 +755,12 @@ function moduleSlotStatus(organizationRoot, slot) {
   return slot.repo ? "missing_access" : "planned_slot";
 }
 
-function moduleSlotWithReadiness(organizationRoot, slot) {
+function moduleSlotWithReadiness(organizationRoot, slot, principalRoles = null) {
   const status = moduleSlotStatus(organizationRoot, slot);
   return {
     ...slot,
     status,
-    readiness: classifyModuleSlotReadiness(slot, status),
+    readiness: classifyModuleSlotReadiness(slot, status, principalRoles),
   };
 }
 
@@ -767,7 +768,7 @@ function moduleSlotWithReadiness(organizationRoot, slot) {
 // prostor. Dokud Doctor nemá autoritativní principal-scoped ACL důkaz, je
 // role-based chybějící checkout fail-closed. UI umí přijmout kanonicky
 // doloženou neutral severity, ale lokální odhad z GitHub tokenu ji nevyrábí.
-function classifyModuleSlotReadiness(slot, status) {
+function classifyModuleSlotReadiness(slot, status, principalRoles = null) {
   if (status === "available") {
     return { severity: "ok", reason: "available", message: "Checkout modulu je dostupný." };
   }
@@ -776,6 +777,17 @@ function classifyModuleSlotReadiness(slot, status) {
   }
   if (status === "missing_access") {
     const accessRestricted = ["role_based", "restricted", "private"].includes(slot.default_access);
+    const requiredRoles = Array.isArray(slot.required_roles) ? slot.required_roles : [];
+    const hasPrincipalRoleEvidence = Array.isArray(principalRoles);
+    const principalIsEntitled = requiredRoles.includes("*")
+      || (hasPrincipalRoleEvidence && requiredRoles.some((role) => principalRoles.includes(role)));
+    if (accessRestricted && hasPrincipalRoleEvidence && requiredRoles.length > 0 && !principalIsEntitled) {
+      return {
+        severity: "neutral",
+        reason: "role_not_entitled",
+        message: "Checkout podle lokálně deklarovaných rolí tohoto Principála není očekávaný.",
+      };
+    }
     return {
       severity: "blocking",
       reason: accessRestricted

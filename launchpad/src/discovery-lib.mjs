@@ -992,6 +992,9 @@ export async function discoverLaunchpadApps(
     organizations,
     template_mounts: templateMounts,
     module_templates: moduleTemplates,
+    // Internal per-machine evidence for downstream readiness classification.
+    // buildLaunchpadAppsResponse does not expose this object through /api/apps.
+    local_config: localConfig,
     failures,
     warnings,
   };

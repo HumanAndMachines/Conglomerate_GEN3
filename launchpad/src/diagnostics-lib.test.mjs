@@ -286,6 +286,67 @@ test("Doctor drží missing_access bez autoritativního ACL důkazu fail-closed"
   expect(declarationCheck?.details.join("\n")).toContain("workspace/restricted");
 });
 
+test("Doctor neutralizuje role-based missing_access jen s principal-scoped lokální rolí", async () => {
+  const root = await createCompaniesWorkspaceFixture();
+  const companyRoot = join(root, "organizations", "AccessCo_GEN3");
+  await mkdir(join(companyRoot, "manual"), { recursive: true });
+  await mkdir(join(companyRoot, "company", "colleagues"), { recursive: true });
+  await writeJson(join(root, "launchpad.gen3.json"), {
+    launchpad_root: { slug: "test-companies", display_name: "Test Companies", root_role: "companies-root" },
+  });
+  await writeJson(join(root, "launchpad.gen3.local.json"), {
+    personalspace_owner: "exampleuser",
+    organization_roles: { AccessCo: ["sales"] },
+  });
+  await writeJson(join(companyRoot, "company.gen3.json"), {
+    organization_generation: "gen3",
+    company: { slug: "AccessCo", display_name: "Access Co" },
+    workspaces: [{ slug: "workspace", display_name: "Workspace", default: true }],
+  });
+  await writeJson(join(companyRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    module_slots: [
+      {
+        path: "workspace/finance",
+        category: "finance",
+        default_access: "restricted",
+        required_roles: ["finance"],
+        git: { url: "git@github.com:AccessCo/finance.git", branch: "main" },
+      },
+      {
+        path: "workspace/sales",
+        category: "sales",
+        default_access: "role_based",
+        required_roles: ["sales"],
+        git: { url: "git@github.com:AccessCo/sales.git", branch: "main" },
+      },
+      {
+        path: "workspace/everyone",
+        category: "knowledge",
+        default_access: "role_based",
+        required_roles: ["*"],
+        git: { url: "git@github.com:AccessCo/everyone.git", branch: "main" },
+      },
+    ],
+  });
+  await writeJson(join(companyRoot, "TODO.tasks.json"), {});
+  await writeJson(join(companyRoot, "DONE.tasks.json"), {});
+  await writeJson(join(companyRoot, "ISSUES.open.json"), {});
+
+  const response = await buildLaunchpadAppsResponse({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+  });
+  const slots = response.organizations[0].workspaces[0].modules;
+  expect(slots.find((slot) => slot.slug === "finance")?.readiness).toMatchObject({
+    severity: "neutral",
+    reason: "role_not_entitled",
+  });
+  expect(slots.find((slot) => slot.slug === "sales")?.readiness.severity).toBe("blocking");
+  expect(slots.find((slot) => slot.slug === "everyone")?.readiness.severity).toBe("blocking");
+});
+
 test("vnořený child slot (mission-control/db) není module dlaždice (technický data mount)", async () => {
   const root = await createCompaniesWorkspaceFixture();
   const companyRoot = join(root, "organizations", "OmegaCo_GEN3");

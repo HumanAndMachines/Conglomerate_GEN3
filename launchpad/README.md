@@ -90,9 +90,10 @@ ke každému slotu přidává `readiness.severity` (`ok` / `neutral` / `blocking
 - `missing_access` s `default_access: expected` je blokátor, protože modul má
   být dostupný každému kolegovi;
 - `missing_access` s `role_based`, `restricted` nebo `private` je neutrální jen
-  když už kanonický principal-scoped access zdroj doloží, že aktuální Kolega
-  není entitled; dnešní lokální Doctor takový negativní ACL důkaz nemá, takže
-  bez něj zůstává fail-closed blokátorem;
+  když principal-scoped `organization_roles` v gitignored
+  `launchpad.gen3.local.json` doloží, že žádná z rolí aktuálního Kolegy není
+  mezi `required_roles`; bez lokálního role evidence zůstává fail-closed
+  blokátorem;
 - `planned_slot` je neutrální, dokud jej jiný kanonický check neoznačí jako
   blokující.
 
@@ -121,7 +122,8 @@ Ruční sbalení detailu přežije tichý refresh.
 
 Pouhá absence repozitáře v lokálním GitHub tokenu není negativní ACL důkaz:
 může znamenat SAML, omezený token, rename i chybu manifestu. Doctor ji proto
-nesmí použít k neutralizaci blokátoru.
+nesmí použít k neutralizaci blokátoru. `organization_roles` mění pouze
+závažnost diagnostiky; nepřiděluje přístup a GitHub zůstává access autoritou.
 
 Nevalidní `companyascode.app` manifest izoluje jen dotčenou appku (decision
 0043): appka je viditelná ve stavu `invalid_manifest`, runtime akce jsou pro ni
