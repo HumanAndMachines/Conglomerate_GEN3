@@ -167,7 +167,9 @@ bun run preserve:gen2-local -- inventory \
 
 # Apply je explicitní, nikdy nemaže ani nepřejmenovává source. Na macOS/APFS
 # vyžaduje ověřený clone-on-write copy, takže lze bezpečně preservovat i strom
-# větší než aktuální volné místo bez dočasné plné duplikace bloků.
+# větší než aktuální volné místo bez dočasné plné duplikace bloků. Mimo APFS
+# nejdřív ručně ověř dostatek volného místa a přidej explicitní
+# --allow-full-copy; policy failure před startem kopie prázdný destination uklidí.
 bun run preserve:gen2-local -- apply \
   --source "$GEN2" \
   --destination "$ARCHIVE" \

@@ -424,6 +424,47 @@ describe("apply and evidence", () => {
     expect(incomplete.status).toBe("incomplete");
     await expect(lstat(join(destination, ".gen2-preservation", "SUCCESS.json"))).rejects.toThrow();
   });
+
+  test("removes a newly-created destination when clone policy fails before copying starts", async () => {
+    const root = await makeTempRoot();
+    const source = await makeSource(root);
+    const personalspaceRoot = join(root, "personalspace", "owner_GEN3");
+    const destination = join(personalspaceRoot, "migration-archive", "unsupported-copy");
+    await mkdir(personalspaceRoot, { recursive: true });
+
+    await expect(applyPreservation({ source, destination, personalspaceRoot }, {
+      platform: "linux",
+      cloneProbe: async () => false,
+      copyTree: async () => {
+        throw new Error("copy must not start");
+      },
+    })).rejects.toThrow("copy-on-write clone is unavailable");
+
+    await expect(lstat(destination)).rejects.toThrow();
+  });
+
+  test("never deletes a destination created concurrently during clone probing", async () => {
+    const root = await makeTempRoot();
+    const source = await makeSource(root);
+    const personalspaceRoot = join(root, "personalspace", "owner_GEN3");
+    const destination = join(personalspaceRoot, "migration-archive", "concurrent-owner");
+    const sentinel = join(destination, "concurrent-data.txt");
+    await mkdir(personalspaceRoot, { recursive: true });
+
+    await expect(applyPreservation({ source, destination, personalspaceRoot }, {
+      platform: "darwin",
+      cloneProbe: async () => {
+        await mkdir(destination, { recursive: true });
+        await writeFile(sentinel, "owned by another run\n");
+        return false;
+      },
+      copyTree: async () => {
+        throw new Error("copy must not start");
+      },
+    })).rejects.toThrow("copy-on-write clone is unavailable");
+
+    expect(await readFile(sentinel, "utf8")).toBe("owned by another run\n");
+  });
 });
 
 describe("verification drift detection", () => {

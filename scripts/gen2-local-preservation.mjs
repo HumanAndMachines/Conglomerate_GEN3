@@ -711,27 +711,34 @@ export async function applyPreservation(
   const manifestPath = join(evidenceDir, MANIFEST_FILE);
   const successPath = join(evidenceDir, SUCCESS_FILE);
 
-  await mkdir(paths.destination, { recursive: true, mode: 0o700 });
-  await chmod(paths.destination, 0o700);
-  await mkdir(evidenceDir, { recursive: true, mode: 0o700 });
-  await chmod(evidenceDir, 0o700);
-  await writePrivateJson(incompletePath, {
-    schema_version: SCHEMA_VERSION,
-    status: "incomplete",
-    started_at: nowIso(),
-    source: paths.source,
-    destination: paths.destination,
-    verifier,
-  });
+  await mkdir(dirname(paths.destination), { recursive: true, mode: 0o700 });
+  const cloneOnWrite = platform === "darwin" ? await cloneProbe(dirname(paths.destination)) : false;
+  if (!cloneOnWrite && !allowFullCopy) {
+    throw new Error(
+      "copy-on-write clone is unavailable; refusing a full copy without --allow-full-copy and an explicit free-space review",
+    );
+  }
 
+  let destinationCreated = false;
+  let copyStarted = false;
   try {
-    const cloneOnWrite = platform === "darwin" ? await cloneProbe(dirname(paths.destination)) : false;
-    if (!cloneOnWrite && !allowFullCopy) {
-      throw new Error(
-        "copy-on-write clone is unavailable; refusing a full copy without --allow-full-copy and an explicit free-space review",
-      );
-    }
+    // Non-recursive mkdir is the ownership claim for cleanup. If another run
+    // wins the leaf path, mkdir fails and this invocation never removes it.
+    await mkdir(paths.destination, { mode: 0o700 });
+    destinationCreated = true;
+    await chmod(paths.destination, 0o700);
+    await mkdir(evidenceDir, { mode: 0o700 });
+    await chmod(evidenceDir, 0o700);
+    await writePrivateJson(incompletePath, {
+      schema_version: SCHEMA_VERSION,
+      status: "incomplete",
+      started_at: nowIso(),
+      source: paths.source,
+      destination: paths.destination,
+      verifier,
+    });
 
+    copyStarted = true;
     await copyTree({
       source: paths.source,
       destination: paths.destination,
@@ -780,7 +787,10 @@ export async function applyPreservation(
       classification: classificationSummary(),
     };
   } catch (error) {
-    await rm(successPath, { force: true }).catch(() => {});
+    if (destinationCreated) {
+      await rm(successPath, { force: true }).catch(() => {});
+      if (!copyStarted) await rm(paths.destination, { recursive: true, force: true }).catch(() => {});
+    }
     throw error;
   }
 }
