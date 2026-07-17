@@ -121,10 +121,14 @@ async function run(command, args, { cwd, allowFailure = false } = {}) {
     child.stderr.on("data", (chunk) => stderr.push(chunk));
     child.on("error", rejectRun);
     child.on("close", (code) => {
+      const stdoutBuffer = Buffer.concat(stdout);
+      const stderrBuffer = Buffer.concat(stderr);
       const result = {
         code,
-        stdout: Buffer.concat(stdout).toString("utf8"),
-        stderr: Buffer.concat(stderr).toString("utf8"),
+        stdout: stdoutBuffer.toString("utf8"),
+        stderr: stderrBuffer.toString("utf8"),
+        stdout_buffer: stdoutBuffer,
+        stderr_buffer: stderrBuffer,
       };
       if (code !== 0 && !allowFailure) {
         rejectRun(new Error(`${command} failed with exit ${code}: ${result.stderr.trim() || "no stderr"}`));
@@ -154,16 +158,35 @@ async function sha256File(path) {
   return hash.digest("hex");
 }
 
-async function verifierIdentity() {
-  const headResult = await run("git", ["rev-parse", "HEAD"], { cwd: VERIFIER_REPO_ROOT });
+export async function committedVerifierIdentity({
+  scriptPath = SCRIPT_PATH,
+  repoRoot = VERIFIER_REPO_ROOT,
+} = {}) {
+  const canonicalRoot = await realpath(repoRoot);
+  const canonicalScript = await realpath(scriptPath);
+  if (!isWithin(canonicalRoot, canonicalScript)) {
+    throw new Error("verifier script must be inside its Git repository");
+  }
+  const relativeScript = relative(canonicalRoot, canonicalScript).split(sep).join("/");
+  const headResult = await run("git", ["rev-parse", "--verify", "HEAD^{commit}"], { cwd: canonicalRoot });
   const gitHead = headResult.stdout.trim();
   if (!/^[0-9a-f]{40}$/.test(gitHead)) {
     throw new Error("cannot resolve exact verifier Git head");
   }
+
+  const currentBytes = await readFile(canonicalScript);
+  const committedResult = await run("git", ["cat-file", "blob", `${gitHead}:${relativeScript}`], { cwd: canonicalRoot });
+  if (!currentBytes.equals(committedResult.stdout_buffer)) {
+    throw new Error("verifier script differs from HEAD; commit the verifier before apply or verify");
+  }
   return {
     git_head: gitHead,
-    script_sha256: await sha256File(SCRIPT_PATH),
+    script_sha256: createHash("sha256").update(currentBytes).digest("hex"),
   };
+}
+
+async function verifierIdentity() {
+  return await committedVerifierIdentity();
 }
 
 function entryClassification(relativePath) {

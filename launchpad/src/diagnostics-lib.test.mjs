@@ -71,6 +71,38 @@ test("Doctor launchpad.discovery failuje na Organization cross-file identitě", 
   expect(discoveryCheck?.details.some((detail) => detail.includes("company.github_org") && detail.includes("WrongGithubOrg"))).toBe(true);
 });
 
+test("Doctor failuje, když manifestovaný modul kanonicky uniká do jiné Organization", async () => {
+  const root = await createCompaniesWorkspaceFixture();
+  const companyRoot = join(root, "organizations", "EscapingOrg_GEN3");
+  const foreignPath = join(root, "organizations", "ForeignOrg_GEN3", "workspace", "shared");
+  await mkdir(join(companyRoot, "manual"), { recursive: true });
+  await mkdir(join(companyRoot, "company", "colleagues"), { recursive: true });
+  await mkdir(foreignPath, { recursive: true });
+  await writeJson(join(companyRoot, "company.gen3.json"), {
+    organization_generation: "gen3",
+    company: { slug: "EscapingOrg", display_name: "Escaping Org", github_org: "EscapingOrg" },
+    teams: [{ slug: "workspace", display_name: "Hlavní Team", default: true }],
+  });
+  await writeJson(join(companyRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "EscapingOrg",
+    github_org: "EscapingOrg",
+    module_slots: [
+      { path: "../ForeignOrg_GEN3/workspace/shared", teams: ["workspace"], git: { url: "git@github.com:ForeignOrg/shared.git" } },
+    ],
+  });
+
+  const report = await buildLaunchpadDoctorReport({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+  });
+  const discoveryCheck = report.checks.find((check) => check.id === "launchpad.discovery");
+
+  expect(discoveryCheck?.status).toBe("fail");
+  expect(discoveryCheck?.details.some((detail) => detail.includes("uniká mimo Organization root"))).toBe(true);
+}, 10_000);
+
 test("template mounty nejsou kontrolované Organization-private gitignore probami", async () => {
   const root = await createTemplateMountFixture();
   const report = await buildLaunchpadDoctorReport({

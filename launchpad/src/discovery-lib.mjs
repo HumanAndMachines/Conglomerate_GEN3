@@ -1,6 +1,6 @@
-import { existsSync } from "fs";
+import { existsSync, lstatSync, realpathSync } from "fs";
 import { readdir, readFile } from "fs/promises";
-import { dirname, isAbsolute, join, relative, resolve } from "path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "path";
 import { buildPortOwner, formatPortCollisionFailure } from "./port-ownership-lib.mjs";
 
 const ignoredDirs = new Set([
@@ -40,6 +40,69 @@ export function organizationMountStructureIssues({ organizationRoot, label }) {
     failures: issues,
   });
   return issues;
+}
+
+function pathIsWithin(parent, child) {
+  const rel = relative(parent, child);
+  return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel));
+}
+
+function entryExists(path) {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function canonicalProspectivePath(path) {
+  const missing = [];
+  let cursor = path;
+  while (!entryExists(cursor)) {
+    const parent = dirname(cursor);
+    if (parent === cursor) throw new Error(`nelze najít existujícího předka pro ${path}`);
+    missing.unshift(basename(cursor));
+    cursor = parent;
+  }
+  return resolve(realpathSync(cursor), ...missing);
+}
+
+// Jeden fail-closed gate pro všechny deklarované Organization-relative cesty.
+// Kontroluje lexical formu i kanonický nejbližší existující předek, takže
+// traversal, absolute/drive/UNC formy a symlink do jiné Organization nikdy
+// nevstoupí do discovery, Doctoru ani akčních Git/worktree povrchů.
+export function organizationRelativePathIssue({ organizationRoot, path }) {
+  if (typeof path !== "string" || path.trim() === "") return "je prázdná";
+  if (path !== path.trim()) {
+    return `"${path}" uniká mimo Organization root (okolní whitespace mění identitu cesty)`;
+  }
+  const normalized = path.trim().replace(/\\/g, "/");
+  const segments = normalized.split("/");
+  const absoluteLike =
+    isAbsolute(normalized) ||
+    normalized.startsWith("//") ||
+    /^[A-Za-z]:/.test(normalized);
+  const ambiguousSegments = segments.some((segment) => segment === "" || segment === "." || segment === "..");
+  if (absoluteLike || ambiguousSegments || normalized.includes("\0")) {
+    return `"${path}" uniká mimo Organization root (neplatná lexical cesta)`;
+  }
+
+  try {
+    const lexicalRoot = resolve(organizationRoot);
+    const lexicalTarget = resolve(lexicalRoot, normalized);
+    if (!pathIsWithin(lexicalRoot, lexicalTarget)) {
+      return `"${path}" uniká mimo Organization root (lexical containment)`;
+    }
+    const canonicalRoot = realpathSync(organizationRoot);
+    const canonicalTarget = canonicalProspectivePath(lexicalTarget);
+    if (!pathIsWithin(canonicalRoot, canonicalTarget)) {
+      return `"${path}" uniká mimo Organization root (canonical containment)`;
+    }
+  } catch (error) {
+    return `"${path}" uniká mimo Organization root (kanonickou cestu nelze bezpečně ověřit: ${error.message})`;
+  }
+  return null;
 }
 
 // Lokální cross-file gate Organization mountu. Schémata žijí v
@@ -156,6 +219,12 @@ function validateDeclaredModule({
   if (!slot || typeof slot !== "object") return;
   const path = trimmedString(slot.path)?.replace(/\\/g, "/") ?? null;
   if (!path) return;
+
+  const containmentIssue = organizationRelativePathIssue({ organizationRoot, path });
+  if (containmentIssue) {
+    issues.push(`${label}: ${source}.path ${containmentIssue}`);
+    return;
+  }
 
   if (path.startsWith("modules/")) {
     warnings.push(

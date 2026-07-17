@@ -19,6 +19,7 @@ import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
 import {
   applyPreservation,
+  committedVerifierIdentity,
   probeCloneCapability,
 } from "./gen2-local-preservation.mjs";
 
@@ -170,6 +171,82 @@ describe("metadata-only inventory", () => {
       expect(`${result.stdout}\n${result.stderr}`).not.toContain(marker);
     }
     expect(await readFile(join(source, ".ignored-secret"), "utf8")).toBe(before);
+  });
+});
+
+describe("verifier source identity", () => {
+  test("rejects a verifier script whose bytes differ from the blob at the recorded HEAD", async () => {
+    const repoRoot = await makeTempRoot();
+    const verifierPath = join(repoRoot, "scripts", "gen2-local-preservation.mjs");
+    await mkdir(dirname(verifierPath), { recursive: true });
+    await writeFile(verifierPath, "export const verifier = 'committed';\n");
+    run("git", ["init", "-q"], repoRoot);
+    run("git", ["add", "scripts/gen2-local-preservation.mjs"], repoRoot);
+    run("git", ["commit", "-qm", "fixture verifier"], repoRoot);
+
+    const committed = await committedVerifierIdentity({ scriptPath: verifierPath, repoRoot });
+    expect(committed.git_head).toMatch(/^[0-9a-f]{40}$/);
+    expect(committed.script_sha256).toMatch(/^[0-9a-f]{64}$/);
+
+    await writeFile(verifierPath, "export const verifier = 'dirty';\n");
+    await expect(committedVerifierIdentity({ scriptPath: verifierPath, repoRoot })).rejects.toThrow(
+      "verifier script differs from HEAD",
+    );
+  });
+});
+
+describe("documented origin activation", () => {
+  test("stops before every push when fetch or ls-remote cannot prove remote state", async () => {
+    const repoRoot = dirname(dirname(scriptPath));
+    const manual = await readFile(join(repoRoot, "manual", "first-client-organization-rollout.md"), "utf8");
+    const section = manual.split("#### Pozdější aktivace klientského `origin`")[1];
+    const match = section?.match(/```sh\n([\s\S]*?)```/);
+    expect(match).toBeDefined();
+    const flow = match[1]
+      .replace("/path/to/Conglomerate/organizations/<ClientOrg>_GEN3", "/tmp/CAC0056_TestOrg_GEN3")
+      .replace("<client-approved-repo-url>", "ssh://example.invalid/client.git");
+
+    for (const failure of ["fetch", "ls-remote"]) {
+      const root = await makeTempRoot();
+      const fakeBin = join(root, "bin");
+      const pushSentinel = join(root, "push-sentinel");
+      await mkdir(fakeBin, { recursive: true });
+      const fakeGit = `#!/bin/sh
+set -eu
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    config|merge-base|remote|fetch|show-ref|ls-remote|push) command="$1"; shift; break ;;
+    *) shift ;;
+  esac
+done
+case "\${command:-}" in
+  config)
+    case " $* " in *" --get companyascode.templateBase "*) printf '%s\\n' deadbeef ;; esac
+    exit 0 ;;
+  merge-base|remote) exit 0 ;;
+  fetch) [ "\${FAKE_FAILURE:-}" != fetch ] ;;
+  show-ref) exit 1 ;;
+  ls-remote) [ "\${FAKE_FAILURE:-}" != ls-remote ] ;;
+  push) printf '%s\\n' "$*" >> "\${PUSH_SENTINEL}"; exit 0 ;;
+  *) exit 0 ;;
+esac
+`;
+      const fakeGitPath = join(fakeBin, "git");
+      await writeFile(fakeGitPath, fakeGit);
+      await chmod(fakeGitPath, 0o755);
+      const result = spawnSync("/bin/bash", ["-c", flow], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:${process.env.PATH}`,
+          FAKE_FAILURE: failure,
+          PUSH_SENTINEL: pushSentinel,
+        },
+      });
+
+      expect(result.status).not.toBe(0);
+      await expect(lstat(pushSentinel)).rejects.toThrow();
+    }
   });
 });
 

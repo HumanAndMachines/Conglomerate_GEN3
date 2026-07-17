@@ -1,7 +1,7 @@
 import { existsSync } from "fs";
 import { readFile, readdir } from "fs/promises";
 import { basename, join } from "path";
-import { organizationMountStructureIssues } from "./discovery-lib.mjs";
+import { organizationMountStructureIssues, organizationRelativePathIssue } from "./discovery-lib.mjs";
 
 export async function buildGitInventory({ companiesRoot, organizations = null } = {}) {
   if (!companiesRoot) throw new Error("buildGitInventory requires companiesRoot");
@@ -44,6 +44,11 @@ export async function buildGitInventory({ companiesRoot, organizations = null } 
     for (const rawSlot of Array.isArray(manifest.module_slots) ? manifest.module_slots : []) {
       const slot = normalizeModuleSlot(rawSlot, normalized);
       if (!slot) continue;
+      const containmentIssue = organizationRelativePathIssue({ organizationRoot, path: slot.path });
+      if (containmentIssue) {
+        warnings.push(`${normalized.path}: module_slots[].path ${containmentIssue}; slot vynechán z akčního Git inventáře`);
+        continue;
+      }
       if (!slot.repo) {
         planned.push(slotRecord({ organization: normalized, slot, companiesRoot }));
         continue;

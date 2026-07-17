@@ -142,6 +142,8 @@ V tomhle stavu dnes žádný `origin` nepřidávej. Lokální commity zůstávaj
 Remote `origin` připoj až v klientem schváleném kroku, po kontrole přesné GitHub Organization, repo URL a přístupů. Nejdřív ověř, že lokální historie skutečně navazuje na uložený template baseline. Potom přijmi jen prázdný cílový remote nebo stav, jehož `origin/main` je předkem lokálního `HEAD`; tím zůstane první push fast-forward:
 
 ```sh
+set -euo pipefail
+
 ORG=/path/to/Conglomerate/organizations/<ClientOrg>_GEN3
 TEMPLATE_BASE="$(git -C "$ORG" config --get companyascode.templateBase)"
 
@@ -149,12 +151,19 @@ test -n "$TEMPLATE_BASE"
 git -C "$ORG" merge-base --is-ancestor "$TEMPLATE_BASE" HEAD
 
 git -C "$ORG" remote add origin <client-approved-repo-url>
-git -C "$ORG" fetch origin
+if ! git -C "$ORG" fetch origin; then
+  printf '%s\n' "origin fetch selhal; remote stav není ověřený, push je zakázaný" >&2
+  exit 1
+fi
 
 if git -C "$ORG" show-ref --verify --quiet refs/remotes/origin/main; then
   git -C "$ORG" merge-base --is-ancestor origin/main HEAD
 else
-  test -z "$(git -C "$ORG" ls-remote --heads origin)"
+  if ! REMOTE_HEADS="$(git -C "$ORG" ls-remote --heads origin)"; then
+    printf '%s\n' "origin ls-remote selhal; prázdný remote není prokázaný, push je zakázaný" >&2
+    exit 1
+  fi
+  test -z "$REMOTE_HEADS"
 fi
 
 git -C "$ORG" push --dry-run origin HEAD:main

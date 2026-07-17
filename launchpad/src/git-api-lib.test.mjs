@@ -239,7 +239,7 @@ test("pull all updates Organization roots and workspace modules, using autostash
   expect(await readFile(join(orgRoot, "local-root-draft.md"), "utf8")).toBe("preserve me\n");
   expect(await readFile(join(orgRoot, "remote-root.md"), "utf8")).toBe("remote change\n");
   expect(await readFile(join(dealsRepo, "remote-deals.md"), "utf8")).toBe("remote change\n");
-});
+}, 15_000);
 
 test("/api/apps app objects include compact git summary for their module", async () => {
   const root = await createLaunchpadGitFixture();

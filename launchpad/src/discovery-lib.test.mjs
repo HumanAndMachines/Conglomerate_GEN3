@@ -1,8 +1,8 @@
 import { afterAll, expect, test } from "bun:test";
 import { tmpdir } from "os";
 import { join } from "path";
-import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
-import { discoverLaunchpadApps } from "./discovery-lib.mjs";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "fs/promises";
+import { discoverLaunchpadApps, organizationRelativePathIssue } from "./discovery-lib.mjs";
 
 const tempRoots = [];
 
@@ -1136,6 +1136,45 @@ test("opravený OrganizationTemplate placeholder kontrakt projde bez false failu
 
   expect(failures).toEqual([]);
   expect(template_mounts.some((mount) => mount.path === "organizations/OrganizationTemplate_GEN3")).toBe(true);
+});
+
+test("Organization path gate rejects POSIX, drive, UNC and mixed-separator escapes but allows a future child", async () => {
+  const root = await createCompaniesWorkspaceFixture({});
+  const organizationRoot = join(root, "organizations", "TestCompany");
+  for (const path of [
+    "../ForeignOrg/workspace/shared",
+    "workspace\\..\\ForeignOrg\\shared",
+    "/tmp/foreign",
+    "C:\\ForeignOrg\\shared",
+    "C:ForeignOrg\\shared",
+    "\\\\server\\share\\module",
+    " workspace/demo",
+  ]) {
+    expect(organizationRelativePathIssue({ organizationRoot, path })).toContain("uniká mimo Organization root");
+  }
+  expect(organizationRelativePathIssue({ organizationRoot, path: "workspace/future-module" })).toBeNull();
+  expect(organizationRelativePathIssue({ organizationRoot, path: "workspace\\future-mixed" })).toBeNull();
+});
+
+test("Organization module paths fail closed on traversal and canonical symlink escapes", async () => {
+  const root = await createCompaniesWorkspaceFixture({});
+  const organizationRoot = join(root, "organizations", "TestCompany");
+  const foreignRoot = join(root, "organizations", "ForeignOrg", "workspace", "shared");
+  await mkdir(foreignRoot, { recursive: true });
+  await mkdir(join(organizationRoot, "workspace"), { recursive: true });
+  await symlink(foreignRoot, join(organizationRoot, "workspace", "foreign-link"));
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    company: "test-company",
+    github_org: "TestCompany",
+    module_slots: [
+      { path: "../ForeignOrg/workspace/shared", git: { url: "git@github.com:ForeignOrg/shared.git" } },
+      { path: "workspace/foreign-link", git: { url: "git@github.com:ForeignOrg/shared.git" } },
+    ],
+  });
+
+  const result = await discoverLaunchpadApps(root);
+
+  expect(result.failures.filter((failure) => failure.includes("uniká mimo Organization root"))).toHaveLength(2);
 });
 
 async function createCompaniesWorkspaceFixture({ plugin, appOverrides = {} }) {

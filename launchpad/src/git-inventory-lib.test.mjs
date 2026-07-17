@@ -1,5 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
-import { rm } from "fs/promises";
+import { mkdir, readFile, rm, symlink, writeFile } from "fs/promises";
+import { join } from "path";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
 import { createLaunchpadGitFixture } from "./git-fixture-helpers.test.mjs";
 
@@ -111,6 +112,28 @@ test("mount bez povinné GEN3 struktury je z git inventáře vynechaný s warnin
   });
   expect(explicitInventory.repos.some((repo) => repo.organization === "BrokenOrg")).toBe(false);
   expect(explicitInventory.warnings.some((warning) => warning.includes("chybí povinná GEN3 struktura"))).toBe(true);
+});
+
+test("git action inventory rejects traversal and symlink module paths that escape an Organization", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const betaRoot = join(root, "organizations", "BetaCo_GEN3");
+  const omegaTarget = join(root, "organizations", "OmegaCo_GEN3", "workspace", "studio");
+  await mkdir(join(betaRoot, "workspace"), { recursive: true });
+  await symlink(omegaTarget, join(betaRoot, "workspace", "foreign-link"));
+  const manifestPath = join(betaRoot, "modules.manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  manifest.module_slots.push(
+    { path: "../OmegaCo_GEN3/workspace/studio", git: { url: "git@github.com:OmegaCo/studio.git", branch: "main" } },
+    { path: "workspace/foreign-link", git: { url: "git@github.com:OmegaCo/studio.git", branch: "main" } },
+  );
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+  const inventory = await buildGitInventory({ companiesRoot: root });
+
+  expect(inventory.repos.some((repo) => repo.organization === "BetaCo" && repo.slot_path?.includes("Foreign"))).toBe(false);
+  expect(inventory.repos.some((repo) => repo.organization === "BetaCo" && repo.slot_path === "workspace/foreign-link")).toBe(false);
+  expect(inventory.warnings.filter((warning) => warning.includes("uniká mimo Organization root"))).toHaveLength(2);
 });
 
 test("inventory includes Organization roots and warns about missing mounts instead of crashing", async () => {
