@@ -2,13 +2,56 @@ import { afterAll, expect, test } from "bun:test";
 import { tmpdir } from "os";
 import { join } from "path";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "fs/promises";
-import { buildEnvironmentChecks, buildLaunchpadAppsResponse, buildLaunchpadDoctorReport, runtimeAppStatus } from "./diagnostics-lib.mjs";
-import { createLaunchpadGitFixture, initGitRepo } from "./git-fixture-helpers.test.mjs";
+import { buildEnvironmentChecks, buildLaunchpadAppsResponse, buildLaunchpadDoctorReport, runtimeAppStatus, updateChannelCheck } from "./diagnostics-lib.mjs";
+import { createLaunchpadGitFixture, initGitRepo, runGit } from "./git-fixture-helpers.test.mjs";
 
 const tempRoots = [];
 
 afterAll(async () => {
   await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
+});
+
+test("update.channel check je read-only anti-stuck guard kanálu", async () => {
+  const base = await mkdtemp(join(tmpdir(), "update-channel-check-"));
+  tempRoots.push(base);
+  const repo = join(base, "root");
+  const remote = join(base, "remote.git");
+  await initGitRepo(repo, { remotePath: remote });
+  await writeFile(join(repo, ".gitignore"), "launchpad.gen3.local.json\n");
+  runGit(["add", ".gitignore"], repo);
+  runGit(["commit", "-m", "ExampleOrg root"], repo);
+  runGit(["push", "origin", "main"], repo);
+
+  // Default stable kanál bez release tagu = viditelný warn, ne tichý stav.
+  const noTag = updateChannelCheck(repo);
+  expect(noTag.id).toBe("update.channel");
+  expect(noTag.status).toBe("warn");
+  expect(noTag.message).toContain("release tag");
+
+  // Nevalidní hodnota kanálu = warn s vysvětlením, platí stable.
+  await writeJson(join(repo, "launchpad.gen3.local.json"), { update_channel: "beta" });
+  const invalid = updateChannelCheck(repo);
+  expect(invalid.status).toBe("warn");
+  expect(invalid.message).toContain("Neplatný update_channel");
+
+  // Platný nightly kanál na origin/main = ok.
+  await writeJson(join(repo, "launchpad.gen3.local.json"), { update_channel: "nightly" });
+  const nightly = updateChannelCheck(repo);
+  expect(nightly.status).toBe("ok");
+  expect(nightly.message).toContain("nightly");
+
+  // Stable s release tagem na HEAD = ok a jmenuje tag.
+  runGit(["tag", "v0.1.0"], repo);
+  await writeJson(join(repo, "launchpad.gen3.local.json"), { update_channel: "stable" });
+  const stable = updateChannelCheck(repo);
+  expect(stable.status).toBe("ok");
+  expect(stable.message).toContain("v0.1.0");
+
+  // Mimo main = warn s odkazem na worktree disciplínu.
+  runGit(["checkout", "-b", "feature/apply"], repo);
+  const wrongBranch = updateChannelCheck(repo);
+  expect(wrongBranch.status).toBe("warn");
+  expect(wrongBranch.message).toContain("main");
 });
 
 test("Doctor drží foreign-port jako hard failure i při dependency warningu", () => {

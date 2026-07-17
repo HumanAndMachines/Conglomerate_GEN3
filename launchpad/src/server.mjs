@@ -15,6 +15,7 @@ import {
 } from "./git-api-lib.mjs";
 import { RuntimeActionError, createRuntimeManager } from "./runtime-lib.mjs";
 import { createGitStatusService } from "./git-status-lib.mjs";
+import { performRootUpdate, readRootUpdateStatus } from "./update-lib.mjs";
 import { WorktreeActionError, createWorktreeFromPlan, publishWorktreeDraft } from "./worktree-actions-lib.mjs";
 import { buildRecentModuleChanges } from "./recent-changes-lib.mjs";
 import { buildMostUsedApps } from "./usage-lib.mjs";
@@ -639,6 +640,24 @@ function startServer(startPort) {
         if (runtimeRoute) return handleRuntimeRoute(request, runtimeRoute);
         const gitRoute = gitApiRoute(url.pathname);
         if (gitRoute) return handleGitApiRoute(request, url, gitRoute);
+        // Update lane Conglomerate rootu (decision 0059, draft 0080): oddělená
+        // od org git inventáře; mutace jde přes trusted-local guard výše a
+        // serializuje se s background fetchi přes withRemoteRefreshPaused.
+        // I GET status je trusted-local: dělá git fetch (síť + credentials),
+        // cizí origin ho nesmí spouštět ani jako drive-by bez čtení odpovědi.
+        if (url.pathname.startsWith("/api/update") && !isTrustedLocalRequest(request, url)) {
+          return jsonResponse({ error: "update_request_forbidden" }, 403);
+        }
+        if (url.pathname === "/api/update/status" && request.method === "GET") {
+          return jsonResponse(await gitStatusService.withRemoteRefreshPaused(() =>
+            readRootUpdateStatus({ rootPath: companiesRoot })));
+        }
+        if (url.pathname === "/api/update" && request.method === "POST") {
+          const payload = await request.json().catch(() => ({}));
+          const result = await gitStatusService.withRemoteRefreshPaused(() =>
+            performRootUpdate({ rootPath: companiesRoot, mode: payload?.mode ?? "ff_only" }));
+          return jsonResponse(result, result.ok ? 200 : 409);
+        }
         if (url.pathname === "/api/apps") return jsonResponse(await buildAppsResponse());
         // Synchronizovat (decision 0042): znovu projede lokální auto-discovery
         // organizations/*/company.gen3.json bez ruční editace root manifestu.
