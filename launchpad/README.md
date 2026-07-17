@@ -304,6 +304,14 @@ Z Launchpad GEN3 rootu existují stejné spouštěče pro lidi:
 - Windows: `Launchpad.cmd` nebo `Launchpad.ps1`
 - Linux: `launchpad.sh`
 
+Windows launchery a runtime nespoléhají na PATH zděděný z interaktivního
+terminálu: Bun hledají také v uživatelských instalačních cestách a Git také ve
+standardních cestách Git for Windows. Každého kandidáta před použitím ověří
+pomocí `--version`, takže nefunkční WindowsApps alias nezastíní skutečnou
+instalaci. `Launchpad.ps1` musí mít právě jeden UTF-8 BOM, aby český text
+správně načetl i Windows PowerShell 5.1. Git probe jsou neinteraktivní, bez
+POSIX askpass cesty a se skrytými child okny.
+
 ## Web shell v1
 
 RM-0006 redesign source of truth: `launchpad/docs/launchpad-gen3-redesign-spec.md`.
@@ -396,9 +404,26 @@ jasný mechanismus:
   `exit_code=0` a nezanechat package/lockfile diff; pokud diff vznikne, je to
   app-local dependency side effect k explicitnímu review.
 - `Stop` zastaví proces na app-owned portu; pokud proces přežil restart nebo ho
-  spustila jiná instance Launchpadu, Launchpad ho adoptuje podle portu
-  z manifestu. PID vlastníka portu ověří znovu před `SIGTERM` i případným
-  `SIGKILL`; neznámý nebo mezitím změněný PID se fail-closed nezabíjí.
+  spustila jiná instance Launchpadu, Launchpad ho adoptuje jen tam, kde může
+  pozitivně ověřit PID i CWD vlastníka portu. PID ověří znovu před `SIGTERM`
+  i případným `SIGKILL`; neznámý nebo mezitím změněný PID se fail-closed
+  nezabíjí. Windows tuto cross-instance CWD kontrolu zatím nemá: po restartu
+  Launchpadu zůstane listener `unknown-port` a musí se uvolnit mimo Launchpad.
+  Na Windows používá current-instance managed proces cílený
+  `taskkill /PID <pid> /T /F` nad PID uloženým v runtime recordu a po ukončení
+  čeká na potvrzení původního child handle. Pokud handle exit nepotvrdí,
+  Launchpad ponechá managed ownership a selže bezpečně bez druhého signálu;
+  opakovaný `Stop` vrátí `app_stop_in_progress`. Managed slot drží až do
+  úspěšného zápisu stavu `stopped`, takže souběžný `Start` nemůže v krátkém
+  okně mezi exitem a finalizací osiřet nový proces. Selhání ještě před signálem
+  nebo potvrzená chyba `taskkill` vrátí živý managed proces do retryable stavu;
+  po potvrzeném exitu opakuje další `Stop` už jen zápis finalizace, nikdy signál.
+  Stejný child-handle kontrakt platí na POSIX po eskalaci `SIGTERM` → `SIGKILL`.
+  Po potvrzeném exitu je každý nový listener na app-owned portu samostatný
+  proces i při numericky shodném reused PID; Launchpad starý record uklidí,
+  listener nezabije a `Start`/`Restart` ho klasifikuje standardním port-conflict
+  guardem. Nikdy nepoužije `taskkill` jen podle obsazeného portu; neověřený
+  nebo cizí listener zůstává nedotčený.
 - `Restart` je `Stop` + `Start` nad app-owned portem.
 - `Logs` čte lokální log mimo Git.
 - `Stáhnout novější verzi` provede pouze fresh-remote-verified
@@ -483,6 +508,10 @@ Doctor musí hlídat:
 - duplicity portů mezi validními aplikacemi
 - existenci `dev_script`
 - existenci a validitu read-only plugin manifestu, pokud je uvedený
+- u Organizací, které přijaly agent-skills entrypoint kontrakt, že
+  `.claude/skills` přes `realpath` míří na kanonické `.agents/skills`; shared
+  Doctor nikdy nespouští Organization skript ani nematerializuje odkaz, pouze
+  vrací `ok`, `repair_needed` nebo `blocked`
 
 Když Doctor selže, chyba má být napsaná tak, aby ji mohl opravit další
 agent bez znalosti historie.

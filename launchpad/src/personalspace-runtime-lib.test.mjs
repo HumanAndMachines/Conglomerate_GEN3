@@ -177,7 +177,7 @@ test("personalspace Doctor neudělá skip při failure bez materializovaného pr
 test("resolveSpaceGbrainVault vrací vault root jen pro validní prostor s existujícím vaultem", async () => {
   const { root } = await createFixture({ withGbrain: true });
   const vault = await resolveSpaceGbrainVault({ companiesRoot: root, spaceDirName: "exampleuser_GEN3" });
-  expect(vault.vaultRoot).toContain("exampleuser_GEN3/gbrain");
+  expect(vault.vaultRoot).toBe(join(root, "personalspace", "exampleuser_GEN3", "gbrain"));
   expect(vault.mode).toBe("canonical");
 });
 
@@ -203,5 +203,5 @@ test("resolveSpaceGbrainVault odmítne gbrain nasdíleného prostoru s default_s
   expect(error.code).toBe("gbrain_not_shared");
   // Vlastní primární prostor zůstává přístupný.
   const vault = await resolveSpaceGbrainVault({ companiesRoot: root, spaceDirName: "exampleuser_GEN3" });
-  expect(vault.vaultRoot).toContain("exampleuser_GEN3/gbrain");
+  expect(vault.vaultRoot).toBe(join(root, "personalspace", "exampleuser_GEN3", "gbrain"));
 });

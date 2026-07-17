@@ -2,7 +2,7 @@ import { existsSync } from "fs";
 import { appendFile, mkdir, readFile, realpath, stat, utimes, writeFile } from "fs/promises";
 import { randomUUID } from "crypto";
 import { createServer } from "net";
-import { dirname, isAbsolute, join, relative, resolve, win32 } from "path";
+import { basename, dirname, isAbsolute, join, relative, resolve, win32 } from "path";
 import { discoverLaunchpadApps } from "./discovery-lib.mjs";
 import { recordAppOpen } from "./usage-lib.mjs";
 import { buildWorktreeIndex } from "./worktree-lib.mjs";
@@ -47,7 +47,14 @@ export function createRuntimeManager({
   instanceId = randomUUID(),
   discover = discoverLaunchpadApps,
   resolvePortOwnerFn = resolvePortOwner,
+  platform = process.platform,
+  spawnProcess = Bun.spawn,
+  runSystemCommandFn = runCommand,
+  writeRuntimeStateFile = writeFile,
+  bunExecutable = null,
 }) {
+  const runtimeBunExecutable = bunExecutable
+    ?? (platform === process.platform ? resolveBunExecutable() : resolveBunExecutable({ platform }));
   const managedProcesses = new Map();
   const runtimeRoot = join(launchpadRoot, "runtime");
   const appStateRoot = join(runtimeRoot, "apps");
@@ -125,11 +132,12 @@ export function createRuntimeManager({
 
     let child;
     try {
-      child = Bun.spawn(["bun", "run", app.dev_script], {
+      child = spawnProcess([runtimeBunExecutable, "run", app.dev_script], {
         cwd: join(companiesRoot, app.cwd),
         env: childEnv,
         stdout: "pipe",
         stderr: "pipe",
+        windowsHide: true,
       });
     } catch (error) {
       const failureKind = existsSync(join(companiesRoot, app.cwd)) ? "start_spawn_failed" : "bad_cwd";
@@ -164,6 +172,13 @@ export function createRuntimeManager({
       startedAt,
       logPath,
       stopping: false,
+      finalizeStopOnExit: false,
+      finalizeStopForced: false,
+      stopExitConfirmed: false,
+      stopExitCode: null,
+      stopFinalizationReady: false,
+      stopFinalizationOptions: null,
+      stopFinalizationPromise: null,
       outputPipes: [],
     };
     managedProcesses.set(runtimeKey, record);
@@ -186,11 +201,25 @@ export function createRuntimeManager({
     });
 
     child.exited.then(async (exitCode) => {
+      if (record.stopping) {
+        record.stopExitConfirmed = true;
+        record.stopExitCode = exitCode;
+        if (record.finalizeStopOnExit) {
+          prepareStopFinalization(record, {
+            exitCode,
+            forced: record.finalizeStopForced,
+          });
+          await finalizeManagedStop(app, record, runtimeKey, runtimeSource, {
+            exitCode,
+            forced: record.finalizeStopForced,
+          });
+        }
+        return;
+      }
       const currentRecord = managedProcesses.get(runtimeKey);
-      if (currentRecord?.pid === child.pid) {
+      if (currentRecord === record) {
         managedProcesses.delete(runtimeKey);
       }
-      if (record.stopping) return;
       await Promise.allSettled(record.outputPipes);
       await appendLog(logPath, `[launchpad] ${new Date().toISOString()} exit ${app.id} source=${runtimeSource.type} code=${exitCode}\n`);
       const log_excerpt = await logTail(logPath, errorTailBytes);
@@ -210,6 +239,8 @@ export function createRuntimeManager({
         log_path: relativeRuntimePath(logPath),
         ...(failure ? { last_error: failure.message, failure_kind: failure.kind, log_excerpt } : {}),
       });
+    }).catch(async (error) => {
+      await appendLog(logPath, `[launchpad] exit finalization failed ${app.id}: ${error.message}\n`);
     });
 
     const earlyExit = await waitForEarlyExit(child, startEarlyExitProbeMs);
@@ -279,7 +310,7 @@ export function createRuntimeManager({
       `\n[launchpad] ${startedAt} ${action} ${app.id} command=${dependencies.install_command_display} source=${runtimeSource.type} cwd=${cwd}\n`,
     );
 
-    const child = Bun.spawn(dependencies.install_command, {
+    const child = spawnProcess(runtimePackageCommand(dependencies.install_command, runtimeBunExecutable), {
       cwd,
       env: runtimeProcessEnv(app, {
         COMPANIES_WORKSPACE_ROOT: companiesRoot,
@@ -290,6 +321,7 @@ export function createRuntimeManager({
       }),
       stdout: "pipe",
       stderr: "pipe",
+      windowsHide: true,
     });
     const outputPipes = [
       pipeOutput(child.stdout, logPath, "stdout"),
@@ -508,71 +540,344 @@ export function createRuntimeManager({
       });
     }
 
+    if (record.stopping) {
+      if (record.stopFinalizationReady && record.stopFinalizationOptions) {
+        await finalizeManagedStop(
+          app,
+          record,
+          runtimeKey,
+          runtimeSource,
+          record.stopFinalizationOptions,
+        );
+        return stopActionResult(app, record, runtimeKey, runtimeSource, {
+          forced: record.stopFinalizationOptions.forced,
+        });
+      }
+      throw new RuntimeActionError(
+        409,
+        "app_stop_in_progress",
+        "Aplikace se už zastavuje; Launchpad neposlal další signál.",
+        [`runtime_key: ${runtimeKey}`, `pid: ${record.pid}`],
+        {
+          failure_kind: "stop_in_progress",
+          owner: "current-instance",
+          pid: record.pid,
+        },
+      );
+    }
+
     record.stopping = true;
-    await writeState(runtimeKey, {
-      status: "stopping",
-      app_id: app.id,
-      runtime_key: runtimeKey,
-      runtime_source: runtimeSource,
-      port: record.port ?? app.port,
-      pid: record.pid,
-      instance_id: instanceId,
-      started_at: record.startedAt,
-      updated_at: new Date().toISOString(),
-      log_path: relativeRuntimePath(record.logPath),
-    });
-    await appendLog(record.logPath, `[launchpad] ${new Date().toISOString()} stop ${app.id}\n`);
+    resetStopAttempt(record);
+    try {
+      await writeState(runtimeKey, {
+        status: "stopping",
+        app_id: app.id,
+        runtime_key: runtimeKey,
+        runtime_source: runtimeSource,
+        port: record.port ?? app.port,
+        pid: record.pid,
+        instance_id: instanceId,
+        started_at: record.startedAt,
+        updated_at: new Date().toISOString(),
+        log_path: relativeRuntimePath(record.logPath),
+      });
+      await appendLog(record.logPath, `[launchpad] ${new Date().toISOString()} stop ${app.id}\n`);
+    } catch (error) {
+      await recoverRetryableStopAttempt(app, record, runtimeKey, runtimeSource, error, {
+        failureKind: "stop_preparation_failed",
+      });
+      throw error;
+    }
 
     try {
-      record.child.kill("SIGTERM");
+      await signalManagedProcess(record, runtimeKey, "SIGTERM");
     } catch (error) {
-      await appendLog(record.logPath, `[launchpad] stop signal failed: ${error.message}\n`);
+      await recoverRetryableStopAttempt(app, record, runtimeKey, runtimeSource, error, {
+        failureKind: error?.metadata?.failure_kind ?? "stop_signal_failed",
+      });
+      throw error;
     }
 
     const result = await Promise.race([
       record.child.exited.then((exitCode) => ({ exitCode, timeout: false })),
       sleep(stopTimeoutMs).then(() => ({ exitCode: null, timeout: true })),
     ]);
+    if (!result.timeout) {
+      record.stopExitConfirmed = true;
+      record.stopExitCode = result.exitCode;
+    }
 
-    if (result.timeout) {
+    // Windows už první bezpečně scoped Stop provede přes taskkill /T /F.
+    // Druhé cílení stejného PID po timeoutu by po rychlém PID reuse mohlo
+    // zasáhnout cizí proces. Identitu proto potvrzuje původní child handle:
+    // timeout ponechá ownership, potvrzený exit dovolí uklidit managed záznam.
+    let exitCode = result.exitCode;
+    if (result.timeout && platform !== "win32") {
       try {
-        record.child.kill("SIGKILL");
+        await signalManagedProcess(record, runtimeKey, "SIGKILL");
       } catch (error) {
-        await appendLog(record.logPath, `[launchpad] kill signal failed: ${error.message}\n`);
+        await recoverRetryableStopAttempt(app, record, runtimeKey, runtimeSource, error, {
+          failureKind: error?.metadata?.failure_kind ?? "stop_signal_failed",
+        });
+        throw error;
+      }
+      const killResult = await Promise.race([
+        record.child.exited.then((confirmedExitCode) => ({
+          exitCode: confirmedExitCode,
+          timeout: false,
+        })),
+        sleep(stopKillWaitMs).then(() => ({ exitCode: null, timeout: true })),
+      ]);
+      if (killResult.timeout) {
+        enableStopFinalizationOnExit(app, record, runtimeKey, runtimeSource, {
+          forced: true,
+        });
+        await appendLog(
+          record.logPath,
+          `[launchpad] SIGKILL completed but child exit was not confirmed ${app.id} managed_pid=${record.pid}\n`,
+        );
+        throw stopExitUnconfirmedError(app, record);
+      }
+      exitCode = killResult.exitCode;
+      record.stopExitConfirmed = true;
+      record.stopExitCode = exitCode;
+    }
+
+    if (result.timeout && platform === "win32") {
+      enableStopFinalizationOnExit(app, record, runtimeKey, runtimeSource, {
+        forced: true,
+      });
+      await appendLog(
+        record.logPath,
+        `[launchpad] taskkill completed but child exit was not confirmed ${app.id} managed_pid=${record.pid}\n`,
+      );
+      throw stopExitUnconfirmedError(app, record);
+    }
+
+    const forced = platform === "win32" || result.timeout;
+    prepareStopFinalization(record, {
+      exitCode,
+      forced,
+    });
+    if (platform === "win32") {
+      // Po potvrzeném child exit je každý listener nový proces, i kdyby Windows
+      // mezitím znovu použil stejné číselné PID. Jen ho zalogujeme; health/start
+      // jej následně fail-closed klasifikuje podle port ownership kontraktu.
+      try {
+        const ownerAfterStop = await resolvePortOwnerFn(app.port, {
+          expectedCwd: join(companiesRoot, app.cwd ?? dirname(app.package_path ?? "package.json")),
+        });
+        if (ownerAfterStop) {
+          await appendLog(
+            record.logPath,
+            `[launchpad] stop tree completed and port was reused ${app.id} managed_pid=${record.pid} new_owner=${ownerAfterStop.pid}\n`,
+          );
+        }
+      } catch (error) {
+        // Diagnostika po potvrzeném exitu nesmí zablokovat nedestruktivní
+        // finalizaci. Když selže i log (AV/OneDrive lock), finalizer zachová
+        // retryable managed slot a další Stop zopakuje jen zápis stavu.
+        try {
+          await appendLog(
+            record.logPath,
+            `[launchpad] post-stop port diagnostic failed ${app.id}: ${error.message}\n`,
+          );
+        } catch {}
       }
     }
-    await appendLog(
-      record.logPath,
-      `[launchpad] ${new Date().toISOString()} stopped ${app.id} code=${result.exitCode} forced=${result.timeout}\n`,
-    );
-    await Promise.allSettled(record.outputPipes);
-
-    managedProcesses.delete(runtimeKey);
-    await writeState(runtimeKey, {
-      status: "stopped",
-      app_id: app.id,
-      runtime_key: runtimeKey,
-      runtime_source: runtimeSource,
-      port: record.port ?? app.port,
-      pid: record.pid,
-      instance_id: instanceId,
-      started_at: record.startedAt,
-      stopped_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      exit_code: result.exitCode,
-      forced: result.timeout,
-      log_path: relativeRuntimePath(record.logPath),
+    await finalizeManagedStop(app, record, runtimeKey, runtimeSource, {
+      exitCode,
+      forced,
     });
 
+    return stopActionResult(app, record, runtimeKey, runtimeSource, { forced });
+  }
+
+  function stopExitUnconfirmedError(app, record) {
+    return new RuntimeActionError(
+      500,
+      "app_stop_failed",
+      `${app.title}: ukončení PID ${record.pid} nebylo potvrzené známým process handlem.`,
+      [`app_id: ${app.id}`, `managed_pid: ${record.pid}`, `port: ${app.port}`, `platform: ${platform}`],
+      {
+        failure_kind: "stop_exit_unconfirmed",
+        owner: "current-instance",
+        managed_pid: record.pid,
+        port: app.port,
+        platform,
+      },
+    );
+  }
+
+  async function stopActionResult(app, record, runtimeKey, runtimeSource, { forced }) {
     return {
       action: "stop",
       app_id: app.id,
       runtime_key: runtimeKey,
       runtime_source: runtimeSource,
       pid: record.pid,
-      forced: result.timeout,
+      forced,
       runtime: await healthForApp(app),
     };
+  }
+
+  function resetStopAttempt(record) {
+    record.finalizeStopOnExit = false;
+    record.finalizeStopForced = false;
+    record.stopExitConfirmed = false;
+    record.stopExitCode = null;
+    record.stopFinalizationReady = false;
+    record.stopFinalizationOptions = null;
+    record.stopFinalizationPromise = null;
+  }
+
+  async function recoverRetryableStopAttempt(
+    app,
+    record,
+    runtimeKey,
+    runtimeSource,
+    error,
+    { failureKind },
+  ) {
+    const updatedAt = new Date().toISOString();
+    try {
+      await writeState(runtimeKey, {
+        status: "unhealthy",
+        app_id: app.id,
+        runtime_key: runtimeKey,
+        runtime_source: runtimeSource,
+        port: record.port ?? app.port,
+        pid: record.pid,
+        instance_id: instanceId,
+        started_at: record.startedAt,
+        updated_at: updatedAt,
+        log_path: relativeRuntimePath(record.logPath),
+        last_error: error?.message ?? String(error),
+        failure_kind: failureKind,
+      });
+    } catch {
+      // Původní Stop chyba je pro volajícího směrodatná. Managed record se
+      // přesto musí vrátit do retryable stavu, když child stále běží.
+    }
+
+    if (record.stopExitConfirmed) {
+      enableStopFinalizationOnExit(app, record, runtimeKey, runtimeSource, {
+        forced: false,
+      });
+      return;
+    }
+
+    record.stopping = false;
+    record.finalizeStopOnExit = false;
+    record.finalizeStopForced = false;
+  }
+
+  function enableStopFinalizationOnExit(app, record, runtimeKey, runtimeSource, { forced }) {
+    record.finalizeStopOnExit = true;
+    record.finalizeStopForced = forced;
+    if (!record.stopExitConfirmed) return;
+    prepareStopFinalization(record, {
+      exitCode: record.stopExitCode,
+      forced,
+    });
+    void finalizeManagedStop(app, record, runtimeKey, runtimeSource, {
+      exitCode: record.stopExitCode,
+      forced,
+    }).catch(async (error) => {
+      await appendLog(record.logPath, `[launchpad] deferred stop finalization failed ${app.id}: ${error.message}\n`);
+    });
+  }
+
+  function prepareStopFinalization(record, options) {
+    record.stopFinalizationReady = true;
+    record.stopFinalizationOptions = options;
+  }
+
+  async function finalizeManagedStop(app, record, runtimeKey, runtimeSource, { exitCode, forced }) {
+    if (record.stopFinalizationPromise) return record.stopFinalizationPromise;
+
+    const finalizationPromise = (async () => {
+      const stoppedAt = new Date().toISOString();
+      await appendLog(
+        record.logPath,
+        `[launchpad] ${stoppedAt} stopped ${app.id} code=${exitCode} forced=${forced}\n`,
+      );
+      await Promise.allSettled(record.outputPipes);
+      await writeState(runtimeKey, {
+        status: "stopped",
+        app_id: app.id,
+        runtime_key: runtimeKey,
+        runtime_source: runtimeSource,
+        port: record.port ?? app.port,
+        pid: record.pid,
+        instance_id: instanceId,
+        started_at: record.startedAt,
+        stopped_at: stoppedAt,
+        updated_at: stoppedAt,
+        exit_code: exitCode,
+        forced,
+        log_path: relativeRuntimePath(record.logPath),
+      });
+      if (managedProcesses.get(runtimeKey) === record) {
+        managedProcesses.delete(runtimeKey);
+      }
+    })();
+    record.stopFinalizationPromise = finalizationPromise;
+    try {
+      return await finalizationPromise;
+    } catch (error) {
+      if (record.stopFinalizationPromise === finalizationPromise) {
+        record.stopFinalizationPromise = null;
+      }
+      throw error;
+    }
+  }
+
+  async function signalManagedProcess(record, runtimeKey, signal) {
+    if (managedProcesses.get(runtimeKey) !== record) {
+      throw new RuntimeActionError(
+        409,
+        "app_managed_owner_changed",
+        "Vlastnictví managed procesu se během zastavování změnilo; Launchpad neposlal signál.",
+        [`runtime_key: ${runtimeKey}`, `pid: ${record.pid}`],
+        { failure_kind: "managed_owner_changed", pid: record.pid },
+      );
+    }
+
+    if (platform === "win32") {
+      const command = windowsTaskkillCommand(record.pid, {
+        // taskkill /T bez /F neumí spolehlivě ukončit console procesy. PID je
+        // bezpečně svázaný s managedProcesses této instance, takže Windows
+        // ukončí celý známý strom atomicky už při prvním Stop pokusu.
+        force: true,
+      });
+      const result = await runSystemCommandFn(command);
+      if (!result.ok && !isMissingProcessResult(result)) {
+        await appendLog(record.logPath, `[launchpad] taskkill failed: ${result.stderr || result.error || "unknown"}\n`);
+        throw new RuntimeActionError(
+          500,
+          "app_stop_failed",
+          `Managed strom procesu PID ${record.pid} se nepodařilo ukončit.`,
+          [`runtime_key: ${runtimeKey}`, `pid: ${record.pid}`, `command: ${command.join(" ")}`],
+          { failure_kind: "stop_signal_failed", owner: "current-instance", pid: record.pid },
+        );
+      }
+      return;
+    }
+
+    try {
+      record.child.kill(signal);
+    } catch (error) {
+      if (error?.code === "ESRCH") return;
+      await appendLog(record.logPath, `[launchpad] stop signal failed: ${error.message}\n`);
+      throw new RuntimeActionError(
+        error?.code === "EPERM" ? 403 : 500,
+        error?.code === "EPERM" ? "app_stop_forbidden" : "app_stop_failed",
+        `Managed procesu PID ${record.pid} nelze poslat ${signal}: ${error.message}`,
+        [`runtime_key: ${runtimeKey}`, `pid: ${record.pid}`, `signal: ${signal}`],
+        { failure_kind: "stop_signal_failed", owner: "current-instance", pid: record.pid, signal },
+      );
+    }
   }
 
   // App-owned port je source of truth i po restartu / paralelním spuštění
@@ -1194,7 +1499,7 @@ export function createRuntimeManager({
 
   async function writeState(appId, state) {
     await ensureRuntimeDirs();
-    await writeFile(statePathForApp(appId), `${JSON.stringify(state, null, 2)}\n`, "utf8");
+    await writeRuntimeStateFile(statePathForApp(appId), `${JSON.stringify(state, null, 2)}\n`, "utf8");
   }
 
   async function ensureRuntimeDirs() {
@@ -1211,7 +1516,9 @@ export function createRuntimeManager({
   }
 
   function relativeRuntimePath(path) {
-    return relative(launchpadRoot, path);
+    // API/state cesty jsou přenositelné identifikátory, ne nativní filesystem
+    // cesty. Na Windows proto nikdy nepropouštějí zpětná lomítka.
+    return relative(launchpadRoot, path).replace(/\\/g, "/");
   }
 
   return {
@@ -1475,6 +1782,110 @@ function installFailureMessage(app, exitCode, logExcerpt) {
   return `Instalace balíčků pro ${app.title} selhala s exit code ${exitCode}.${suffix}`;
 }
 
+let cachedBunExecutable;
+let hasCachedBunExecutable = false;
+
+export function resolveBunExecutable(options = {}) {
+  const useCache = Object.keys(options).length === 0;
+  if (useCache && hasCachedBunExecutable) return cachedBunExecutable;
+
+  const resolved = resolveBunExecutableUncached(options);
+  if (useCache) {
+    cachedBunExecutable = resolved;
+    hasCachedBunExecutable = true;
+  }
+  return resolved;
+}
+
+function resolveBunExecutableUncached({
+  platform = process.platform,
+  env = process.env,
+  execPath = process.execPath,
+  which = defaultWhich,
+  pathExists = existsSync,
+  probe = probeBunExecutableSync,
+} = {}) {
+  const pathCommand = platform === "win32" ? "bun.exe" : "bun";
+  const fromPath = which(pathCommand) ?? which("bun");
+  const runningBun = /^bun(?:\.exe)?$/i.test(basename(execPath ?? "")) && pathExists(execPath)
+    ? execPath
+    : null;
+  const installedCandidates = bunExecutableCandidates({ platform, env })
+    .filter((candidate) => pathExists(candidate));
+  for (const candidate of [...new Set([
+    fromPath,
+    runningBun,
+    ...installedCandidates,
+    pathCommand,
+  ].filter(Boolean))]) {
+    if (probe(candidate)) return candidate;
+  }
+  // Zachováme stávající spawn/catch failure path s lidskou chybou, i když
+  // žádný kandidát validací neprošel.
+  return pathCommand;
+}
+
+export function bunExecutableCandidates({ platform = process.platform, env = process.env } = {}) {
+  if (platform !== "win32") return [];
+  return [...new Set([
+    env.USERPROFILE ? win32.join(env.USERPROFILE, ".bun", "bin", "bun.exe") : null,
+    env.LOCALAPPDATA ? win32.join(env.LOCALAPPDATA, "bun", "bin", "bun.exe") : null,
+  ].filter(Boolean))];
+}
+
+export function resetBunExecutableCacheForTests() {
+  cachedBunExecutable = undefined;
+  hasCachedBunExecutable = false;
+}
+
+export function windowsTaskkillCommand(pid, { force = false, env = process.env } = {}) {
+  if (!Number.isInteger(pid) || pid <= 0) throw new Error(`Invalid Windows process id: ${pid}`);
+  const executable = env.SystemRoot
+    ? win32.join(env.SystemRoot, "System32", "taskkill.exe")
+    : "taskkill.exe";
+  return [executable, "/PID", String(pid), "/T", ...(force ? ["/F"] : [])];
+}
+
+export function windowsPowerShellExecutable(env = process.env) {
+  return env.SystemRoot
+    ? win32.join(env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+    : "powershell.exe";
+}
+
+function runtimePackageCommand(command, bunExecutable) {
+  if (!Array.isArray(command) || command.length === 0) return command;
+  return command[0] === "bun" || command[0] === "bun.exe"
+    ? [bunExecutable, ...command.slice(1)]
+    : command;
+}
+
+function defaultWhich(command) {
+  try {
+    return typeof Bun.which === "function" ? Bun.which(command) : null;
+  } catch {
+    return null;
+  }
+}
+
+function probeBunExecutableSync(executable) {
+  try {
+    const result = Bun.spawnSync([executable, "--version"], {
+      stdout: "ignore",
+      stderr: "ignore",
+      windowsHide: true,
+      timeout: 5_000,
+    });
+    return result.exitCode === 0;
+  } catch {
+    return false;
+  }
+}
+
+function isMissingProcessResult(result) {
+  const text = `${result.stderr ?? ""}\n${result.stdout ?? ""}\n${result.error ?? ""}`;
+  return /not found|no running instance|nenalezena|nebyla nalezena/i.test(text);
+}
+
 async function resolvePortOwner(port, { expectedCwd = null } = {}) {
   const pid = process.platform === "win32" ? await resolvePortOwnerWindows(port) : await resolvePortOwnerUnix(port);
   if (!pid || pid === process.pid) return null;
@@ -1532,7 +1943,7 @@ async function resolvePortOwnerUnix(port) {
 
 async function resolvePortOwnerWindows(port) {
   const command = [
-    "powershell.exe",
+    windowsPowerShellExecutable(),
     "-NoProfile",
     "-Command",
     `$ownerPid = Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess; if ($ownerPid) { Write-Output $ownerPid }`,
@@ -1545,13 +1956,17 @@ async function runCommand(command) {
   try {
     const process = Bun.spawn(command, {
       stdout: "pipe",
-      stderr: "ignore",
+      stderr: "pipe",
+      windowsHide: true,
     });
-    const stdout = await new Response(process.stdout).text();
-    const exitCode = await process.exited;
-    return { ok: exitCode === 0, stdout };
-  } catch {
-    return { ok: false, stdout: "" };
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(process.stdout).text(),
+      new Response(process.stderr).text(),
+      process.exited,
+    ]);
+    return { ok: exitCode === 0, exitCode, stdout, stderr };
+  } catch (error) {
+    return { ok: false, exitCode: null, stdout: "", stderr: "", error: error.message };
   }
 }
 

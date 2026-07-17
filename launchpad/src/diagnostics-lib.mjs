@@ -3,8 +3,14 @@ import { readFile, readdir, stat } from "fs/promises";
 import { basename, join } from "path";
 import { discoverLaunchpadApps, readJson } from "./discovery-lib.mjs";
 import { buildGitApiResponse, compactGitSummaryForApp } from "./git-api-lib.mjs";
-import { createRuntimeManager } from "./runtime-lib.mjs";
+import { createRuntimeManager, resolveBunExecutable } from "./runtime-lib.mjs";
 import { buildWorktreeIndex } from "./worktree-lib.mjs";
+import {
+  GIT_LOCAL_TIMEOUT_MS,
+  resolveGitExecutableSync,
+  safeGitCommandEnv,
+} from "./git-lib.mjs";
+import { agentSkillsEntrypointsDoctorCheck } from "./agent-skills-entrypoint-lib.mjs";
 
 const supportedPlatforms = {
   darwin: "macOS",
@@ -196,7 +202,19 @@ export async function buildLaunchpadDoctorReport(options = {}) {
     companiesRoot: appsResponse.root,
     launchpadRoot: options.launchpadRoot,
   });
-  return buildDoctorReportFromAppsResponse(appsResponse, { environmentChecks, extraChecks: [...worktreeChecks, ...personalspaceChecks] });
+  const agentSkillsChecks = [
+    await agentSkillsEntrypointsDoctorCheck({
+      companiesRoot: appsResponse.root,
+      mounts: [
+        ...(appsResponse.organizations ?? []),
+        ...(appsResponse.template_mounts ?? []),
+      ],
+    }),
+  ];
+  return buildDoctorReportFromAppsResponse(appsResponse, {
+    environmentChecks,
+    extraChecks: [...worktreeChecks, ...personalspaceChecks, ...agentSkillsChecks],
+  });
 }
 
 // Oddělený od org appsResponse: personalspace má vlastní lane. Dynamický import,
@@ -894,6 +912,8 @@ function humanizeSlug(slug) {
 
 function platformChecks(companiesRoot) {
   const platformName = supportedPlatforms[process.platform];
+  const bunExecutable = resolveBunExecutable();
+  const gitExecutable = resolveGitExecutableSync();
   return [
     {
       id: "platform.os",
@@ -910,26 +930,35 @@ function platformChecks(companiesRoot) {
     commandCheck({
       id: "platform.bun",
       title: "Bun runtime",
-      command: "bun",
+      command: bunExecutable,
       args: ["--version"],
       cwd: companiesRoot,
-      okMessage: (result) => `Bun ${result.stdout} je dostupný v PATH.`,
-      failMessage: "Bun není dostupný v PATH.",
+      okMessage: (result) => `Bun ${result.stdout} je dostupný jako ${bunExecutable}.`,
+      failMessage: "Bun nebyl nalezen ani neprošel validací executable kandidáta.",
     }),
     commandCheck({
       id: "platform.git",
       title: "Git",
-      command: "git",
+      command: gitExecutable,
       args: ["--version"],
       cwd: companiesRoot,
       okMessage: (result) => result.stdout,
-      failMessage: "Git není dostupný v PATH.",
+      failMessage: "Git nebyl nalezen ani neprošel validací executable kandidáta.",
+      env: safeGitCommandEnv(),
     }),
   ];
 }
 
-function commandCheck({ id, title, command, args, cwd, okMessage, failMessage }) {
-  const result = runCommand(command, args, { cwd });
+function commandCheck({ id, title, command, args, cwd, okMessage, failMessage, env }) {
+  const result = command
+    ? runCommand(command, args, { cwd, env })
+    : {
+        ok: false,
+        exitCode: null,
+        stdout: "",
+        stderr: "",
+        error: "Executable resolver nevrátil žádného validního kandidáta.",
+      };
   return {
     id,
     status: result.ok ? "ok" : "fail",
@@ -940,7 +969,7 @@ function commandCheck({ id, title, command, args, cwd, okMessage, failMessage })
     links: [],
     details: result.ok
       ? [`command: ${command} ${args.join(" ")}`]
-      : [`command: ${command} ${args.join(" ")}`, result.stderr || result.error || "Příkaz selhal."],
+      : [`command: ${command ?? "<missing>"} ${args.join(" ")}`, result.stderr || result.error || "Příkaz selhal."],
   };
 }
 
@@ -1165,15 +1194,28 @@ function isIgnored(cwd, path) {
 }
 
 function runGit(args, cwd) {
-  return runCommand("git", args, { cwd });
+  const executable = resolveGitExecutableSync();
+  if (!executable) {
+    return {
+      ok: false,
+      exitCode: null,
+      stdout: "",
+      stderr: "",
+      error: "Git executable was not found or failed validation.",
+    };
+  }
+  return runCommand(executable, args, { cwd, env: safeGitCommandEnv() });
 }
 
-function runCommand(command, args, { cwd }) {
+function runCommand(command, args, { cwd, env } = {}) {
   try {
     const result = Bun.spawnSync([command, ...args], {
       cwd,
+      ...(env ? { env } : {}),
       stdout: "pipe",
       stderr: "pipe",
+      windowsHide: true,
+      timeout: GIT_LOCAL_TIMEOUT_MS,
     });
     return {
       ok: result.exitCode === 0,

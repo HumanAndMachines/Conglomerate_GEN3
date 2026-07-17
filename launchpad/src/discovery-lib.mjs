@@ -1,6 +1,6 @@
 import { existsSync } from "fs";
 import { readdir, readFile } from "fs/promises";
-import { dirname, isAbsolute, join, relative, resolve } from "path";
+import { dirname, isAbsolute, join, posix, relative, resolve } from "path";
 import { buildPortOwner, formatPortCollisionFailure } from "./port-ownership-lib.mjs";
 
 const ignoredDirs = new Set([
@@ -46,6 +46,13 @@ export async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"));
 }
 
+// Cesty vracené v discovery/API modelu jsou přenositelné identifikátory
+// workspace, ne nativní filesystem cesty. Drží proto vždy POSIX oddělovače i na
+// Windows; až spotřebitel je přes join/resolve překládá zpět na lokální cestu.
+function workspaceRelativePath(root, target) {
+  return relative(root, target).replace(/\\/g, "/");
+}
+
 // Per-machine override soubor launchpad.gen3.local.json (gitignored, nikdy
 // trackovaný). Nese jen stroj-specifická data: personalspace_owner, extra local
 // surfaces a planned_organizations. Rozbitý JSON override neshazuje discovery —
@@ -77,7 +84,7 @@ async function walkPackageJson(root, current, output, company) {
     }
     if (entry.isFile() && entry.name === "package.json") {
       output.push({
-        packagePath: relative(root, absolutePath),
+        packagePath: workspaceRelativePath(root, absolutePath),
         company,
       });
     }
@@ -583,7 +590,7 @@ function invalidAppRecord({ app, packagePath, company, issues }) {
     organization_path: company.path,
     organization_kind: company.organization_kind ?? null,
     discovery_source: company.discovery_source ?? null,
-    cwd: dirname(packagePath),
+    cwd: posix.dirname(packagePath),
     tags: Array.isArray(app.tags) ? app.tags.filter((tag) => typeof tag === "string") : [],
     manifest_state: "invalid_manifest",
     manifest_issues: issues,
@@ -602,11 +609,17 @@ async function readPluginManifest({ app, companiesRoot, packagePath, company, sc
     return null;
   }
 
-  const packageDir = join(companiesRoot, dirname(packagePath));
+  const packageDir = dirname(join(companiesRoot, packagePath));
   const companyRoot = join(companiesRoot, company.path);
   const pluginPath = resolve(packageDir, app.plugin);
   const relativeToCompany = relative(companyRoot, pluginPath);
-  if (isAbsolute(app.plugin) || relativeToCompany.startsWith("..")) {
+  const windowsDriveQualified = /^[A-Za-z]:/.test(app.plugin);
+  if (
+    isAbsolute(app.plugin)
+    || windowsDriveQualified
+    || isAbsolute(relativeToCompany)
+    || relativeToCompany.startsWith("..")
+  ) {
     securityIssues.push(`${packagePath}: plugin cesta ${app.plugin} musí zůstat uvnitř ${company.path}`);
     return null;
   }
@@ -619,11 +632,13 @@ async function readPluginManifest({ app, companiesRoot, packagePath, company, sc
   try {
     plugin = await readJson(pluginPath);
   } catch (error) {
-    manifestIssues.push(`${relative(companiesRoot, pluginPath)}: plugin JSON nejde přečíst: ${error.message}`);
+    manifestIssues.push(
+      `${workspaceRelativePath(companiesRoot, pluginPath)}: plugin JSON nejde přečíst: ${error.message}`,
+    );
     return null;
   }
 
-  const pluginPackagePath = relative(companiesRoot, pluginPath);
+  const pluginPackagePath = workspaceRelativePath(companiesRoot, pluginPath);
   validatePluginManifest({
     plugin,
     pluginPath: pluginPackagePath,
@@ -797,7 +812,7 @@ export async function discoverLaunchpadApps(
 
   validateRequiredPaths({
     root: companiesRoot,
-    label: relative(process.cwd(), companiesRoot) || ".",
+    label: workspaceRelativePath(process.cwd(), companiesRoot) || ".",
     requiredPaths: requiredLaunchpadRootPaths,
     failures,
   });
@@ -969,7 +984,7 @@ export async function discoverLaunchpadApps(
       organization_kind: company.organization_kind ?? null,
       discovery_source: company.discovery_source ?? null,
       company_workspace_path: company.path,
-      cwd: dirname(packagePath),
+      cwd: posix.dirname(packagePath),
       tags: app.tags ?? [],
       // Builder metadata z manifestu (CAC-0044) — normalizované na string|null,
       // ať UI nemusí řešit prázdné hodnoty. Chybějící = fallback heuristika.

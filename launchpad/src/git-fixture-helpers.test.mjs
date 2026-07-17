@@ -131,6 +131,12 @@ export async function writeJson(path, value) {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+// Git for Windows může podle core.autocrlf materializovat tracked text jako
+// CRLF. Obsahové testy ověřují text a zachování draftu, ne platformní EOL.
+export function normalizeLineEndings(value) {
+  return value.replace(/\r\n?/g, "\n");
+}
+
 export function runGit(args, cwd) {
   const result = Bun.spawnSync(["git", ...args], {
     cwd,

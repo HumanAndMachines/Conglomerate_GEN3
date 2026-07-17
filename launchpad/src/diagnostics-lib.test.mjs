@@ -713,7 +713,7 @@ async function createTemplateMountFixture() {
   run(["git", "init"], templateCheckout);
   run(["git", "add", "."], templateCheckout);
   run(["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "template init"], templateCheckout);
-  await symlink(templateCheckout, templatePath);
+  await symlink(templateCheckout, templatePath, process.platform === "win32" ? "junction" : "dir");
   // Scan-first: module šablony jsou informační sken templates/*/*, ne registry.
   await writeJson(join(root, "launchpad.gen3.json"), {
     launchpad_root: {

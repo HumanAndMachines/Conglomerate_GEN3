@@ -100,7 +100,7 @@ test("organization branding serves local logos and design-system themes without 
   tempRoots.push(root);
   const omegacoLogo = join(root, "organizations", "OmegaCo_GEN3", "launchpad", "app", "v1", "web", "launchpad-icon.png");
   const betacoLogo = join(root, "organizations", "BetaCo_GEN3", "launchpad", "app", "v1", "web", "launchpad-icon.png");
-  const secretPath = join(root, "secret.txt");
+  const secretDirectory = join(root, "secret-logo-directory");
   await mkdir(join(omegacoLogo, ".."), { recursive: true });
   await mkdir(join(betacoLogo, ".."), { recursive: true });
   await writeFile(omegacoLogo, "safe-logo");
@@ -120,8 +120,14 @@ test("organization branding serves local logos and design-system themes without 
       --accent: #728efc;
     }`,
   );
-  await writeFile(secretPath, "must-not-leak");
-  await symlink(secretPath, betacoLogo);
+  await mkdir(secretDirectory, { recursive: true });
+  await writeFile(join(secretDirectory, "launchpad-icon.png"), "must-not-leak");
+  await rm(join(betacoLogo, ".."), { recursive: true, force: true });
+  await symlink(
+    secretDirectory,
+    join(betacoLogo, ".."),
+    process.platform === "win32" ? "junction" : "dir",
+  );
   const { port } = await startLaunchpadServer(root);
 
   const apps = await getJson(port, "/api/apps");
@@ -277,7 +283,7 @@ test("Launchpad server forwards runtime source from POST body to worktree open",
     await postJson(port, "/api/apps/deals-v1/stop", { source: { type: "worktree", slug: worktreeSlug } }).catch(() => null);
     await postJson(port, "/api/apps/deals-v1/stop", {}).catch(() => null);
   }
-});
+}, 15_000);
 
 test("Launchpad server creates and publishes a Mission-Control-owned worktree via explicit builder actions", async () => {
   const root = await createLaunchpadGitFixture();

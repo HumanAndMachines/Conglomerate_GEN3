@@ -45,6 +45,7 @@ test("discovery načte read-only plugin metadata", async () => {
     title: "Demo kontext",
     path: "organizations/TestCompany/modules/demo/app/v1/launchpad.plugin.json",
   });
+  expect(apps[0].cwd).toBe("organizations/TestCompany/modules/demo/app/v1");
   expect(apps[0].plugin.links[0].path).toBe("modules/demo/app/v1/README.md");
 });
 
@@ -631,6 +632,23 @@ test("discovery odmítne plugin s akčním polem", async () => {
   const { failures } = await discoverLaunchpadApps(root);
 
   expect(failures.some((failure) => failure.includes("actions není povolené pole"))).toBe(true);
+});
+
+test("discovery odmítne Windows drive-qualified plugin cestu mimo Organization boundary", async () => {
+  const root = await createCompaniesWorkspaceFixture({
+    plugin: {
+      schema_version: "companyascode.launchpad_plugin.v1",
+      title: "Demo kontext",
+    },
+    appOverrides: {
+      plugin: "D:outside.json",
+    },
+  });
+
+  const { apps, failures } = await discoverLaunchpadApps(root);
+
+  expect(apps).toEqual([]);
+  expect(failures.some((failure) => failure.includes("D:outside.json") && failure.includes("uvnitř"))).toBe(true);
 });
 
 test("template mount (organization_kind=template) je validovaný, ale mimo organizations, apps i counts", async () => {
