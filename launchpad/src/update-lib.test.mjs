@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { initGitRepo, runGit, writeJson } from "./git-fixture-helpers.test.mjs";
+import { initGitRepo, normalizeLineEndings, runGit, writeJson } from "./git-fixture-helpers.test.mjs";
 import {
   deriveUpdateState,
   parseRemoteTags,
@@ -107,7 +107,7 @@ test("nightly target je origin/main a update provede jen ff-only i s untracked d
   expect(result.from_commit).toBe(fixture.fromCommit);
   expect(result.to_commit).toBe(fixture.targetCommit);
   expect(result.after.state).toBe("up_to_date");
-  expect(await readFile(join(fixture.repo, "local-note.txt"), "utf8")).toBe("untracked draft\n");
+  expect(normalizeLineEndings(await readFile(join(fixture.repo, "local-note.txt"), "utf8"))).toBe("untracked draft\n");
 });
 
 test("tracked změny blokují default a explicitní autostash je po ff-only obnoví", async () => {
@@ -129,8 +129,8 @@ test("tracked změny blokují default a explicitní autostash je po ff-only obno
   expect(result.from_commit).toBe(fixture.fromCommit);
   expect(result.to_commit).toBe(fixture.targetCommit);
   expect(result.after.state).toBe("dirty_worktree");
-  expect(await readFile(join(fixture.repo, "README.md"), "utf8")).toBe("# lokální tracked draft\n");
-  expect(await readFile(join(fixture.repo, "local-note.txt"), "utf8")).toBe("untracked draft\n");
+  expect(normalizeLineEndings(await readFile(join(fixture.repo, "README.md"), "utf8"))).toBe("# lokální tracked draft\n");
+  expect(normalizeLineEndings(await readFile(join(fixture.repo, "local-note.txt"), "utf8"))).toBe("untracked draft\n");
   expect(runGit(["diff", "--cached", "--name-only"], fixture.repo)).toBe("README.md");
   expect(runGit(["stash", "list"], fixture.repo)).toBe("");
 });
