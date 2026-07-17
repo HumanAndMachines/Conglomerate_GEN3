@@ -58,7 +58,19 @@ export async function auditRepository(startPath = process.cwd(), options = {}) {
       : { ok: false, stdout: "", stderr: "missing path", timedOut: false };
     const remote = exists && record.branch
       ? await inspectRemoteState(record.path)
-      : { upstream: null, ahead: null, behind: null, error: null };
+      : {
+          upstream: null,
+          ahead: null,
+          behind: null,
+          remoteName: null,
+          remoteRef: null,
+          remoteBranchExists: null,
+          remoteHead: null,
+          remoteHeadMatches: null,
+          verified: false,
+          preserved: false,
+          error: null,
+        };
     const disk = includeDisk && exists && pathClass !== "primary"
       ? await directorySize(record.path, diskBudget)
       : { bytes: null, complete: null };
@@ -78,8 +90,14 @@ export async function auditRepository(startPath = process.cwd(), options = {}) {
       upstream: remote.upstream,
       ahead: remote.ahead,
       behind: remote.behind,
+      remote_name: remote.remoteName,
+      remote_ref: remote.remoteRef,
+      remote_branch_exists: remote.remoteBranchExists,
+      remote_head: remote.remoteHead,
+      remote_head_matches: remote.remoteHeadMatches,
+      remote_verified: remote.verified,
       remote_error: remote.error,
-      remote_preserved: remote.upstream !== null && remote.ahead === 0,
+      remote_preserved: remote.preserved,
       disk_bytes: disk.bytes,
       disk_scan_complete: disk.complete,
       lifecycle: classifyLifecycle({
@@ -87,7 +105,7 @@ export async function auditRepository(startPath = process.cwd(), options = {}) {
         exists,
         sidecarValid: sidecar.valid,
         dirty,
-        remotePreserved: remote.upstream !== null && remote.ahead === 0,
+        remotePreserved: remote.preserved,
         remoteError: remote.error,
       }),
     };
@@ -588,6 +606,13 @@ async function inspectRemoteState(worktreePath) {
       upstream: null,
       ahead: null,
       behind: null,
+      remoteName: null,
+      remoteRef: null,
+      remoteBranchExists: null,
+      remoteHead: null,
+      remoteHeadMatches: null,
+      verified: false,
+      preserved: false,
       error: upstream.timedOut
         ? "upstream lookup timed out"
         : upstream.stderr.trim() || "upstream lookup failed",
@@ -602,6 +627,13 @@ async function inspectRemoteState(worktreePath) {
       upstream: upstream.stdout.trim(),
       ahead: null,
       behind: null,
+      remoteName: null,
+      remoteRef: null,
+      remoteBranchExists: null,
+      remoteHead: null,
+      remoteHeadMatches: null,
+      verified: false,
+      preserved: false,
       error: counts.timedOut
         ? "ahead/behind lookup timed out"
         : counts.stderr.trim() || "ahead/behind lookup failed",
@@ -613,14 +645,146 @@ async function inspectRemoteState(worktreePath) {
       upstream: upstream.stdout.trim(),
       ahead: null,
       behind: null,
+      remoteName: null,
+      remoteRef: null,
+      remoteBranchExists: null,
+      remoteHead: null,
+      remoteHeadMatches: null,
+      verified: false,
+      preserved: false,
       error: "ahead/behind output was invalid",
     };
   }
+  const branch = await runGit(["symbolic-ref", "--quiet", "--short", "HEAD"], worktreePath);
+  if (!branch.ok) {
+    return {
+      upstream: upstream.stdout.trim(),
+      ahead,
+      behind,
+      remoteName: null,
+      remoteRef: null,
+      remoteBranchExists: null,
+      remoteHead: null,
+      remoteHeadMatches: null,
+      verified: false,
+      preserved: false,
+      error: branch.timedOut
+        ? "branch lookup timed out"
+        : branch.stderr.trim() || "branch lookup failed",
+    };
+  }
+  const branchName = branch.stdout.trim();
+  const remoteNameResult = await runGit(
+    ["config", "--get", `branch.${branchName}.remote`],
+    worktreePath,
+  );
+  const remoteRefResult = await runGit(
+    ["config", "--get", `branch.${branchName}.merge`],
+    worktreePath,
+  );
+  if (!remoteNameResult.ok || !remoteRefResult.ok) {
+    return {
+      upstream: upstream.stdout.trim(),
+      ahead,
+      behind,
+      remoteName: remoteNameResult.ok ? remoteNameResult.stdout.trim() : null,
+      remoteRef: remoteRefResult.ok ? remoteRefResult.stdout.trim() : null,
+      remoteBranchExists: null,
+      remoteHead: null,
+      remoteHeadMatches: null,
+      verified: false,
+      preserved: false,
+      error: "upstream remote/ref configuration is unavailable",
+    };
+  }
+  const remoteName = remoteNameResult.stdout.trim();
+  const remoteRef = remoteRefResult.stdout.trim();
+  if (!remoteName || remoteName === "." || !remoteRef.startsWith("refs/heads/")) {
+    return {
+      upstream: upstream.stdout.trim(),
+      ahead,
+      behind,
+      remoteName,
+      remoteRef,
+      remoteBranchExists: null,
+      remoteHead: null,
+      remoteHeadMatches: null,
+      verified: false,
+      preserved: false,
+      error: "upstream does not identify a live remote branch",
+    };
+  }
+  const liveRemote = await runGit(
+    ["ls-remote", "--exit-code", "--heads", remoteName, remoteRef],
+    worktreePath,
+  );
+  if (!liveRemote.ok) {
+    const missing = liveRemote.exitCode === 2;
+    return {
+      upstream: upstream.stdout.trim(),
+      ahead,
+      behind,
+      remoteName,
+      remoteRef,
+      remoteBranchExists: missing ? false : null,
+      remoteHead: null,
+      remoteHeadMatches: false,
+      verified: missing,
+      preserved: false,
+      error: missing
+        ? "live remote branch does not exist"
+        : liveRemote.timedOut
+        ? "live remote lookup timed out"
+        : liveRemote.stderr.trim() || "live remote lookup failed",
+    };
+  }
+  const remoteLine = liveRemote.stdout.trim().split(/\r?\n/).find(Boolean);
+  const remoteHead = remoteLine?.split(/\s+/)[0] ?? "";
+  const localHeadResult = await runGit(["rev-parse", "HEAD"], worktreePath);
+  const objectFormatResult = await runGit(
+    ["rev-parse", "--show-object-format"],
+    worktreePath,
+  );
+  const objectIdLength = objectFormatResult.stdout.trim() === "sha1"
+    ? 40
+    : objectFormatResult.stdout.trim() === "sha256"
+    ? 64
+    : null;
+  const localHead = localHeadResult.stdout.trim();
+  if (
+    !localHeadResult.ok
+    || !objectFormatResult.ok
+    || objectIdLength === null
+    || !new RegExp(`^[0-9a-f]{${objectIdLength}}$`, "i").test(remoteHead)
+    || !new RegExp(`^[0-9a-f]{${objectIdLength}}$`, "i").test(localHead)
+  ) {
+    return {
+      upstream: upstream.stdout.trim(),
+      ahead,
+      behind,
+      remoteName,
+      remoteRef,
+      remoteBranchExists: true,
+      remoteHead: remoteHead || null,
+      remoteHeadMatches: null,
+      verified: false,
+      preserved: false,
+      error: "live remote HEAD verification failed",
+    };
+  }
+  const remoteHeadMatches = remoteHead === localHead;
   return {
     upstream: upstream.stdout.trim(),
     ahead,
     behind,
-    error: null,
+    remoteName,
+    remoteRef,
+    remoteBranchExists: true,
+    remoteHead,
+    remoteHeadMatches,
+    verified: true,
+    preserved: remoteHeadMatches,
+    error: remoteHeadMatches ? null : "live remote HEAD differs from local HEAD",
   };
 }
 
@@ -694,6 +858,7 @@ async function runGit(args, cwd) {
   ]);
   return {
     ok: !timedOut && exitCode === 0,
+    exitCode,
     stdout,
     stderr,
     timedOut,

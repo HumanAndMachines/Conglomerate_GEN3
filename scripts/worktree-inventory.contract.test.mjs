@@ -38,6 +38,25 @@ test("accepts an authority-backed exact Mission Control plan", async () => {
   });
 });
 
+test("verifies live remote preservation in a SHA-256 repository", async () => {
+  const fixture = await createFixture({
+    authorityAvailable: true,
+    planAvailable: true,
+    objectFormat: "sha256",
+  });
+  const report = await auditRepository(fixture.root, {
+    authorityRoot: fixture.authorityRoot,
+  });
+  expect(canonicalWorktree(report)).toMatchObject({
+    remote_branch_exists: true,
+    remote_head: expect.stringMatching(/^[0-9a-f]{64}$/),
+    remote_head_matches: true,
+    remote_verified: true,
+    remote_preserved: true,
+    remote_error: null,
+  });
+});
+
 test("fails closed when the authority exists but the exact plan is missing", async () => {
   const fixture = await createFixture({
     authorityAvailable: true,
@@ -109,7 +128,71 @@ test("keeps an incomplete global leftover scan advisory-only", async () => {
   );
 });
 
-async function createFixture({ authorityAvailable, planAvailable }) {
+test("fails closed when the live remote branch was deleted behind a stale tracking ref", async () => {
+  const fixture = await createFixture({
+    authorityAvailable: true,
+    planAvailable: true,
+  });
+  git(fixture.remote, ["update-ref", "-d", `refs/heads/${fixture.branch}`]);
+
+  const report = await auditRepository(fixture.root, {
+    authorityRoot: fixture.authorityRoot,
+  });
+  expect(canonicalWorktree(report)).toMatchObject({
+    remote_branch_exists: false,
+    remote_head: null,
+    remote_head_matches: false,
+    remote_verified: true,
+    remote_preserved: false,
+    remote_error: "live remote branch does not exist",
+  });
+  expect(report.violations.join("\n")).toContain(
+    "canonical worktree remote state is unknown",
+  );
+});
+
+test("fails closed when the live remote branch advanced without a local fetch", async () => {
+  const fixture = await createFixture({
+    authorityAvailable: true,
+    planAvailable: true,
+  });
+  const localHead = gitOutput(fixture.canonical, ["rev-parse", "HEAD"]);
+  const tree = gitOutput(fixture.canonical, ["rev-parse", "HEAD^{tree}"]);
+  const remoteHead = gitOutput(fixture.canonical, [
+    "commit-tree",
+    tree,
+    "-p",
+    localHead,
+    "-m",
+    "remote-only advance",
+  ]);
+  git(fixture.canonical, [
+    "push",
+    fixture.remote,
+    `${remoteHead}:refs/heads/${fixture.branch}`,
+  ]);
+
+  const report = await auditRepository(fixture.root, {
+    authorityRoot: fixture.authorityRoot,
+  });
+  expect(canonicalWorktree(report)).toMatchObject({
+    remote_branch_exists: true,
+    remote_head: remoteHead,
+    remote_head_matches: false,
+    remote_verified: true,
+    remote_preserved: false,
+    remote_error: "live remote HEAD differs from local HEAD",
+  });
+  expect(report.violations.join("\n")).toContain(
+    "canonical worktree remote state is unknown",
+  );
+});
+
+async function createFixture({
+  authorityAvailable,
+  planAvailable,
+  objectFormat = "sha1",
+}) {
   const sandbox = await mkdtemp(join(tmpdir(), "worktree contract "));
   cleanupPaths.push(sandbox);
   const root = join(sandbox, "Dashboard");
@@ -130,8 +213,11 @@ async function createFixture({ authorityAvailable, planAvailable }) {
     await writeFile(planPath, "dev_code: CAC-0007\n");
   }
 
-  git(root, ["init", "-b", "main"]);
-  git(remote, ["init", "--bare"]);
+  const objectFormatArgs = objectFormat === "sha1"
+    ? []
+    : [`--object-format=${objectFormat}`];
+  git(root, ["init", ...objectFormatArgs, "-b", "main"]);
+  git(remote, ["init", ...objectFormatArgs, "--bare"]);
   git(root, ["config", "user.email", "audit@example.test"]);
   git(root, ["config", "user.name", "Worktree Audit"]);
   await writeFile(join(root, "README.md"), "fixture\n");
@@ -170,7 +256,13 @@ async function createFixture({ authorityAvailable, planAvailable }) {
     }, null, 2)}\n`,
   );
 
-  return { root, authorityRoot };
+  return {
+    root,
+    authorityRoot,
+    remote,
+    canonical,
+    branch: `codex/${basename}`,
+  };
 }
 
 function canonicalWorktree(report) {
@@ -211,4 +303,19 @@ function git(cwd, args) {
       `git ${args.join(" ")} failed: ${result.stderr.toString()}`,
     );
   }
+}
+
+function gitOutput(cwd, args) {
+  const result = Bun.spawnSync(["git", "-C", cwd, ...args], {
+    stdout: "pipe",
+    stderr: "pipe",
+    env: sanitizedEnv(),
+    windowsHide: true,
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `git ${args.join(" ")} failed: ${result.stderr.toString()}`,
+    );
+  }
+  return result.stdout.toString().trim();
 }
