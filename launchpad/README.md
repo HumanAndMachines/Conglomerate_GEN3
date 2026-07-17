@@ -142,7 +142,7 @@ Aplikace deklaruje vlastní port ve svém `package.json`:
       "schema_version": "companyascode.launchpad_app.v1",
       "id": "exampleorg-deals-v2",
       "title": "Deals",
-      "company": "exampleorg",
+      "company": "ExampleOrg",
       "module": "deals",
       "surface": "internal",
       "port": 4301,
@@ -163,9 +163,11 @@ V multi-company rootu platí:
 - `companyascode.app.company` musí odpovídat čistému `organizations[].slug`, pod
   kterým aplikace leží. Fyzická cesta smí mít přechodový generační suffix,
   například `organizations/ExampleOrg_GEN3`, ale app manifest dál používá
-  čistou identitu `ExampleOrg`.
-- `companyascode.app.id` musí být unikátní v celém Launchpad GEN3 root.
-- doporučený tvar ID je `<company-slug>-<module-or-app>-<version>`.
+  čistou proper-case identitu `ExampleOrg`; shoda je case-sensitive.
+- `companyascode.app.id` musí být unikátní v celém Launchpad GEN3 rootu a
+  používat lowercase kebab tvar.
+- doporučený tvar ID je
+  `<lowercase-company-slug>-<module-or-app>-<version>`.
 - port namespace je společný pro celý Launchpad GEN3 root.
 - port collision je fail-closed invariant: runtime nikdy tiše nepřepne aplikaci
   na jiný port. Discovery ale staví computed port ownership index a u duplicate

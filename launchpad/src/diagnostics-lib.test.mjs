@@ -390,7 +390,7 @@ test("Doctor neutralizuje role-based missing_access jen s principal-scoped loká
   expect(slots.find((slot) => slot.slug === "everyone")?.readiness.severity).toBe("blocking");
 });
 
-test("vnořený child slot (mission-control/db) není module dlaždice (technický data mount)", async () => {
+test("Mission Control app/code a data jsou root sloty mimo Team dlaždice", async () => {
   const root = await createCompaniesWorkspaceFixture();
   const companyRoot = join(root, "organizations", "OmegaCo_GEN3");
   await mkdir(join(companyRoot, "manual"), { recursive: true });
@@ -410,14 +410,37 @@ test("vnořený child slot (mission-control/db) není module dlaždice (technick
   await writeJson(join(companyRoot, "modules.manifest.json"), {
     organization_generation: "gen3",
     module_slots: [
-      { path: "mission-control", git: { url: "git@github.com:OmegaCo/mission-control.git", branch: "main" } },
-      { path: "mission-control/db", category: "planning-data", git: { url: "git@github.com:OmegaCo/mission-control-data.git", branch: "v3" } },
-      { path: "workspace/wiki", workspace: "workspace" },
+      { path: "mission-control", space: "root", git: { url: "git@github.com:OmegaCo/mission-control.git", branch: "main" } },
+      { path: "mission-control/db", space: "root", category: "planning-data", git: { url: "git@github.com:OmegaCo/mission-control-data.git", branch: "v3" } },
+      { path: "workspace/wiki", space: "workspace", workspace: "workspace" },
     ],
   });
   await writeJson(join(companyRoot, "TODO.tasks.json"), {});
   await writeJson(join(companyRoot, "DONE.tasks.json"), {});
   await writeJson(join(companyRoot, "ISSUES.open.json"), {});
+  const missionControlApp = join(companyRoot, "mission-control", "app", "v3");
+  await mkdir(missionControlApp, { recursive: true });
+  await writeJson(join(missionControlApp, "package.json"), {
+    name: "omegaco-mission-control-v3",
+    private: true,
+    type: "module",
+    scripts: { dev: "bun server.mjs" },
+    companyascode: {
+      app: {
+        schema_version: "companyascode.launchpad_app.v1",
+        id: "omegaco-mission-control-v3",
+        title: "Mission Control",
+        company: "OmegaCo",
+        module: "mission-control",
+        surface: "internal",
+        port: 5293,
+        host: "127.0.0.1",
+        health_path: "/health",
+        dev_script: "dev",
+        tags: ["mission-control"],
+      },
+    },
+  });
 
   const response = await buildLaunchpadAppsResponse({
     companiesRoot: root,
@@ -427,12 +450,32 @@ test("vnořený child slot (mission-control/db) není module dlaždice (technick
 
   const org = response.organizations.find((item) => item.slug === "OmegaCo");
   const tilePaths = (org?.workspaces ?? []).flatMap((workspace) => workspace.modules.map((module) => module.path));
-  // mission-control (app mount) je dlaždice; mission-control/db je technický
-  // repository-db data checkout uvnitř app mountu — dlaždice být nesmí.
-  expect(tilePaths).toContain("mission-control");
-  expect(tilePaths).toContain("workspace/wiki");
+  const missionControl = org?.module_declarations.find(
+    (slot) => slot.path === "mission-control",
+  );
+  const missionControlData = org?.module_declarations.find(
+    (slot) => slot.path === "mission-control/db",
+  );
+
+  expect(tilePaths).toEqual(["workspace/wiki"]);
+  expect(tilePaths).not.toContain("mission-control");
   expect(tilePaths).not.toContain("mission-control/db");
-  expect(org?.space_readiness?.blocking_slots.map((slot) => slot.path)).toContain("mission-control/db");
+  expect(missionControl).toMatchObject({
+    space: "root",
+    workspace: null,
+    status: "available",
+  });
+  expect(missionControlData).toMatchObject({
+    space: "root",
+    workspace: null,
+    status: "missing_access",
+  });
+  expect(org?.space_readiness?.blocking_slots.map((slot) => slot.path)).toEqual([
+    "mission-control/db",
+  ]);
+  expect(
+    response.apps.find((app) => app.id === "omegaco-mission-control-v3")?.workspace,
+  ).toBeNull();
   expect(JSON.stringify(org)).not.toContain("module_declarations");
 
   const report = await buildLaunchpadDoctorReport({

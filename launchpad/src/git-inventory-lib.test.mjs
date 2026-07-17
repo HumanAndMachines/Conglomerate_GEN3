@@ -44,6 +44,32 @@ test("inventory reads repo paths from Organization manifests and does not infer 
   expect(inventory.planned.map((slot) => `${slot.organization}::${slot.module}`)).toContain("BetaCo::brainstorm");
 });
 
+test("explicit workspace scope never becomes a root repo solely because of its path", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const manifestPath = `${root}/organizations/OmegaCo_GEN3/modules.manifest.json`;
+  const manifest = await Bun.file(manifestPath).json();
+  manifest.module_slots.push({
+    path: "design-system",
+    space: "workspace",
+    workspace: "brand",
+    category: "brand",
+    git: { url: "git@github.com:OmegaCo/brand-design-system.git", branch: "main" },
+  });
+  await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  const slot = inventory.repos.find(
+    (repo) => repo.organization === "OmegaCo" && repo.slot_path === "design-system",
+  );
+
+  expect(slot).toMatchObject({
+    space: "workspace",
+    workspace: "brand",
+    repo_kind: "module",
+  });
+});
+
 test("template mount (organization_kind=template) je z git inventáře vyloučený (decision 0077)", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);

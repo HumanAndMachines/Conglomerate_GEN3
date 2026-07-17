@@ -245,7 +245,7 @@ function normalizeModuleSlot(slot, organization) {
 function repoKindForSlot(slot) {
   if (slot.space === "root") return "root_repo";
   if (slot.space === "productionspace") return "productionspace";
-  if (slot.path.startsWith("workspace/") || slot.path.startsWith("modules/")) return "module";
+  if (slot.space === "workspace") return "module";
   return "root_repo";
 }
 

@@ -115,14 +115,14 @@ export async function buildLaunchpadAppsResponse({
     // Which workspace inside the organization this module belongs to — from the
     // manifest declaration (module_slots[].workspace / modules[].workspace);
     // missing declaration means the default "workspace" (decision 0041).
-    workspace: workspaceResolvers.get(app.organization_path)?.(app) ?? "workspace",
+    workspace: workspaceForApp(workspaceResolvers, app),
     url: `http://${app.host}:${app.port}`,
     health_url: `http://${app.host}:${app.port}${app.health_path}`,
   })));
   const invalidApps = (discovery.invalid_apps ?? []).map((app) => ({
     ...app,
     company_display_name: companyNames.get(app.company) ?? app.company,
-    workspace: workspaceResolvers.get(app.organization_path)?.(app) ?? "workspace",
+    workspace: workspaceForApp(workspaceResolvers, app),
     url: null,
     health_url: null,
     dependencies: {
@@ -847,8 +847,13 @@ function workspaceResolverForOrganization(company) {
         if (!match || declaration.path.length > match.path.length) match = declaration;
       }
     }
-    return match?.space === "root" ? "root" : match?.workspace ?? "workspace";
+    return match?.space === "root" ? null : match?.workspace ?? "workspace";
   };
+}
+
+function workspaceForApp(workspaceResolvers, app) {
+  const resolver = workspaceResolvers.get(app.organization_path);
+  return resolver ? resolver(app) : "workspace";
 }
 
 async function readOrganizationModuleManifest(companiesRoot, organization) {

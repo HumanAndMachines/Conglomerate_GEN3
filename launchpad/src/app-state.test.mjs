@@ -151,6 +151,11 @@ test("Module tiles split across the workspaces they belong to, preserving order"
   const fallback = groupFamiliesByWorkspace(groupAppFamilies([{ id: "x", company: "A", module: "m", title: "X" }]));
   expect(fallback).toEqual([{ workspace: "workspace", families: fallback[0].families }]);
   expect(fallback[0].workspace).toBe("workspace");
+
+  const root = groupFamiliesByWorkspace(groupAppFamilies([
+    { id: "mc", company: "A", module: "mission-control", title: "Mission Control", workspace: null },
+  ]));
+  expect(root).toEqual([{ workspace: null, families: root[0].families }]);
 });
 
 test("hero agreguje appky i manifestované sloty aktivní Organizace", () => {

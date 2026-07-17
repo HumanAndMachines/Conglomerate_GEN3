@@ -611,7 +611,7 @@ Každá spustitelná appka deklaruje `companyascode.app` ve svém vlastním
   "companyascode": {
     "app": {
       "schema_version": "companyascode.launchpad_app.v1",
-      "id": "ExampleOrg-deals-v2",
+      "id": "exampleorg-deals-v2",
       "title": "Deals",
       "company": "ExampleOrg",
       "module": "deals",
@@ -626,12 +626,14 @@ Každá spustitelná appka deklaruje `companyascode.app` ve svém vlastním
 }
 ```
 
-`companyascode.app.company` se musí rovnat čistému `company.slug`; app id a
-main port jsou unikátní v celém Conglomerate rootu. `dev_script` musí existovat
-v témže package souboru. Workspace grouping pochází z module deklarace,
-nikoli z package cesty. Worktree DEV runtime dostává ephemeral `PORT` od
-Launchpadu a nesmí obsadit main port. Productionspace app manifest se tímto
-automaticky nestává spustitelným Launchpad lifecycle povrchem.
+`companyascode.app.company` se musí case-sensitive rovnat čistému proper-case
+`company.slug`; app id je globálně unikátní lowercase kebab identifikátor
+s doporučeným lowercase company prefixem. Main port je také unikátní v celém
+Conglomerate rootu. `dev_script` musí existovat v témže package souboru.
+Workspace grouping pochází z module deklarace, nikoli z package cesty.
+Worktree DEV runtime dostává ephemeral `PORT` od Launchpadu a nesmí obsadit
+main port. Productionspace app manifest se tímto automaticky nestává
+spustitelným Launchpad lifecycle povrchem.
 
 Pro každou zděděnou `app/vN` udělej census: `wire`, `defer` nebo `retire` s
 ownerem a důvodem. Required daily app bez validního manifestu blokuje cohort

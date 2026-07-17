@@ -208,13 +208,16 @@ export function variantMenuLabel(app, moduleName) {
 }
 
 // Groups module tiles by the workspace they belong to, preserving order. An
-// organization may split its modules across several named workspaces; everything
-// without an explicit workspace falls into the default "workspace".
+// organization may split its modules across several named workspaces. A missing
+// field falls into the default "workspace"; explicit null stays a separate
+// Organization-root section outside Team grouping.
 export function groupFamiliesByWorkspace(families) {
   const order = [];
   const map = new Map();
   for (const family of families) {
-    const slug = family.primary?.workspace ?? "workspace";
+    const slug = family.primary && Object.hasOwn(family.primary, "workspace")
+      ? family.primary.workspace
+      : "workspace";
     if (!map.has(slug)) {
       map.set(slug, []);
       order.push(slug);
