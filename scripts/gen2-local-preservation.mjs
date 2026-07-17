@@ -28,6 +28,9 @@ const INCOMPLETE_FILE = "INCOMPLETE.json";
 const MANIFEST_FILE = "manifest.json";
 const SUCCESS_FILE = "SUCCESS.json";
 const SCHEMA_VERSION = 1;
+const VERIFICATION_CONTRACT = "files-git-connectivity-verifier-identity-v3";
+const SCRIPT_PATH = fileURLToPath(import.meta.url);
+const VERIFIER_REPO_ROOT = dirname(dirname(SCRIPT_PATH));
 const REBUILDABLE_DIRS = new Set([
   "node_modules",
   "dist",
@@ -149,6 +152,18 @@ async function sha256File(path) {
     await handle.close().catch(() => {});
   }
   return hash.digest("hex");
+}
+
+async function verifierIdentity() {
+  const headResult = await run("git", ["rev-parse", "HEAD"], { cwd: VERIFIER_REPO_ROOT });
+  const gitHead = headResult.stdout.trim();
+  if (!/^[0-9a-f]{40}$/.test(gitHead)) {
+    throw new Error("cannot resolve exact verifier Git head");
+  }
+  return {
+    git_head: gitHead,
+    script_sha256: await sha256File(SCRIPT_PATH),
+  };
 }
 
 function entryClassification(relativePath) {
@@ -538,12 +553,16 @@ function comparableFileEntry(entry) {
 }
 
 function isNormalizedGitMetadataEntry(entry) {
-  if (entry.classification !== "git-metadata" || entry.type !== "file") return false;
+  if (entry.classification !== "git-metadata") return false;
   const name = basename(entry.path);
+  // Git fsmonitor exposes a Unix-domain socket here. It is runtime IPC, not
+  // portable repository state, and can appear/disappear independently on the
+  // source and archive.
+  if (name === "fsmonitor--daemon.ipc") return true;
+  if (entry.type !== "file") return false;
   return (
     name === "index" ||
     name.startsWith("sharedindex.") ||
-    name === "fsmonitor--daemon.ipc" ||
     name.endsWith(".lock")
   );
 }
@@ -633,6 +652,10 @@ export async function verifyPreservation({ source, destination, personalspaceRoo
   if (manifest.source !== paths.source || manifest.destination !== paths.destination) {
     throw new Error("archive manifest source/destination does not match the requested verification");
   }
+  const currentVerifier = await verifierIdentity();
+  if (JSON.stringify(manifest.verifier) !== JSON.stringify(currentVerifier)) {
+    throw new Error("archive verifier identity does not match the running verifier");
+  }
 
   const [sourceInventory, destinationInventory] = await Promise.all([
     buildInventory(paths.source, { includeEntries: true }),
@@ -644,6 +667,7 @@ export async function verifyPreservation({ source, destination, personalspaceRoo
     verified: true,
     source: paths.source,
     destination: paths.destination,
+    verifier: currentVerifier,
     files: {
       count: sourceInventory.files.count,
       logical_bytes: sourceInventory.files.logical_bytes,
@@ -660,7 +684,8 @@ export async function verifyPreservation({ source, destination, personalspaceRoo
       source: paths.source,
       destination: paths.destination,
       copy_strategy: manifest.copy_strategy,
-      verification_contract: "files-git-connectivity-v2",
+      verification_contract: VERIFICATION_CONTRACT,
+      verifier: currentVerifier,
       manifest_sha256: await sha256File(manifestPath),
     });
   }
@@ -672,6 +697,7 @@ export async function applyPreservation(
   dependencies = {},
 ) {
   const paths = await validatePaths({ source, destination, personalspaceRoot });
+  const verifier = await verifierIdentity();
   await assertSelfContainedGitdirPointers(paths.source);
   // Reserved evidence-path collisions, Git connectivity and symlink portability
   // are validated before the destination is created, so failures cannot leave
@@ -695,6 +721,7 @@ export async function applyPreservation(
     started_at: nowIso(),
     source: paths.source,
     destination: paths.destination,
+    verifier,
   });
 
   try {
@@ -720,6 +747,7 @@ export async function applyPreservation(
       source: paths.source,
       destination: paths.destination,
       copy_strategy: cloneOnWrite ? "apfs-clone-on-write" : "explicit-full-copy",
+      verifier,
       files: sourceInventory.files,
       git: sourceInventory.git,
       classification: classificationSummary(),
@@ -734,7 +762,8 @@ export async function applyPreservation(
       source: paths.source,
       destination: paths.destination,
       copy_strategy: manifest.copy_strategy,
-      verification_contract: "files-git-connectivity-v2",
+      verification_contract: VERIFICATION_CONTRACT,
+      verifier,
       manifest_sha256: await sha256File(manifestPath),
     });
     await rm(incompletePath, { force: true });
@@ -745,6 +774,7 @@ export async function applyPreservation(
       source: paths.source,
       destination: paths.destination,
       copy_strategy: manifest.copy_strategy,
+      verifier,
       files: verified.files,
       git: verified.git,
       classification: classificationSummary(),

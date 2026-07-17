@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
+import { once } from "node:events";
 import {
   chmod,
   lstat,
@@ -14,6 +15,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
 import {
   applyPreservation,
@@ -377,9 +379,14 @@ describe("apply and evidence", () => {
     ]);
     expect(JSON.stringify(manifest)).not.toContain("embedded-secret");
     expect(JSON.stringify(manifest)).not.toContain("message-must-not-leak");
+    expect(manifest.verifier).toEqual({
+      git_head: expect.stringMatching(/^[0-9a-f]{40}$/),
+      script_sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
     expect(success).toMatchObject({
       status: "verified",
-      verification_contract: "files-git-connectivity-v2",
+      verification_contract: "files-git-connectivity-verifier-identity-v3",
+      verifier: manifest.verifier,
       manifest_sha256: expect.any(String),
     });
     expect((await lstat(manifestPath)).mode & 0o777).toBe(0o600);
@@ -420,6 +427,39 @@ describe("apply and evidence", () => {
 });
 
 describe("verification drift detection", () => {
+  test("rejects an archive whose recorded verifier identity differs from the running verifier", async () => {
+    const fixture = await archiveFixture();
+    const manifestPath = join(fixture.destination, ".gen2-preservation", "manifest.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.verifier = {
+      git_head: "0".repeat(40),
+      script_sha256: "0".repeat(64),
+    };
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
+
+    const result = cli(verifyArgs(fixture.source, fixture.destination, fixture.personalspaceRoot));
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("verifier identity");
+  });
+
+  test("ignores a transient Git fsmonitor IPC socket that appears after archival", async () => {
+    const fixture = await archiveFixture({ withGit: true });
+    const socketPath = join(fixture.source, "nested-repo", ".git", "fsmonitor--daemon.ipc");
+    const server = createServer();
+    server.listen(socketPath);
+    await once(server, "listening");
+    try {
+      const result = cli(verifyArgs(fixture.source, fixture.destination, fixture.personalspaceRoot));
+
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout).verified).toBe(true);
+    } finally {
+      server.close();
+      await once(server, "close");
+    }
+  });
+
   test("refuses to refresh success when archive or evidence directory permissions become public", async () => {
     for (const target of ["archive", "evidence"]) {
       const fixture = await archiveFixture();

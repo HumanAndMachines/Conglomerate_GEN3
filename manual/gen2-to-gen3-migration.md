@@ -180,12 +180,20 @@ bun run preserve:gen2-local -- verify \
   --personalspace-root "${ROOT}/personalspace/${PS_HANDLE}_GEN3"
 ```
 
+`apply` i oba `verify` běhy musí používat stejný commitnutý verifier head.
+`manifest.json` a `SUCCESS.json` proto nesou `verifier.git_head` a
+`verifier.script_sha256`; změna verifieru po `apply` zneplatní archive pro
+mazací gate a vyžaduje nový `apply` do nového destination. Git fsmonitor IPC,
+raw index/shared-index a lock files jsou explicitně normalizované runtime
+metadata; ostatní private `.git` metadata se obsahově hashují.
+
 Nástroj uchovává kompletní fallback kopii a lokální evidence pod modem `0700`;
 manifest/success marker mají `0600`. Existující destination, symlink escape,
 cíl pod `organizations/`, externí/absolutní `.git` pointer, chybějící
 clone-on-write podpora nebo jakýkoliv drift jsou hard failure. Verification
 porovnává path-level Git status hash, refs/stashe a pro každý nested repo spouští
-`git fsck --connectivity-only`, takže nechybějící worktree soubory samy o sobě
+`git -c core.commitGraph=false fsck --connectivity-only --no-dangling`, takže
+stale derived commit-graph neblokuje kontrolu a nechybějící worktree soubory samy o sobě
 nemohou vytvořit falešně zelený archive bez Git objektů. `ClientCompanies/`
 zůstává pouze v quarantined osobním
 archivu: není to aktivovaná Organization a nesmí se automaticky kopírovat do
