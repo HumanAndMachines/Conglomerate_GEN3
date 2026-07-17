@@ -538,7 +538,10 @@ export function createRuntimeManager({
       sleep(stopTimeoutMs).then(() => ({ exitCode: null, timeout: true })),
     ]);
 
-    if (result.timeout) {
+    // Windows už první bezpečně scoped Stop provede přes taskkill /T /F.
+    // Druhé cílení stejného PID po timeoutu by po rychlém PID reuse mohlo
+    // zasáhnout cizí proces; místo toho níže jen fail-closed ověříme port.
+    if (result.timeout && platform !== "win32") {
       await signalManagedProcess(record, runtimeKey, "SIGKILL");
       await Promise.race([
         record.child.exited,
@@ -546,6 +549,7 @@ export function createRuntimeManager({
       ]);
     }
 
+    const forced = platform === "win32" || result.timeout;
     if (platform === "win32") {
       const ownerAfterStop = await resolvePortOwnerFn(app.port, {
         expectedCwd: join(companiesRoot, app.cwd ?? dirname(app.package_path ?? "package.json")),
@@ -572,7 +576,7 @@ export function createRuntimeManager({
     }
     await appendLog(
       record.logPath,
-      `[launchpad] ${new Date().toISOString()} stopped ${app.id} code=${result.exitCode} forced=${result.timeout}\n`,
+      `[launchpad] ${new Date().toISOString()} stopped ${app.id} code=${result.exitCode} forced=${forced}\n`,
     );
     await Promise.allSettled(record.outputPipes);
 
@@ -589,7 +593,7 @@ export function createRuntimeManager({
       stopped_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       exit_code: result.exitCode,
-      forced: result.timeout,
+      forced,
       log_path: relativeRuntimePath(record.logPath),
     });
 
@@ -599,7 +603,7 @@ export function createRuntimeManager({
       runtime_key: runtimeKey,
       runtime_source: runtimeSource,
       pid: record.pid,
-      forced: result.timeout,
+      forced,
       runtime: await healthForApp(app),
     };
   }
@@ -617,7 +621,10 @@ export function createRuntimeManager({
 
     if (platform === "win32") {
       const command = windowsTaskkillCommand(record.pid, {
-        force: signal === "SIGKILL",
+        // taskkill /T bez /F neumí spolehlivě ukončit console procesy. PID je
+        // bezpečně svázaný s managedProcesses této instance, takže Windows
+        // ukončí celý známý strom atomicky už při prvním Stop pokusu.
+        force: true,
       });
       const result = await runSystemCommandFn(command);
       if (!result.ok && !isMissingProcessResult(result)) {
@@ -1284,7 +1291,9 @@ export function createRuntimeManager({
   }
 
   function relativeRuntimePath(path) {
-    return relative(launchpadRoot, path);
+    // API/state cesty jsou přenositelné identifikátory, ne nativní filesystem
+    // cesty. Na Windows proto nikdy nepropouštějí zpětná lomítka.
+    return relative(launchpadRoot, path).replace(/\\/g, "/");
   }
 
   return {

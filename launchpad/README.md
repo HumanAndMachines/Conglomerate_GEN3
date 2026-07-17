@@ -408,9 +408,10 @@ jasný mechanismus:
   nezabíjí. Windows tuto cross-instance CWD kontrolu zatím nemá: po restartu
   Launchpadu zůstane listener `unknown-port` a musí se uvolnit mimo Launchpad.
   Na Windows používá current-instance managed proces cílený
-  `taskkill /PID <pid> /T` nad PID uloženým v runtime recordu a po ukončení
-  znovu ověří app-owned port. Nikdy nepoužije `taskkill` jen podle obsazeného
-  portu; neověřený nebo cizí listener zůstává nedotčený.
+  `taskkill /PID <pid> /T /F` nad PID uloženým v runtime recordu a po ukončení
+  znovu ověří app-owned port. Druhý signál na stejné PID neposílá; při
+  neúspěšném ukončení selže bezpečně podle portu. Nikdy nepoužije `taskkill` jen
+  podle obsazeného portu; neověřený nebo cizí listener zůstává nedotčený.
 - `Restart` je `Stop` + `Start` nad app-owned portem.
 - `Logs` čte lokální log mimo Git.
 - `Stáhnout novější verzi` provede pouze fresh-remote-verified
