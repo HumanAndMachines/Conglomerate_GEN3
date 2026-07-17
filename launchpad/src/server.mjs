@@ -4,6 +4,7 @@ import { open, readFile } from "fs/promises";
 import { isAbsolute, join, normalize, relative, resolve } from "path";
 import { buildDoctorReportFromAppsResponse, buildLaunchpadAppsResponse } from "./diagnostics-lib.mjs";
 import { openBrowser } from "./browser-open-lib.mjs";
+import { startLaunchpadWithPortPolicy } from "./server-startup-lib.mjs";
 import {
   GitApiError,
   buildGitApiResponse,
@@ -46,6 +47,7 @@ const canonicalCompaniesRoot = realpathSync(companiesRoot);
 const launchpadRootId = createHash("sha256").update(canonicalCompaniesRoot).digest("hex");
 const host = options.host ?? defaultHost;
 const port = Number(options.port ?? process.env.PORT ?? defaultPort);
+const portWasExplicit = options.port !== undefined || process.env.PORT !== undefined;
 const principalEmail = resolvePrincipalEmail();
 const runtimeManager = createRuntimeManager({ companiesRoot, launchpadRoot });
 const gitStatusService = createGitStatusService();
@@ -72,18 +74,20 @@ if (!allowedHosts.has(host)) {
   process.exit(1);
 }
 
-const requestedServerUrl = `http://${host}:${port}`;
-let server;
-try {
-  server = startServer(port);
-} catch (error) {
-  if (options.open && isAddressInUse(error) && await isRunningLaunchpad(requestedServerUrl, launchpadRootId)) {
-    console.log(`Launchpad GEN3 už běží na ${requestedServerUrl}; otevírám existující instanci.`);
-    await openBrowser(requestedServerUrl);
-    process.exit(0);
-  }
-  throw error;
+const startResult = await startLaunchpadWithPortPolicy({
+  requestedPort: port,
+  host,
+  explicitPort: portWasExplicit,
+  shouldOpen: Boolean(options.open),
+  startServer,
+  isRunningExpectedLaunchpad: (url) => isRunningLaunchpad(url, launchpadRootId),
+  openExisting: openBrowser,
+});
+if (startResult.mode === "reused") {
+  console.log(`Launchpad GEN3 už běží na ${startResult.url}; otevírám existující instanci.`);
+  process.exit(0);
 }
+const server = startResult.server;
 
 const serverUrl = `http://${host}:${server.port}`;
 console.log(`Launchpad GEN3 běží na ${serverUrl}`);
@@ -345,10 +349,6 @@ function parseArgs(args) {
     }
   }
   return parsed;
-}
-
-function isAddressInUse(error) {
-  return error?.code === "EADDRINUSE" || String(error?.message ?? error).includes("EADDRINUSE");
 }
 
 async function isRunningLaunchpad(url, expectedRootId) {

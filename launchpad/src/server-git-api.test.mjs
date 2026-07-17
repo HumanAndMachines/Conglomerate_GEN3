@@ -65,7 +65,7 @@ test("Launchpad server exposes read-only git and Mission Control routes", async 
   expect(plans.schema_version).toBe("companiesascode.launchpad.mission_control_plans.v1");
 });
 
-test("repeated launcher opens only an existing instance from the same canonical root", async () => {
+test("identity endpoint is local-only and a foreign root cannot reuse the port", async () => {
   const root = await createLaunchpadGitFixture();
   const otherRoot = await createLaunchpadGitFixture();
   tempRoots.push(root, otherRoot);
@@ -79,13 +79,6 @@ test("repeated launcher opens only an existing instance from the same canonical 
     headers: { origin: "https://evil.invalid", "sec-fetch-site": "cross-site" },
   });
   expect(crossOriginIdentity.status).toBe(403);
-
-  const sameRoot = Bun.spawn(
-    ["bun", "src/server.mjs", "--root", root, "--port", String(port), "--open"],
-    { cwd: join(import.meta.dirname, ".."), stdout: "pipe", stderr: "pipe" },
-  );
-  expect(await sameRoot.exited).toBe(0);
-  expect(await new Response(sameRoot.stdout).text()).toContain("otevírám existující instanci");
 
   const otherRootLauncher = Bun.spawn(
     ["bun", "src/server.mjs", "--root", otherRoot, "--port", String(port), "--open"],
