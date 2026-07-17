@@ -2,6 +2,10 @@ import { existsSync } from "fs";
 import { readFile, readdir } from "fs/promises";
 import { basename, join } from "path";
 import { organizationMountStructureIssues } from "./discovery-lib.mjs";
+import {
+  organizationSlotScope,
+  organizationSlotWorkspace,
+} from "./organization-slot-scope-lib.mjs";
 
 export async function buildGitInventory({ companiesRoot, organizations = null } = {}) {
   if (!companiesRoot) throw new Error("buildGitInventory requires companiesRoot");
@@ -196,6 +200,7 @@ function slotRecord({ organization, slot, companiesRoot }) {
     organization: organization.slug,
     organization_display_name: organization.display_name,
     organization_path: organization.path,
+    space: slot.space,
     workspace: slot.workspace,
     module: slot.module,
     name: slot.name,
@@ -224,11 +229,13 @@ function normalizeModuleSlot(slot, organization) {
   if (!slot || typeof slot !== "object" || typeof slot.path !== "string" || slot.path.trim() === "") return null;
   const path = slot.path.replace(/\\/g, "/");
   const module = basename(path);
+  const space = organizationSlotScope(slot, path);
   return {
     path,
     module,
     name: slot.name ?? humanizeSlug(module),
-    workspace: slot.workspace ?? inferWorkspace(path),
+    space,
+    workspace: organizationSlotWorkspace(slot, path),
     category: slot.category ?? null,
     repo: slot.repo ?? slot.git?.url ?? null,
     branch: slot.branch ?? slot.git?.branch ?? organization.default_branch ?? "main",
@@ -236,14 +243,10 @@ function normalizeModuleSlot(slot, organization) {
 }
 
 function repoKindForSlot(slot) {
-  if (slot.path.startsWith("productionspace/")) return "productionspace";
+  if (slot.space === "root") return "root_repo";
+  if (slot.space === "productionspace") return "productionspace";
   if (slot.path.startsWith("workspace/") || slot.path.startsWith("modules/")) return "module";
   return "root_repo";
-}
-
-function inferWorkspace(path) {
-  if (path.startsWith("productionspace/")) return "productionspace";
-  return "workspace";
 }
 
 function sanitizeRemote(remote) {

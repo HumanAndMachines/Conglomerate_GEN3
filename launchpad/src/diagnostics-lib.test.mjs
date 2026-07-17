@@ -445,6 +445,85 @@ test("vnořený child slot (mission-control/db) není module dlaždice (technick
   expect(declarationCheck?.details.join("\n")).toContain("mission-control/db");
 });
 
+test("root Design System zůstává mimo výchozí Team a Doctor hlídá jeho checkout", async () => {
+  const root = await createCompaniesWorkspaceFixture();
+  const companyRoot = join(root, "organizations", "OmegaCo_GEN3");
+  await mkdir(join(companyRoot, "manual"), { recursive: true });
+  await mkdir(join(companyRoot, "company", "colleagues"), { recursive: true });
+  await writeJson(join(root, "launchpad.gen3.json"), {
+    launchpad_root: {
+      slug: "test-companies",
+      display_name: "Test Companies",
+      root_role: "companies-root",
+    },
+  });
+  await writeJson(join(companyRoot, "company.gen3.json"), {
+    organization_generation: "gen3",
+    company: { slug: "OmegaCo", display_name: "OmegaCo" },
+    workspaces: [{ slug: "workspace", display_name: "OmegaCo Workspace", default: true }],
+  });
+  await writeJson(join(companyRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    module_slots: [
+      {
+        path: "design-system",
+        space: "root",
+        category: "brand",
+        default_access: "expected",
+        required_roles: ["*"],
+        git: {
+          url: "git@github.com:OmegaCo/design-system.git",
+          branch: "main",
+        },
+      },
+      { path: "workspace/wiki", space: "workspace", workspace: "workspace" },
+    ],
+  });
+  await writeJson(join(companyRoot, "TODO.tasks.json"), {});
+  await writeJson(join(companyRoot, "DONE.tasks.json"), {});
+  await writeJson(join(companyRoot, "ISSUES.open.json"), {});
+
+  const response = await buildLaunchpadAppsResponse({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+  });
+
+  const org = response.organizations.find((item) => item.slug === "OmegaCo");
+  const workspacePaths = (org?.workspaces ?? []).flatMap((workspace) =>
+    workspace.modules.map((module) => module.path),
+  );
+  const designSystem = org?.module_declarations.find(
+    (slot) => slot.path === "design-system",
+  );
+
+  expect(workspacePaths).toEqual(["workspace/wiki"]);
+  expect(designSystem).toMatchObject({
+    path: "design-system",
+    space: "root",
+    workspace: null,
+    status: "missing_access",
+    readiness: {
+      severity: "blocking",
+      reason: "unexpected_missing_access",
+    },
+  });
+  expect(org?.space_readiness?.blocking_slots).toContainEqual(
+    expect.objectContaining({ path: "design-system" }),
+  );
+
+  const report = await buildLaunchpadDoctorReport({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+  });
+  const declarationCheck = report.checks.find(
+    (check) => check.id === "launchpad.workspace_declarations",
+  );
+  expect(declarationCheck?.status).toBe("fail");
+  expect(declarationCheck?.details.join("\n")).toContain("design-system");
+});
+
 test("app workspace se čte z manifest deklarace, ne z filesystem cesty (decision 0041)", async () => {
   const root = await createCompaniesWorkspaceFixture();
   const companyRoot = join(root, "organizations", "AlfaCo_GEN3");

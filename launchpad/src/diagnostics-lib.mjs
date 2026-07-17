@@ -12,6 +12,10 @@ import {
   safeGitCommandEnv,
 } from "./git-lib.mjs";
 import { agentSkillsEntrypointsDoctorCheck } from "./agent-skills-entrypoint-lib.mjs";
+import {
+  organizationSlotScope,
+  organizationSlotWorkspace,
+} from "./organization-slot-scope-lib.mjs";
 
 const supportedPlatforms = {
   darwin: "macOS",
@@ -671,7 +675,9 @@ async function readOrganizationSpaces(companiesRoot, organization, localConfig =
   const isNestedChildSlot = (slot) =>
     declarationPaths.some((path) => path !== slot.path && slot.path.startsWith(`${path}/`));
   const tileModules = moduleDeclarations.filter((slot) => !isNestedChildSlot(slot));
-  const workspaceModules = tileModules.filter((slot) => slot.workspace && slot.workspace !== "productionspace");
+  const workspaceModules = tileModules.filter(
+    (slot) => slot.space === "workspace" && slot.workspace,
+  );
   const workspaceSlugs = new Set([
     ...declared.filter((workspace) => workspace !== productionBoundary).map((workspace) => workspace.slug).filter(Boolean),
     ...workspaceModules.map((slot) => slot.workspace),
@@ -841,7 +847,7 @@ function workspaceResolverForOrganization(company) {
         if (!match || declaration.path.length > match.path.length) match = declaration;
       }
     }
-    return match?.workspace ?? "workspace";
+    return match?.space === "root" ? "root" : match?.workspace ?? "workspace";
   };
 }
 
@@ -863,8 +869,9 @@ function normalizeModuleSlot(slot) {
     return null;
   }
   const path = slot.path.replace(/\\/g, "/");
-  const workspace = slot.workspace ?? inferModuleWorkspace(slot, path);
-  if (!workspace) return null;
+  const space = organizationSlotScope(slot, path);
+  const workspace = organizationSlotWorkspace(slot, path);
+  if (space !== "root" && !workspace) return null;
   // Vnořený slot (mission-control/db) potřebuje jméno z celé org-relativní
   // cesty, ne jen z basename ("Db").
   const nestedSegments = path.split("/").filter((segment) => !["workspace", "productionspace", "modules"].includes(segment));
@@ -872,6 +879,7 @@ function normalizeModuleSlot(slot) {
     slug: basename(path),
     name: humanizeSlug(nestedSegments.join("-")),
     path,
+    space,
     workspace,
     category: slot.category ?? null,
     default_access: slot.default_access ?? null,
@@ -883,16 +891,8 @@ function normalizeModuleSlot(slot) {
   };
 }
 
-// Chybějící deklarace = default Workspace se slugem "workspace" (decision 0041
-// bod 5). Productionspace boundary určuje výhradně cesta productionspace/*
-// (decision 0041 bod 6); classification je jen popisné metadata.
-function inferModuleWorkspace(slot, path) {
-  if (path.startsWith("productionspace/")) return "productionspace";
-  return "workspace";
-}
-
 function productionspaceSystems({ moduleSlots, productionspaceConfig }) {
-  const productionSlots = moduleSlots.filter((slot) => slot.workspace === "productionspace");
+  const productionSlots = moduleSlots.filter((slot) => slot.space === "productionspace");
   const byPath = new Map(productionSlots.map((slot) => [slot.path, slot]));
   const orderedPaths = Array.isArray(productionspaceConfig?.candidate_modules)
     ? productionspaceConfig.candidate_modules.map((path) => path.replace(/\\/g, "/"))

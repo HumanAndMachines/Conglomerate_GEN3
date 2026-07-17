@@ -34,6 +34,8 @@ test("inventory reads repo paths from Organization manifests and does not infer 
   });
   expect(repos.get("OmegaCo::infra")).toMatchObject({
     organization: "OmegaCo",
+    space: "root",
+    workspace: null,
     module: "infra",
     repo_kind: "root_repo",
     repo_path: "organizations/OmegaCo_GEN3/infra",
