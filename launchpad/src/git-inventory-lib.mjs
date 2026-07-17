@@ -3,6 +3,7 @@ import { readFile, readdir } from "fs/promises";
 import { basename, join } from "path";
 import { organizationMountStructureIssues } from "./discovery-lib.mjs";
 import {
+  normalizeOrganizationSlotPath,
   organizationSlotScope,
   organizationSlotWorkspace,
 } from "./organization-slot-scope-lib.mjs";
@@ -227,7 +228,8 @@ function normalizeOrganization(organization) {
 
 function normalizeModuleSlot(slot, organization) {
   if (!slot || typeof slot !== "object" || typeof slot.path !== "string" || slot.path.trim() === "") return null;
-  const path = slot.path.replace(/\\/g, "/");
+  const path = normalizeOrganizationSlotPath(slot.path);
+  if (!path) return null;
   const module = basename(path);
   const space = organizationSlotScope(slot, path);
   return {

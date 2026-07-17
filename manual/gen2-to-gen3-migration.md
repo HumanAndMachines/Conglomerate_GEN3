@@ -688,21 +688,22 @@ jedna Organization planning/UI vrstva pod root názvem `mission-control/`,
 která plánuje workspace i productionspace. Nezakládej paralelní
 `workspace-planning/` nebo `productionspace-planning/`.
 
-Decision 0026 určuje Organization ownership a původní in-tree výchozí tvar;
-decision 0037 mění vnitřní app/data boundary. Zapiš explicitně, který code
-model cílová Organizace používá:
+Revize decisions 0026/0034/0037 z 2026-07-17 materializovala jeden kanonický
+GEN3 app/data packaging:
 
-- default: app code je trackovaný v Organization `mission-control/`;
-- schválený extracted model: forked app-code repo je namountované přesně v
-  `mission-control/` a Organization repo už netrackuje duplicitní app copy.
+- `mission-control/` je Doctor-managed nested app/code repo — fork
+  `TemplatesRozjedeme-ai/MissionControlTemplate`;
+- `mission-control/db/` je druhý Doctor-managed nested checkout
+  Organization-owned data repa na větvi `v3`;
+- parent Organization repo trackuje jejich deklarace v
+  `modules.manifest.json` a ignore boundary, ne child obsah ani gitlink;
+- oba sloty mají explicitní `space: "root"` a aktivní sloty přesné
+  `git.url`/`git.branch`. Nematerializovaný protějšek smí být dočasně
+  `status: "planned_slot"`, ale oba sloty musí být deklarované.
 
-Extracted model potřebuje org-local decision/MC plan, app repo/branch/SHA,
-Doctor materialization contract a rollback. Nested checkout nesmí být root
-gitlink. V obou modelech existuje právě jeden živý app-code source.
-
-`mission-control/db/` je při bootstrapu pouze data-boundary kandidát. Legacy
-plány, roadmaps a TODO/DONE/ISSUES zůstávají read-only fallback, dokud
-Organization nesplní všechny decision-0036 gates:
+Původní in-tree Mission Control z GEN2 není alternativní cílový packaging.
+Při migraci zůstává jen read-only compatibility fallback, dokud Organizace
+nesplní všechny decision-0036 gates:
 
 1. parity report s každým přeneseným nebo vědomě vynechaným záznamem;
 2. Organization MC validace a data-repo publish validace na current heads;
@@ -716,9 +717,10 @@ Do splnění všech bodů nepiš „data repo je sole source“. Po cutoveru sma
 demotuj duplicate live copies tak, aby search nevracel dvě autority. Data
 write flow musí být jediný pending → approve → publish backend pro UI i agenty.
 
-U DEFAULT in-tree modelu před splněním decision-0036 gates žádné samostatné data
-repo neexistuje — „data validate" ve validační matici (Fáze 9) proto znamená
-validaci legacy in-tree ledgerů, ne data-repo publish.
+Existence `mission-control/db/` ještě sama neznamená, že data repo je sole
+source of truth. Před splněním decision-0036 gates „data validate" ve validační
+matici (Fáze 9) zahrnuje data-repo validaci, parity důkaz a validaci stále
+dostupného legacy read-only fallbacku.
 
 Mission Control plan/task closeout je součást migrace, ale rozliš dvě věci.
 **Closeout konzistence** (plan status, TODO/DONE ledger, PR/SHA evidence

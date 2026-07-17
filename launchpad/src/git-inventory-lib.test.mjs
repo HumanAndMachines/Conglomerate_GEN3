@@ -44,7 +44,7 @@ test("inventory reads repo paths from Organization manifests and does not infer 
   expect(inventory.planned.map((slot) => `${slot.organization}::${slot.module}`)).toContain("BetaCo::brainstorm");
 });
 
-test("explicit workspace scope never becomes a root repo solely because of its path", async () => {
+test("reserved Organization root path cannot masquerade as a Team module", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const manifestPath = `${root}/organizations/OmegaCo_GEN3/modules.manifest.json`;
@@ -64,9 +64,9 @@ test("explicit workspace scope never becomes a root repo solely because of its p
   );
 
   expect(slot).toMatchObject({
-    space: "workspace",
-    workspace: "brand",
-    repo_kind: "module",
+    space: "root",
+    workspace: null,
+    repo_kind: "root_repo",
   });
 });
 

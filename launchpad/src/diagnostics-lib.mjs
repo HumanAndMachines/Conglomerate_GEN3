@@ -13,6 +13,8 @@ import {
 } from "./git-lib.mjs";
 import { agentSkillsEntrypointsDoctorCheck } from "./agent-skills-entrypoint-lib.mjs";
 import {
+  isOrganizationRootSlotPath,
+  normalizeOrganizationSlotPath,
   organizationSlotScope,
   organizationSlotWorkspace,
 } from "./organization-slot-scope-lib.mjs";
@@ -727,6 +729,11 @@ async function readOrganizationSpaces(companiesRoot, organization, localConfig =
       manifest,
       config,
     }),
+    root_slot_contract_issues: rootSlotContractIssues(
+      manifest,
+      config,
+      organizationRoot,
+    ),
   };
 }
 
@@ -755,7 +762,14 @@ function workspaceConformanceIssues({ declared, productionBoundary, manifest, co
   ];
   for (const { source, slot } of rawSlots) {
     if (!slot || typeof slot.path !== "string") continue;
-    const path = slot.path.replace(/\\/g, "/");
+    const rawPath = slot.path.replace(/\\/g, "/");
+    const path = normalizeOrganizationSlotPath(rawPath);
+    if (!path) continue;
+    if (path !== rawPath) {
+      issues.push(
+        `${source}: slot path "${rawPath}" není kanonický; použij "${path}"`,
+      );
+    }
     if (slot.workspace === "productionspace") {
       issues.push(
         path.startsWith("productionspace/")
@@ -769,6 +783,90 @@ function workspaceConformanceIssues({ declared, productionBoundary, manifest, co
       );
     }
   }
+  return issues;
+}
+
+// Organization root checkout boundaries mají přísnější kontrakt než běžné
+// Team moduly: scope musí být explicitní, aktivní slot musí nést přesné checkout
+// souřadnice a Mission Control app/data deklarace tvoří jeden pár.
+function rootSlotContractIssues(manifest, config, organizationRoot) {
+  const issues = [];
+  const slots = Array.isArray(manifest?.module_slots) ? manifest.module_slots : [];
+  const rootSlots = slots
+    .filter((slot) => slot && typeof slot.path === "string")
+    .map((slot) => ({
+      slot,
+      rawPath: slot.path.replace(/\\/g, "/"),
+      path: normalizeOrganizationSlotPath(slot.path),
+    }))
+    .filter(({ path }) => isOrganizationRootSlotPath(path));
+  const declaredPaths = new Set(rootSlots.map(({ path }) => path));
+
+  for (const { slot, rawPath, path } of rootSlots) {
+    if (rawPath !== path) {
+      issues.push(
+        `modules.manifest.json: root slot path "${rawPath}" není kanonický; použij "${path}"`,
+      );
+    }
+    if (slot.space !== "root") {
+      issues.push(
+        `modules.manifest.json: root slot ${path} musí explicitně deklarovat space: "root"`,
+      );
+    }
+
+    const membershipFields = ["workspace", "workspaces", "teams"].filter((field) =>
+      Object.prototype.hasOwnProperty.call(slot, field),
+    );
+    if (membershipFields.length > 0) {
+      issues.push(
+        `modules.manifest.json: root slot ${path} nesmí deklarovat Team/Workspace membership (${membershipFields.join(", ")})`,
+      );
+    }
+
+    const gitUrl = typeof slot.git?.url === "string" ? slot.git.url.trim() : "";
+    const gitBranch = typeof slot.git?.branch === "string" ? slot.git.branch.trim() : "";
+    const checkoutExists = existsSync(join(organizationRoot, path));
+    const checkoutCoordinatesStarted = slot.git !== undefined;
+    if (
+      slot.status !== "planned_slot" ||
+      checkoutExists ||
+      checkoutCoordinatesStarted
+    ) {
+      const missingCoordinates = [
+        ...(gitUrl ? [] : ["git.url"]),
+        ...(gitBranch ? [] : ["git.branch"]),
+      ];
+      if (missingCoordinates.length > 0) {
+        issues.push(
+          `modules.manifest.json: materializovaný nebo checkoutem rozepsaný root slot ${path} musí deklarovat ${missingCoordinates.join(" a ")}; bez checkout údajů smí být jen nematerializovaný status: "planned_slot"`,
+        );
+      }
+    }
+    if (path === "mission-control/db" && gitBranch && gitBranch !== "v3") {
+      issues.push(
+        `modules.manifest.json: root slot mission-control/db musí používat větev "v3", deklarována je "${gitBranch}"`,
+      );
+    }
+  }
+
+  const missionControlDeclared = declaredPaths.has("mission-control");
+  const missionControlDataDeclared = declaredPaths.has("mission-control/db");
+  if (missionControlDeclared !== missionControlDataDeclared) {
+    const missingPath = missionControlDeclared ? "mission-control/db" : "mission-control";
+    issues.push(
+      `modules.manifest.json: Mission Control app/data boundary musí deklarovat oba root sloty; chybí ${missingPath} (během migrace smí mít protějšek status: "planned_slot")`,
+    );
+  }
+
+  for (const slot of Array.isArray(config?.modules) ? config.modules : []) {
+    if (!slot || typeof slot.path !== "string") continue;
+    const path = normalizeOrganizationSlotPath(slot.path);
+    if (!isOrganizationRootSlotPath(path)) continue;
+    issues.push(
+      `company.gen3.json: root slot ${path} nesmí být v modules[]; deklaruj ho v modules.manifest.json/module_slots[]`,
+    );
+  }
+
   return issues;
 }
 
@@ -873,7 +971,8 @@ function normalizeModuleSlot(slot) {
   if (!slot || typeof slot !== "object" || typeof slot.path !== "string" || slot.path.trim() === "") {
     return null;
   }
-  const path = slot.path.replace(/\\/g, "/");
+  const path = normalizeOrganizationSlotPath(slot.path);
+  if (!path) return null;
   const space = organizationSlotScope(slot, path);
   const workspace = organizationSlotWorkspace(slot, path);
   if (space !== "root" && !workspace) return null;
@@ -1431,6 +1530,10 @@ function workspaceDeclarationCheck(appsResponse) {
     for (const issue of organization.workspace_conformance_issues ?? []) {
       details.push(`${organization.path}: ${issue}`);
       conformanceIssueCount += 1;
+    }
+    for (const issue of organization.root_slot_contract_issues ?? []) {
+      details.push(`${organization.path}: ${issue}`);
+      blockingSlotCount += 1;
     }
     const slots = Array.isArray(organization.module_declarations)
       ? organization.module_declarations

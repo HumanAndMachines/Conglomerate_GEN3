@@ -567,6 +567,198 @@ test("root Design System zůstává mimo výchozí Team a Doctor hlídá jeho ch
   expect(declarationCheck?.details.join("\n")).toContain("design-system");
 });
 
+test("Doctor vynucuje root slot contract a Mission Control app/data pár", async () => {
+  const root = await createCompaniesWorkspaceFixture();
+  const companyRoot = join(root, "organizations", "OmegaCo_GEN3");
+  await mkdir(join(companyRoot, "manual"), { recursive: true });
+  await mkdir(join(companyRoot, "company", "colleagues"), { recursive: true });
+  await writeJson(join(root, "launchpad.gen3.json"), {
+    launchpad_root: {
+      slug: "test-companies",
+      display_name: "Test Companies",
+      root_role: "companies-root",
+    },
+  });
+  await writeJson(join(companyRoot, "company.gen3.json"), {
+    organization_generation: "gen3",
+    company: { slug: "OmegaCo", display_name: "OmegaCo" },
+    workspaces: [{ slug: "workspace", display_name: "OmegaCo Workspace", default: true }],
+    modules: [
+      {
+        slug: "infra",
+        path: "infra",
+        repo: "git@github.com:OmegaCo/infra.git",
+        category: "engineering",
+        source_of_truth: "git-native",
+        access: { default: "expected", roles: ["*"] },
+      },
+    ],
+  });
+  const manifestPath = join(companyRoot, "modules.manifest.json");
+  await writeJson(manifestPath, {
+    organization_generation: "gen3",
+    module_slots: [
+      // Nevalidní legacy deklarace: Doctor ji bezpečně zobrazí v rootu, ale
+      // blokuje ji kvůli chybějícímu explicitnímu scope a checkout údajům.
+      { path: "design-system", space: "workspace", workspace: "brand" },
+      {
+        path: "./mission-control",
+        space: "root",
+        git: {
+          url: "git@github.com:OmegaCo/mission-control.git",
+          branch: "main",
+        },
+      },
+      { path: "workspace/wiki", space: "workspace", workspace: "workspace" },
+    ],
+  });
+  await writeJson(join(companyRoot, "TODO.tasks.json"), {});
+  await writeJson(join(companyRoot, "DONE.tasks.json"), {});
+  await writeJson(join(companyRoot, "ISSUES.open.json"), {});
+
+  const response = await buildLaunchpadAppsResponse({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+  });
+  const org = response.organizations.find((item) => item.slug === "OmegaCo");
+  const workspacePaths = (org?.workspaces ?? []).flatMap((workspace) =>
+    workspace.modules.map((module) => module.path),
+  );
+  const designSystem = org?.module_declarations.find(
+    (slot) => slot.path === "design-system",
+  );
+
+  expect(workspacePaths).toEqual(["workspace/wiki"]);
+  expect(designSystem).toMatchObject({
+    space: "root",
+    workspace: null,
+  });
+
+  const report = await buildLaunchpadDoctorReport({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+  });
+  const declarationCheck = report.checks.find(
+    (check) => check.id === "launchpad.workspace_declarations",
+  );
+  const details = declarationCheck?.details.join("\n") ?? "";
+  expect(declarationCheck?.status).toBe("fail");
+  expect(details).toContain('design-system musí explicitně deklarovat space: "root"');
+  expect(details).toContain(
+    "design-system nesmí deklarovat Team/Workspace membership (workspace)",
+  );
+  expect(details).toContain("design-system musí deklarovat git.url a git.branch");
+  expect(details).toContain(
+    'root slot path "./mission-control" není kanonický; použij "mission-control"',
+  );
+  expect(details).toContain("chybí mission-control/db");
+  expect(details).toContain(
+    "company.gen3.json: root slot infra nesmí být v modules[]",
+  );
+
+  const manifest = await Bun.file(manifestPath).json();
+  manifest.module_slots.splice(2, 0, {
+    path: "mission-control//db",
+    space: "root",
+    teams: ["workspace"],
+    git: {
+      url: "git@github.com:OmegaCo/mission-control-data.git",
+      branch: "main",
+    },
+  });
+  await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  const reportWithData = await buildLaunchpadDoctorReport({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+  });
+  const dataDeclarationCheck = reportWithData.checks.find(
+    (check) => check.id === "launchpad.workspace_declarations",
+  );
+  const dataDetails = dataDeclarationCheck?.details.join("\n") ?? "";
+  expect(dataDeclarationCheck?.status).toBe("fail");
+  expect(dataDetails).toContain(
+    "mission-control/db nesmí deklarovat Team/Workspace membership (teams)",
+  );
+  expect(dataDetails).toContain(
+    'root slot path "mission-control//db" není kanonický; použij "mission-control/db"',
+  );
+  expect(dataDetails).toContain(
+    'mission-control/db musí používat větev "v3", deklarována je "main"',
+  );
+  expect(dataDetails).not.toContain("chybí mission-control/db");
+});
+
+test("planned root slot smí vynechat checkout údaje jen dokud není rozepsaný ani materializovaný", async () => {
+  const root = await createCompaniesWorkspaceFixture();
+  const companyRoot = join(root, "organizations", "OmegaCo_GEN3");
+  await mkdir(join(companyRoot, "manual"), { recursive: true });
+  await mkdir(join(companyRoot, "company", "colleagues"), { recursive: true });
+  await writeJson(join(root, "launchpad.gen3.json"), {
+    launchpad_root: {
+      slug: "test-companies",
+      display_name: "Test Companies",
+      root_role: "companies-root",
+    },
+  });
+  await writeJson(join(companyRoot, "company.gen3.json"), {
+    organization_generation: "gen3",
+    company: { slug: "OmegaCo", display_name: "OmegaCo" },
+    workspaces: [{ slug: "workspace", display_name: "OmegaCo Workspace", default: true }],
+  });
+  const manifestPath = join(companyRoot, "modules.manifest.json");
+  const manifest = {
+    organization_generation: "gen3",
+    module_slots: [
+      {
+        path: "design-system",
+        space: "root",
+        status: "planned_slot",
+      },
+    ],
+  };
+  await writeJson(manifestPath, manifest);
+  await writeJson(join(companyRoot, "TODO.tasks.json"), {});
+  await writeJson(join(companyRoot, "DONE.tasks.json"), {});
+  await writeJson(join(companyRoot, "ISSUES.open.json"), {});
+
+  const doctor = async () => {
+    const report = await buildLaunchpadDoctorReport({
+      companiesRoot: root,
+      launchpadRoot: join(root, "launchpad"),
+      runtimeManager: { appsWithRuntime: async (apps) => apps },
+    });
+    return report.checks.find(
+      (check) => check.id === "launchpad.workspace_declarations",
+    );
+  };
+
+  const plannedCheck = await doctor();
+  expect(plannedCheck?.status).toBe("ok");
+
+  manifest.module_slots[0].git = {
+    url: "git@github.com:OmegaCo/design-system.git",
+  };
+  await writeJson(manifestPath, manifest);
+  const partialCoordinatesCheck = await doctor();
+  expect(partialCoordinatesCheck?.status).toBe("fail");
+  expect(partialCoordinatesCheck?.details.join("\n")).toContain(
+    "design-system musí deklarovat git.branch",
+  );
+
+  delete manifest.module_slots[0].git;
+  await writeJson(manifestPath, manifest);
+  await mkdir(join(companyRoot, "design-system"), { recursive: true });
+  const materializedCheck = await doctor();
+  expect(materializedCheck?.status).toBe("fail");
+  expect(materializedCheck?.details.join("\n")).toContain(
+    "design-system musí deklarovat git.url a git.branch",
+  );
+});
+
 test("app workspace se čte z manifest deklarace, ne z filesystem cesty (decision 0041)", async () => {
   const root = await createCompaniesWorkspaceFixture();
   const companyRoot = join(root, "organizations", "AlfaCo_GEN3");
