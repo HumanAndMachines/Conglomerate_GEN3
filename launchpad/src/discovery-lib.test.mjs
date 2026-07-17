@@ -45,6 +45,7 @@ test("discovery načte read-only plugin metadata", async () => {
     title: "Demo kontext",
     path: "organizations/TestCompany/modules/demo/app/v1/launchpad.plugin.json",
   });
+  expect(apps[0].cwd).toBe("organizations/TestCompany/modules/demo/app/v1");
   expect(apps[0].plugin.links[0].path).toBe("modules/demo/app/v1/README.md");
 });
 
