@@ -2,6 +2,7 @@ import { constants, existsSync, lstatSync, realpathSync } from "fs";
 import { open, readFile } from "fs/promises";
 import { isAbsolute, join, normalize, relative, resolve } from "path";
 import { buildDoctorReportFromAppsResponse, buildLaunchpadAppsResponse } from "./diagnostics-lib.mjs";
+import { openBrowser } from "./browser-open-lib.mjs";
 import {
   GitApiError,
   buildGitApiResponse,
@@ -357,22 +358,6 @@ async function isRunningLaunchpad(url) {
   } catch {
     return false;
   }
-}
-
-async function openBrowser(url) {
-  const commands = {
-    darwin: ["open", url],
-    win32: [process.env.ComSpec || "cmd.exe", "/c", "start", "", url],
-    linux: ["xdg-open", url],
-  };
-  const command = commands[process.platform];
-  if (!command) return;
-  const child = Bun.spawn(command, {
-    stdout: "ignore",
-    stderr: "ignore",
-    windowsHide: true,
-  });
-  await child.exited;
 }
 
 function appRuntimeRoute(pathname) {

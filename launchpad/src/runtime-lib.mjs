@@ -50,6 +50,7 @@ export function createRuntimeManager({
   platform = process.platform,
   spawnProcess = Bun.spawn,
   runSystemCommandFn = runCommand,
+  writeRuntimeStateFile = writeFile,
   bunExecutable = null,
 }) {
   const runtimeBunExecutable = bunExecutable
@@ -171,6 +172,13 @@ export function createRuntimeManager({
       startedAt,
       logPath,
       stopping: false,
+      finalizeStopOnExit: false,
+      finalizeStopForced: false,
+      stopExitConfirmed: false,
+      stopExitCode: null,
+      stopFinalizationReady: false,
+      stopFinalizationOptions: null,
+      stopFinalizationPromise: null,
       outputPipes: [],
     };
     managedProcesses.set(runtimeKey, record);
@@ -193,11 +201,25 @@ export function createRuntimeManager({
     });
 
     child.exited.then(async (exitCode) => {
+      if (record.stopping) {
+        record.stopExitConfirmed = true;
+        record.stopExitCode = exitCode;
+        if (record.finalizeStopOnExit) {
+          prepareStopFinalization(record, {
+            exitCode,
+            forced: record.finalizeStopForced,
+          });
+          await finalizeManagedStop(app, record, runtimeKey, runtimeSource, {
+            exitCode,
+            forced: record.finalizeStopForced,
+          });
+        }
+        return;
+      }
       const currentRecord = managedProcesses.get(runtimeKey);
-      if (currentRecord?.pid === child.pid) {
+      if (currentRecord === record) {
         managedProcesses.delete(runtimeKey);
       }
-      if (record.stopping) return;
       await Promise.allSettled(record.outputPipes);
       await appendLog(logPath, `[launchpad] ${new Date().toISOString()} exit ${app.id} source=${runtimeSource.type} code=${exitCode}\n`);
       const log_excerpt = await logTail(logPath, errorTailBytes);
@@ -217,6 +239,8 @@ export function createRuntimeManager({
         log_path: relativeRuntimePath(logPath),
         ...(failure ? { last_error: failure.message, failure_kind: failure.kind, log_excerpt } : {}),
       });
+    }).catch(async (error) => {
+      await appendLog(logPath, `[launchpad] exit finalization failed ${app.id}: ${error.message}\n`);
     });
 
     const earlyExit = await waitForEarlyExit(child, startEarlyExitProbeMs);
@@ -516,87 +540,176 @@ export function createRuntimeManager({
       });
     }
 
-    record.stopping = true;
-    await writeState(runtimeKey, {
-      status: "stopping",
-      app_id: app.id,
-      runtime_key: runtimeKey,
-      runtime_source: runtimeSource,
-      port: record.port ?? app.port,
-      pid: record.pid,
-      instance_id: instanceId,
-      started_at: record.startedAt,
-      updated_at: new Date().toISOString(),
-      log_path: relativeRuntimePath(record.logPath),
-    });
-    await appendLog(record.logPath, `[launchpad] ${new Date().toISOString()} stop ${app.id}\n`);
+    if (record.stopping) {
+      if (record.stopFinalizationReady && record.stopFinalizationOptions) {
+        await finalizeManagedStop(
+          app,
+          record,
+          runtimeKey,
+          runtimeSource,
+          record.stopFinalizationOptions,
+        );
+        return stopActionResult(app, record, runtimeKey, runtimeSource, {
+          forced: record.stopFinalizationOptions.forced,
+        });
+      }
+      throw new RuntimeActionError(
+        409,
+        "app_stop_in_progress",
+        "Aplikace se už zastavuje; Launchpad neposlal další signál.",
+        [`runtime_key: ${runtimeKey}`, `pid: ${record.pid}`],
+        {
+          failure_kind: "stop_in_progress",
+          owner: "current-instance",
+          pid: record.pid,
+        },
+      );
+    }
 
-    await signalManagedProcess(record, runtimeKey, "SIGTERM");
+    record.stopping = true;
+    resetStopAttempt(record);
+    try {
+      await writeState(runtimeKey, {
+        status: "stopping",
+        app_id: app.id,
+        runtime_key: runtimeKey,
+        runtime_source: runtimeSource,
+        port: record.port ?? app.port,
+        pid: record.pid,
+        instance_id: instanceId,
+        started_at: record.startedAt,
+        updated_at: new Date().toISOString(),
+        log_path: relativeRuntimePath(record.logPath),
+      });
+      await appendLog(record.logPath, `[launchpad] ${new Date().toISOString()} stop ${app.id}\n`);
+    } catch (error) {
+      await recoverRetryableStopAttempt(app, record, runtimeKey, runtimeSource, error, {
+        failureKind: "stop_preparation_failed",
+      });
+      throw error;
+    }
+
+    try {
+      await signalManagedProcess(record, runtimeKey, "SIGTERM");
+    } catch (error) {
+      await recoverRetryableStopAttempt(app, record, runtimeKey, runtimeSource, error, {
+        failureKind: error?.metadata?.failure_kind ?? "stop_signal_failed",
+      });
+      throw error;
+    }
 
     const result = await Promise.race([
       record.child.exited.then((exitCode) => ({ exitCode, timeout: false })),
       sleep(stopTimeoutMs).then(() => ({ exitCode: null, timeout: true })),
     ]);
+    if (!result.timeout) {
+      record.stopExitConfirmed = true;
+      record.stopExitCode = result.exitCode;
+    }
 
     // Windows už první bezpečně scoped Stop provede přes taskkill /T /F.
     // Druhé cílení stejného PID po timeoutu by po rychlém PID reuse mohlo
-    // zasáhnout cizí proces; místo toho níže jen fail-closed ověříme port.
+    // zasáhnout cizí proces. Identitu proto potvrzuje původní child handle:
+    // timeout ponechá ownership, potvrzený exit dovolí uklidit managed záznam.
+    let exitCode = result.exitCode;
     if (result.timeout && platform !== "win32") {
-      await signalManagedProcess(record, runtimeKey, "SIGKILL");
-      await Promise.race([
-        record.child.exited,
-        sleep(stopKillWaitMs),
+      try {
+        await signalManagedProcess(record, runtimeKey, "SIGKILL");
+      } catch (error) {
+        await recoverRetryableStopAttempt(app, record, runtimeKey, runtimeSource, error, {
+          failureKind: error?.metadata?.failure_kind ?? "stop_signal_failed",
+        });
+        throw error;
+      }
+      const killResult = await Promise.race([
+        record.child.exited.then((confirmedExitCode) => ({
+          exitCode: confirmedExitCode,
+          timeout: false,
+        })),
+        sleep(stopKillWaitMs).then(() => ({ exitCode: null, timeout: true })),
       ]);
+      if (killResult.timeout) {
+        enableStopFinalizationOnExit(app, record, runtimeKey, runtimeSource, {
+          forced: true,
+        });
+        await appendLog(
+          record.logPath,
+          `[launchpad] SIGKILL completed but child exit was not confirmed ${app.id} managed_pid=${record.pid}\n`,
+        );
+        throw stopExitUnconfirmedError(app, record);
+      }
+      exitCode = killResult.exitCode;
+      record.stopExitConfirmed = true;
+      record.stopExitCode = exitCode;
+    }
+
+    if (result.timeout && platform === "win32") {
+      enableStopFinalizationOnExit(app, record, runtimeKey, runtimeSource, {
+        forced: true,
+      });
+      await appendLog(
+        record.logPath,
+        `[launchpad] taskkill completed but child exit was not confirmed ${app.id} managed_pid=${record.pid}\n`,
+      );
+      throw stopExitUnconfirmedError(app, record);
     }
 
     const forced = platform === "win32" || result.timeout;
+    prepareStopFinalization(record, {
+      exitCode,
+      forced,
+    });
     if (platform === "win32") {
-      const ownerAfterStop = await resolvePortOwnerFn(app.port, {
-        expectedCwd: join(companiesRoot, app.cwd ?? dirname(app.package_path ?? "package.json")),
-      });
-      if (ownerAfterStop) {
-        await appendLog(
-          record.logPath,
-          `[launchpad] stop tree left listener ${app.id} expected_parent=${record.pid} actual_owner=${ownerAfterStop.pid}\n`,
-        );
-        throw new RuntimeActionError(
-          500,
-          "app_stop_failed",
-          `${app.title} se nepodařilo bezpečně zastavit; port ${app.port} stále používá PID ${ownerAfterStop.pid}.`,
-          [`app_id: ${app.id}`, `managed_pid: ${record.pid}`, `port_owner_pid: ${ownerAfterStop.pid}`, `port: ${app.port}`],
-          {
-            failure_kind: "stop_failed",
-            owner: "current-instance",
-            managed_pid: record.pid,
-            port_owner_pid: ownerAfterStop.pid,
-            port: app.port,
-          },
-        );
+      // Po potvrzeném child exit je každý listener nový proces, i kdyby Windows
+      // mezitím znovu použil stejné číselné PID. Jen ho zalogujeme; health/start
+      // jej následně fail-closed klasifikuje podle port ownership kontraktu.
+      try {
+        const ownerAfterStop = await resolvePortOwnerFn(app.port, {
+          expectedCwd: join(companiesRoot, app.cwd ?? dirname(app.package_path ?? "package.json")),
+        });
+        if (ownerAfterStop) {
+          await appendLog(
+            record.logPath,
+            `[launchpad] stop tree completed and port was reused ${app.id} managed_pid=${record.pid} new_owner=${ownerAfterStop.pid}\n`,
+          );
+        }
+      } catch (error) {
+        // Diagnostika po potvrzeném exitu nesmí zablokovat nedestruktivní
+        // finalizaci. Když selže i log (AV/OneDrive lock), finalizer zachová
+        // retryable managed slot a další Stop zopakuje jen zápis stavu.
+        try {
+          await appendLog(
+            record.logPath,
+            `[launchpad] post-stop port diagnostic failed ${app.id}: ${error.message}\n`,
+          );
+        } catch {}
       }
     }
-    await appendLog(
-      record.logPath,
-      `[launchpad] ${new Date().toISOString()} stopped ${app.id} code=${result.exitCode} forced=${forced}\n`,
-    );
-    await Promise.allSettled(record.outputPipes);
-
-    managedProcesses.delete(runtimeKey);
-    await writeState(runtimeKey, {
-      status: "stopped",
-      app_id: app.id,
-      runtime_key: runtimeKey,
-      runtime_source: runtimeSource,
-      port: record.port ?? app.port,
-      pid: record.pid,
-      instance_id: instanceId,
-      started_at: record.startedAt,
-      stopped_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      exit_code: result.exitCode,
+    await finalizeManagedStop(app, record, runtimeKey, runtimeSource, {
+      exitCode,
       forced,
-      log_path: relativeRuntimePath(record.logPath),
     });
 
+    return stopActionResult(app, record, runtimeKey, runtimeSource, { forced });
+  }
+
+  function stopExitUnconfirmedError(app, record) {
+    return new RuntimeActionError(
+      500,
+      "app_stop_failed",
+      `${app.title}: ukončení PID ${record.pid} nebylo potvrzené známým process handlem.`,
+      [`app_id: ${app.id}`, `managed_pid: ${record.pid}`, `port: ${app.port}`, `platform: ${platform}`],
+      {
+        failure_kind: "stop_exit_unconfirmed",
+        owner: "current-instance",
+        managed_pid: record.pid,
+        port: app.port,
+        platform,
+      },
+    );
+  }
+
+  async function stopActionResult(app, record, runtimeKey, runtimeSource, { forced }) {
     return {
       action: "stop",
       app_id: app.id,
@@ -606,6 +719,118 @@ export function createRuntimeManager({
       forced,
       runtime: await healthForApp(app),
     };
+  }
+
+  function resetStopAttempt(record) {
+    record.finalizeStopOnExit = false;
+    record.finalizeStopForced = false;
+    record.stopExitConfirmed = false;
+    record.stopExitCode = null;
+    record.stopFinalizationReady = false;
+    record.stopFinalizationOptions = null;
+    record.stopFinalizationPromise = null;
+  }
+
+  async function recoverRetryableStopAttempt(
+    app,
+    record,
+    runtimeKey,
+    runtimeSource,
+    error,
+    { failureKind },
+  ) {
+    const updatedAt = new Date().toISOString();
+    try {
+      await writeState(runtimeKey, {
+        status: "unhealthy",
+        app_id: app.id,
+        runtime_key: runtimeKey,
+        runtime_source: runtimeSource,
+        port: record.port ?? app.port,
+        pid: record.pid,
+        instance_id: instanceId,
+        started_at: record.startedAt,
+        updated_at: updatedAt,
+        log_path: relativeRuntimePath(record.logPath),
+        last_error: error?.message ?? String(error),
+        failure_kind: failureKind,
+      });
+    } catch {
+      // Původní Stop chyba je pro volajícího směrodatná. Managed record se
+      // přesto musí vrátit do retryable stavu, když child stále běží.
+    }
+
+    if (record.stopExitConfirmed) {
+      enableStopFinalizationOnExit(app, record, runtimeKey, runtimeSource, {
+        forced: false,
+      });
+      return;
+    }
+
+    record.stopping = false;
+    record.finalizeStopOnExit = false;
+    record.finalizeStopForced = false;
+  }
+
+  function enableStopFinalizationOnExit(app, record, runtimeKey, runtimeSource, { forced }) {
+    record.finalizeStopOnExit = true;
+    record.finalizeStopForced = forced;
+    if (!record.stopExitConfirmed) return;
+    prepareStopFinalization(record, {
+      exitCode: record.stopExitCode,
+      forced,
+    });
+    void finalizeManagedStop(app, record, runtimeKey, runtimeSource, {
+      exitCode: record.stopExitCode,
+      forced,
+    }).catch(async (error) => {
+      await appendLog(record.logPath, `[launchpad] deferred stop finalization failed ${app.id}: ${error.message}\n`);
+    });
+  }
+
+  function prepareStopFinalization(record, options) {
+    record.stopFinalizationReady = true;
+    record.stopFinalizationOptions = options;
+  }
+
+  async function finalizeManagedStop(app, record, runtimeKey, runtimeSource, { exitCode, forced }) {
+    if (record.stopFinalizationPromise) return record.stopFinalizationPromise;
+
+    const finalizationPromise = (async () => {
+      const stoppedAt = new Date().toISOString();
+      await appendLog(
+        record.logPath,
+        `[launchpad] ${stoppedAt} stopped ${app.id} code=${exitCode} forced=${forced}\n`,
+      );
+      await Promise.allSettled(record.outputPipes);
+      await writeState(runtimeKey, {
+        status: "stopped",
+        app_id: app.id,
+        runtime_key: runtimeKey,
+        runtime_source: runtimeSource,
+        port: record.port ?? app.port,
+        pid: record.pid,
+        instance_id: instanceId,
+        started_at: record.startedAt,
+        stopped_at: stoppedAt,
+        updated_at: stoppedAt,
+        exit_code: exitCode,
+        forced,
+        log_path: relativeRuntimePath(record.logPath),
+      });
+      if (managedProcesses.get(runtimeKey) === record) {
+        managedProcesses.delete(runtimeKey);
+      }
+    })();
+    record.stopFinalizationPromise = finalizationPromise;
+    try {
+      return await finalizationPromise;
+    } catch (error) {
+      if (record.stopFinalizationPromise === finalizationPromise) {
+        record.stopFinalizationPromise = null;
+      }
+      throw error;
+    }
   }
 
   async function signalManagedProcess(record, runtimeKey, signal) {
@@ -1274,7 +1499,7 @@ export function createRuntimeManager({
 
   async function writeState(appId, state) {
     await ensureRuntimeDirs();
-    await writeFile(statePathForApp(appId), `${JSON.stringify(state, null, 2)}\n`, "utf8");
+    await writeRuntimeStateFile(statePathForApp(appId), `${JSON.stringify(state, null, 2)}\n`, "utf8");
   }
 
   async function ensureRuntimeDirs() {
