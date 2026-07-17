@@ -406,6 +406,7 @@ test("Mission Control app/code a data jsou root sloty mimo Team dlaždice", asyn
     organization_generation: "gen3",
     company: { slug: "OmegaCo", display_name: "OmegaCo" },
     workspaces: [{ slug: "workspace", display_name: "OmegaCo Workspace", default: true }],
+    layers: [{ path: "mission-control", kind: "root-docs", ownership: "manual" }],
   });
   await writeJson(join(companyRoot, "modules.manifest.json"), {
     organization_generation: "gen3",
@@ -504,6 +505,7 @@ test("root Design System zůstává mimo výchozí Team a Doctor hlídá jeho ch
     organization_generation: "gen3",
     company: { slug: "OmegaCo", display_name: "OmegaCo" },
     workspaces: [{ slug: "workspace", display_name: "OmegaCo Workspace", default: true }],
+    layers: [{ path: "design-system", kind: "design-system", ownership: "manual" }],
   });
   await writeJson(join(companyRoot, "modules.manifest.json"), {
     organization_generation: "gen3",
@@ -583,6 +585,11 @@ test("Doctor vynucuje root slot contract a Mission Control app/data pár", async
     organization_generation: "gen3",
     company: { slug: "OmegaCo", display_name: "OmegaCo" },
     workspaces: [{ slug: "workspace", display_name: "OmegaCo Workspace", default: true }],
+    layers: [
+      { path: "design-system", kind: "design-system", ownership: "manual" },
+      { path: "infra", kind: "infra", ownership: "manual" },
+      { path: "mission-control/", kind: "root-docs", ownership: "manual" },
+    ],
     modules: [
       {
         slug: "infra",
@@ -653,9 +660,15 @@ test("Doctor vynucuje root slot contract a Mission Control app/data pár", async
   expect(details).toContain(
     'root slot path "./mission-control" není kanonický; použij "mission-control"',
   );
+  expect(details).toContain(
+    'root layer path "mission-control/" není kanonický; použij "mission-control"',
+  );
   expect(details).toContain("chybí mission-control/db");
   expect(details).toContain(
     "company.gen3.json: root slot infra nesmí být v modules[]",
+  );
+  expect(details).toContain(
+    "company.gen3.json: root vrstva infra nemá odpovídající modules.manifest.json slot",
   );
 
   const manifest = await Bun.file(manifestPath).json();
@@ -690,9 +703,26 @@ test("Doctor vynucuje root slot contract a Mission Control app/data pár", async
     'mission-control/db musí používat větev "v3", deklarována je "main"',
   );
   expect(dataDetails).not.toContain("chybí mission-control/db");
+
+  const companyConfig = await Bun.file(join(companyRoot, "company.gen3.json")).json();
+  companyConfig.layers = companyConfig.layers.filter(
+    (layer) => layer.path !== "design-system",
+  );
+  await writeJson(join(companyRoot, "company.gen3.json"), companyConfig);
+  const reportWithoutDesignLayer = await buildLaunchpadDoctorReport({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+  });
+  const missingLayerCheck = reportWithoutDesignLayer.checks.find(
+    (check) => check.id === "launchpad.workspace_declarations",
+  );
+  expect(missingLayerCheck?.details.join("\n")).toContain(
+    "modules.manifest.json: root slot design-system nemá odpovídající company.gen3.json vrstvu",
+  );
 });
 
-test("planned root slot smí vynechat checkout údaje jen dokud není rozepsaný ani materializovaný", async () => {
+test("planned root slot nemá git a smí zůstat planned jen dokud není materializovaný", async () => {
   const root = await createCompaniesWorkspaceFixture();
   const companyRoot = join(root, "organizations", "OmegaCo_GEN3");
   await mkdir(join(companyRoot, "manual"), { recursive: true });
@@ -708,6 +738,7 @@ test("planned root slot smí vynechat checkout údaje jen dokud není rozepsaný
     organization_generation: "gen3",
     company: { slug: "OmegaCo", display_name: "OmegaCo" },
     workspaces: [{ slug: "workspace", display_name: "OmegaCo Workspace", default: true }],
+    layers: [{ path: "design-system", kind: "design-system", ownership: "manual" }],
   });
   const manifestPath = join(companyRoot, "modules.manifest.json");
   const manifest = {
@@ -741,21 +772,31 @@ test("planned root slot smí vynechat checkout údaje jen dokud není rozepsaný
 
   manifest.module_slots[0].git = {
     url: "git@github.com:OmegaCo/design-system.git",
+    branch: "main",
   };
   await writeJson(manifestPath, manifest);
   const partialCoordinatesCheck = await doctor();
   expect(partialCoordinatesCheck?.status).toBe("fail");
   expect(partialCoordinatesCheck?.details.join("\n")).toContain(
-    "design-system musí deklarovat git.branch",
+    "planned root slot design-system nesmí deklarovat git",
+  );
+
+  await mkdir(join(companyRoot, "design-system"), { recursive: true });
+  const materializedWithCoordinatesCheck = await doctor();
+  expect(materializedWithCoordinatesCheck?.status).toBe("fail");
+  expect(materializedWithCoordinatesCheck?.details.join("\n")).toContain(
+    'materializovaný root slot design-system nesmí zůstat status: "planned_slot"',
+  );
+  expect(materializedWithCoordinatesCheck?.details.join("\n")).not.toContain(
+    "planned root slot design-system nesmí deklarovat git",
   );
 
   delete manifest.module_slots[0].git;
   await writeJson(manifestPath, manifest);
-  await mkdir(join(companyRoot, "design-system"), { recursive: true });
-  const materializedCheck = await doctor();
-  expect(materializedCheck?.status).toBe("fail");
-  expect(materializedCheck?.details.join("\n")).toContain(
-    "design-system musí deklarovat git.url a git.branch",
+  const materializedWithoutCoordinatesCheck = await doctor();
+  expect(materializedWithoutCoordinatesCheck?.status).toBe("fail");
+  expect(materializedWithoutCoordinatesCheck?.details.join("\n")).toContain(
+    'materializovaný root slot design-system nesmí zůstat status: "planned_slot"',
   );
 });
 

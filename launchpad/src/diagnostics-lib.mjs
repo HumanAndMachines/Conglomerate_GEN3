@@ -791,6 +791,7 @@ function workspaceConformanceIssues({ declared, productionBoundary, manifest, co
 // souřadnice a Mission Control app/data deklarace tvoří jeden pár.
 function rootSlotContractIssues(manifest, config, organizationRoot) {
   const issues = [];
+  const rootLayerPaths = new Set(["design-system", "infra", "mission-control"]);
   const slots = Array.isArray(manifest?.module_slots) ? manifest.module_slots : [];
   const rootSlots = slots
     .filter((slot) => slot && typeof slot.path === "string")
@@ -827,11 +828,15 @@ function rootSlotContractIssues(manifest, config, organizationRoot) {
     const gitBranch = typeof slot.git?.branch === "string" ? slot.git.branch.trim() : "";
     const checkoutExists = existsSync(join(organizationRoot, path));
     const checkoutCoordinatesStarted = slot.git !== undefined;
-    if (
-      slot.status !== "planned_slot" ||
-      checkoutExists ||
-      checkoutCoordinatesStarted
-    ) {
+    if (slot.status === "planned_slot" && checkoutExists) {
+      issues.push(
+        `modules.manifest.json: materializovaný root slot ${path} nesmí zůstat status: "planned_slot"; odstraň status a ponech nebo doplň celé git.url i git.branch`,
+      );
+    } else if (slot.status === "planned_slot" && checkoutCoordinatesStarted) {
+      issues.push(
+        `modules.manifest.json: planned root slot ${path} nesmí deklarovat git; s checkout souřadnicemi už jde o aktivní nebo missing-access slot`,
+      );
+    } else if (slot.status !== "planned_slot") {
       const missingCoordinates = [
         ...(gitUrl ? [] : ["git.url"]),
         ...(gitBranch ? [] : ["git.branch"]),
@@ -864,6 +869,34 @@ function rootSlotContractIssues(manifest, config, organizationRoot) {
     if (!isOrganizationRootSlotPath(path)) continue;
     issues.push(
       `company.gen3.json: root slot ${path} nesmí být v modules[]; deklaruj ho v modules.manifest.json/module_slots[]`,
+    );
+  }
+
+  const rootLayers = (Array.isArray(config?.layers) ? config.layers : [])
+    .filter((layer) => typeof layer?.path === "string")
+    .map((layer) => ({
+      rawPath: layer.path.replace(/\\/g, "/"),
+      path: normalizeOrganizationSlotPath(layer.path),
+    }))
+    .filter(({ path }) => rootLayerPaths.has(path));
+  const declaredLayerPaths = new Set(rootLayers.map(({ path }) => path));
+  for (const { rawPath, path } of rootLayers) {
+    if (rawPath === path) continue;
+    issues.push(
+      `company.gen3.json: root layer path "${rawPath}" není kanonický; použij "${path}"`,
+    );
+  }
+  for (const path of declaredLayerPaths) {
+    if (!declaredPaths.has(path)) {
+      issues.push(
+        `company.gen3.json: root vrstva ${path} nemá odpovídající modules.manifest.json slot`,
+      );
+    }
+  }
+  for (const path of declaredPaths) {
+    if (!rootLayerPaths.has(path) || declaredLayerPaths.has(path)) continue;
+    issues.push(
+      `modules.manifest.json: root slot ${path} nemá odpovídající company.gen3.json vrstvu`,
     );
   }
 

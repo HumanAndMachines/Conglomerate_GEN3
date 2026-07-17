@@ -35,5 +35,6 @@ export function organizationSlotWorkspace(slot, normalizedPath = null) {
 export function normalizeOrganizationSlotPath(path) {
   if (typeof path !== "string") return null;
   const normalized = posix.normalize(path.replace(/\\/g, "/"));
-  return normalized === "." ? "" : normalized;
+  if (normalized === ".") return "";
+  return normalized.length > 1 ? normalized.replace(/\/+$/, "") : normalized;
 }

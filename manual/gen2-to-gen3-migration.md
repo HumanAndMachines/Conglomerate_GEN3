@@ -699,7 +699,9 @@ GEN3 app/data packaging:
   `modules.manifest.json` a ignore boundary, ne child obsah ani gitlink;
 - oba sloty mají explicitní `space: "root"` a aktivní sloty přesné
   `git.url`/`git.branch`. Nematerializovaný protějšek smí být dočasně
-  `status: "planned_slot"`, ale oba sloty musí být deklarované.
+  `status: "planned_slot"` bez `git`, ale oba sloty musí být deklarované;
+- každá nested root vrstva v `company.gen3.json` má odpovídající manifest slot
+  a každý primární root slot odpovídající vrstvu.
 
 Původní in-tree Mission Control z GEN2 není alternativní cílový packaging.
 Při migraci zůstává jen read-only compatibility fallback, dokud Organizace
