@@ -256,6 +256,7 @@ function unsafeAmbientGitEnvironmentKey(key) {
       "GIT_GRAFT_FILE",
       "GIT_IMPLICIT_WORK_TREE",
       "GIT_INDEX_FILE",
+      "GIT_INTERNAL_SUPER_PREFIX",
       "GIT_NO_REPLACE_OBJECTS",
       "GIT_OBJECT_DIRECTORY",
       "GIT_PREFIX",
