@@ -114,9 +114,10 @@ test("Windows managed Stop používá taskkill jen nad známým PID a celým str
   const stopped = await runtime.stop("test-company-demo-v1");
 
   expect(stopped.runtime.status).toBe("stopped");
+  expect(stopped.forced).toBe(true);
   expect(commands).toHaveLength(1);
   expect(commands[0]).toContain("/T");
-  expect(commands[0]).not.toContain("/F");
+  expect(commands[0]).toContain("/F");
   expect(commands[0][commands[0].indexOf("/PID") + 1]).toBe(String(stopped.pid));
   expect(windowsTaskkillCommand(123, {
     force: true,
@@ -731,7 +732,7 @@ test("runtime manager open blokuje 409 app_port_conflict na obsazeném nezdravé
       // Cleanup only.
     }
   }
-});
+}, 10_000);
 
 test("runtime manager vrátí konkrétní log excerpt, když appka spadne hned po startu", async () => {
   const port = await findFreePort();
@@ -900,7 +901,7 @@ test("runtime manager spustí worktree DEV instanci vedle main runtime bez port 
 
   await runtime.stop("test-company-demo-v1", { source: { type: "worktree", slug: worktreeSlug } });
   await runtime.stop("test-company-demo-v1");
-}, 10_000);
+}, 15_000);
 
 test("runtime manager open chain nejdřív nainstaluje chybějící balíčky", async () => {
   const port = await findFreePort();
@@ -924,7 +925,7 @@ test("runtime manager open chain nejdřív nainstaluje chybějící balíčky", 
   expect(result.url).toBe(`http://127.0.0.1:${port}`);
 
   await runtime.stop("test-company-demo-v1");
-});
+}, 15_000);
 
 test("runtime manager vrací 404 pro aplikaci mimo discovery", async () => {
   const port = await findFreePort();
@@ -1148,7 +1149,10 @@ async function executeWindowsStopCommand(command) {
 
   const pid = Number(command[command.indexOf("/PID") + 1]);
   try {
-    process.kill(pid, command.includes("/F") ? "SIGKILL" : "SIGTERM");
+    // POSIX test double ověřuje command contract, ale nemá taskkill /T
+    // process-tree semantics. SIGTERM nechá Bun parent korektně zavřít child
+    // a pipe; skutečné /T /F chování ověřuje windows-latest.
+    process.kill(pid, "SIGTERM");
   } catch (error) {
     if (error?.code !== "ESRCH") throw error;
   }

@@ -1,6 +1,6 @@
 import { existsSync } from "fs";
 import { mkdir, readFile, writeFile } from "fs/promises";
-import { basename, dirname, join, relative, resolve } from "path";
+import { basename, dirname, join, posix, relative } from "path";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
 import { GIT_LOCAL_TIMEOUT_MS, runGit, safeGitRemoteEnv } from "./git-lib.mjs";
 import { readGitRepoStatus } from "./git-status-lib.mjs";
@@ -256,8 +256,12 @@ function normalizeOrganizationRelativePath(path, label) {
     throw new WorktreeActionError(`${label} chybí.`, { status: 400, code: `missing_${label}` });
   }
   const normalized = path.replace(/\\/g, "/").replace(/^\.\//, "");
-  const resolved = resolve("/org", normalized);
-  if (!resolved.startsWith("/org/") || normalized.includes("\0")) {
+  const resolved = posix.resolve("/org", normalized);
+  if (
+    !resolved.startsWith("/org/")
+    || /^[A-Za-z]:/.test(normalized)
+    || normalized.includes("\0")
+  ) {
     throw new WorktreeActionError(`${label} není bezpečná organization-relative cesta.`, {
       status: 400,
       code: "unsafe_path",

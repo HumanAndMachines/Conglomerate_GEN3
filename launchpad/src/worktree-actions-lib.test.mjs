@@ -139,6 +139,26 @@ test("guarded create rejects a non-exact plan path alias before creating a workt
   expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish"))).toBe(false);
 });
 
+test("guarded create odmítne Windows drive-qualified planPath", async () => {
+  const { root, orgRoot } = await setupDealsRepoWithPlan();
+
+  await expect(
+    createWorktreeFromPlan({
+      companiesRoot: root,
+      repoKey: "BetaCo::deals",
+      planPath: "D:mission-control/plans/2026/07/CAC-0042-deals-publish.yaml",
+      branch: "CAC-0042-deals-publish",
+      createdBy: "test-agent",
+    }),
+  ).rejects.toMatchObject({
+    name: "WorktreeActionError",
+    code: "unsafe_path",
+    status: 400,
+  });
+
+  expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish"))).toBe(false);
+});
+
 test("guarded create refuses dirty main checkout and leaves no worktree behind", async () => {
   const { root, orgRoot, dealsRepo } = await setupDealsRepoWithPlan();
   await writeFile(join(dealsRepo, "draft.md"), "dirty main draft\n");

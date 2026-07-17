@@ -634,6 +634,23 @@ test("discovery odmítne plugin s akčním polem", async () => {
   expect(failures.some((failure) => failure.includes("actions není povolené pole"))).toBe(true);
 });
 
+test("discovery odmítne Windows drive-qualified plugin cestu mimo Organization boundary", async () => {
+  const root = await createCompaniesWorkspaceFixture({
+    plugin: {
+      schema_version: "companyascode.launchpad_plugin.v1",
+      title: "Demo kontext",
+    },
+    appOverrides: {
+      plugin: "D:outside.json",
+    },
+  });
+
+  const { apps, failures } = await discoverLaunchpadApps(root);
+
+  expect(apps).toEqual([]);
+  expect(failures.some((failure) => failure.includes("D:outside.json") && failure.includes("uvnitř"))).toBe(true);
+});
+
 test("template mount (organization_kind=template) je validovaný, ale mimo organizations, apps i counts", async () => {
   const root = await createGenerationMountFixture();
   await writeGenerationOrg({

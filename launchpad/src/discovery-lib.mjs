@@ -613,7 +613,13 @@ async function readPluginManifest({ app, companiesRoot, packagePath, company, sc
   const companyRoot = join(companiesRoot, company.path);
   const pluginPath = resolve(packageDir, app.plugin);
   const relativeToCompany = relative(companyRoot, pluginPath);
-  if (isAbsolute(app.plugin) || relativeToCompany.startsWith("..")) {
+  const windowsDriveQualified = /^[A-Za-z]:/.test(app.plugin);
+  if (
+    isAbsolute(app.plugin)
+    || windowsDriveQualified
+    || isAbsolute(relativeToCompany)
+    || relativeToCompany.startsWith("..")
+  ) {
     securityIssues.push(`${packagePath}: plugin cesta ${app.plugin} musí zůstat uvnitř ${company.path}`);
     return null;
   }

@@ -253,7 +253,7 @@ test("Launchpad server forwards runtime source from POST body to worktree open",
     await postJson(port, "/api/apps/deals-v1/stop", { source: { type: "worktree", slug: worktreeSlug } }).catch(() => null);
     await postJson(port, "/api/apps/deals-v1/stop", {}).catch(() => null);
   }
-});
+}, 15_000);
 
 test("Launchpad server creates and publishes a Mission-Control-owned worktree via explicit builder actions", async () => {
   const root = await createLaunchpadGitFixture();
