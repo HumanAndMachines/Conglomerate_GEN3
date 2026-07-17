@@ -46,8 +46,11 @@ Lokální mount je `personalspace/<github-login>_GEN3/`. Gbrain software se
 instaluje z veřejného `garrytan/gbrain`, ale osobní Markdown paměť patří do
 odděleného privátního data repa vlastníka mountovaného v `gbrain/`. Detailní
 custody a agentní pravidla drží [personalspace/README.md](personalspace/README.md);
-schválený model drží HumanAndMachines decision 0079 a implementační
-self-service runbook je [manual/create-personalspace.md](manual/create-personalspace.md).
+navržený upstream model drží HumanAndMachines decision 0079 v dosud otevřeném
+PR `Rozjedeme-ai/HumanAndMachines#185`. Kanonickým source of truth se stane až
+po merge upstreamu; tento PR drží závislou implementaci reviewovatelnou
+odděleně. Implementační self-service runbook je
+[manual/create-personalspace.md](manual/create-personalspace.md).
 
 Po zveřejnění template spustí vlastník z tohoto rootu:
 

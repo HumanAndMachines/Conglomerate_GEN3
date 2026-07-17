@@ -895,6 +895,13 @@ export async function discoverPersonalspace(
       buddy: personal.buddy
         ? {
             slug: personal.buddy.slug,
+            repository: personal.buddy.repository
+              ? {
+                  github_repo: personal.buddy.repository.github_repo,
+                  visibility: personal.buddy.repository.visibility,
+                  mount_strategy: personal.buddy.repository.mount_strategy,
+                }
+              : null,
             display_name: presentationValid ? normalizedText(buddyPresentation.display_name) : null,
             description: presentationValid ? normalizedText(buddyPresentation.description) : null,
             avatar_url: presentationValid ? normalizedText(buddyPresentation.avatar_url) : null,

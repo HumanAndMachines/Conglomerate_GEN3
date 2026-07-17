@@ -77,8 +77,10 @@ private. Vygenerovaná instance musí být vždy private a pojmenovaná přesně
 Mount je `personalspace/<github-login>_GEN3/`. Bootstrap ověřuje shodu
 GitHub loginu, remote repa a mount path, private visibility owner i gbrain
 repa, vlastní `.gitignore` pro secrets a nepřítomnost `.gitmodules`/gitlinků.
-Všechny checkouty jsou Doctor-managed gitignored nested repa. Cross-platform
-automatizaci drží root příkaz:
+Doctor pak přes přihlášené `gh` živě ověřuje skutečnou GitHub visibility;
+manifestová deklarace `private` sama nestačí a neověřitelný remote je hard
+failure. Všechny checkouty jsou Doctor-managed gitignored nested repa.
+Cross-platform automatizaci drží root příkaz:
 
 ```text
 bun run personalspace:create -- --display-name "<jméno>" --apply --install-gbrain

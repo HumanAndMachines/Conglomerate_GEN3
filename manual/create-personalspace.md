@@ -56,7 +56,7 @@ Bootstrap živě ověří:
 - rootový i lokální `.gitignore`;
 - nepřítomnost `.gitmodules` a gitlinků;
 - manifest bez povinného Buddyho;
-- oddělení veřejného gbrain software od private Markdown dat.
+- oddělení veřejného gbrain software od private Markdown dat;
 - s `--with-buddy` také private `<login>-buddy`, gitignored `buddy/` mount,
   Hermes Profile Distribution, nepřítomnost Hermes secrets/runtime dat a
   VPS-only runtime invariant.
@@ -121,8 +121,10 @@ U Personalspace bez Buddyho po owner-gated lokální aktivaci gbrainu ověř tak
 gbrain doctor --json
 ```
 
-`Personalspace Doctor PASS` ověřuje repo a privacy kontrakt; samotná
-dostupnost gbrain CLI ještě neznamená aktivovaný brain.
+`Personalspace Doctor PASS` používá přihlášené `gh` a živě ověřuje skutečnou
+GitHub visibility owner, gbrain a volitelného Buddy repa. Nestačí deklarace
+`private` v manifestu: public, internal, nedostupné nebo neověřitelné repo je
+hard failure. Samotná dostupnost gbrain CLI ještě neznamená aktivovaný brain.
 
 U Buddy-enabled Personalspace proveď `gbrain doctor`, Hermes config/Doctor,
 MCP a gateway smoke výhradně na dedikované VPS podle

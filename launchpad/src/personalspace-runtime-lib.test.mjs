@@ -4,12 +4,17 @@ import { join } from "path";
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import {
   buildPersonalspaceResponse,
+  inspectGitHubRepository,
   personalspaceDoctorCheck,
   resolveSpaceGbrainVault,
 } from "./personalspace-runtime-lib.mjs";
 import { GbrainAccessError } from "./gbrain-lib.mjs";
 
 const tempRoots = [];
+const privateRepoInspector = async (repo) => ({
+  nameWithOwner: repo,
+  visibility: "PRIVATE",
+});
 
 afterAll(async () => {
   await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
@@ -35,6 +40,8 @@ function personalConfig(username) {
       },
       runtime: {
         github_repo: "HumanAndMachines/Buddy",
+        deployment_target: "owner-dedicated-personalspace-vps",
+        local_execution: "forbidden",
       },
       hermes: {
         software_repo: "NousResearch/hermes-agent",
@@ -144,13 +151,19 @@ test("buildPersonalspaceResponse vrací prostory + summary, metadata-only", asyn
 
 test("personalspaceDoctorCheck je metadata-only a nikdy neobsahuje obsah zápisů", async () => {
   const { root } = await createFixture();
-  const response = await buildPersonalspaceResponse({ companiesRoot: root, launchpadRoot: join(root, "launchpad") });
+  const response = await buildPersonalspaceResponse({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    verifyRepositoryPrivacy: true,
+    inspectRepository: privateRepoInspector,
+  });
   const check = personalspaceDoctorCheck(response);
   expect(check.id).toBe("launchpad.personalspace");
   expect(["ok", "warn", "fail", "skip"]).toContain(check.status);
   // Detaily nesou jen počty/validitu/gbrain mode, ne obsah.
   expect(JSON.stringify(check)).not.toContain("soukromá poznámka");
   expect(check.details.join(" ")).toContain("primární");
+  expect(check.details.join(" ")).toContain("gbrain repo živě ověřeno private");
 });
 
 test("personalspaceDoctorCheck = skip, když není žádný osobní prostor", async () => {
@@ -162,9 +175,78 @@ test("personalspaceDoctorCheck = skip, když není žádný osobní prostor", as
   for (const name of ["personal.gen3.schema.json", "launchpad-app.schema.json"]) {
     await writeFile(join(root, "launchpad", "schemas", name), await Bun.file(join(realSchemas, name)).text(), "utf8");
   }
-  const response = await buildPersonalspaceResponse({ companiesRoot: root, launchpadRoot: join(root, "launchpad") });
+  const response = await buildPersonalspaceResponse({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    verifyRepositoryPrivacy: true,
+    inspectRepository: privateRepoInspector,
+  });
   const check = personalspaceDoctorCheck(response);
   expect(check.status).toBe("skip");
+});
+
+test("Doctor fail-closed odmítne public gbrain repo i při private deklaraci v manifestu", async () => {
+  const { root } = await createFixture();
+  const response = await buildPersonalspaceResponse({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    verifyRepositoryPrivacy: true,
+    inspectRepository: async (repo) => ({
+      nameWithOwner: repo,
+      visibility: repo.endsWith("-gbrain") ? "PUBLIC" : "PRIVATE",
+    }),
+  });
+  const check = personalspaceDoctorCheck(response);
+  expect(check.status).toBe("fail");
+  expect(check.details.join(" ")).toContain("gbrain repo NENÍ private");
+  expect(check.details.join(" ")).toContain("live visibility: public");
+});
+
+test("Doctor fail-closed odmítne repo, jehož live GitHub metadata nejdou ověřit", async () => {
+  const { root } = await createFixture();
+  const response = await buildPersonalspaceResponse({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    verifyRepositoryPrivacy: true,
+    inspectRepository: async () => {
+      throw new Error("offline");
+    },
+  });
+  const check = personalspaceDoctorCheck(response);
+  expect(check.status).toBe("fail");
+  expect(check.details.join(" ")).toContain("repo privacy nelze živě ověřit");
+});
+
+test("live GitHub privacy probe používá bounded shell-free gh příkaz", async () => {
+  let observed;
+  const info = await inspectGitHubRepository("exampleuser/exampleuser-gbrain", {
+    cwd: "/tmp/example",
+    spawnSync: (command, options) => {
+      observed = { command, options };
+      return {
+        exitCode: 0,
+        stdout: new TextEncoder().encode(JSON.stringify({
+          nameWithOwner: "exampleuser/exampleuser-gbrain",
+          visibility: "PRIVATE",
+        })),
+      };
+    },
+  });
+  expect(info.visibility).toBe("PRIVATE");
+  expect(observed.command).toEqual([
+    "gh",
+    "repo",
+    "view",
+    "exampleuser/exampleuser-gbrain",
+    "--json",
+    "nameWithOwner,visibility",
+  ]);
+  expect(observed.options).toMatchObject({
+    cwd: "/tmp/example",
+    timeout: 10_000,
+    windowsHide: true,
+  });
+  expect(observed.options.env.GH_PROMPT_DISABLED).toBe("1");
 });
 
 test("Doctor nikdy nečte privátní Buddy presentation warnings", () => {

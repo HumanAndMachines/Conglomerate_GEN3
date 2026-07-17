@@ -227,6 +227,7 @@ async function buildPersonalspaceDoctorChecks({ companiesRoot, launchpadRoot }) 
     const personalspaceResponse = await buildPersonalspaceResponse({
       companiesRoot,
       launchpadRoot: launchpadRoot ?? join(companiesRoot, "launchpad"),
+      verifyRepositoryPrivacy: true,
     });
     return [personalspaceDoctorCheck(personalspaceResponse)];
   } catch (error) {
