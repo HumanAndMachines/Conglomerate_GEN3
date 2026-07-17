@@ -498,6 +498,12 @@ Organization pravidla.
 GEN3 kanonická knihovna je `.agents/skills/`; `.claude/skills` je kompatibilní
 symlink na ni, ne druhá kopie a ne opačný směr.
 
+Na Windows Codex-only stroji, kde se Claude nepoužívá, je autoritou přímo
+`.agents/skills/`. Chybějící `.claude/skills` nebo textový placeholder
+materializovaný Gitem není blocker; samostatný adresář `.claude/skills/` je
+nadále zakázaný jako divergentní druhý source of truth. Unix a stroje, které
+Claude kompatibilitu používají, zachovávají symlink kontrakt.
+
 GEN2 s reverzním layoutem má `.agents/skills` jako **existující symlink** →
 `../.claude/skills`; ten je nutné nejdřív odstranit. `git rm` symlinku smaže i
 prázdný parent `.agents/`, takže ho před `git mv` obnov. Řetěz `&&`, aby selhání

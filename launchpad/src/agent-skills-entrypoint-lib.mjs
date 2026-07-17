@@ -106,6 +106,13 @@ export async function inspectAgentSkillsEntrypoint(organizationRoot, {
   }
 
   if (!compatibilityStat) {
+    if (platform === "win32") {
+      return state({
+        status: "ok",
+        code: "codex_entrypoint_ready",
+        message: `${canonicalRelativePath} je připravené pro Codex; ${compatibilityRelativePath} je na Windows volitelná Claude kompatibilita.`,
+      });
+    }
     return state({
       status: "repair_needed",
       code: "entrypoint_missing",
@@ -141,6 +148,13 @@ export async function inspectAgentSkillsEntrypoint(organizationRoot, {
       .replace(/^\uFEFF/, "")
       .trim();
     if (contents === legacyPlaceholder) {
+      if (platform === "win32") {
+        return state({
+          status: "ok",
+          code: "codex_entrypoint_ready",
+          message: `${canonicalRelativePath} je připravené pro Codex; textový ${compatibilityRelativePath} placeholder se na Windows nepoužívá.`,
+        });
+      }
       return state({
         status: "repair_needed",
         code: "entrypoint_legacy_placeholder",
@@ -168,6 +182,7 @@ export async function inspectAgentSkillsEntrypoint(organizationRoot, {
 export async function agentSkillsEntrypointsDoctorCheck({
   companiesRoot,
   mounts = [],
+  platform = process.platform,
 }) {
   const inspected = await Promise.all(
     mounts
@@ -176,7 +191,7 @@ export async function agentSkillsEntrypointsDoctorCheck({
         try {
           return {
             mount,
-            state: await inspectAgentSkillsEntrypoint(join(companiesRoot, mount.path)),
+            state: await inspectAgentSkillsEntrypoint(join(companiesRoot, mount.path), { platform }),
           };
         } catch (error) {
           return {

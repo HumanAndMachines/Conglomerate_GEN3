@@ -1852,6 +1852,29 @@ export function windowsPowerShellExecutable(env = process.env) {
     : "powershell.exe";
 }
 
+export function windowsNetstatCommand(env = process.env) {
+  const executable = env.SystemRoot
+    ? win32.join(env.SystemRoot, "System32", "netstat.exe")
+    : "netstat.exe";
+  return [executable, "-ano", "-p", "tcp"];
+}
+
+export function parseWindowsListeningPid(output, port) {
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) return null;
+  for (const line of String(output ?? "").split(/\r?\n/)) {
+    const fields = line.trim().split(/\s+/);
+    if (fields.length !== 5 || fields[0].toUpperCase() !== "TCP") continue;
+    const localPort = endpointPort(fields[1]);
+    const foreignPort = endpointPort(fields[2]);
+    const pid = Number(fields[4]);
+    // A TCP listener has no connected peer (foreign port 0). Avoid depending
+    // on the localized Windows state label while still excluding established
+    // connections that happen to use the same local port.
+    if (localPort === port && foreignPort === 0 && Number.isInteger(pid) && pid > 0) return pid;
+  }
+  return null;
+}
+
 function runtimePackageCommand(command, bunExecutable) {
   if (!Array.isArray(command) || command.length === 0) return command;
   return command[0] === "bun" || command[0] === "bun.exe"
@@ -1942,14 +1965,8 @@ async function resolvePortOwnerUnix(port) {
 }
 
 async function resolvePortOwnerWindows(port) {
-  const command = [
-    windowsPowerShellExecutable(),
-    "-NoProfile",
-    "-Command",
-    `$ownerPid = Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess; if ($ownerPid) { Write-Output $ownerPid }`,
-  ];
-  const result = await runCommand(command);
-  return result.ok ? parsePid(result.stdout) : null;
+  const result = await runCommand(windowsNetstatCommand());
+  return result.ok ? parseWindowsListeningPid(result.stdout, port) : null;
 }
 
 async function runCommand(command) {
@@ -1976,6 +1993,11 @@ function parsePid(output) {
     .map((item) => Number(item))
     .find((item) => Number.isInteger(item) && item > 0);
   return value ?? null;
+}
+
+function endpointPort(endpoint) {
+  const match = String(endpoint ?? "").match(/:(\d+)$/);
+  return match ? Number(match[1]) : null;
 }
 
 async function pipeOutput(stream, logPath, label) {

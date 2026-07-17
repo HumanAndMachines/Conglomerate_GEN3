@@ -7,10 +7,13 @@ import {
   RuntimeActionError,
   bunExecutableCandidates,
   createRuntimeManager,
+  parseWindowsListeningPid,
   resolveBunExecutable,
+  windowsNetstatCommand,
   windowsPowerShellExecutable,
   windowsTaskkillCommand,
 } from "./runtime-lib.mjs";
+import { platformTestTimeout } from "./test-platform-setup.mjs";
 
 const tempRoots = [];
 // Windows záměrně neumí z vestavěného resolveru ověřit CWD cizího procesu,
@@ -48,7 +51,7 @@ test("runtime manager spustí, změří a zastaví managed aplikaci", async () =
   expect(logs.log_path).toBe("logs/apps/test-company-demo-v1.log");
   expect(logs.content).toContain("stop test-company-demo-v1");
   expect((await runtime.health("test-company-demo-v1")).status).toBe("stopped");
-}, 10_000);
+}, platformTestTimeout(10_000));
 
 test("Windows runtime dohledá Bun i bez shell PATH", () => {
   const env = {
@@ -90,6 +93,26 @@ test("Windows runtime přeskočí nefunkční Bun alias a validuje user-local in
 
   expect(resolved).toBe(working);
   expect(probes).toEqual([broken, working]);
+});
+
+test("Windows port ownership používá rychlý systémový netstat a ne lokalizovaný state label", () => {
+  expect(windowsNetstatCommand({ SystemRoot: "C:\\Windows" })).toEqual([
+    "C:\\Windows\\System32\\netstat.exe",
+    "-ano",
+    "-p",
+    "tcp",
+  ]);
+  expect(parseWindowsListeningPid([
+    "  TCP    127.0.0.1:5797       0.0.0.0:0       LISTENING       4312",
+    "  TCP    [::1]:5798           [::]:0          NASLOUCHANI     4313",
+    "  TCP    127.0.0.1:5799       127.0.0.1:64000  ESTABLISHED     4314",
+  ].join("\r\n"), 5797)).toBe(4312);
+  expect(parseWindowsListeningPid([
+    "  TCP    [::1]:5798           [::]:0          NASLOUCHANI     4313",
+  ].join("\r\n"), 5798)).toBe(4313);
+  expect(parseWindowsListeningPid([
+    "  TCP    127.0.0.1:5799       127.0.0.1:64000  ESTABLISHED     4314",
+  ].join("\r\n"), 5799)).toBeNull();
 });
 
 test("Windows managed Stop používá taskkill jen nad známým PID a celým stromem", async () => {
@@ -304,7 +327,7 @@ test("Windows managed Stop ponechá ownership, když child handle nepotvrdí exi
   await runtime.stop("test-company-demo-v1");
   expect(commands).toHaveLength(2);
   await Promise.allSettled(spawnedChildren.map((child) => child.exited));
-}, 15_000);
+}, platformTestTimeout(15_000));
 
 test("Windows Stop je po přechodné chybě taskkill znovu bezpečně zkusitelný", async () => {
   const port = await findFreePort();
@@ -341,7 +364,7 @@ test("Windows Stop je po přechodné chybě taskkill znovu bezpečně zkusiteln�
   const stopped = await runtime.stop("test-company-demo-v1");
   expect(stopped.runtime.status).toBe("stopped");
   expect(commands).toHaveLength(2);
-}, 10_000);
+}, platformTestTimeout(10_000));
 
 test("Windows Stop vrátí pre-signal I/O chybu do retryable managed stavu", async () => {
   const port = await findFreePort();
@@ -378,7 +401,7 @@ test("Windows Stop vrátí pre-signal I/O chybu do retryable managed stavu", asy
   const stopped = await runtime.stop("test-company-demo-v1");
   expect(stopped.runtime.status).toBe("stopped");
   expect(commands).toHaveLength(1);
-}, 10_000);
+}, platformTestTimeout(10_000));
 
 test("Windows Stop po potvrzeném exitu opakuje jen selhanou finalizaci", async () => {
   const port = await findFreePort();
@@ -414,7 +437,7 @@ test("Windows Stop po potvrzeném exitu opakuje jen selhanou finalizaci", async 
   const stopped = await runtime.stop("test-company-demo-v1");
   expect(stopped.runtime.status).toBe("stopped");
   expect(commands).toHaveLength(1);
-}, 10_000);
+}, platformTestTimeout(10_000));
 
 test("Windows Stop drží managed slot až do finálního zápisu a blokuje souběžný Start", async () => {
   const port = await findFreePort();
@@ -468,7 +491,7 @@ test("Windows Stop drží managed slot až do finálního zápisu a blokuje soub
   const stopped = await stopPromise;
   expect(stopped.runtime.status).toBe("stopped");
   expect((await runtime.health("test-company-demo-v1")).status).toBe("stopped");
-}, 10_000);
+}, platformTestTimeout(10_000));
 
 test("Windows post-stop diagnostika je best-effort a neblokuje finalizaci", async () => {
   const port = await findFreePort();
@@ -504,7 +527,7 @@ test("Windows post-stop diagnostika je best-effort a neblokuje finalizaci", asyn
   expect(commands).toHaveLength(1);
   expect((await runtime.logs("test-company-demo-v1")).content)
     .toContain("post-stop port diagnostic failed");
-}, 10_000);
+}, platformTestTimeout(10_000));
 
 test("POSIX Stop po selhání SIGKILL vrátí živý managed proces do retryable stavu", async () => {
   const port = await findFreePort();
@@ -1151,7 +1174,7 @@ test("runtime manager open blokuje 409 app_port_conflict na obsazeném nezdravé
       // Cleanup only.
     }
   }
-}, 10_000);
+}, platformTestTimeout(10_000));
 
 test("runtime manager vrátí konkrétní log excerpt, když appka spadne hned po startu", async () => {
   const port = await findFreePort();
@@ -1212,7 +1235,7 @@ test("runtime manager open chain spustí ready aplikaci a vrátí URL", async ()
   expect(again.steps.some((step) => step.step === "reuse")).toBe(true);
 
   await runtime.stop("test-company-demo-v1");
-}, 15_000);
+}, platformTestTimeout(15_000));
 
 test("runtime manager open chain odmítne proces, který spadne hned po prvním healthy response", async () => {
   const port = await findFreePort();
@@ -1320,7 +1343,7 @@ test("runtime manager spustí worktree DEV instanci vedle main runtime bez port 
 
   await runtime.stop("test-company-demo-v1", { source: { type: "worktree", slug: worktreeSlug } });
   await runtime.stop("test-company-demo-v1");
-}, 15_000);
+}, platformTestTimeout(15_000));
 
 test("runtime manager open chain nejdřív nainstaluje chybějící balíčky", async () => {
   const port = await findFreePort();
@@ -1344,7 +1367,7 @@ test("runtime manager open chain nejdřív nainstaluje chybějící balíčky", 
   expect(result.url).toBe(`http://127.0.0.1:${port}`);
 
   await runtime.stop("test-company-demo-v1");
-}, 15_000);
+}, platformTestTimeout(15_000));
 
 test("runtime manager vrací 404 pro aplikaci mimo discovery", async () => {
   const port = await findFreePort();

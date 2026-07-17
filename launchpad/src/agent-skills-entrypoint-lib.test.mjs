@@ -21,15 +21,37 @@ async function organizationFixture(name) {
   return { companiesRoot, organizationRoot };
 }
 
-test("Doctor je read-only a chybějící lokální entrypoint hlásí jako Repair", async () => {
+test("Unix Doctor je read-only a chybějící lokální entrypoint hlásí jako Repair", async () => {
   const { companiesRoot } = await organizationFixture("missing");
   const check = await agentSkillsEntrypointsDoctorCheck({
     companiesRoot,
     mounts: [{ path: "organizations/Example_GEN3", status: "mounted" }],
+    platform: "linux",
   });
 
   expect(check.status).toBe("warn");
   expect(check.details[0]).toContain("repair_needed/entrypoint_missing");
+});
+
+test("Windows Codex-only checkout nevyžaduje .claude/skills symlink ani jeho placeholder", async () => {
+  const { companiesRoot, organizationRoot } = await organizationFixture("codex-only");
+  const missingCheck = await agentSkillsEntrypointsDoctorCheck({
+    companiesRoot,
+    mounts: [{ path: "organizations/Example_GEN3", status: "mounted" }],
+    platform: "win32",
+  });
+  expect(missingCheck.status).toBe("ok");
+  expect(missingCheck.details[0]).toContain("ok/codex_entrypoint_ready");
+
+  await mkdir(join(organizationRoot, ".claude"), { recursive: true });
+  await writeFile(join(organizationRoot, ".claude", "skills"), "../.agents/skills\n");
+  const placeholderCheck = await agentSkillsEntrypointsDoctorCheck({
+    companiesRoot,
+    mounts: [{ path: "organizations/Example_GEN3", status: "mounted" }],
+    platform: "win32",
+  });
+  expect(placeholderCheck.status).toBe("ok");
+  expect(placeholderCheck.details[0]).toContain("ok/codex_entrypoint_ready");
 });
 
 test("Doctor přijme symlink nebo Windows junction na kanonické skilly", async () => {
@@ -80,6 +102,7 @@ test("Doctor nespouští Organization kód a legacy placeholder jen doporučí o
   const check = await agentSkillsEntrypointsDoctorCheck({
     companiesRoot,
     mounts: [{ path: "organizations/Example_GEN3", status: "mounted" }],
+    platform: "linux",
   });
 
   expect(check.status).toBe("warn");
