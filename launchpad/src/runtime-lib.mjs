@@ -2,7 +2,7 @@ import { existsSync } from "fs";
 import { appendFile, mkdir, readFile, realpath, stat, utimes, writeFile } from "fs/promises";
 import { randomUUID } from "crypto";
 import { createServer } from "net";
-import { dirname, isAbsolute, join, relative, resolve, win32 } from "path";
+import { basename, dirname, isAbsolute, join, relative, resolve, win32 } from "path";
 import { discoverLaunchpadApps } from "./discovery-lib.mjs";
 import { recordAppOpen } from "./usage-lib.mjs";
 import { buildWorktreeIndex } from "./worktree-lib.mjs";
@@ -47,7 +47,13 @@ export function createRuntimeManager({
   instanceId = randomUUID(),
   discover = discoverLaunchpadApps,
   resolvePortOwnerFn = resolvePortOwner,
+  platform = process.platform,
+  spawnProcess = Bun.spawn,
+  runSystemCommandFn = runCommand,
+  bunExecutable = null,
 }) {
+  const runtimeBunExecutable = bunExecutable
+    ?? (platform === process.platform ? resolveBunExecutable() : resolveBunExecutable({ platform }));
   const managedProcesses = new Map();
   const runtimeRoot = join(launchpadRoot, "runtime");
   const appStateRoot = join(runtimeRoot, "apps");
@@ -125,11 +131,12 @@ export function createRuntimeManager({
 
     let child;
     try {
-      child = Bun.spawn(["bun", "run", app.dev_script], {
+      child = spawnProcess([runtimeBunExecutable, "run", app.dev_script], {
         cwd: join(companiesRoot, app.cwd),
         env: childEnv,
         stdout: "pipe",
         stderr: "pipe",
+        windowsHide: true,
       });
     } catch (error) {
       const failureKind = existsSync(join(companiesRoot, app.cwd)) ? "start_spawn_failed" : "bad_cwd";
@@ -279,7 +286,7 @@ export function createRuntimeManager({
       `\n[launchpad] ${startedAt} ${action} ${app.id} command=${dependencies.install_command_display} source=${runtimeSource.type} cwd=${cwd}\n`,
     );
 
-    const child = Bun.spawn(dependencies.install_command, {
+    const child = spawnProcess(runtimePackageCommand(dependencies.install_command, runtimeBunExecutable), {
       cwd,
       env: runtimeProcessEnv(app, {
         COMPANIES_WORKSPACE_ROOT: companiesRoot,
@@ -290,6 +297,7 @@ export function createRuntimeManager({
       }),
       stdout: "pipe",
       stderr: "pipe",
+      windowsHide: true,
     });
     const outputPipes = [
       pipeOutput(child.stdout, logPath, "stdout"),
@@ -523,11 +531,7 @@ export function createRuntimeManager({
     });
     await appendLog(record.logPath, `[launchpad] ${new Date().toISOString()} stop ${app.id}\n`);
 
-    try {
-      record.child.kill("SIGTERM");
-    } catch (error) {
-      await appendLog(record.logPath, `[launchpad] stop signal failed: ${error.message}\n`);
-    }
+    await signalManagedProcess(record, runtimeKey, "SIGTERM");
 
     const result = await Promise.race([
       record.child.exited.then((exitCode) => ({ exitCode, timeout: false })),
@@ -535,10 +539,35 @@ export function createRuntimeManager({
     ]);
 
     if (result.timeout) {
-      try {
-        record.child.kill("SIGKILL");
-      } catch (error) {
-        await appendLog(record.logPath, `[launchpad] kill signal failed: ${error.message}\n`);
+      await signalManagedProcess(record, runtimeKey, "SIGKILL");
+      await Promise.race([
+        record.child.exited,
+        sleep(stopKillWaitMs),
+      ]);
+    }
+
+    if (platform === "win32") {
+      const ownerAfterStop = await resolvePortOwnerFn(app.port, {
+        expectedCwd: join(companiesRoot, app.cwd ?? dirname(app.package_path ?? "package.json")),
+      });
+      if (ownerAfterStop) {
+        await appendLog(
+          record.logPath,
+          `[launchpad] stop tree left listener ${app.id} expected_parent=${record.pid} actual_owner=${ownerAfterStop.pid}\n`,
+        );
+        throw new RuntimeActionError(
+          500,
+          "app_stop_failed",
+          `${app.title} se nepodařilo bezpečně zastavit; port ${app.port} stále používá PID ${ownerAfterStop.pid}.`,
+          [`app_id: ${app.id}`, `managed_pid: ${record.pid}`, `port_owner_pid: ${ownerAfterStop.pid}`, `port: ${app.port}`],
+          {
+            failure_kind: "stop_failed",
+            owner: "current-instance",
+            managed_pid: record.pid,
+            port_owner_pid: ownerAfterStop.pid,
+            port: app.port,
+          },
+        );
       }
     }
     await appendLog(
@@ -573,6 +602,50 @@ export function createRuntimeManager({
       forced: result.timeout,
       runtime: await healthForApp(app),
     };
+  }
+
+  async function signalManagedProcess(record, runtimeKey, signal) {
+    if (managedProcesses.get(runtimeKey) !== record) {
+      throw new RuntimeActionError(
+        409,
+        "app_managed_owner_changed",
+        "Vlastnictví managed procesu se během zastavování změnilo; Launchpad neposlal signál.",
+        [`runtime_key: ${runtimeKey}`, `pid: ${record.pid}`],
+        { failure_kind: "managed_owner_changed", pid: record.pid },
+      );
+    }
+
+    if (platform === "win32") {
+      const command = windowsTaskkillCommand(record.pid, {
+        force: signal === "SIGKILL",
+      });
+      const result = await runSystemCommandFn(command);
+      if (!result.ok && !isMissingProcessResult(result)) {
+        await appendLog(record.logPath, `[launchpad] taskkill failed: ${result.stderr || result.error || "unknown"}\n`);
+        throw new RuntimeActionError(
+          500,
+          "app_stop_failed",
+          `Managed strom procesu PID ${record.pid} se nepodařilo ukončit.`,
+          [`runtime_key: ${runtimeKey}`, `pid: ${record.pid}`, `command: ${command.join(" ")}`],
+          { failure_kind: "stop_signal_failed", owner: "current-instance", pid: record.pid },
+        );
+      }
+      return;
+    }
+
+    try {
+      record.child.kill(signal);
+    } catch (error) {
+      if (error?.code === "ESRCH") return;
+      await appendLog(record.logPath, `[launchpad] stop signal failed: ${error.message}\n`);
+      throw new RuntimeActionError(
+        error?.code === "EPERM" ? 403 : 500,
+        error?.code === "EPERM" ? "app_stop_forbidden" : "app_stop_failed",
+        `Managed procesu PID ${record.pid} nelze poslat ${signal}: ${error.message}`,
+        [`runtime_key: ${runtimeKey}`, `pid: ${record.pid}`, `signal: ${signal}`],
+        { failure_kind: "stop_signal_failed", owner: "current-instance", pid: record.pid, signal },
+      );
+    }
   }
 
   // App-owned port je source of truth i po restartu / paralelním spuštění
@@ -1475,6 +1548,110 @@ function installFailureMessage(app, exitCode, logExcerpt) {
   return `Instalace balíčků pro ${app.title} selhala s exit code ${exitCode}.${suffix}`;
 }
 
+let cachedBunExecutable;
+let hasCachedBunExecutable = false;
+
+export function resolveBunExecutable(options = {}) {
+  const useCache = Object.keys(options).length === 0;
+  if (useCache && hasCachedBunExecutable) return cachedBunExecutable;
+
+  const resolved = resolveBunExecutableUncached(options);
+  if (useCache) {
+    cachedBunExecutable = resolved;
+    hasCachedBunExecutable = true;
+  }
+  return resolved;
+}
+
+function resolveBunExecutableUncached({
+  platform = process.platform,
+  env = process.env,
+  execPath = process.execPath,
+  which = defaultWhich,
+  pathExists = existsSync,
+  probe = probeBunExecutableSync,
+} = {}) {
+  const pathCommand = platform === "win32" ? "bun.exe" : "bun";
+  const fromPath = which(pathCommand) ?? which("bun");
+  const runningBun = /^bun(?:\.exe)?$/i.test(basename(execPath ?? "")) && pathExists(execPath)
+    ? execPath
+    : null;
+  const installedCandidates = bunExecutableCandidates({ platform, env })
+    .filter((candidate) => pathExists(candidate));
+  for (const candidate of [...new Set([
+    fromPath,
+    runningBun,
+    ...installedCandidates,
+    pathCommand,
+  ].filter(Boolean))]) {
+    if (probe(candidate)) return candidate;
+  }
+  // Zachováme stávající spawn/catch failure path s lidskou chybou, i když
+  // žádný kandidát validací neprošel.
+  return pathCommand;
+}
+
+export function bunExecutableCandidates({ platform = process.platform, env = process.env } = {}) {
+  if (platform !== "win32") return [];
+  return [...new Set([
+    env.USERPROFILE ? win32.join(env.USERPROFILE, ".bun", "bin", "bun.exe") : null,
+    env.LOCALAPPDATA ? win32.join(env.LOCALAPPDATA, "bun", "bin", "bun.exe") : null,
+  ].filter(Boolean))];
+}
+
+export function resetBunExecutableCacheForTests() {
+  cachedBunExecutable = undefined;
+  hasCachedBunExecutable = false;
+}
+
+export function windowsTaskkillCommand(pid, { force = false, env = process.env } = {}) {
+  if (!Number.isInteger(pid) || pid <= 0) throw new Error(`Invalid Windows process id: ${pid}`);
+  const executable = env.SystemRoot
+    ? win32.join(env.SystemRoot, "System32", "taskkill.exe")
+    : "taskkill.exe";
+  return [executable, "/PID", String(pid), "/T", ...(force ? ["/F"] : [])];
+}
+
+export function windowsPowerShellExecutable(env = process.env) {
+  return env.SystemRoot
+    ? win32.join(env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+    : "powershell.exe";
+}
+
+function runtimePackageCommand(command, bunExecutable) {
+  if (!Array.isArray(command) || command.length === 0) return command;
+  return command[0] === "bun" || command[0] === "bun.exe"
+    ? [bunExecutable, ...command.slice(1)]
+    : command;
+}
+
+function defaultWhich(command) {
+  try {
+    return typeof Bun.which === "function" ? Bun.which(command) : null;
+  } catch {
+    return null;
+  }
+}
+
+function probeBunExecutableSync(executable) {
+  try {
+    const result = Bun.spawnSync([executable, "--version"], {
+      stdout: "ignore",
+      stderr: "ignore",
+      windowsHide: true,
+      timeout: 5_000,
+    });
+    return result.exitCode === 0;
+  } catch {
+    return false;
+  }
+}
+
+function isMissingProcessResult(result) {
+  const text = `${result.stderr ?? ""}\n${result.stdout ?? ""}\n${result.error ?? ""}`;
+  return /not found|no running instance|nenalezena|nebyla nalezena/i.test(text);
+}
+
 async function resolvePortOwner(port, { expectedCwd = null } = {}) {
   const pid = process.platform === "win32" ? await resolvePortOwnerWindows(port) : await resolvePortOwnerUnix(port);
   if (!pid || pid === process.pid) return null;
@@ -1532,7 +1709,7 @@ async function resolvePortOwnerUnix(port) {
 
 async function resolvePortOwnerWindows(port) {
   const command = [
-    "powershell.exe",
+    windowsPowerShellExecutable(),
     "-NoProfile",
     "-Command",
     `$ownerPid = Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess; if ($ownerPid) { Write-Output $ownerPid }`,
@@ -1545,13 +1722,17 @@ async function runCommand(command) {
   try {
     const process = Bun.spawn(command, {
       stdout: "pipe",
-      stderr: "ignore",
+      stderr: "pipe",
+      windowsHide: true,
     });
-    const stdout = await new Response(process.stdout).text();
-    const exitCode = await process.exited;
-    return { ok: exitCode === 0, stdout };
-  } catch {
-    return { ok: false, stdout: "" };
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(process.stdout).text(),
+      new Response(process.stderr).text(),
+      process.exited,
+    ]);
+    return { ok: exitCode === 0, exitCode, stdout, stderr };
+  } catch (error) {
+    return { ok: false, exitCode: null, stdout: "", stderr: "", error: error.message };
   }
 }
 

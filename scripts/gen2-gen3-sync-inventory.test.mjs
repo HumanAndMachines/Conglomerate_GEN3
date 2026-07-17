@@ -3,9 +3,10 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const tempRoots = [];
-const scriptPath = new URL("./gen2-gen3-sync-inventory.mjs", import.meta.url).pathname;
+const scriptPath = fileURLToPath(new URL("./gen2-gen3-sync-inventory.mjs", import.meta.url));
 
 afterEach(async () => {
   await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));

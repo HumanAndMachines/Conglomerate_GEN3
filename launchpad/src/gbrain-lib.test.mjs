@@ -64,12 +64,12 @@ test("gbrainFile odmítne absolutní escape (interpretuje se jako vault-relativn
 });
 
 test("resolveInsideVault drží cesty uvnitř vaultu", () => {
-  const vault = "/tmp/vault";
-  expect(resolveInsideVault(vault, "a/b.md")).toBe("/tmp/vault/a/b.md");
+  const vault = join(tmpdir(), "vault");
+  expect(resolveInsideVault(vault, "a/b.md")).toBe(join(vault, "a", "b.md"));
   expect(() => resolveInsideVault(vault, "../x")).toThrow(/path traversal/);
   expect(() => resolveInsideVault(vault, "a/../../x")).toThrow();
   // Absolutní se ořízne na vault-relativní (bezpečné, zůstává bounded).
-  expect(resolveInsideVault(vault, "/etc/passwd")).toBe("/tmp/vault/etc/passwd");
+  expect(resolveInsideVault(vault, "/etc/passwd")).toBe(join(vault, "etc", "passwd"));
 });
 
 test("gbrainFile odmítne symlink únik mimo vault", async () => {
@@ -77,13 +77,8 @@ test("gbrainFile odmítne symlink únik mimo vault", async () => {
   const outside = await mkdtemp(join(tmpdir(), "gbrain-outside-"));
   tempRoots.push(outside);
   await writeFile(join(outside, "secret.md"), "# tajný soubor mimo vault", "utf8");
-  try {
-    await symlink(join(outside, "secret.md"), join(vault, "escape.md"));
-  } catch {
-    // symlink nemusí jít vytvořit na CI; test přeskočíme měkce
-    return;
-  }
-  await expect(gbrainFile(vault, "escape.md")).rejects.toThrow(/symlink/);
+  await symlink(outside, join(vault, "escape"), process.platform === "win32" ? "junction" : "dir");
+  await expect(gbrainFile(vault, "escape/secret.md")).rejects.toThrow(/symlink/);
 });
 
 test("gbrainFile odmítne nepodporovaný typ (např. .png)", async () => {

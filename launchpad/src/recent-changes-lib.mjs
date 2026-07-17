@@ -1,16 +1,19 @@
 // Panel „Poslední změny" (CAC-0044, step-006): per-modul poslední commity
 // (datum, počet, rozklik detailu). Standalone, read-only, bounded git log —
-// aby rebase na git read model z CAC-0042 bolel co nejmíň, tenhle
-// soubor nezávisí na git-lib.mjs read modelu; má vlastní minimální runGit wrapper.
-//
-// Až bude git read model dostupný, tenhle lib se dá přepsat tak, aby stavěl nad jeho
-// git-inventory-lib (enumerace repos) a git-lib (runGit) — kontrakt výstupu
-// (recent_modules) zůstává stejný. Viz handoff.
+// Git procesy sdílejí jeden bounded/cross-platform runner s ostatními Launchpad
+// pohledy, aby Windows nepouštěl POSIX askpass helper a stderr se vždy drainoval.
 
 import { existsSync } from "fs";
 import { join } from "path";
+import {
+  GIT_COMMAND_CONCURRENCY,
+  GIT_LOCAL_TIMEOUT_MS,
+  mapWithConcurrency,
+  resolveGitExecutable,
+  runGit,
+  safeGitRemoteEnv,
+} from "./git-lib.mjs";
 
-const GIT_LOG_TIMEOUT_MS = 6_000;
 const DEFAULT_MODULE_LIMIT = 8;
 const DEFAULT_COMMIT_LIMIT = 15;
 // Oddělovače pro git log --pretty: US (unit separator) mezi poli, RS (record
@@ -19,41 +22,6 @@ const DEFAULT_COMMIT_LIMIT = 15;
 // (NUL \x00 nejde — Bun.spawn odmítá argumenty s NUL byte.)
 const FIELD_SEP = "\x1f";
 const RECORD_SEP = "\x1e";
-
-// Neinteraktivní git prostředí — nikdy nesmí čekat na heslo/askpass.
-function nonInteractiveGitEnv() {
-  return {
-    ...process.env,
-    GIT_TERMINAL_PROMPT: "0",
-    GIT_ASKPASS: "/bin/false",
-    SSH_ASKPASS: "/bin/false",
-    GCM_INTERACTIVE: "never",
-  };
-}
-
-async function runGit(args, cwd) {
-  try {
-    const child = Bun.spawn(["git", ...args], {
-      cwd,
-      stdout: "pipe",
-      stderr: "pipe",
-      env: nonInteractiveGitEnv(),
-    });
-    const timeout = setTimeout(() => {
-      try {
-        child.kill();
-      } catch {}
-    }, GIT_LOG_TIMEOUT_MS);
-    const [stdout, exitCode] = await Promise.all([
-      new Response(child.stdout).text(),
-      child.exited,
-    ]);
-    clearTimeout(timeout);
-    return { ok: exitCode === 0, stdout };
-  } catch {
-    return { ok: false, stdout: "" };
-  }
-}
 
 // Modul = jeden git repo. Discovery apps nesou cwd/module/organization; jeden
 // modul může mít víc app variant (v1/v2) v různých app podsložkách —
@@ -102,7 +70,11 @@ async function readRepoCommits(repo, { commitLimit }) {
   const format = ["%H", "%h", "%an", "%aI", "%s", "%b"].join(FIELD_SEP);
   const result = await runGit(
     ["log", `-${commitLimit}`, `--pretty=format:${format}${RECORD_SEP}`, "--no-color"],
-    repo.absolute_path,
+    {
+      cwd: repo.absolute_path,
+      timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+      env: safeGitRemoteEnv(),
+    },
   );
   if (!result.ok || result.stdout.trim() === "") return null;
 
@@ -145,8 +117,10 @@ export async function buildRecentModuleChanges({
     };
   }
 
-  const enriched = await Promise.all(
-    repos.map(async (repo) => {
+  const enriched = await mapWithConcurrency(
+    repos,
+    GIT_COMMAND_CONCURRENCY,
+    async (repo) => {
       const commits = await readRepoCommits(repo, { commitLimit });
       if (!commits) return null;
       return {
@@ -162,7 +136,7 @@ export async function buildRecentModuleChanges({
         commit_count: commits.length,
         commits,
       };
-    }),
+    },
   );
 
   const recentModules = enriched
@@ -179,15 +153,5 @@ export async function buildRecentModuleChanges({
 }
 
 async function isGitAvailable() {
-  try {
-    const child = Bun.spawn(["git", "--version"], {
-      stdout: "ignore",
-      stderr: "ignore",
-      env: nonInteractiveGitEnv(),
-    });
-    const exitCode = await child.exited;
-    return exitCode === 0;
-  } catch {
-    return false;
-  }
+  return Boolean(await resolveGitExecutable());
 }

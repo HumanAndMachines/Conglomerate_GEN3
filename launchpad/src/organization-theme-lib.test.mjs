@@ -75,10 +75,17 @@ test("Organization theme preferuje explicitní design-system adaptér před GEN2
 test("Organization theme odmítne aktivní CSS hodnoty i symlink mimo Organizaci", async () => {
   const root = await makeOrganizationRoot();
   const organizationRoot = join(root, "organizations", "Example_GEN3");
-  const themePath = join(organizationRoot, "design-system", "launchpad.tokens.css");
+  const designSystemPath = join(organizationRoot, "design-system");
+  const outsideDesignSystem = join(root, "outside-design-system");
   await mkdir(join(organizationRoot, "design-system"), { recursive: true });
-  await writeFile(join(root, "outside.css"), themeCss("#ef4444"));
-  await symlink(join(root, "outside.css"), themePath);
+  await mkdir(outsideDesignSystem, { recursive: true });
+  await writeFile(join(outsideDesignSystem, "launchpad.tokens.css"), themeCss("#ef4444"));
+  await rm(designSystemPath, { recursive: true, force: true });
+  await symlink(
+    outsideDesignSystem,
+    designSystemPath,
+    process.platform === "win32" ? "junction" : "dir",
+  );
 
   const escaped = await readOrganizationLaunchpadTheme({
     companiesRoot: root,
