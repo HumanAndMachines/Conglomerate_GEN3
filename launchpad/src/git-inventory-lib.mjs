@@ -3,6 +3,9 @@ import { readFile, readdir } from "fs/promises";
 import { basename, join } from "path";
 import { organizationMountStructureIssues } from "./discovery-lib.mjs";
 import {
+  isCanonicalOrganizationRepositorySlotPath,
+  isOrganizationRootSlotDescendantPath,
+  isOrganizationSlotContainerPath,
   normalizeOrganizationSlotPath,
   organizationSlotScope,
   organizationSlotWorkspace,
@@ -47,8 +50,22 @@ export async function buildGitInventory({ companiesRoot, organizations = null } 
       continue;
     }
     for (const rawSlot of Array.isArray(manifest.module_slots) ? manifest.module_slots : []) {
+      const pathBoundaryIssue = slotPathBoundaryInventoryIssue(rawSlot);
+      if (pathBoundaryIssue) {
+        warnings.push(
+          `${normalized.path}: slot ${String(rawSlot?.path ?? "<missing>")} vynechán z git/worktree inventáře — ${pathBoundaryIssue}`,
+        );
+        continue;
+      }
       const slot = normalizeModuleSlot(rawSlot, normalized);
       if (!slot) continue;
+      const rootInventoryIssue = rootSlotInventoryIssue(rawSlot, slot);
+      if (rootInventoryIssue) {
+        warnings.push(
+          `${normalized.path}: root slot ${slot.path} vynechán z git/worktree inventáře — ${rootInventoryIssue}`,
+        );
+        continue;
+      }
       if (!slot.repo) {
         planned.push(slotRecord({ organization: normalized, slot, companiesRoot }));
         continue;
@@ -190,7 +207,10 @@ function repoRecord({ organization, slot, companiesRoot }) {
     key,
     repo_kind: repoKindForSlot(slot),
     absolute_path: join(companiesRoot, organization.path, slot.path),
-    expected_branch: slot.branch ?? organization.default_branch ?? "main",
+    expected_branch:
+      slot.space === "root"
+        ? slot.branch
+        : slot.branch ?? organization.default_branch ?? "main",
     remote: sanitizeRemote(slot.repo),
   };
 }
@@ -208,7 +228,10 @@ function slotRecord({ organization, slot, companiesRoot }) {
     repo_kind: repoKindForSlot(slot),
     repo_path: `${organization.path}/${slot.path}`,
     absolute_path: join(companiesRoot, organization.path, slot.path),
-    expected_branch: slot.branch ?? organization.default_branch ?? "main",
+    expected_branch:
+      slot.space === "root"
+        ? slot.branch
+        : slot.branch ?? organization.default_branch ?? "main",
     repo: slot.repo,
     slot_path: slot.path,
     category: slot.category ?? null,
@@ -232,6 +255,20 @@ function normalizeModuleSlot(slot, organization) {
   if (!path) return null;
   const module = basename(path);
   const space = organizationSlotScope(slot, path);
+  const rootRepo =
+    typeof slot.git?.url === "string" && slot.git.url.trim() !== ""
+      ? slot.git.url.trim()
+      : null;
+  const rootBranch =
+    typeof slot.git?.branch === "string" && slot.git.branch.trim() !== ""
+      ? slot.git.branch.trim()
+      : null;
+  const repo =
+    space === "root" ? rootRepo : slot.repo ?? slot.git?.url ?? null;
+  const branch =
+    space === "root"
+      ? rootBranch
+      : slot.branch ?? slot.git?.branch ?? organization.default_branch ?? "main";
   return {
     path,
     module,
@@ -239,9 +276,58 @@ function normalizeModuleSlot(slot, organization) {
     space,
     workspace: organizationSlotWorkspace(slot, path),
     category: slot.category ?? null,
-    repo: slot.repo ?? slot.git?.url ?? null,
-    branch: slot.branch ?? slot.git?.branch ?? organization.default_branch ?? "main",
+    status: slot.status ?? null,
+    repo,
+    branch,
   };
+}
+
+function slotPathBoundaryInventoryIssue(slot) {
+  if (!slot || typeof slot.path !== "string" || slot.path.trim() === "") {
+    return "slot path chybí";
+  }
+  const normalizedPath = normalizeOrganizationSlotPath(slot.path);
+  if (isOrganizationSlotContainerPath(normalizedPath)) {
+    return "Organization kontejner není repozitářový slot; použij workspace/<slug>, modules/<slug> nebo productionspace/<slug>";
+  }
+  if (isOrganizationRootSlotDescendantPath(normalizedPath)) {
+    return "cesta je uvnitř rezervované Organization root boundary a není samostatný root slot";
+  }
+  if (!isCanonicalOrganizationRepositorySlotPath(slot.path)) {
+    return "cesta není kanonická podporovaná Organization-relative repo boundary";
+  }
+  return null;
+}
+
+function rootSlotInventoryIssue(rawSlot, normalizedSlot) {
+  if (normalizedSlot.space !== "root") return null;
+  if (rawSlot.space !== "root") {
+    return 'musí explicitně deklarovat space: "root"';
+  }
+  const forbiddenFields = [
+    "workspace",
+    "workspaces",
+    "teams",
+    "repo",
+    "repository",
+    "branch",
+  ].filter((field) => Object.prototype.hasOwnProperty.call(rawSlot, field));
+  if (forbiddenFields.length > 0) {
+    return `nesmí deklarovat root-neplatná pole (${forbiddenFields.join(", ")})`;
+  }
+  if (normalizedSlot.status === "planned_slot") {
+    return rawSlot.git === undefined ? null : "planned_slot nesmí deklarovat git";
+  }
+  if (!normalizedSlot.repo || !normalizedSlot.branch) {
+    return "aktivní root slot musí mít úplné git.url i git.branch";
+  }
+  if (
+    normalizedSlot.path === "mission-control/db" &&
+    normalizedSlot.branch !== "v3"
+  ) {
+    return 'mission-control/db musí používat přesnou větev "v3"';
+  }
+  return null;
 }
 
 function repoKindForSlot(slot) {

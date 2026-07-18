@@ -73,9 +73,14 @@ Deklarace v manifestu je autorita pro grupování aplikací do Workspaces:
   podle deklarace.
 - `productionspace` je rezervovaný slug: nesmí být položkou `workspaces[]`
   ani hodnotou `modules[].workspace`. Productionspace repozitáře určuje cesta
-  `productionspace/*` a Launchpad je zobrazuje read-only, bez lifecycle akcí.
-- Konflikty deklarace vs. realita hlásí Doctor check
+  `productionspace/*` a Launchpad je zobrazuje read-only, bez lifecycle akcí;
+  fyzická path boundary má přednost i před konfliktním `space`.
+- Konflikt explicitního `space` s fyzickou path boundary je blokující Doctor
+  chyba. Ostatní přechodové konflikty deklarace vs. realita hlásí Doctor check
   `launchpad.workspace_declarations` jako warn.
+- Neúplný aktivní Organization root slot bez celého `git.url` + `git.branch`
+  se do akčního git/worktree inventáře vůbec nedostane; root branch se nikdy
+  nedoplňuje z Organization defaultu.
 
 Module sloty z manifestu mají readiness stav (decision 0042):
 

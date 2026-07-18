@@ -31,8 +31,10 @@ export async function createLaunchpadGitFixture() {
         path: "infra",
         space: "root",
         category: "engineering",
-        repo: "git@github.com:OmegaCo/infra.git",
-        branch: "main",
+        git: {
+          url: "git@github.com:OmegaCo/infra.git",
+          branch: "main",
+        },
       },
       {
         path: "workspace/future-module",

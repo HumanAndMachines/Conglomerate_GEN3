@@ -194,6 +194,16 @@ async function resolveRepo(companiesRoot, repoKey) {
   const inventory = await buildGitInventory({ companiesRoot });
   const repo = inventory.repos.find((item) => item.key === repoKey);
   if (!repo) throw new WorktreeActionError(`Repo ${repoKey} nebylo nalezeno.`, { status: 404, code: "repo_not_found" });
+  if (
+    repo.repo_kind === "productionspace"
+    || repo.space === "productionspace"
+    || repo.workspace === "productionspace"
+  ) {
+    throw new WorktreeActionError("Productionspace repozitáře jsou v Launchpadu read-only; worktree create ani publish nejsou povolené.", {
+      status: 403,
+      code: "productionspace_read_only",
+    });
+  }
   if (!existsSync(repo.absolute_path)) {
     throw new WorktreeActionError(`Repo cesta neexistuje: ${repo.repo_path}`, { status: 404, code: "repo_missing" });
   }

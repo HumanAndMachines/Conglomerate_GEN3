@@ -13,14 +13,71 @@ export function isOrganizationRootSlotPath(path) {
   return normalizedPath !== null && organizationRootSlotPaths.has(normalizedPath);
 }
 
+export function isOrganizationRootSlotDescendantPath(path) {
+  const normalizedPath = normalizeOrganizationSlotPath(path);
+  if (normalizedPath === null || organizationRootSlotPaths.has(normalizedPath)) return false;
+  return [...organizationRootSlotPaths].some((rootPath) =>
+    normalizedPath.startsWith(`${rootPath}/`),
+  );
+}
+
+export function isOrganizationSlotContainerPath(path) {
+  const normalizedPath = normalizeOrganizationSlotPath(path);
+  return (
+    normalizedPath === "workspace"
+    || normalizedPath === "modules"
+    || normalizedPath === "productionspace"
+  );
+}
+
+export function isCanonicalOrganizationRepositorySlotPath(path) {
+  if (
+    typeof path !== "string"
+    || path.includes("\\")
+    || path.includes("\0")
+  ) {
+    return false;
+  }
+  const normalizedPath = normalizeOrganizationSlotPath(path);
+  if (normalizedPath === null || path !== normalizedPath) return false;
+  return (
+    organizationRootSlotPaths.has(normalizedPath)
+    || /^(workspace|modules|productionspace)\/[a-z0-9][a-z0-9-]*$/.test(normalizedPath)
+  );
+}
+
+export function organizationSlotPathScope(path) {
+  const normalizedPath = normalizeOrganizationSlotPath(path);
+  if (
+    isOrganizationRootSlotPath(normalizedPath)
+    || isOrganizationRootSlotDescendantPath(normalizedPath)
+  ) {
+    return "root";
+  }
+  if (
+    normalizedPath === "productionspace" ||
+    normalizedPath?.startsWith("productionspace/")
+  ) {
+    return "productionspace";
+  }
+  if (
+    isOrganizationSlotContainerPath(normalizedPath) ||
+    normalizedPath?.startsWith("workspace/") ||
+    normalizedPath?.startsWith("modules/")
+  ) {
+    return "workspace";
+  }
+  return null;
+}
+
 export function organizationSlotScope(slot, normalizedPath = null) {
   const path = normalizeOrganizationSlotPath(normalizedPath ?? slot?.path);
-  // Rezervované Organization root checkout boundaries nesmí nevalidní
-  // deklarace přesunout do Teamu. Doctor současně nahlásí chybějící nebo
-  // konfliktní explicitní `space: "root"`.
-  if (isOrganizationRootSlotPath(path)) return "root";
+  // Fyzická path boundary má přednost před konfliktním deklarovaným `space`.
+  // Doctor konflikt současně hlásí jako blokátor, ale read model nesmí ani
+  // mezitím zpřístupnit productionspace/root repo jako akční Team modul.
+  const pathScope = organizationSlotPathScope(path);
+  if (pathScope) return pathScope;
   if (organizationSlotScopes.has(slot?.space)) return slot.space;
-  if (path?.startsWith("productionspace/")) return "productionspace";
   return "workspace";
 }
 

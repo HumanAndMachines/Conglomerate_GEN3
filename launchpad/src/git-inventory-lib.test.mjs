@@ -59,15 +59,176 @@ test("reserved Organization root path cannot masquerade as a Team module", async
   await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
   const inventory = await buildGitInventory({ companiesRoot: root });
+  expect(
+    inventory.repos.some(
+      (repo) =>
+        repo.organization === "OmegaCo" && repo.slot_path === "design-system",
+    ),
+  ).toBe(false);
+  expect(inventory.warnings.join("\n")).toContain(
+    'root slot design-system vynechán z git/worktree inventáře — musí explicitně deklarovat space: "root"',
+  );
+});
+
+test("Organization kontejnery a descendants rezervovaných root slotů nevstoupí do inventáře", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const manifestPath = `${root}/organizations/OmegaCo_GEN3/modules.manifest.json`;
+  const manifest = await Bun.file(manifestPath).json();
+  const invalidPaths = [
+    "workspace/",
+    "modules",
+    "productionspace",
+    "design-system/theme",
+    "infra/state",
+    "mission-control/cache",
+    "mission-control/db/archive",
+    "../Victim_GEN3",
+    "/tmp/evil",
+    "workspace/deep/repo",
+    "workspace\\evil",
+  ];
+  for (const path of invalidPaths) {
+    manifest.module_slots.push({
+      path,
+      space: "workspace",
+      workspace: "workspace",
+      category: "invalid-boundary",
+      git: { url: `git@github.com:OmegaCo/${path.replaceAll("/", "-")}.git`, branch: "main" },
+    });
+  }
+  await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  const inventoriedPaths = [
+    ...inventory.repos.map((repo) => repo.slot_path),
+    ...inventory.planned.map((slot) => slot.slot_path),
+  ];
+  for (const path of ["workspace", "modules", "productionspace", ...invalidPaths.slice(3)]) {
+    expect(inventoriedPaths).not.toContain(path);
+  }
+  expect(inventory.warnings.join("\n")).toContain(
+    "Organization kontejner není repozitářový slot",
+  );
+  expect(inventory.warnings.join("\n")).toContain(
+    "cesta je uvnitř rezervované Organization root boundary",
+  );
+  expect(inventory.warnings.join("\n")).toContain(
+    "cesta není kanonická podporovaná Organization-relative repo boundary",
+  );
+  expect(
+    inventory.repos.some((repo) =>
+      repo.absolute_path.includes("Victim_GEN3"),
+    ),
+  ).toBe(false);
+});
+
+test("productionspace path cannot masquerade as an actionable Team module", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const manifestPath = `${root}/organizations/OmegaCo_GEN3/modules.manifest.json`;
+  const manifest = await Bun.file(manifestPath).json();
+  manifest.module_slots.push({
+    path: "productionspace/firmware",
+    space: "workspace",
+    category: "firmware",
+    git: { url: "git@github.com:OmegaCo/firmware.git", branch: "main" },
+  });
+  await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  const inventory = await buildGitInventory({ companiesRoot: root });
   const slot = inventory.repos.find(
-    (repo) => repo.organization === "OmegaCo" && repo.slot_path === "design-system",
+    (repo) =>
+      repo.organization === "OmegaCo" &&
+      repo.slot_path === "productionspace/firmware",
   );
 
   expect(slot).toMatchObject({
-    space: "root",
-    workspace: null,
-    repo_kind: "root_repo",
+    space: "productionspace",
+    workspace: "productionspace",
+    repo_kind: "productionspace",
   });
+
+  manifest.module_slots.push({
+    path: "productionspace/",
+    space: "workspace",
+    category: "boundary",
+    git: { url: "git@github.com:OmegaCo/productionspace.git", branch: "main" },
+  });
+  await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  const inventoryWithBoundary = await buildGitInventory({ companiesRoot: root });
+  expect(
+    inventoryWithBoundary.repos.find(
+      (repo) =>
+        repo.organization === "OmegaCo" && repo.slot_path === "productionspace",
+    ),
+  ).toBeUndefined();
+  expect(inventoryWithBoundary.warnings.join("\n")).toContain(
+    "slot productionspace/ vynechán z git/worktree inventáře — Organization kontejner není repozitářový slot",
+  );
+});
+
+test("incomplete active root coordinates never enter actionable inventory", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const manifestPath = `${root}/organizations/OmegaCo_GEN3/modules.manifest.json`;
+  const manifest = await Bun.file(manifestPath).json();
+  manifest.module_slots.push({
+    path: "design-system",
+    space: "root",
+    category: "brand",
+    git: {
+      url: "git@github.com:OmegaCo/design-system.git",
+    },
+  });
+  await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  expect(
+    inventory.repos.some(
+      (repo) =>
+        repo.organization === "OmegaCo" && repo.slot_path === "design-system",
+    ),
+  ).toBe(false);
+  expect(
+    inventory.planned.some(
+      (slot) =>
+        slot.organization === "OmegaCo" && slot.slot_path === "design-system",
+    ),
+  ).toBe(false);
+  expect(inventory.warnings.join("\n")).toContain(
+    "aktivní root slot musí mít úplné git.url i git.branch",
+  );
+});
+
+test("root inventory rejects legacy aliases even beside canonical git coordinates", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const manifestPath = `${root}/organizations/OmegaCo_GEN3/modules.manifest.json`;
+  const manifest = await Bun.file(manifestPath).json();
+  manifest.module_slots.push({
+    path: "design-system",
+    space: "root",
+    category: "brand",
+    repo: "git@github.com:WrongOrg/wrong-design-system.git",
+    branch: "legacy",
+    git: {
+      url: "git@github.com:OmegaCo/design-system.git",
+      branch: "main",
+    },
+  });
+  await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  expect(
+    inventory.repos.some(
+      (repo) =>
+        repo.organization === "OmegaCo" && repo.slot_path === "design-system",
+    ),
+  ).toBe(false);
+  expect(inventory.warnings.join("\n")).toContain(
+    "root-neplatná pole (repo, branch)",
+  );
 });
 
 test("template mount (organization_kind=template) je z git inventáře vyloučený (decision 0077)", async () => {

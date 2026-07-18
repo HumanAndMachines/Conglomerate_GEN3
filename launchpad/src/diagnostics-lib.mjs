@@ -13,8 +13,12 @@ import {
 } from "./git-lib.mjs";
 import { agentSkillsEntrypointsDoctorCheck } from "./agent-skills-entrypoint-lib.mjs";
 import {
+  isCanonicalOrganizationRepositorySlotPath,
+  isOrganizationRootSlotDescendantPath,
   isOrganizationRootSlotPath,
+  isOrganizationSlotContainerPath,
   normalizeOrganizationSlotPath,
+  organizationSlotPathScope,
   organizationSlotScope,
   organizationSlotWorkspace,
 } from "./organization-slot-scope-lib.mjs";
@@ -734,6 +738,7 @@ async function readOrganizationSpaces(companiesRoot, organization, localConfig =
       config,
       organizationRoot,
     ),
+    slot_scope_contract_issues: slotScopeContractIssues(manifest, config),
   };
 }
 
@@ -786,6 +791,49 @@ function workspaceConformanceIssues({ declared, productionBoundary, manifest, co
   return issues;
 }
 
+function slotScopeContractIssues(manifest, config) {
+  const issues = [];
+  const rawSlots = [
+    ...(Array.isArray(manifest?.module_slots) ? manifest.module_slots : []).map((slot) => ({
+      source: "modules.manifest.json",
+      slot,
+    })),
+    ...(Array.isArray(config?.modules) ? config.modules : []).map((slot) => ({
+      source: "company.gen3.json",
+      slot,
+    })),
+  ];
+  for (const { source, slot } of rawSlots) {
+    if (!slot || typeof slot.path !== "string") continue;
+    const path = normalizeOrganizationSlotPath(slot.path);
+    if (isOrganizationSlotContainerPath(path)) {
+      issues.push(
+        `${source}: slot ${path} je Organization kontejner, ne repozitářový slot; použij workspace/<slug>, modules/<slug> nebo productionspace/<slug>`,
+      );
+      continue;
+    }
+    if (isOrganizationRootSlotDescendantPath(path)) {
+      issues.push(
+        `${source}: slot ${path} je uvnitř rezervované Organization root boundary; samostatné root sloty jsou jen design-system, infra, mission-control a mission-control/db`,
+      );
+      continue;
+    }
+    if (!isCanonicalOrganizationRepositorySlotPath(slot.path)) {
+      issues.push(
+        `${source}: slot path ${JSON.stringify(slot.path)} není kanonická podporovaná Organization-relative repo boundary`,
+      );
+      continue;
+    }
+    if (slot.space === undefined) continue;
+    const pathScope = organizationSlotPathScope(path);
+    if (!pathScope || pathScope === "root" || slot.space === pathScope) continue;
+    issues.push(
+      `${source}: slot ${path} musí podle path boundary deklarovat space: "${pathScope}", ne "${slot.space}"`,
+    );
+  }
+  return issues;
+}
+
 // Organization root checkout boundaries mají přísnější kontrakt než běžné
 // Team moduly: scope musí být explicitní, aktivní slot musí nést přesné checkout
 // souřadnice a Mission Control app/data deklarace tvoří jeden pár.
@@ -821,6 +869,15 @@ function rootSlotContractIssues(manifest, config, organizationRoot) {
     if (membershipFields.length > 0) {
       issues.push(
         `modules.manifest.json: root slot ${path} nesmí deklarovat Team/Workspace membership (${membershipFields.join(", ")})`,
+      );
+    }
+
+    const legacyCheckoutFields = ["repo", "repository", "branch"].filter((field) =>
+      Object.prototype.hasOwnProperty.call(slot, field),
+    );
+    if (legacyCheckoutFields.length > 0) {
+      issues.push(
+        `modules.manifest.json: root slot ${path} nesmí deklarovat legacy checkout souřadnice (${legacyCheckoutFields.join(", ")}); používej výhradně git.url a git.branch`,
       );
     }
 
@@ -1004,14 +1061,25 @@ function normalizeModuleSlot(slot) {
   if (!slot || typeof slot !== "object" || typeof slot.path !== "string" || slot.path.trim() === "") {
     return null;
   }
+  if (!isCanonicalOrganizationRepositorySlotPath(slot.path)) return null;
   const path = normalizeOrganizationSlotPath(slot.path);
-  if (!path) return null;
+  if (
+    !path
+    || isOrganizationSlotContainerPath(path)
+    || isOrganizationRootSlotDescendantPath(path)
+  ) {
+    return null;
+  }
   const space = organizationSlotScope(slot, path);
   const workspace = organizationSlotWorkspace(slot, path);
   if (space !== "root" && !workspace) return null;
   // Vnořený slot (mission-control/db) potřebuje jméno z celé org-relativní
   // cesty, ne jen z basename ("Db").
   const nestedSegments = path.split("/").filter((segment) => !["workspace", "productionspace", "modules"].includes(segment));
+  const repo =
+    space === "root" ? slot.git?.url ?? null : slot.repo ?? slot.git?.url ?? null;
+  const branch =
+    space === "root" ? slot.git?.branch ?? null : slot.branch ?? slot.git?.branch ?? null;
   return {
     slug: basename(path),
     name: humanizeSlug(nestedSegments.join("-")),
@@ -1023,8 +1091,8 @@ function normalizeModuleSlot(slot) {
     required_roles: Array.isArray(slot.required_roles) ? slot.required_roles : [],
     classification: slot.classification ?? null,
     launchpad_port: slot.launchpad_port ?? null,
-    repo: slot.repo ?? slot.git?.url ?? null,
-    branch: slot.branch ?? slot.git?.branch ?? null,
+    repo,
+    branch,
   };
 }
 
@@ -1565,6 +1633,10 @@ function workspaceDeclarationCheck(appsResponse) {
       conformanceIssueCount += 1;
     }
     for (const issue of organization.root_slot_contract_issues ?? []) {
+      details.push(`${organization.path}: ${issue}`);
+      blockingSlotCount += 1;
+    }
+    for (const issue of organization.slot_scope_contract_issues ?? []) {
       details.push(`${organization.path}: ${issue}`);
       blockingSlotCount += 1;
     }

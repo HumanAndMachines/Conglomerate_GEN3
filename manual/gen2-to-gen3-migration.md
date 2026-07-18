@@ -700,6 +700,9 @@ GEN3 app/data packaging:
 - oba sloty mají explicitní `space: "root"` a aktivní sloty přesné
   `git.url`/`git.branch`. Nematerializovaný protějšek smí být dočasně
   `status: "planned_slot"` bez `git`, ale oba sloty musí být deklarované;
+- root sloty nesmí nést legacy top-level `repo`, `repository` ani `branch`;
+  Launchpad pro root checkout čte výhradně validované `git.*`, aby stale alias
+  nemohl zastínit kanonické souřadnice;
 - každá nested root vrstva v `company.gen3.json` má odpovídající manifest slot
   a každý primární root slot odpovídající vrstvu.
 

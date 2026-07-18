@@ -180,6 +180,51 @@ test("guarded create refuses dirty main checkout and leaves no worktree behind",
   expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish"))).toBe(false);
 });
 
+test("worktree create i publish fail-closed odmítnou productionspace repo", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const orgRoot = join(root, "organizations", "OmegaCo_GEN3");
+  const manifestPath = join(orgRoot, "modules.manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  manifest.module_slots.push({
+    path: "productionspace/firmware",
+    space: "productionspace",
+    category: "firmware",
+    repo: "git@github.com:OmegaCo/firmware.git",
+    branch: "main",
+  });
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  await initGitRepo(join(orgRoot, "productionspace", "firmware"));
+
+  await expect(
+    createWorktreeFromPlan({
+      companiesRoot: root,
+      repoKey: "OmegaCo::firmware",
+      planPath: "mission-control/plans/2026/07/CAC-0042-firmware.yaml",
+      branch: "CAC-0042-firmware",
+    }),
+  ).rejects.toMatchObject({
+    name: "WorktreeActionError",
+    code: "productionspace_read_only",
+    status: 403,
+  });
+
+  await expect(
+    publishWorktreeDraft({
+      companiesRoot: root,
+      repoKey: "OmegaCo::firmware",
+      slug: "CAC-0042-firmware",
+      commitMessage: "Publikovat firmware draft",
+    }),
+  ).rejects.toMatchObject({
+    name: "WorktreeActionError",
+    code: "productionspace_read_only",
+    status: 403,
+  });
+
+  expect(existsSync(join(orgRoot, ".worktrees", "productionspace", "firmware"))).toBe(false);
+});
+
 test("publish assistant commits local draft and pushes branch without opening PR", async () => {
   const { root, orgRoot, remotePath } = await setupDealsRepoWithPlan();
   const created = await createWorktreeFromPlan({
