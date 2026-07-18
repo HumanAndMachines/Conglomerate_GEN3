@@ -445,6 +445,45 @@ async function validateSidecar(primaryRoot, authorityRoot, record, sidecarPath) 
   } catch {
     return { valid: false, error: "Mission Control plan does not exist", planPath, advisories };
   }
+  let plan;
+  try {
+    plan = Bun.YAML.parse(await readFile(planPath, "utf8"));
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return {
+      valid: false,
+      error: `cannot parse Mission Control plan: ${reason}`,
+      planPath,
+      advisories,
+    };
+  }
+  if (!plan || typeof plan !== "object" || Array.isArray(plan)) {
+    return {
+      valid: false,
+      error: "Mission Control plan root value is not an object",
+      planPath,
+      advisories,
+    };
+  }
+  if (
+    typeof plan.dev_code !== "string"
+    || !/^[A-Z]{2,6}-[0-9]{4}$/.test(plan.dev_code)
+  ) {
+    return {
+      valid: false,
+      error: "Mission Control plan dev_code is not canonical",
+      planPath,
+      advisories,
+    };
+  }
+  if (plan.dev_code !== data.mission_control_plan_code) {
+    return {
+      valid: false,
+      error: "Mission Control plan dev_code does not match sidecar",
+      planPath,
+      advisories,
+    };
+  }
   return { valid: true, error: null, planPath, advisories };
 }
 

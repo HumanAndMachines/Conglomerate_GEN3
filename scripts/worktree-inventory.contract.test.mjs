@@ -38,6 +38,42 @@ test("accepts an authority-backed exact Mission Control plan", async () => {
   });
 });
 
+test("fails closed when the owning Mission Control plan is malformed", async () => {
+  const fixture = await createFixture({
+    authorityAvailable: true,
+    planAvailable: true,
+    planContents: "dev_code: [CAC-0007\n",
+  });
+  const report = await auditRepository(fixture.root, {
+    authorityRoot: fixture.authorityRoot,
+  });
+  expect(canonicalWorktree(report)).toMatchObject({
+    sidecar_valid: false,
+    sidecar_error: expect.stringContaining("cannot parse Mission Control plan"),
+  });
+  expect(report.violations.join("\n")).toContain(
+    "canonical worktree has invalid sidecar",
+  );
+});
+
+test("fails closed when the owning plan dev_code does not match the sidecar", async () => {
+  const fixture = await createFixture({
+    authorityAvailable: true,
+    planAvailable: true,
+    planContents: "dev_code: CAC-9999\n",
+  });
+  const report = await auditRepository(fixture.root, {
+    authorityRoot: fixture.authorityRoot,
+  });
+  expect(canonicalWorktree(report)).toMatchObject({
+    sidecar_valid: false,
+    sidecar_error: "Mission Control plan dev_code does not match sidecar",
+  });
+  expect(report.violations.join("\n")).toContain(
+    "canonical worktree has invalid sidecar",
+  );
+});
+
 test("verifies live remote preservation in a SHA-256 repository", async () => {
   const fixture = await createFixture({
     authorityAvailable: true,
@@ -191,6 +227,7 @@ test("fails closed when the live remote branch advanced without a local fetch", 
 async function createFixture({
   authorityAvailable,
   planAvailable,
+  planContents = "dev_code: CAC-0007\n",
   objectFormat = "sha1",
 }) {
   const sandbox = await mkdtemp(join(tmpdir(), "worktree contract "));
@@ -210,7 +247,7 @@ async function createFixture({
     });
   }
   if (planAvailable) {
-    await writeFile(planPath, "dev_code: CAC-0007\n");
+    await writeFile(planPath, planContents);
   }
 
   const objectFormatArgs = objectFormat === "sha1"
