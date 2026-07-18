@@ -509,7 +509,13 @@ Doctor musí hlídat:
 - u Organizací, které přijaly agent-skills entrypoint kontrakt, že
   `.claude/skills` přes `realpath` míří na kanonické `.agents/skills`; shared
   Doctor nikdy nespouští Organization skript ani nematerializuje odkaz, pouze
-  vrací `ok`, `repair_needed` nebo `blocked`
+  vrací `ok`, `repair_needed` nebo `blocked`; explicitní capability mode
+  `codex-only` lze pro lokální Doctor nastavit přes
+  `COMPANYASCODE_AGENT_CAPABILITY_MODE=codex-only`. Jen v tomto režimu je na
+  Windows chybějící odkaz nebo jeho textový Git placeholder stav `ok`, protože
+  Codex čte přímo `.agents/skills`. V bezpečném výchozím režimu
+  `claude-compatible` zůstává entrypoint vyžadovaný; skutečná druhá složka
+  je blokovaná v obou režimech
 
 Když Doctor selže, chyba má být napsaná tak, aby ji mohl opravit další
 agent bez znalosti historie.
