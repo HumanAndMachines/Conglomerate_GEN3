@@ -145,6 +145,7 @@ const APP_DESCRIPTION_FALLBACKS = Object.freeze({
   website: "Webový obsah, stránky a veřejná prezentace.",
   examples: "Ukázky, vzory a referenční řešení.",
   database: "Data, záznamy a jejich bezpečná správa.",
+  app: "Pracovní podklady a soubory tohoto modulu.",
   system: "Provozní nástroje a technická infrastruktura.",
 });
 
@@ -1940,68 +1941,55 @@ function workspaceModuleDetail(module, companySlug) {
 function workspaceModuleCard(module, companySlug) {
   const detail = workspaceModuleDetail(module, companySlug);
   const selected = state.selectedReadonlyDetail?.id === detail.id;
+  const openable = detail.can_open_folder;
   const card = document.createElement("article");
-  card.className = `app-card system-card is-readonly ${selected ? "selected" : ""}`.trim();
+  card.className = `app-card system-card manifest-module-card ${openable ? "is-openable" : "is-readonly is-unavailable"} ${selected ? "selected" : ""}`.trim();
   card.dataset.readonlyDetailId = detail.id;
   card.tabIndex = 0;
-  card.setAttribute("aria-label", `${detail.title} — detail`);
+  card.setAttribute("aria-label", openable ? `Otevřít složku ${detail.title}` : `${detail.title} — detail`);
 
   const head = document.createElement("div");
   head.className = "app-card-head";
-  const icon = document.createElement("span");
-  icon.className = "app-card-icon";
-  const iconKey = appIconKey(detail);
-  icon.style.cssText = appIconStyle(iconKey);
-  icon.innerHTML = appIconSvg(iconKey);
-  const titles = document.createElement("div");
-  titles.className = "app-card-titles";
+  const titleBlock = document.createElement("div");
+  titleBlock.className = "app-title-block";
+  titleBlock.append(appIconNode(detail));
+  const titleBody = document.createElement("div");
+  titleBody.className = "app-title-body";
   const titleRow = document.createElement("div");
   titleRow.className = "app-card-title-row";
   const title = document.createElement("h3");
   title.className = "app-card-title";
   title.textContent = module.name ?? humanizeModuleSlug(module.slug);
   titleRow.append(title);
-  const sub = document.createElement("p");
-  sub.className = "app-card-sub";
-  sub.textContent = `${workspaceLabel(companySlug, module.workspace ?? "workspace")} · manifestovaný modul`;
-  titles.append(titleRow, sub);
-  head.append(icon, titles);
-
-  const badges = document.createElement("div");
-  badges.className = "app-card-badges";
-  badges.append(chip("Workspace modul", "chip-surface"));
-  // Readiness slotu z manifestu (decision 0042): missing_access = deklarované
-  // repo bez lokálního checkoutu, planned_slot = slot bez repo deklarace.
-  if (module.status === "missing_access") badges.append(slotAccessChip(module));
-  if (module.status === "planned_slot") badges.append(chip("planned slot", "chip-warn"));
-  if (module.category) badges.append(chip(module.category, "chip-muted"));
-  if (module.default_access) badges.append(chip(module.default_access, "chip-muted"));
-
-  const path = document.createElement("p");
-  path.className = "app-card-endpoint";
-  path.textContent = module.path;
-
-  const actions = document.createElement("div");
-  actions.className = "app-card-actions";
-  const canOpenFolder = detail.can_open_folder;
-  const manifestOnly = cardActionButton(
-    canOpenFolder ? "Otevřít složku" : module.status === "missing_access" ? "Chybí přístup" : "Zatím není dostupný",
-    canOpenFolder ? () => openWorkspaceModuleFolder(detail) : null,
-    !canOpenFolder,
-  );
-  manifestOnly.classList.add("primary-action", "btn", "btn-ghost");
-  actions.append(manifestOnly);
-
-  card.append(head, badges, path, actions);
+  const desc = document.createElement("p");
+  desc.className = "app-card-desc";
+  desc.textContent = openable
+    ? appDescription(detail)
+    : module.status === "missing_access"
+      ? "Modul není na tomto počítači dostupný."
+      : "Modul je zatím naplánovaný, ale ještě není připravený.";
+  titleBody.append(titleRow, desc);
+  titleBlock.append(titleBody);
+  head.append(titleBlock);
+  if (openable) {
+    const cue = document.createElement("span");
+    cue.className = "app-open-cue";
+    cue.setAttribute("aria-hidden", "true");
+    cue.innerHTML = iconOpenGlyph();
+    head.append(cue);
+  }
+  card.append(head);
   card.addEventListener("click", (event) => {
     if (!shouldOpenFromCardSurface(event.target)) return;
-    selectReadonlyDetail(detail);
+    if (openable) void openWorkspaceModuleFolder(detail);
+    else selectReadonlyDetail(detail);
   });
   card.addEventListener("keydown", (event) => {
     if (event.target !== card) return;
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
-    selectReadonlyDetail(detail);
+    if (openable) void openWorkspaceModuleFolder(detail);
+    else selectReadonlyDetail(detail);
   });
   return card;
 }

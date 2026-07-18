@@ -629,8 +629,12 @@ test("manifest-only module cards keep semantic icon precedence over a broad cate
 
   expect(detailBlock).toContain("icon: null");
   expect(detailBlock).toContain("tags: module.category ? [module.category] : []");
-  expect(cardBlock).toContain("const iconKey = appIconKey(detail)");
+  expect(cardBlock).toContain("appIconNode(detail)");
   expect(cardBlock).not.toContain('appIconSvg("module")');
+  expect(cardBlock).toContain('desc.className = "app-card-desc"');
+  expect(cardBlock).toContain("appDescription(detail)");
+  expect(cardBlock).not.toContain('badges.append(chip("Workspace modul"');
+  expect(cardBlock).not.toContain('path.className = "app-card-endpoint"');
 });
 
 test("read-only app and system detail selection opens the right drawer", async () => {
