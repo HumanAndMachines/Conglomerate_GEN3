@@ -1,7 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://rozjedeme.ai/schemas/personal.gen3.schema.json",
-  "$comment": "Upstream source of truth: HumanAndMachines/schemas/personal.gen3.schema.json (decision 0051). Tato kopie MUSÍ zůstat identická s upstream; Launchpad ji jen používá pro personalspace discovery lane. Při změně kontraktu edituj HnM upstream a překopíruj sem beze změny.",
   "title": "Personalspace GEN3 configuration",
   "type": "object",
   "required": [

@@ -188,7 +188,7 @@ test("styles.css nese personalspace section + private treatment + drawer styly",
 
 test("kanonická Personalspace schema kopie zůstává base kontraktem s privátními consts", async () => {
   const schema = JSON.parse(await readFile(join(schemasRoot, "personal.gen3.schema.json"), "utf8"));
-  expect(schema.$comment).toContain("Upstream source of truth");
+  expect(schema.$comment).toBeUndefined();
   expect(schema.$id).toBe("https://rozjedeme.ai/schemas/personal.gen3.schema.json");
   expect(schema.required).toContain("schema_version");
   expect(schema.properties.schema_version.const).toBe("humanandmachines.personal.gen3.v1");
