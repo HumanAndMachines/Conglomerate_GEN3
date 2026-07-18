@@ -1,6 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
 import { existsSync } from "fs";
-import { mkdir, rm, writeFile, readFile } from "fs/promises";
+import { mkdir, rm, symlink, writeFile, readFile } from "fs/promises";
 import { dirname, join } from "path";
 import { buildWorktreeIndex } from "./worktree-lib.mjs";
 import { createWorktreeFromPlan, publishWorktreeDraft, WorktreeActionError } from "./worktree-actions-lib.mjs";
@@ -139,6 +139,26 @@ test("guarded create rejects a non-exact plan path alias before creating a workt
   expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish"))).toBe(false);
 });
 
+test("guarded create odmítne Windows drive-qualified planPath", async () => {
+  const { root, orgRoot } = await setupDealsRepoWithPlan();
+
+  await expect(
+    createWorktreeFromPlan({
+      companiesRoot: root,
+      repoKey: "BetaCo::deals",
+      planPath: "D:mission-control/plans/2026/07/CAC-0042-deals-publish.yaml",
+      branch: "CAC-0042-deals-publish",
+      createdBy: "test-agent",
+    }),
+  ).rejects.toMatchObject({
+    name: "WorktreeActionError",
+    code: "unsafe_path",
+    status: 400,
+  });
+
+  expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish"))).toBe(false);
+});
+
 test("guarded create refuses dirty main checkout and leaves no worktree behind", async () => {
   const { root, orgRoot, dealsRepo } = await setupDealsRepoWithPlan();
   await writeFile(join(dealsRepo, "draft.md"), "dirty main draft\n");
@@ -158,6 +178,181 @@ test("guarded create refuses dirty main checkout and leaves no worktree behind",
   });
 
   expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish"))).toBe(false);
+});
+
+test("worktree create i publish odmítnou repo checkout přes symlink nebo Windows junction mimo Organizaci", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const orgRoot = join(root, "organizations", "BetaCo_GEN3");
+  const externalRepo = join(root, "external-repositories", "deals");
+  const remotePath = join(root, "remotes", "escaped-deals.git");
+  await initGitRepo(externalRepo, { remotePath });
+  await mkdir(join(orgRoot, "workspace"), { recursive: true });
+  await symlink(
+    externalRepo,
+    join(orgRoot, "workspace", "deals"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  const planPath = join(orgRoot, "mission-control", "plans", "2026", "07", "CAC-0042-deals-publish.yaml");
+  await mkdir(dirname(planPath), { recursive: true });
+  await writeFile(
+    planPath,
+    "dev_code: CAC-0042\ntitle: Escaped repo\nstatus: in_progress\n",
+  );
+
+  await expect(
+    createWorktreeFromPlan({
+      companiesRoot: root,
+      repoKey: "BetaCo::deals",
+      planPath: "mission-control/plans/2026/07/CAC-0042-deals-publish.yaml",
+      branch: "CAC-0042-deals-publish",
+    }),
+  ).rejects.toMatchObject({
+    name: "WorktreeActionError",
+    code: "repo_not_found",
+    status: 404,
+  });
+  await expect(
+    publishWorktreeDraft({
+      companiesRoot: root,
+      repoKey: "BetaCo::deals",
+      slug: "CAC-0042-deals-publish",
+      commitMessage: "Publikovat escaped draft",
+    }),
+  ).rejects.toMatchObject({
+    name: "WorktreeActionError",
+    code: "repo_not_found",
+    status: 404,
+  });
+  expect(runGit(["branch", "--list", "CAC-0042-deals-publish"], externalRepo)).toBe("");
+});
+
+test("worktree create i publish odmítnou symlink nebo Windows junction v Organization .worktrees boundary", async () => {
+  const { root, orgRoot } = await setupDealsRepoWithPlan();
+  const externalWorktreesRoot = join(root, "external-worktrees");
+  const publishSlug = "CAC-0042-publish-escaped";
+  const externalWorktree = join(
+    externalWorktreesRoot,
+    "workspace",
+    "deals",
+    publishSlug,
+  );
+  const externalRemote = join(root, "remotes", "escaped-worktree.git");
+  await initGitRepo(externalWorktree, {
+    branch: publishSlug,
+    remotePath: externalRemote,
+  });
+  await writeFile(join(externalWorktree, "draft.md"), "nesmí se commitnout\n");
+  await writeFile(
+    join(externalWorktreesRoot, "workspace", "deals", `${publishSlug}.worktree.json`),
+    `${JSON.stringify({
+      schema_version: "companiesascode.worktree.v1",
+      organization: "BetaCo",
+      organization_path: "organizations/BetaCo_GEN3",
+      workspace: "workspace",
+      module: "deals",
+      module_path: "modules/deals",
+      repo_kind: "module",
+      base_branch: "main",
+      branch: publishSlug,
+      mission_control_plan_code: "CAC-0042",
+      mission_control_plan_path: "mission-control/plans/2026/07/CAC-0042-deals-publish.yaml",
+      worktree_path: `.worktrees/workspace/deals/${publishSlug}`,
+      created_at: new Date().toISOString(),
+      created_by: "test-agent",
+      status: "active",
+    }, null, 2)}\n`,
+  );
+  await symlink(
+    externalWorktreesRoot,
+    join(orgRoot, ".worktrees"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  const beforeHead = runGit(["rev-parse", "HEAD"], externalWorktree);
+  const beforeRemote = runGit(
+    ["--git-dir", externalRemote, "rev-parse", `refs/heads/${publishSlug}`],
+    root,
+  );
+
+  await expect(
+    createWorktreeFromPlan({
+      companiesRoot: root,
+      repoKey: "BetaCo::deals",
+      planPath: "mission-control/plans/2026/07/CAC-0042-deals-publish.yaml",
+      branch: "CAC-0042-create-escaped",
+    }),
+  ).rejects.toMatchObject({
+    name: "WorktreeActionError",
+    code: "worktree_path_escape",
+    status: 403,
+  });
+  await expect(
+    publishWorktreeDraft({
+      companiesRoot: root,
+      repoKey: "BetaCo::deals",
+      slug: publishSlug,
+      commitMessage: "Publikovat escaped worktree",
+    }),
+  ).rejects.toMatchObject({
+    name: "WorktreeActionError",
+    code: "worktree_not_found",
+    status: 404,
+  });
+
+  expect(existsSync(join(externalWorktreesRoot, "workspace", "deals", "CAC-0042-create-escaped"))).toBe(false);
+  expect(runGit(["rev-parse", "HEAD"], externalWorktree)).toBe(beforeHead);
+  expect(runGit(["status", "--porcelain=v1"], externalWorktree)).toBe("?? draft.md");
+  expect(
+    runGit(
+      ["--git-dir", externalRemote, "rev-parse", `refs/heads/${publishSlug}`],
+      root,
+    ),
+  ).toBe(beforeRemote);
+});
+
+test("worktree create i publish fail-closed odmítnou productionspace repo", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const orgRoot = join(root, "organizations", "OmegaCo_GEN3");
+  const manifestPath = join(orgRoot, "modules.manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  manifest.module_slots.push({
+    path: "productionspace/firmware",
+    space: "productionspace",
+    category: "firmware",
+    repo: "git@github.com:OmegaCo/firmware.git",
+    branch: "main",
+  });
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  await initGitRepo(join(orgRoot, "productionspace", "firmware"));
+
+  await expect(
+    createWorktreeFromPlan({
+      companiesRoot: root,
+      repoKey: "OmegaCo::firmware",
+      planPath: "mission-control/plans/2026/07/CAC-0042-firmware.yaml",
+      branch: "CAC-0042-firmware",
+    }),
+  ).rejects.toMatchObject({
+    name: "WorktreeActionError",
+    code: "productionspace_read_only",
+    status: 403,
+  });
+
+  await expect(
+    publishWorktreeDraft({
+      companiesRoot: root,
+      repoKey: "OmegaCo::firmware",
+      slug: "CAC-0042-firmware",
+      commitMessage: "Publikovat firmware draft",
+    }),
+  ).rejects.toMatchObject({
+    name: "WorktreeActionError",
+    code: "productionspace_read_only",
+    status: 403,
+  });
+
+  expect(existsSync(join(orgRoot, ".worktrees", "productionspace", "firmware"))).toBe(false);
 });
 
 test("publish assistant commits local draft and pushes branch without opening PR", async () => {

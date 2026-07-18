@@ -27,8 +27,9 @@ Vyplň před tím, než vytvoříš nebo mountneš klientský checkout:
 | Repo hranice | klientské super-repo ve vlastnictví klientské/GitHub organization hranice |
 | Default Team | právě jeden default Team se slugem `workspace`; Team je logická deklarace, ne adresář |
 | Role hranice | Admin Organizace, Builder Organizace, Uživatel Organizace; Steward Organizace (AI Kolega ve Steward seatu) na Workspace Hostu; kdo drží secrets a kdo smí měnit source |
-| Počáteční moduly | Mission Control + Knowledgebase; ne big-bang rollout |
-| Template baseline | Organization z `TemplatesRozjedeme-ai/OrganizationTemplate_GEN3`; Mission Control + Knowledgebase z vlastních `TemplatesRozjedeme-ai/*Template` fork-style upstreamů |
+| Počáteční baseline | Mission Control app + data, Knowledgebase, Design System a Infra; ostatní workspace moduly až podle business potřeby, ne big-bang rollout |
+| Design System scope | `active`, pokud je vytvoření objednané; jinak manifestový `planned_slot` bez repa a bez vymyšlených brandových dat |
+| Template baseline | Organization z `TemplatesRozjedeme-ai/OrganizationTemplate_GEN3`; Mission Control, Knowledgebase a Design System z vlastních `TemplatesRozjedeme-ai/*Template` upstreamů |
 | Shared Guide | bere se ze sdíleného `HumanAndMachines/Conglomerate_GEN3/guide`, nekopíruje se ani neforkuje do klientské Organizace |
 | Productionspace | co je release/produkční systém a nesmí být běžný workspace modul |
 
@@ -46,6 +47,19 @@ git rev-parse HEAD
 git rev-parse origin/main
 bun run check
 bun run doctor
+
+for path in \
+  organizations/OrganizationTemplate_GEN3 \
+  templates/TemplatesRozjedeme-ai/MissionControlTemplate \
+  templates/TemplatesRozjedeme-ai/KnowledgebaseTemplate \
+  templates/TemplatesRozjedeme-ai/DesignSystemTemplate
+do
+  test -d "$path/.git" || test -f "$path/.git" || {
+    echo "Chybí required template Git checkout: $path" >&2
+    exit 1
+  }
+  git -C "$path" status --short --branch
+done
 ```
 
 Pokračuj jen pokud:
@@ -53,10 +67,27 @@ Pokračuj jen pokud:
 - root checkout je na aktuálním `main` nebo je změna v izolovaném worktree/PR;
 - `bun run check` projde;
 - `bun run doctor` je `ok - Conglomerate`;
-- Doctor vidí required first-client template mounty: `OrganizationTemplate_GEN3`, `MissionControlTemplate`, `KnowledgebaseTemplate`;
+- explicitní preflight výše potvrdí existenci a Git stav všech čtyř required
+  template checkoutů; Doctor pouze discovery-reportuje ty přítomné a nemá
+  hardcodovaný allowlist, kterým by jejich absenci vynucoval;
+- GitHub API potvrzuje `is_template: true` pro
+  `TemplatesRozjedeme-ai/OrganizationTemplate_GEN3`,
+  `TemplatesRozjedeme-ai/MissionControlTemplate`,
+  `TemplatesRozjedeme-ai/KnowledgebaseTemplate` a
+  `TemplatesRozjedeme-ai/DesignSystemTemplate`;
 - případná rozpracovaná Organization PR není zdroj nových root warningů.
 
 Fail-fast: novou GEN3 Organizaci nezakládej ze starého `CompanyTemplate` / GEN2 workspace template. Výchozí Organization upstream je `TemplatesRozjedeme-ai/OrganizationTemplate_GEN3`.
+
+Stav template flagů ověř read-only, ne podle názvu repozitáře:
+
+```sh
+for repo in OrganizationTemplate_GEN3 MissionControlTemplate KnowledgebaseTemplate DesignSystemTemplate; do
+  gh api "repos/TemplatesRozjedeme-ai/$repo" --jq '"\(.full_name) is_template=\(.is_template) default_branch=\(.default_branch)"'
+done
+```
+
+Každý řádek musí uvést `is_template=true` a `default_branch=main`.
 
 ### 1. Organization repo bootstrap
 
@@ -83,20 +114,48 @@ Minimální tvar, který má klientské repo směřovat mít:
 ├── company/
 │   └── colleagues/
 │       └── README.md
+├── mission-control/        # samostatný root nested app/code checkout
+│   └── db/                 # samostatný Organization-owned data checkout
+├── design-system/          # samostatný root nested checkout, nebo zatím planned_slot
+├── infra/                  # samostatný restricted root nested checkout
 ├── workspace/
 │   ├── README.md
-│   └── <modul>/            # plochá složka modulů; Teamy jsou deklarace v manifestu, ne adresáře workspaces/<slug>/ (decision 0041)
+│   └── knowledgebase/      # první plochý workspace/<modul>; Teamy jsou v manifestu, ne v adresářích workspaces/<slug>/ (decision 0041)
 └── productionspace/
     └── README.md
 ```
+
+Root nested checkouty jsou fyzické lokální mounty, ale parent Organization
+repo jejich obsah ani gitlink netrackuje. Výpis tedy popisuje runtime tvar
+checkoutu, ne parent commit tree.
 
 První klientský pilot má raději malé, čitelné moduly než kompletní migraci. Pokud importuješ existující GEN2 obsah, forward-portuj konkrétní source-of-truth části s evidencí; neprováděj slepý merge starého super-repa.
 
 První reálný GEN3 klient začíná s:
 
-1. **Mission Control** — plánování a source-of-truth evidence Organizace; app/code fork-style z `TemplatesRozjedeme-ai/MissionControlTemplate`, klientská data zůstávají v klientské Organization hranici.
-2. **Knowledgebase** — privátní Git-native knowledgebase v default Teamu; fork-style z `TemplatesRozjedeme-ai/KnowledgebaseTemplate`.
-3. **Guide** — shared z `HumanAndMachines/Conglomerate_GEN3/guide`; nekopíruj ani neforkuj Guide do klientské Organizace. Pokud klient vzniká migrací z GEN2 a má vlastní top-level `guide/`, obecný Guide z Organization repozitáře smaž — nahrazuje ho shared root Guide. Organization-specific onboarding přesuň do `manual/`, knowledgebase nebo role docs.
+1. **Mission Control app + data** — plánování a source-of-truth evidence
+   Organizace; app/code repo vzniká přes GitHub Template repository mechanismus
+   z `TemplatesRozjedeme-ai/MissionControlTemplate` (`is_template: true`) a
+   mountuje se jako `mission-control/`. Oddělené Organization-owned data repo
+   se mountuje jako `mission-control/db/` na větvi `v3`; klientská živá data
+   zůstávají v klientské Organization hranici a nikdy nepatří do app/code template.
+2. **Knowledgebase** — privátní Git-native knowledgebase v default Teamu `workspace`; fork-style z `TemplatesRozjedeme-ai/KnowledgebaseTemplate`.
+3. **Design System root boundary** — manifest slot existuje vždy. Při
+   objednaném vytvoření vzniká repo přes GitHub Template repository mechanismus
+   z `TemplatesRozjedeme-ai/DesignSystemTemplate` (`is_template: true`) a
+   mountuje se jako `design-system/`. Bez objednaného vytvoření zůstává
+   `status: "planned_slot"` bez `git`, bez repa a bez předstírání hotové
+   vizuální identity; handoff uvádí, že klient může dodavatele kontaktovat pro
+   vytvoření Design Systemu.
+4. **Infra** — restricted Organization-owned repo jako aktivní root nested
+   checkout `infra/`; manifest slot používá `space: "root"` a kanonické
+   `git.url` / `git.branch`.
+5. **Guide** — shared z `HumanAndMachines/Conglomerate_GEN3/guide`; nekopíruj ani neforkuj Guide do klientské Organizace. Pokud klient vzniká migrací z GEN2 a má vlastní top-level `guide/`, obecný Guide z Organization repozitáře smaž — nahrazuje ho shared root Guide. Organization-specific onboarding přesuň do `manual/`, knowledgebase nebo role docs.
+
+Tento baseline není big-bang workspace rollout: v `workspace/` se na začátku
+provisionuje Knowledgebase a další moduly přibývají až podle business potřeby.
+Mission Control, Design System a Infra jsou Organization root boundaries, ne
+Team moduly.
 
 ### 2. Lokální mount a remote hranice
 
@@ -218,7 +277,14 @@ Kontrolní pravidla:
   už je očekávaný; jeho absence je proto `missing_access`, ne plán. URL doplň až
   po klientském založení repozitáře a ve stejném rollout kroku slot aktivuj a
   materializuj.
+- `companyascode.app.port` patří konkrétní Launchpad app surface. Interní
+  proces nebo služba modulu — například klientské Mission Control API — smí
+  mít vlastní app-owned port ve své konfiguraci nebo env; tento API port se
+  nekopíruje do Launchpad app manifestu a nemusí se rovnat UI portu.
 - Porty jsou unikátní napříč lokálním rootem. Pro prvního klienta začínej v klientském bloku okolo `5500+` a ověř kolize přes Launchpad `/api/apps`.
+- Launchpad `/api/apps` ověří manifestové app porty. Modul s dalším interním
+  API portem odpovídá i za jeho collision/readiness kontrolu; root kvůli němu
+  nezavádí druhý port registry.
 - Productionspace systémy nesmí získat hosted/public exposure jen tím, že existuje manifest. Sdílený Launchpad defaultně `productionspace/` app package discovery neprochází.
 
 ### 4. Discovery + support-loop gate
@@ -246,8 +312,19 @@ Template gate pro první instalaci:
 | Template | Musí být |
 |---|---|
 | OrganizationTemplate_GEN3 | lokální Git checkout pod `organizations/OrganizationTemplate_GEN3` (decision 0077), clean, na `main` |
-| MissionControlTemplate | lokální Git checkout pod `templates/TemplatesRozjedeme-ai/MissionControlTemplate`, clean, `bun run check && bun test` OK; klientský `mission-control/app/v1/package.json` vychází z `templates/launchpad-app/package.json.template` |
+| MissionControlTemplate | GitHub `is_template=true`; lokální Git checkout pod `templates/TemplatesRozjedeme-ai/MissionControlTemplate`, clean, `bun run check && bun test` OK; klientský `mission-control/app/v1/package.json` vychází z `templates/launchpad-app/package.json.template` |
 | KnowledgebaseTemplate | lokální Git checkout pod `templates/TemplatesRozjedeme-ai/KnowledgebaseTemplate`, clean, `app/v1/package.json` obsahuje `companyascode.app`; `dev`/`preview` runtime čte Launchpad `PORT`/`HOST` env; `cd app/v1 && bun run check && bun run build` OK |
+| DesignSystemTemplate | GitHub `is_template=true`; lokální Git checkout pod `templates/TemplatesRozjedeme-ai/DesignSystemTemplate`, clean, na `main`; je required provisioning input i tehdy, když klientský Design System zůstává neobjednaný `planned_slot` |
+
+Organization manifest gate:
+
+| Boundary | Povinný počáteční stav |
+|---|---|
+| `mission-control` | aktivní root slot, `space: "root"`, `git.url` + `git.branch` |
+| `mission-control/db` | aktivní root slot, `space: "root"`, `git.url` + `git.branch: "v3"` |
+| `workspace/knowledgebase` | první workspace modul ve default Teamu `workspace` |
+| `design-system` | aktivní root slot z template, nebo neobjednaný `planned_slot` bez `git` |
+| `infra` | aktivní restricted root slot, `space: "root"`, `git.url` + `git.branch` |
 
 Pokud Doctor hlásí warning, nejdřív ho zařaď podle boundary:
 
@@ -352,7 +429,14 @@ GEN3 je ready pro prvního klienta, když:
 - zvolený rollout režim odpovídá remote stavu: github-first má klientem schválený `origin`, local-first nemá `origin` a `template` má zakázaný push;
 - první klientský pilot modul má validní manifest, nekolidující port a vysvětlitelný dependency/runtime stav;
 - člověk i agent najdou source-of-truth hranice v README/Guide/manuálu;
-- Organization baseline je z `OrganizationTemplate_GEN3`, Mission Control a Knowledgebase z vlastních template forků, Guide ze shared Conglomerate rootu;
+- Organization baseline je z `OrganizationTemplate_GEN3`; Mission Control
+  app + data, Knowledgebase, Design System boundary a Infra mají výše popsané
+  nested repo/sloty, zatímco další workspace moduly se nezakládají big-bang;
+- required template mounty zahrnují `OrganizationTemplate_GEN3`,
+  `MissionControlTemplate`, `KnowledgebaseTemplate` a
+  `DesignSystemTemplate`; Mission Control i Design System template mají
+  ověřené GitHub `is_template=true`;
+- Guide je ze shared Conglomerate rootu;
 - secrets custody je metadata-only ověřená, bez úniku hodnot;
 - existuje jasný rollback bez mazání klientských dat;
 - jakákoli zbývající práce je zapsaná v klientské Organization Mission Control / TODO ledgeru, ne jen v chatu.

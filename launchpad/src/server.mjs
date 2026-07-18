@@ -2,6 +2,7 @@ import { constants, existsSync, lstatSync, realpathSync } from "fs";
 import { open, readFile } from "fs/promises";
 import { isAbsolute, join, normalize, relative, resolve } from "path";
 import { buildDoctorReportFromAppsResponse, buildLaunchpadAppsResponse } from "./diagnostics-lib.mjs";
+import { openBrowser } from "./browser-open-lib.mjs";
 import {
   GitApiError,
   buildGitApiResponse,
@@ -15,6 +16,7 @@ import {
 } from "./git-api-lib.mjs";
 import { RuntimeActionError, createRuntimeManager } from "./runtime-lib.mjs";
 import { createGitStatusService } from "./git-status-lib.mjs";
+import { performRootUpdate, readRootUpdateStatus } from "./update-lib.mjs";
 import { WorktreeActionError, createWorktreeFromPlan, publishWorktreeDraft } from "./worktree-actions-lib.mjs";
 import { buildRecentModuleChanges } from "./recent-changes-lib.mjs";
 import { buildMostUsedApps } from "./usage-lib.mjs";
@@ -26,6 +28,11 @@ import {
 } from "./personalspace-runtime-lib.mjs";
 import { GbrainAccessError, gbrainFile, gbrainSearch, gbrainTree } from "./gbrain-lib.mjs";
 import { readOrganizationLaunchpadTheme } from "./organization-theme-lib.mjs";
+import {
+  GIT_LOCAL_TIMEOUT_MS,
+  resolveGitExecutableSync,
+  safeGitCommandEnv,
+} from "./git-lib.mjs";
 
 const defaultHost = "127.0.0.1";
 const defaultPort = 4174;
@@ -63,14 +70,25 @@ if (!allowedHosts.has(host)) {
   process.exit(1);
 }
 
-const server = startServer(port);
+const requestedServerUrl = `http://${host}:${port}`;
+let server;
+try {
+  server = startServer(port);
+} catch (error) {
+  if (options.open && isAddressInUse(error) && await isRunningLaunchpad(requestedServerUrl)) {
+    console.log(`Launchpad GEN3 už běží na ${requestedServerUrl}; otevírám existující instanci.`);
+    await openBrowser(requestedServerUrl);
+    process.exit(0);
+  }
+  throw error;
+}
 
 const serverUrl = `http://${host}:${server.port}`;
 console.log(`Launchpad GEN3 běží na ${serverUrl}`);
 console.log(`Launchpad GEN3 root: ${companiesRoot}`);
 
 if (options.open) {
-  openBrowser(serverUrl);
+  await openBrowser(serverUrl);
 }
 
 setInterval(() => {}, 2_147_483_647);
@@ -190,15 +208,15 @@ async function buildPersonalspace() {
 
 function resolvePrincipalEmail() {
   try {
-    const result = Bun.spawnSync(["git", "config", "user.email"], {
+    const gitExecutable = resolveGitExecutableSync();
+    if (!gitExecutable) return null;
+    const result = Bun.spawnSync([gitExecutable, "config", "user.email"], {
       cwd: companiesRoot,
       stdout: "pipe",
       stderr: "pipe",
-      env: {
-        ...process.env,
-        GIT_TERMINAL_PROMPT: "0",
-        GCM_INTERACTIVE: "never",
-      },
+      env: safeGitCommandEnv(),
+      windowsHide: true,
+      timeout: GIT_LOCAL_TIMEOUT_MS,
     });
     if (result.exitCode !== 0) return null;
     const email = new TextDecoder().decode(result.stdout).trim();
@@ -327,18 +345,19 @@ function parseArgs(args) {
   return parsed;
 }
 
-function openBrowser(url) {
-  const commands = {
-    darwin: ["open", url],
-    win32: ["cmd", "/c", "start", "", url],
-    linux: ["xdg-open", url],
-  };
-  const command = commands[process.platform];
-  if (!command) return;
-  Bun.spawn(command, {
-    stdout: "ignore",
-    stderr: "ignore",
-  });
+function isAddressInUse(error) {
+  return error?.code === "EADDRINUSE" || String(error?.message ?? error).includes("EADDRINUSE");
+}
+
+async function isRunningLaunchpad(url) {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(1_500) });
+    if (!response.ok) return false;
+    const html = await response.text();
+    return html.includes("<title>Launchpad GEN3</title>");
+  } catch {
+    return false;
+  }
 }
 
 function appRuntimeRoute(pathname) {
@@ -639,6 +658,24 @@ function startServer(startPort) {
         if (runtimeRoute) return handleRuntimeRoute(request, runtimeRoute);
         const gitRoute = gitApiRoute(url.pathname);
         if (gitRoute) return handleGitApiRoute(request, url, gitRoute);
+        // Update lane Conglomerate rootu (decision 0059, draft 0080): oddělená
+        // od org git inventáře; mutace jde přes trusted-local guard výše a
+        // serializuje se s background fetchi přes withRemoteRefreshPaused.
+        // I GET status je trusted-local: dělá git fetch (síť + credentials),
+        // cizí origin ho nesmí spouštět ani jako drive-by bez čtení odpovědi.
+        if (url.pathname.startsWith("/api/update") && !isTrustedLocalRequest(request, url)) {
+          return jsonResponse({ error: "update_request_forbidden" }, 403);
+        }
+        if (url.pathname === "/api/update/status" && request.method === "GET") {
+          return jsonResponse(await gitStatusService.withRemoteRefreshPaused(() =>
+            readRootUpdateStatus({ rootPath: companiesRoot })));
+        }
+        if (url.pathname === "/api/update" && request.method === "POST") {
+          const payload = await request.json().catch(() => ({}));
+          const result = await gitStatusService.withRemoteRefreshPaused(() =>
+            performRootUpdate({ rootPath: companiesRoot, mode: payload?.mode ?? "ff_only" }));
+          return jsonResponse(result, result.ok ? 200 : 409);
+        }
         if (url.pathname === "/api/apps") return jsonResponse(await buildAppsResponse());
         // Synchronizovat (decision 0042): znovu projede lokální auto-discovery
         // organizations/*/company.gen3.json bez ruční editace root manifestu.

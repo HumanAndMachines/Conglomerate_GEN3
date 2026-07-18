@@ -29,9 +29,12 @@ export async function createLaunchpadGitFixture() {
       },
       {
         path: "infra",
+        space: "root",
         category: "engineering",
-        repo: "git@github.com:OmegaCo/infra.git",
-        branch: "main",
+        git: {
+          url: "git@github.com:OmegaCo/infra.git",
+          branch: "main",
+        },
       },
       {
         path: "workspace/future-module",
@@ -131,6 +134,12 @@ export async function initGitRepo(path, { branch = "main", remotePath = null } =
 export async function writeJson(path, value) {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+// Git for Windows může podle core.autocrlf materializovat tracked text jako
+// CRLF. Obsahové testy ověřují text a zachování draftu, ne platformní EOL.
+export function normalizeLineEndings(value) {
+  return value.replace(/\r\n?/g, "\n");
 }
 
 export function runGit(args, cwd) {

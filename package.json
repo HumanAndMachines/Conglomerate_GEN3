@@ -9,7 +9,7 @@
     "launchpad": "bun run --cwd launchpad launch",
     "launchpad:dev": "bun run --cwd launchpad dev",
     "check:strict": "bun run --cwd launchpad check:strict",
-    "sync:gen2-gen3:inventory": "node scripts/gen2-gen3-sync-inventory.mjs",
+    "sync:gen2-gen3:inventory": "bun scripts/gen2-gen3-sync-inventory.mjs",
     "preserve:gen2-local": "node scripts/gen2-local-preservation.mjs"
   }
 }

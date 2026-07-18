@@ -3,7 +3,14 @@ import { mkdir, readFile, rm, writeFile } from "fs/promises";
 import { join } from "path";
 import { buildGitApiResponse, buildPullAllResponse, buildRepoChangesResponse, buildRepoPullResponse } from "./git-api-lib.mjs";
 import { buildLaunchpadAppsResponse } from "./diagnostics-lib.mjs";
-import { createLaunchpadGitFixture, createPackageApp, initGitRepo, runGit, writeJson } from "./git-fixture-helpers.test.mjs";
+import {
+  createLaunchpadGitFixture,
+  createPackageApp,
+  initGitRepo,
+  normalizeLineEndings,
+  runGit,
+  writeJson,
+} from "./git-fixture-helpers.test.mjs";
 
 const tempRoots = [];
 
@@ -138,7 +145,7 @@ test("individual pull also allows an Organization root repo", async () => {
 
   expect(response.pulled).toBe(true);
   expect(response.repo_key).toBe("BetaCo::root");
-  expect(await readFile(join(orgRoot, "root-update.md"), "utf8")).toBe("root update\n");
+  expect(normalizeLineEndings(await readFile(join(orgRoot, "root-update.md"), "utf8"))).toBe("root update\n");
 });
 
 test("pull response refuses dirty repositories instead of hiding local draft work", async () => {
@@ -236,9 +243,9 @@ test("pull all updates Organization roots and workspace modules, using autostash
   expect(response.summary.autostash_count).toBe(1);
   expect(rootResult.outcome).toBe("autostash_pulled");
   expect(dealsResult.outcome).toBe("pulled");
-  expect(await readFile(join(orgRoot, "local-root-draft.md"), "utf8")).toBe("preserve me\n");
-  expect(await readFile(join(orgRoot, "remote-root.md"), "utf8")).toBe("remote change\n");
-  expect(await readFile(join(dealsRepo, "remote-deals.md"), "utf8")).toBe("remote change\n");
+  expect(normalizeLineEndings(await readFile(join(orgRoot, "local-root-draft.md"), "utf8"))).toBe("preserve me\n");
+  expect(normalizeLineEndings(await readFile(join(orgRoot, "remote-root.md"), "utf8"))).toBe("remote change\n");
+  expect(normalizeLineEndings(await readFile(join(dealsRepo, "remote-deals.md"), "utf8"))).toBe("remote change\n");
 }, 15_000);
 
 test("/api/apps app objects include compact git summary for their module", async () => {

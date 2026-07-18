@@ -73,9 +73,14 @@ Deklarace v manifestu je autorita pro grupování aplikací do Workspaces:
   podle deklarace.
 - `productionspace` je rezervovaný slug: nesmí být položkou `workspaces[]`
   ani hodnotou `modules[].workspace`. Productionspace repozitáře určuje cesta
-  `productionspace/*` a Launchpad je zobrazuje read-only, bez lifecycle akcí.
-- Konflikty deklarace vs. realita hlásí Doctor check
+  `productionspace/*` a Launchpad je zobrazuje read-only, bez lifecycle akcí;
+  fyzická path boundary má přednost i před konfliktním `space`.
+- Konflikt explicitního `space` s fyzickou path boundary je blokující Doctor
+  chyba. Ostatní přechodové konflikty deklarace vs. realita hlásí Doctor check
   `launchpad.workspace_declarations` jako warn.
+- Neúplný aktivní Organization root slot bez celého `git.url` + `git.branch`
+  se do akčního git/worktree inventáře vůbec nedostane; root branch se nikdy
+  nedoplňuje z Organization defaultu.
 
 Module sloty z manifestu mají readiness stav (decision 0042):
 
@@ -142,7 +147,7 @@ Aplikace deklaruje vlastní port ve svém `package.json`:
       "schema_version": "companyascode.launchpad_app.v1",
       "id": "exampleorg-deals-v2",
       "title": "Deals",
-      "company": "exampleorg",
+      "company": "ExampleOrg",
       "module": "deals",
       "surface": "internal",
       "port": 4301,
@@ -163,9 +168,11 @@ V multi-company rootu platí:
 - `companyascode.app.company` musí odpovídat čistému `organizations[].slug`, pod
   kterým aplikace leží. Fyzická cesta smí mít přechodový generační suffix,
   například `organizations/ExampleOrg_GEN3`, ale app manifest dál používá
-  čistou identitu `ExampleOrg`.
-- `companyascode.app.id` musí být unikátní v celém Launchpad GEN3 root.
-- doporučený tvar ID je `<company-slug>-<module-or-app>-<version>`.
+  čistou proper-case identitu `ExampleOrg`; shoda je case-sensitive.
+- `companyascode.app.id` musí být unikátní v celém Launchpad GEN3 rootu a
+  používat lowercase kebab tvar.
+- doporučený tvar ID je
+  `<lowercase-company-slug>-<module-or-app>-<version>`.
 - port namespace je společný pro celý Launchpad GEN3 root.
 - port collision je fail-closed invariant: runtime nikdy tiše nepřepne aplikaci
   na jiný port. Discovery ale staví computed port ownership index a u duplicate
@@ -264,7 +271,9 @@ bun run doctor:json
 
 `dev` spustí webový Launchpad server od `127.0.0.1:4174`; pokud je port
 obsazený a port nebyl zadaný explicitně, použije další volný port. `launch`
-spustí server a pokusí se otevřít prohlížeč. `discover` vypíše nalezené aplikace. Discovery nejdřív načte registry metadata
+spustí server a pokusí se otevřít prohlížeč. Když na stejném portu už běží
+zdravý Launchpad GEN3, druhé spuštění pouze otevře existující instanci.
+`discover` vypíše nalezené aplikace. Discovery nejdřív načte registry metadata
 z `launchpad.gen3.json`, potom automaticky proskenuje lokální
 `organizations/*/company.gen3.json`. `check` validuje `companyascode.app`
 podle `launchpad/schemas/launchpad-app.schema.json`. Nevalidní app manifest
@@ -299,6 +308,14 @@ Z Launchpad GEN3 rootu existují stejné spouštěče pro lidi:
 - macOS: `Launchpad.command`
 - Windows: `Launchpad.cmd` nebo `Launchpad.ps1`
 - Linux: `launchpad.sh`
+
+Windows launchery a runtime nespoléhají na PATH zděděný z interaktivního
+terminálu: Bun hledají také v uživatelských instalačních cestách a Git také ve
+standardních cestách Git for Windows. Každého kandidáta před použitím ověří
+pomocí `--version`, takže nefunkční WindowsApps alias nezastíní skutečnou
+instalaci. `Launchpad.ps1` musí mít právě jeden UTF-8 BOM, aby český text
+správně načetl i Windows PowerShell 5.1. Git probe jsou neinteraktivní, bez
+POSIX askpass cesty a se skrytými child okny.
 
 ## Web shell v1
 
@@ -392,9 +409,26 @@ jasný mechanismus:
   `exit_code=0` a nezanechat package/lockfile diff; pokud diff vznikne, je to
   app-local dependency side effect k explicitnímu review.
 - `Stop` zastaví proces na app-owned portu; pokud proces přežil restart nebo ho
-  spustila jiná instance Launchpadu, Launchpad ho adoptuje podle portu
-  z manifestu. PID vlastníka portu ověří znovu před `SIGTERM` i případným
-  `SIGKILL`; neznámý nebo mezitím změněný PID se fail-closed nezabíjí.
+  spustila jiná instance Launchpadu, Launchpad ho adoptuje jen tam, kde může
+  pozitivně ověřit PID i CWD vlastníka portu. PID ověří znovu před `SIGTERM`
+  i případným `SIGKILL`; neznámý nebo mezitím změněný PID se fail-closed
+  nezabíjí. Windows tuto cross-instance CWD kontrolu zatím nemá: po restartu
+  Launchpadu zůstane listener `unknown-port` a musí se uvolnit mimo Launchpad.
+  Na Windows používá current-instance managed proces cílený
+  `taskkill /PID <pid> /T /F` nad PID uloženým v runtime recordu a po ukončení
+  čeká na potvrzení původního child handle. Pokud handle exit nepotvrdí,
+  Launchpad ponechá managed ownership a selže bezpečně bez druhého signálu;
+  opakovaný `Stop` vrátí `app_stop_in_progress`. Managed slot drží až do
+  úspěšného zápisu stavu `stopped`, takže souběžný `Start` nemůže v krátkém
+  okně mezi exitem a finalizací osiřet nový proces. Selhání ještě před signálem
+  nebo potvrzená chyba `taskkill` vrátí živý managed proces do retryable stavu;
+  po potvrzeném exitu opakuje další `Stop` už jen zápis finalizace, nikdy signál.
+  Stejný child-handle kontrakt platí na POSIX po eskalaci `SIGTERM` → `SIGKILL`.
+  Po potvrzeném exitu je každý nový listener na app-owned portu samostatný
+  proces i při numericky shodném reused PID; Launchpad starý record uklidí,
+  listener nezabije a `Start`/`Restart` ho klasifikuje standardním port-conflict
+  guardem. Nikdy nepoužije `taskkill` jen podle obsazeného portu; neověřený
+  nebo cizí listener zůstává nedotčený.
 - `Restart` je `Stop` + `Start` nad app-owned portem.
 - `Logs` čte lokální log mimo Git.
 - `Stáhnout novější verzi` provede pouze fresh-remote-verified
@@ -479,6 +513,16 @@ Doctor musí hlídat:
 - duplicity portů mezi validními aplikacemi
 - existenci `dev_script`
 - existenci a validitu read-only plugin manifestu, pokud je uvedený
+- u Organizací, které přijaly agent-skills entrypoint kontrakt, že
+  `.claude/skills` přes `realpath` míří na kanonické `.agents/skills`; shared
+  Doctor nikdy nespouští Organization skript ani nematerializuje odkaz, pouze
+  vrací `ok`, `repair_needed` nebo `blocked`; explicitní capability mode
+  `codex-only` lze pro lokální Doctor nastavit přes
+  `COMPANYASCODE_AGENT_CAPABILITY_MODE=codex-only`. Jen v tomto režimu je na
+  Windows chybějící odkaz nebo jeho textový Git placeholder stav `ok`, protože
+  Codex čte přímo `.agents/skills`. V bezpečném výchozím režimu
+  `claude-compatible` zůstává entrypoint vyžadovaný; skutečná druhá složka
+  je blokovaná v obou režimech
 
 Když Doctor selže, chyba má být napsaná tak, aby ji mohl opravit další
 agent bez znalosti historie.

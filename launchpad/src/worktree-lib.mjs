@@ -4,6 +4,7 @@ import { basename, join, relative } from "path";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
 import { readGitRepoStatus } from "./git-status-lib.mjs";
 import { readMissionControlPlanAt } from "./mission-control-plan-lib.mjs";
+import { inspectCanonicalPathBoundary } from "./path-boundary-lib.mjs";
 
 const invalidWorktreeLocations = [
   ".claude/worktrees",
@@ -67,38 +68,80 @@ export async function buildWorktreeIndex({ companiesRoot, organization = null, m
 async function scanCanonicalOrganizationWorktrees({ companiesRoot, organization }) {
   const organizationRoot = join(companiesRoot, organization.path);
   const output = [];
-  await scanTwoLevelWorktrees({
+  let realOrganizationRoot = null;
+  let scanResult = await scanTwoLevelWorktrees({
     companiesRoot,
     organization,
+    organizationRoot,
+    rootRealPath: realOrganizationRoot,
     base: join(organizationRoot, ".worktrees", "workspace"),
     workspace: "workspace",
     repoKind: "module",
     output,
   });
-  await scanTwoLevelWorktrees({
+  realOrganizationRoot = scanResult.realOrganizationRoot;
+  scanResult = await scanTwoLevelWorktrees({
     companiesRoot,
     organization,
+    organizationRoot,
+    rootRealPath: realOrganizationRoot,
     base: join(organizationRoot, ".worktrees", "productionspace"),
     workspace: "productionspace",
     repoKind: "productionspace",
     output,
   });
-  await scanRootWorktrees({ companiesRoot, organization, base: join(organizationRoot, ".worktrees", "root"), output });
+  realOrganizationRoot = scanResult.realOrganizationRoot;
+  await scanRootWorktrees({
+    companiesRoot,
+    organization,
+    organizationRoot,
+    rootRealPath: realOrganizationRoot,
+    base: join(organizationRoot, ".worktrees", "root"),
+    output,
+  });
   return output;
 }
 
-async function scanTwoLevelWorktrees({ companiesRoot, organization, base, workspace, repoKind, output }) {
-  if (!existsSync(base)) return;
+async function scanTwoLevelWorktrees({
+  companiesRoot,
+  organization,
+  organizationRoot,
+  rootRealPath,
+  base,
+  workspace,
+  repoKind,
+  output,
+}) {
+  const baseBoundary = await existingWorktreePathBoundary({
+    organizationRoot,
+    rootRealPath,
+    path: base,
+  });
+  if (!baseBoundary.ok) return { realOrganizationRoot: baseBoundary.rootRealPath };
   for (const moduleEntry of await safeReaddir(base)) {
     if (!moduleEntry.isDirectory()) continue;
     const module = moduleEntry.name;
     const moduleRoot = join(base, module);
+    const moduleBoundary = await existingWorktreePathBoundary({
+      organizationRoot,
+      rootRealPath: baseBoundary.rootRealPath,
+      path: moduleRoot,
+    });
+    if (!moduleBoundary.ok) continue;
     for (const worktreeEntry of await safeReaddir(moduleRoot)) {
       if (!worktreeEntry.isDirectory()) continue;
       const absolutePath = join(moduleRoot, worktreeEntry.name);
+      const worktreeBoundary = await existingWorktreePathBoundary({
+        organizationRoot,
+        rootRealPath: moduleBoundary.rootRealPath,
+        path: absolutePath,
+      });
+      if (!worktreeBoundary.ok) continue;
       output.push(await buildWorktreeRecord({
         companiesRoot,
         organization,
+        organizationRoot,
+        rootRealPath: worktreeBoundary.rootRealPath,
         absolutePath,
         sidecarPath: join(moduleRoot, `${worktreeEntry.name}.worktree.json`),
         workspace,
@@ -107,17 +150,38 @@ async function scanTwoLevelWorktrees({ companiesRoot, organization, base, worksp
       }));
     }
   }
+  return { realOrganizationRoot: baseBoundary.rootRealPath };
 }
 
-async function scanRootWorktrees({ companiesRoot, organization, base, output }) {
-  if (!existsSync(base)) return;
+async function scanRootWorktrees({
+  companiesRoot,
+  organization,
+  organizationRoot,
+  rootRealPath,
+  base,
+  output,
+}) {
+  const baseBoundary = await existingWorktreePathBoundary({
+    organizationRoot,
+    rootRealPath,
+    path: base,
+  });
+  if (!baseBoundary.ok) return { realOrganizationRoot: baseBoundary.rootRealPath };
   for (const entry of await safeReaddir(base)) {
     if (!entry.isDirectory()) continue;
     const path = join(base, entry.name);
+    const pathBoundary = await existingWorktreePathBoundary({
+      organizationRoot,
+      rootRealPath: baseBoundary.rootRealPath,
+      path,
+    });
+    if (!pathBoundary.ok) continue;
     if (await isGitCheckout(path)) {
       output.push(await buildWorktreeRecord({
         companiesRoot,
         organization,
+        organizationRoot,
+        rootRealPath: pathBoundary.rootRealPath,
         absolutePath: path,
         sidecarPath: join(base, `${entry.name}.worktree.json`),
         workspace: "root",
@@ -129,9 +193,17 @@ async function scanRootWorktrees({ companiesRoot, organization, base, output }) 
     for (const child of await safeReaddir(path)) {
       if (!child.isDirectory()) continue;
       const childPath = join(path, child.name);
+      const childBoundary = await existingWorktreePathBoundary({
+        organizationRoot,
+        rootRealPath: pathBoundary.rootRealPath,
+        path: childPath,
+      });
+      if (!childBoundary.ok) continue;
       output.push(await buildWorktreeRecord({
         companiesRoot,
         organization,
+        organizationRoot,
+        rootRealPath: childBoundary.rootRealPath,
         absolutePath: childPath,
         sidecarPath: join(path, `${child.name}.worktree.json`),
         workspace: "root",
@@ -140,9 +212,20 @@ async function scanRootWorktrees({ companiesRoot, organization, base, output }) 
       }));
     }
   }
+  return { realOrganizationRoot: baseBoundary.rootRealPath };
 }
 
-async function buildWorktreeRecord({ companiesRoot, organization, absolutePath, sidecarPath, workspace, module, repoKind }) {
+async function buildWorktreeRecord({
+  companiesRoot,
+  organization,
+  organizationRoot,
+  rootRealPath,
+  absolutePath,
+  sidecarPath,
+  workspace,
+  module,
+  repoKind,
+}) {
   const slug = basename(absolutePath);
   const base = {
     slug,
@@ -164,6 +247,19 @@ async function buildWorktreeRecord({ companiesRoot, organization, absolutePath, 
       ownership_status: "orphan_missing_plan",
       status: "orphan_missing_plan",
       message: "Worktree nemá sidecar metadata s Mission Control vlastníkem.",
+    };
+  }
+  const sidecarBoundary = await existingWorktreePathBoundary({
+    organizationRoot,
+    rootRealPath,
+    path: sidecarPath,
+  });
+  if (!sidecarBoundary.ok) {
+    return {
+      ...base,
+      ownership_status: "invalid",
+      status: "invalid",
+      message: "Worktree sidecar se přes symlink/junction dostává mimo root Organizace.",
     };
   }
 
@@ -222,6 +318,21 @@ async function buildWorktreeRecord({ companiesRoot, organization, absolutePath, 
     status: lifecycleStatus,
     message: `Owned by ${ownerPlan.code} — ${ownerPlan.title}`,
   };
+}
+
+async function existingWorktreePathBoundary({
+  organizationRoot,
+  rootRealPath,
+  path,
+}) {
+  if (!existsSync(path)) {
+    return { ok: false, rootRealPath };
+  }
+  return inspectCanonicalPathBoundary({
+    rootPath: organizationRoot,
+    rootRealPath,
+    targetPath: path,
+  });
 }
 
 // Kanonické enumy z schemas/worktree.schema.json (companiesascode.worktree.v1).

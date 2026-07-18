@@ -21,7 +21,7 @@ async function createEscapedOrganizationFixture() {
     join(externalOrganizationRoot, "mission-control", "plans", "DEV-ESCAPE.yaml"),
     "dev_code: DEV-ESCAPE\ntitle: Escaped Organization plan\n",
   );
-  await symlink(externalOrganizationRoot, organizationRoot, "dir");
+  await symlink(externalOrganizationRoot, organizationRoot, process.platform === "win32" ? "junction" : "dir");
   return { root };
 }
 
@@ -128,7 +128,7 @@ test("Mission Control direct read rejects an Organization mount that is a symlin
   expect(directRead).toBeNull();
 });
 
-test("Mission Control direct read fails closed when an allowed plan root is a symlink escape", async () => {
+test("Mission Control index i direct read fail-closed odmítnou plan root přes symlink nebo Windows junction mimo Organizaci", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const orgRoot = join(root, "organizations", "BetaCo_GEN3");
@@ -137,13 +137,22 @@ test("Mission Control direct read fails closed when an allowed plan root is a sy
   await mkdir(externalPlansRoot, { recursive: true });
   await writeFile(join(externalPlansRoot, "DEV-6416.yaml"), "dev_code: DEV-6416\ntitle: Escaped plan\n");
   await rm(join(orgRoot, "mission-control", "plans"), { recursive: true, force: true });
-  await symlink(externalPlansRoot, join(orgRoot, "mission-control", "plans"));
+  await symlink(
+    externalPlansRoot,
+    join(orgRoot, "mission-control", "plans"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
 
   const invalid = await readMissionControlPlanAt({
     companiesRoot: root,
     organizationPath: "organizations/BetaCo_GEN3",
     planPath: "mission-control/plans/DEV-6416.yaml",
   });
+  const index = await buildMissionControlPlanIndex({
+    companiesRoot: root,
+    organization: "BetaCo",
+  });
 
   expect(invalid).toBeNull();
+  expect(index.plans.some((plan) => plan.code === "DEV-6416")).toBe(false);
 });
