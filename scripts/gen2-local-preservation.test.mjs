@@ -180,6 +180,13 @@ describe("metadata-only inventory", () => {
 });
 
 describe("verifier source identity", () => {
+  test("pins verifier JavaScript to LF so byte attestation survives Windows checkout", () => {
+    const repoRoot = dirname(dirname(scriptPath));
+    expect(
+      run("git", ["check-attr", "eol", "--", "scripts/gen2-local-preservation.mjs"], repoRoot),
+    ).toContain("eol: lf");
+  });
+
   test("rejects a verifier script whose bytes differ from the blob at the recorded HEAD", async () => {
     const repoRoot = await makeTempRoot();
     const verifierPath = join(repoRoot, "scripts", "gen2-local-preservation.mjs");
@@ -201,11 +208,13 @@ describe("verifier source identity", () => {
 });
 
 describe("documented origin activation", () => {
-  test("stops before every push when fetch or ls-remote cannot prove remote state", async () => {
+  test.skipIf(process.platform === "win32")(
+    "stops before every push when fetch or ls-remote cannot prove remote state",
+    async () => {
     const repoRoot = dirname(dirname(scriptPath));
     const manual = await readFile(join(repoRoot, "manual", "first-client-organization-rollout.md"), "utf8");
     const section = manual.split("#### Pozdější aktivace klientského `origin`")[1];
-    const match = section?.match(/```sh\n([\s\S]*?)```/);
+    const match = section?.match(/```sh\r?\n([\s\S]*?)```/);
     expect(match).toBeDefined();
     const flow = match[1]
       .replace("/path/to/Conglomerate/organizations/<ClientOrg>_GEN3", "/tmp/CAC0056_TestOrg_GEN3")
@@ -595,7 +604,9 @@ describe("verification drift detection", () => {
     }
   }, 15_000);
 
-  test("refuses to refresh success when archive or evidence directory permissions become public", async () => {
+  test.skipIf(process.platform === "win32")(
+    "refuses to refresh success when archive or evidence directory permissions become public",
+    async () => {
     for (const target of ["archive", "evidence"]) {
       const fixture = await archiveFixture();
       const successPath = join(fixture.destination, ".gen2-preservation", "SUCCESS.json");
@@ -621,7 +632,7 @@ describe("verification drift detection", () => {
     expect(result.stderr).toContain("file inventory drift");
   });
 
-  test("fails on changed mode", async () => {
+  test.skipIf(process.platform === "win32")("fails on changed mode", async () => {
     const { source, destination, personalspaceRoot } = await archiveFixture();
     await chmod(join(destination, "data", "customer.txt"), 0o600);
     const result = cli(verifyArgs(source, destination, personalspaceRoot));
