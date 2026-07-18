@@ -13,6 +13,42 @@ afterEach(async () => {
   await Promise.all(tempRoots.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 
+test("Windows installer kontrakt atomicky vlastní unikátní backup run bez přepisování", async () => {
+  const contents = await readFile(installer, "utf8");
+
+  expect(contents).toContain("[datetime]$BackupTime = (Get-Date)");
+  expect(contents).toContain("[guid]::NewGuid().ToString('N')");
+  expect(contents).toContain("New-Item -ItemType Directory -Path $candidateRoot -ErrorAction Stop");
+  expect(contents).toContain("[System.IO.File]::Copy($ShortcutPath, $backupPath, $false)");
+});
+
+windowsTest("Windows installer zachová dva backupy ze stejné sekundy bez kolize", async () => {
+  const fixture = await shortcutFixture("same-second-backups");
+  const startMenuShortcut = join(fixture.startMenu, shortcutName);
+  const backupTime = "2026-07-18T12:34:56";
+  await writeFile(startMenuShortcut, "first-original", "utf8");
+
+  const firstResult = runInstaller(fixture, ["-StartMenuOnly", "-BackupTime", backupTime]);
+  expect(firstResult.exitCode).toBe(0);
+  const firstReport = JSON.parse(firstResult.stdout.toString());
+  expect(firstReport.backups).toHaveLength(1);
+  const firstBackup = firstReport.backups[0];
+  expect(await readFile(firstBackup, "utf8")).toBe("first-original");
+
+  await writeFile(startMenuShortcut, "second-original", "utf8");
+  const secondResult = runInstaller(fixture, ["-StartMenuOnly", "-BackupTime", backupTime]);
+  expect(secondResult.exitCode).toBe(0);
+  const secondReport = JSON.parse(secondResult.stdout.toString());
+  expect(secondReport.backups).toHaveLength(1);
+  const secondBackup = secondReport.backups[0];
+
+  expect(secondBackup).not.toBe(firstBackup);
+  expect(firstBackup).toContain("20260718-123456");
+  expect(secondBackup).toContain("20260718-123456");
+  expect(await readFile(firstBackup, "utf8")).toBe("first-original");
+  expect(await readFile(secondBackup, "utf8")).toBe("second-original");
+}, 30_000);
+
 windowsTest("Windows installer zachová Start Menu a taskbar zkratky v oddělených zálohách", async () => {
   const fixture = await shortcutFixture("backups");
   const startMenuShortcut = join(fixture.startMenu, shortcutName);

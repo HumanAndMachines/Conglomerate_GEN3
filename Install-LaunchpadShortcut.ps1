@@ -18,7 +18,10 @@ param(
     [switch]$StartMenuOnly,
 
     [Parameter()]
-    [switch]$SkipShellPin
+    [switch]$SkipShellPin,
+
+    [Parameter()]
+    [datetime]$BackupTime = (Get-Date)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -28,6 +31,31 @@ function Get-FullPath {
     param([Parameter(Mandatory = $true)][string]$Path)
 
     return [System.IO.Path]::GetFullPath($Path)
+}
+
+function New-BackupRunRoot {
+    param(
+        [Parameter(Mandatory = $true)][string]$BackupBaseRoot,
+        [Parameter(Mandatory = $true)][datetime]$BackupTime
+    )
+
+    if (-not (Test-Path -LiteralPath $BackupBaseRoot -PathType Container)) {
+        New-Item -ItemType Directory -Path $BackupBaseRoot -Force | Out-Null
+    }
+
+    $timestamp = $BackupTime.ToString('yyyyMMdd-HHmmss')
+    while ($true) {
+        $candidateRoot = Join-Path $BackupBaseRoot ("{0}-{1}" -f $timestamp, [guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path $candidateRoot -ErrorAction Stop | Out-Null
+            return $candidateRoot
+        }
+        catch {
+            if (-not (Test-Path -LiteralPath $candidateRoot)) {
+                throw
+            }
+        }
+    }
 }
 
 function Backup-ExistingShortcut {
@@ -45,7 +73,7 @@ function Backup-ExistingShortcut {
     }
 
     $backupPath = Join-Path $BackupRoot ([System.IO.Path]::GetFileName($ShortcutPath))
-    Copy-Item -LiteralPath $ShortcutPath -Destination $backupPath -Force
+    [System.IO.File]::Copy($ShortcutPath, $backupPath, $false)
     return $backupPath
 }
 
@@ -129,10 +157,7 @@ $iconPath = Join-Path $InstalledAssetRoot 'launchpad.ico'
 $shortcutName = 'HumanAndMachine Launchpad GEN3.lnk'
 $startMenuShortcut = Join-Path $StartMenuRoot $shortcutName
 $taskbarShortcut = Join-Path $TaskbarRoot $shortcutName
-$timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$backupRoot = Join-Path (Join-Path $env:LOCALAPPDATA 'HumanAndMachine\Launchpad\shortcut-backups') $timestamp
-$startMenuBackupRoot = Join-Path $backupRoot 'start-menu'
-$taskbarBackupRoot = Join-Path $backupRoot 'taskbar'
+$backupBaseRoot = Join-Path $env:LOCALAPPDATA 'HumanAndMachine\Launchpad\shortcut-backups'
 $backups = New-Object System.Collections.Generic.List[string]
 $installApplied = $false
 $taskbarStatus = if ($StartMenuOnly) { 'not_requested' } else { 'not_applied' }
@@ -144,13 +169,27 @@ if ($PSCmdlet.ShouldProcess($resolvedRoot, 'Install HumanAndMachine Launchpad ic
     }
     Copy-Item -LiteralPath $sourceIconPath -Destination $iconPath -Force
 
-    $backup = Backup-ExistingShortcut -ShortcutPath $startMenuShortcut -BackupRoot $startMenuBackupRoot
-    if ($null -ne $backup) { $backups.Add($backup) }
+    $backupRoot = $null
+    if (
+        (Test-Path -LiteralPath $startMenuShortcut -PathType Leaf) -or
+        (-not $StartMenuOnly -and (Test-Path -LiteralPath $taskbarShortcut -PathType Leaf))
+    ) {
+        $backupRoot = New-BackupRunRoot -BackupBaseRoot $backupBaseRoot -BackupTime $BackupTime
+    }
+
+    if ($null -ne $backupRoot) {
+        $startMenuBackupRoot = Join-Path $backupRoot 'start-menu'
+        $backup = Backup-ExistingShortcut -ShortcutPath $startMenuShortcut -BackupRoot $startMenuBackupRoot
+        if ($null -ne $backup) { $backups.Add($backup) }
+    }
     New-LaunchpadShortcut -ShortcutPath $startMenuShortcut -LaunchpadRoot $resolvedRoot -PowerShellPath $powerShellPath -IconPath $iconPath
 
     if (-not $StartMenuOnly) {
-        $backup = Backup-ExistingShortcut -ShortcutPath $taskbarShortcut -BackupRoot $taskbarBackupRoot
-        if ($null -ne $backup) { $backups.Add($backup) }
+        if ($null -ne $backupRoot) {
+            $taskbarBackupRoot = Join-Path $backupRoot 'taskbar'
+            $backup = Backup-ExistingShortcut -ShortcutPath $taskbarShortcut -BackupRoot $taskbarBackupRoot
+            if ($null -ne $backup) { $backups.Add($backup) }
+        }
         New-LaunchpadShortcut -ShortcutPath $taskbarShortcut -LaunchpadRoot $resolvedRoot -PowerShellPath $powerShellPath -IconPath $iconPath
         $taskbarStatus = 'shortcut_installed'
 
