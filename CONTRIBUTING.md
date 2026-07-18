@@ -77,13 +77,16 @@ PR Steward zavře s vysvětlením.
 
 ## Jak se změna dostane k lidem
 
-Merge do `main` ještě není release. Dnes se změny šíří direct-pull modelem:
-každá mašina si aktualizuje svůj klon z `main`. **Plánované** (decision draft
-0080 v HumanAndMachines/docs/decisions/) jsou dva release kanály: **Nightly** sleduje `main`
-(automatický prerelease build) a **Stable** dostává ruční kurátorský řez
-`vX.Y.Z` od maintainera frameworku (Steward/Admin GitHub organizace
-HumanAndMachines). Release smí spustit jen GitHub user s právy — Release
-není Publikace dat.
+Merge do `main` ještě není release. Launchpad dnes umí aktualizovat root přes
+dva živé kanály: **Nightly** cílí na `origin/main`, **Stable** na nejvyšší tag
+`vX.Y.Z` inzerovaný originem. Stroj volí kanál přes `update_channel` (výchozí
+`stable`) v gitignored `launchpad.gen3.local.json`; akce **Aktualizovat**
+provede jen bezpečný fast-forward na ověřený cíl kanálu a při divergenci nebo
+konfliktu skončí bez přepisu historie. Oba kanály aktualizují tentýž
+direct-pull checkout; update Launchpad binárky je samostatná osa a není
+součástí tohoto mechanismu. Governance kanálů, pravidla klientských checkoutů
+a release policy — včetně toho, kdo smí vytvořit Stable release — drží decision
+draft 0080 v HumanAndMachines/docs/decisions/. Release není Publikace dat.
 
 ## Fork policy
 
