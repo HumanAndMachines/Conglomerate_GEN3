@@ -5,6 +5,7 @@ import { buildGitInventory } from "./git-inventory-lib.mjs";
 import { GIT_LOCAL_TIMEOUT_MS, runGit, safeGitRemoteEnv } from "./git-lib.mjs";
 import { readGitRepoStatus } from "./git-status-lib.mjs";
 import { isMissionControlPlanPath, readMissionControlPlanAt } from "./mission-control-plan-lib.mjs";
+import { inspectCanonicalPathBoundary } from "./path-boundary-lib.mjs";
 import { buildWorktreeIndex } from "./worktree-lib.mjs";
 
 export class WorktreeActionError extends Error {
@@ -55,6 +56,12 @@ export async function createWorktreeFromPlan({
   await assertRepoCanCreateWorktree(repo);
 
   const paths = worktreePathsForRepo({ companiesRoot, repo, branch: normalizedBranch });
+  await assertWorktreePathsInsideOrganization({
+    companiesRoot,
+    repo,
+    paths: [paths.absoluteWorktreePath, paths.absoluteSidecarPath],
+    allowMissingTarget: true,
+  });
   if (existsSync(paths.absoluteWorktreePath) || existsSync(paths.absoluteSidecarPath)) {
     throw new WorktreeActionError(`Worktree nebo sidecar už existuje: ${paths.relativeWorktreePath}`, {
       status: 409,
@@ -123,6 +130,13 @@ export async function publishWorktreeDraft({
   }
   const message = validateCommitMessage(commitMessage);
   const absoluteWorktreePath = join(companiesRoot, worktree.path);
+  const absoluteSidecarPath = join(companiesRoot, worktree.sidecar_path);
+  await assertWorktreePathsInsideOrganization({
+    companiesRoot,
+    repo,
+    paths: [absoluteWorktreePath, absoluteSidecarPath],
+    allowMissingTarget: false,
+  });
   const status = await runGit(["status", "--porcelain=v1", "--untracked-files=normal"], {
     cwd: absoluteWorktreePath,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
@@ -194,6 +208,16 @@ async function resolveRepo(companiesRoot, repoKey) {
   const inventory = await buildGitInventory({ companiesRoot });
   const repo = inventory.repos.find((item) => item.key === repoKey);
   if (!repo) throw new WorktreeActionError(`Repo ${repoKey} nebylo nalezeno.`, { status: 404, code: "repo_not_found" });
+  if (
+    repo.repo_kind === "productionspace"
+    || repo.space === "productionspace"
+    || repo.workspace === "productionspace"
+  ) {
+    throw new WorktreeActionError("Productionspace repozitáře jsou v Launchpadu read-only; worktree create ani publish nejsou povolené.", {
+      status: 403,
+      code: "productionspace_read_only",
+    });
+  }
   if (!existsSync(repo.absolute_path)) {
     throw new WorktreeActionError(`Repo cesta neexistuje: ${repo.repo_path}`, { status: 404, code: "repo_missing" });
   }
@@ -208,6 +232,31 @@ async function assertRepoCanCreateWorktree(repo) {
       code: "repo_not_clean",
       details: [status.status, status.message].filter(Boolean),
     });
+  }
+}
+
+async function assertWorktreePathsInsideOrganization({
+  companiesRoot,
+  repo,
+  paths,
+  allowMissingTarget,
+}) {
+  const organizationRoot = join(companiesRoot, repo.organization_path);
+  let realOrganizationRoot = null;
+  for (const path of paths) {
+    const boundary = await inspectCanonicalPathBoundary({
+      rootPath: organizationRoot,
+      rootRealPath: realOrganizationRoot,
+      targetPath: path,
+      allowMissingTarget,
+    });
+    realOrganizationRoot = boundary.rootRealPath;
+    if (!boundary.ok) {
+      throw new WorktreeActionError(
+        "Worktree cesta nebo sidecar se přes symlink/junction dostává mimo root Organizace.",
+        { status: 403, code: "worktree_path_escape" },
+      );
+    }
   }
 }
 

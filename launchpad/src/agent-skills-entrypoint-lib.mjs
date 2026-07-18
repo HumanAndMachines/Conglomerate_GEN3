@@ -2,6 +2,10 @@ import { lstat, readFile, realpath } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 
 export const AGENT_SKILLS_ENTRYPOINT_SCHEMA = "companiesascode.agent_skills_entrypoint.v1";
+export const AGENT_CAPABILITY_MODES = Object.freeze({
+  CODEX_ONLY: "codex-only",
+  CLAUDE_COMPATIBLE: "claude-compatible",
+});
 const canonicalRelativePath = ".agents/skills";
 const compatibilityRelativePath = ".claude/skills";
 const producerRelativePath = "scripts/agent-skills-entrypoint.mjs";
@@ -43,7 +47,11 @@ async function lstatOrNull(path) {
 
 export async function inspectAgentSkillsEntrypoint(organizationRoot, {
   platform = process.platform,
+  agentCapabilityMode = AGENT_CAPABILITY_MODES.CLAUDE_COMPATIBLE,
 } = {}) {
+  if (!Object.values(AGENT_CAPABILITY_MODES).includes(agentCapabilityMode)) {
+    throw new Error(`Unsupported agent capability mode: ${agentCapabilityMode}`);
+  }
   const root = resolve(organizationRoot);
   const canonicalPath = join(root, canonicalRelativePath);
   const compatibilityPath = join(root, compatibilityRelativePath);
@@ -106,6 +114,13 @@ export async function inspectAgentSkillsEntrypoint(organizationRoot, {
   }
 
   if (!compatibilityStat) {
+    if (platform === "win32" && agentCapabilityMode === AGENT_CAPABILITY_MODES.CODEX_ONLY) {
+      return state({
+        status: "ok",
+        code: "codex_entrypoint_ready",
+        message: `${canonicalRelativePath} je připravené pro Codex; ${compatibilityRelativePath} je na Windows volitelná Claude kompatibilita.`,
+      });
+    }
     return state({
       status: "repair_needed",
       code: "entrypoint_missing",
@@ -141,6 +156,13 @@ export async function inspectAgentSkillsEntrypoint(organizationRoot, {
       .replace(/^\uFEFF/, "")
       .trim();
     if (contents === legacyPlaceholder) {
+      if (platform === "win32" && agentCapabilityMode === AGENT_CAPABILITY_MODES.CODEX_ONLY) {
+        return state({
+          status: "ok",
+          code: "codex_entrypoint_ready",
+          message: `${canonicalRelativePath} je připravené pro Codex; textový ${compatibilityRelativePath} placeholder se na Windows nepoužívá.`,
+        });
+      }
       return state({
         status: "repair_needed",
         code: "entrypoint_legacy_placeholder",
@@ -168,6 +190,8 @@ export async function inspectAgentSkillsEntrypoint(organizationRoot, {
 export async function agentSkillsEntrypointsDoctorCheck({
   companiesRoot,
   mounts = [],
+  platform = process.platform,
+  agentCapabilityMode = AGENT_CAPABILITY_MODES.CLAUDE_COMPATIBLE,
 }) {
   const inspected = await Promise.all(
     mounts
@@ -176,7 +200,10 @@ export async function agentSkillsEntrypointsDoctorCheck({
         try {
           return {
             mount,
-            state: await inspectAgentSkillsEntrypoint(join(companiesRoot, mount.path)),
+            state: await inspectAgentSkillsEntrypoint(join(companiesRoot, mount.path), {
+              platform,
+              agentCapabilityMode,
+            }),
           };
         } catch (error) {
           return {
