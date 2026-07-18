@@ -1502,6 +1502,8 @@ button.update-pill:disabled {
 /* Read-only productionspace system card — no lifecycle actions. */
 .system-card {
   cursor: default;
+  align-self: start;
+  width: 100%;
 }
 
 .system-card::before {

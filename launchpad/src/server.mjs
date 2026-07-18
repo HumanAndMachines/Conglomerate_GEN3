@@ -30,6 +30,7 @@ import {
 } from "./personalspace-runtime-lib.mjs";
 import { GbrainAccessError, gbrainFile, gbrainSearch, gbrainTree } from "./gbrain-lib.mjs";
 import { readOrganizationLaunchpadTheme } from "./organization-theme-lib.mjs";
+import { ModuleFolderActionError, createModuleFolderOpener } from "./module-folder-lib.mjs";
 import {
   GIT_LOCAL_TIMEOUT_MS,
   resolveGitExecutableSync,
@@ -51,6 +52,7 @@ const port = Number(options.port ?? process.env.PORT ?? defaultPort);
 const explicitPort = options.port !== undefined;
 const principalEmail = resolvePrincipalEmail();
 const runtimeManager = createRuntimeManager({ companiesRoot, launchpadRoot });
+const moduleFolderOpener = createModuleFolderOpener({ companiesRoot, getAppsResponse: buildAppsResponse });
 const gitStatusService = createGitStatusService();
 const organizationLogoCandidates = [
   "launchpad/app/v1/web/launchpad-icon.png",
@@ -380,6 +382,35 @@ function appRuntimeRoute(pathname) {
   };
 }
 
+function moduleFolderRoute(pathname) {
+  return pathname === "/api/modules/open-folder";
+}
+
+async function handleModuleFolderRoute(request) {
+  if (request.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
+  try {
+    const contentType = request.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      throw new ModuleFolderActionError(400, "invalid_module_folder_request", "Request body musí být application/json.");
+    }
+    let payload;
+    try {
+      payload = await request.json();
+    } catch {
+      throw new ModuleFolderActionError(400, "invalid_module_folder_request", "Request body musí být validní JSON.");
+    }
+    return jsonResponse(await moduleFolderOpener.open({
+      organization: payload?.organization,
+      modulePath: payload?.module_path,
+    }));
+  } catch (error) {
+    if (error instanceof ModuleFolderActionError) {
+      return jsonResponse({ error: error.code, message: error.message }, error.status);
+    }
+    return jsonResponse({ error: "folder_open_failed", message: "Složku modulu se nepodařilo otevřít." }, 500);
+  }
+}
+
 // Personalspace runtime akce (CAC-0048) — stejné akce jako org, ale přes
 // oddělený personalspace runtime manager. Osobní app id má prefix personal--.
 function personalAppRuntimeRoute(pathname) {
@@ -667,6 +698,7 @@ function startServer(startPort) {
 
         const runtimeRoute = appRuntimeRoute(url.pathname);
         if (runtimeRoute) return handleRuntimeRoute(request, runtimeRoute);
+        if (moduleFolderRoute(url.pathname)) return handleModuleFolderRoute(request);
         const gitRoute = gitApiRoute(url.pathname);
         if (gitRoute) return handleGitApiRoute(request, url, gitRoute);
         // Root identity is metadata-only and local. Relaunch uses the hashed
