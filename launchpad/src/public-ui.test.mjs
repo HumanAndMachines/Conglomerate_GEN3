@@ -61,6 +61,7 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(js).toContain("space.organization.theme");
   expect(js).toContain('root.setAttribute("data-organization-theme"');
   expect(js).toContain("ORGANIZATION_THEME_TOKENS");
+  expect(js).toContain('"--on-accent"');
   expect(js).toContain("safeOrganizationThemeValue");
   expect(js).toContain("accentLockedByOrganization");
   expect(js).toContain('if (state.filters.scope === "org") return false');
@@ -122,6 +123,9 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(css).toContain("var(--launchpad-body-background)");
   expect(css).toContain("color-mix(in srgb, var(--bg) 96%, #000)");
   expect(css).toContain("var(--font-heading, var(--font-body))");
+  expect(css).toContain("--on-accent: #fff;");
+  const primaryButtonBlock = css.slice(css.indexOf(".btn-primary {"), css.indexOf("}", css.indexOf(".btn-primary {")) + 1);
+  expect(primaryButtonBlock).toContain("color: var(--on-accent);");
   expect(css).toContain("min-height: 34px");
   expect(css).toContain("width: min(280px");
   expect(css).toContain(".space-profile-card");

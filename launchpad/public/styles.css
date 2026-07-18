@@ -52,6 +52,7 @@
      focus rings, the primary button, the brand mark) derives from --accent via
      color-mix, so a theme/accent switch only has to change the ramp below. */
   --accent: var(--c-accent-500);
+  --on-accent: #fff;
   --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
   --accent-ring: color-mix(in srgb, var(--accent) 35%, transparent);
 
@@ -690,7 +691,7 @@ button.update-pill:disabled {
 
 .btn-primary {
   background: var(--c-accent-500);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .btn-primary:hover:not(:disabled) {

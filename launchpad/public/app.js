@@ -95,7 +95,7 @@ const ACCENT_PRESETS = ["default", "emerald", "amber", "rose", "slate"];
 const ORGANIZATION_THEME_TOKENS = new Set([
   "--bg", "--bg-elevated", "--bg-subtle", "--bg-muted", "--surface", "--surface-console",
   "--text", "--text-muted", "--text-subtle", "--line", "--line-strong", "--accent",
-  "--accent-soft", "--accent-ring", "--shadow-sm", "--shadow-md", "--shadow-lg",
+  "--on-accent", "--accent-soft", "--accent-ring", "--shadow-sm", "--shadow-md", "--shadow-lg",
   "--shadow-hover", "--r-sm", "--r-md", "--r-lg", "--r-pill", "--font-body",
   "--font-heading", "--font-mono", "--c-accent-200", "--c-accent-400", "--c-accent-500",
   "--c-accent-700", "--c-accent-800", "--c-accent-900", "--launchpad-body-background",
