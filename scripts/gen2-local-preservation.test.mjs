@@ -19,6 +19,7 @@ import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
 import {
   applyPreservation,
+  assertPreservationPlatform,
   committedVerifierIdentity,
   probeCloneCapability,
 } from "./gen2-local-preservation.mjs";
@@ -395,9 +396,35 @@ describe("fail-closed preflight", () => {
     expect(`${inventory.stderr}\n${applied.stderr}`).toContain("reserved .gen2-preservation");
     await expect(lstat(destination)).rejects.toThrow();
   });
+
+  test("Windows apply and verify fail closed until an ACL-preserving adapter exists", async () => {
+    const root = await makeTempRoot();
+    const source = await makeSource(root);
+    const personalspaceRoot = join(root, "personalspace", "owner_GEN3");
+    const destination = join(personalspaceRoot, "migration-archive", "source");
+    await mkdir(personalspaceRoot, { recursive: true });
+    let copyCalled = false;
+
+    await expect(
+      applyPreservation(
+        { source, destination, personalspaceRoot, allowFullCopy: true },
+        {
+          platform: "win32",
+          copyTree: async () => {
+            copyCalled = true;
+          },
+        },
+      ),
+    ).rejects.toThrow("ACL-preserving copy and verification adapter");
+    expect(() => assertPreservationPlatform("win32")).toThrow(
+      "ACL-preserving copy and verification adapter",
+    );
+    expect(copyCalled).toBe(false);
+    await expect(lstat(destination)).rejects.toThrow();
+  });
 });
 
-describe("apply and evidence", () => {
+describe.skipIf(process.platform === "win32")("apply and evidence", () => {
   test("allows explicitly counted non-portable symlinks only inside rebuildable caches", async () => {
     const root = await makeTempRoot();
     const source = await makeSource(root);
@@ -558,7 +585,7 @@ describe("apply and evidence", () => {
   });
 });
 
-describe("verification drift detection", () => {
+describe.skipIf(process.platform === "win32")("verification drift detection", () => {
   test("rejects an archive whose recorded verifier identity differs from the running verifier", async () => {
     const fixture = await archiveFixture();
     const manifestPath = join(fixture.destination, ".gen2-preservation", "manifest.json");

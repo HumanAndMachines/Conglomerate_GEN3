@@ -167,9 +167,12 @@ bun run preserve:gen2-local -- inventory \
 
 # Apply je explicitní, nikdy nemaže ani nepřejmenovává source. Na macOS/APFS
 # vyžaduje ověřený clone-on-write copy, takže lze bezpečně preservovat i strom
-# větší než aktuální volné místo bez dočasné plné duplikace bloků. Mimo APFS
+# větší než aktuální volné místo bez dočasné plné duplikace bloků. Na Linuxu
 # nejdřív ručně ověř dostatek volného místa a přidej explicitní
 # --allow-full-copy; policy failure před startem kopie prázdný destination uklidí.
+# Windows zatím podporuje pouze read-only inventory. Apply i verify fail-closed
+# odmítnou běh, dokud nebude publikovaný ACL-preserving copy/verification
+# adapter; POSIX chmod ani /bin/cp se na Windows nesmějí vydávat za privacy gate.
 bun run preserve:gen2-local -- apply \
   --source "$GEN2" \
   --destination "$ARCHIVE" \

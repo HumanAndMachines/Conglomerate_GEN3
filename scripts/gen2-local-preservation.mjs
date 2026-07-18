@@ -29,6 +29,8 @@ const MANIFEST_FILE = "manifest.json";
 const SUCCESS_FILE = "SUCCESS.json";
 const SCHEMA_VERSION = 1;
 const VERIFICATION_CONTRACT = "files-git-connectivity-verifier-identity-v3";
+const WINDOWS_UNSUPPORTED_MESSAGE =
+  "Windows apply/verify is blocked until an ACL-preserving copy and verification adapter exists; inventory remains available";
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const VERIFIER_REPO_ROOT = dirname(dirname(SCRIPT_PATH));
 const REBUILDABLE_DIRS = new Set([
@@ -57,6 +59,10 @@ function normalizePath(path) {
 function isWithin(parent, child) {
   const rel = relative(parent, child);
   return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel));
+}
+
+export function assertPreservationPlatform(platform) {
+  if (platform === "win32") throw new Error(WINDOWS_UNSUPPORTED_MESSAGE);
 }
 
 function containsOrganizationsSegment(path) {
@@ -658,6 +664,7 @@ export async function verifyPreservation({ source, destination, personalspaceRoo
     personalspaceRoot,
     requireDestination: true,
   });
+  assertPreservationPlatform(process.platform);
   await assertSelfContainedGitdirPointers(paths.source);
   await assertSelfContainedGitdirPointers(paths.destination, { archive: true });
   const evidenceDir = join(paths.destination, EVIDENCE_DIR);
@@ -721,12 +728,13 @@ export async function applyPreservation(
 ) {
   const paths = await validatePaths({ source, destination, personalspaceRoot });
   const verifier = await verifierIdentity();
+  const platform = dependencies.platform ?? process.platform;
   await assertSelfContainedGitdirPointers(paths.source);
   // Reserved evidence-path collisions, Git connectivity and symlink portability
   // are validated before the destination is created, so failures cannot leave
   // behind a huge partial archive.
   await buildInventory(paths.source, { includeEntries: false });
-  const platform = dependencies.platform ?? process.platform;
+  assertPreservationPlatform(platform);
   const cloneProbe = dependencies.cloneProbe ?? probeCloneCapability;
   const copyTree = dependencies.copyTree ?? defaultCopyTree;
   const evidenceDir = join(paths.destination, EVIDENCE_DIR);
