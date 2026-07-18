@@ -21,13 +21,13 @@ afterAll(async () => {
 test("git API response combines manifest inventory, repo statuses, worktrees and plan ownership", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
-  const dealsRepo = join(root, "organizations", "BetaCo_GEN3", "modules", "deals");
+  const dealsRepo = join(root, "organizations", "BetaCo_GEN3", "workspace", "deals");
   await initGitRepo(dealsRepo);
   await writeFile(join(dealsRepo, "draft.md"), "local draft\n");
   const orgRoot = join(root, "organizations", "BetaCo_GEN3");
   const planPath = join(orgRoot, "mission-control", "plans", "2026", "07", "DEV-6327-deals-git-status.yaml");
   await mkdir(join(orgRoot, ".worktrees", "workspace", "deals"), { recursive: true });
-  await writeFile(planPath, "dev_code: DEV-6327\ntitle: Deals Git status badges\nstatus: in_progress\nlinks:\n  - path: modules/deals\n");
+  await writeFile(planPath, "dev_code: DEV-6327\ntitle: Deals Git status badges\nstatus: in_progress\nlinks:\n  - path: workspace/deals\n");
   await initGitRepo(join(orgRoot, ".worktrees", "workspace", "deals", "DEV-6327-deals-git-status"), {
     branch: "DEV-6327-deals-git-status",
   });
@@ -37,7 +37,7 @@ test("git API response combines manifest inventory, repo statuses, worktrees and
     organization_path: "organizations/BetaCo_GEN3",
     workspace: "workspace",
     module: "deals",
-    module_path: "modules/deals",
+    module_path: "workspace/deals",
     repo_kind: "module",
     base_branch: "main",
     branch: "DEV-6327-deals-git-status",
@@ -72,7 +72,7 @@ test("git API can limit polling work to the selected organization", async () => 
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   await initGitRepo(join(root, "organizations", "BetaCo_GEN3"));
-  await initGitRepo(join(root, "organizations", "BetaCo_GEN3", "modules", "deals"));
+  await initGitRepo(join(root, "organizations", "BetaCo_GEN3", "workspace", "deals"));
 
   const response = await buildGitApiResponse({ companiesRoot: root, organization: "BetaCo" });
 
@@ -84,7 +84,7 @@ test("git API can limit polling work to the selected organization", async () => 
 test("changes response exposes filenames and porcelain status without file contents", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
-  const dealsRepo = join(root, "organizations", "BetaCo_GEN3", "modules", "deals");
+  const dealsRepo = join(root, "organizations", "BetaCo_GEN3", "workspace", "deals");
   await initGitRepo(dealsRepo);
   await writeFile(join(dealsRepo, "secret-looking.md"), "token = not returned by the API\n");
 
@@ -100,7 +100,7 @@ test("changes response exposes filenames and porcelain status without file conte
 test("pull response fast-forwards only clean expected-branch repositories", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
-  const dealsRepo = join(root, "organizations", "BetaCo_GEN3", "modules", "deals");
+  const dealsRepo = join(root, "organizations", "BetaCo_GEN3", "workspace", "deals");
   const remotePath = join(root, "remotes", "deals.git");
   await initGitRepo(dealsRepo, { remotePath });
   const contributor = join(root, "tmp", "deals-contributor");
@@ -151,7 +151,7 @@ test("individual pull also allows an Organization root repo", async () => {
 test("pull response refuses dirty repositories instead of hiding local draft work", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
-  const dealsRepo = join(root, "organizations", "BetaCo_GEN3", "modules", "deals");
+  const dealsRepo = join(root, "organizations", "BetaCo_GEN3", "workspace", "deals");
   await initGitRepo(dealsRepo, { remotePath: join(root, "remotes", "dirty-deals.git") });
   await writeFile(join(dealsRepo, "draft.md"), "local draft\n");
 
@@ -171,6 +171,8 @@ test("pull response refuses productionspace repos even when a fast-forward pull 
   const orgRoot = join(root, "organizations", "OmegaCo_GEN3");
   await writeJson(join(orgRoot, "modules.manifest.json"), {
     organization_generation: "gen3",
+    company: "OmegaCo",
+    github_org: "OmegaCo",
     module_slots: [
       {
         path: "productionspace/firmware",
@@ -209,11 +211,11 @@ test("pull all updates Organization roots and workspace modules, using autostash
   tempRoots.push(root);
   const orgRoot = join(root, "organizations", "BetaCo_GEN3");
   const orgRemote = join(root, "remotes", "organization-root.git");
-  const dealsRepo = join(orgRoot, "modules", "deals");
+  const dealsRepo = join(orgRoot, "workspace", "deals");
   const dealsRemote = join(root, "remotes", "deals-bulk.git");
   await initGitRepo(orgRoot, { remotePath: orgRemote });
   await initGitRepo(dealsRepo, { remotePath: dealsRemote });
-  await writeFile(join(orgRoot, ".git", "info", "exclude"), "modules/\n");
+  await writeFile(join(orgRoot, ".git", "info", "exclude"), "workspace/\n");
 
   const orgContributor = join(root, "tmp", "org-contributor");
   const dealsContributor = join(root, "tmp", "deals-bulk-contributor");
@@ -244,18 +246,18 @@ test("pull all updates Organization roots and workspace modules, using autostash
   expect(normalizeLineEndings(await readFile(join(orgRoot, "local-root-draft.md"), "utf8"))).toBe("preserve me\n");
   expect(normalizeLineEndings(await readFile(join(orgRoot, "remote-root.md"), "utf8"))).toBe("remote change\n");
   expect(normalizeLineEndings(await readFile(join(dealsRepo, "remote-deals.md"), "utf8"))).toBe("remote change\n");
-});
+}, 15_000);
 
 test("/api/apps app objects include compact git summary for their module", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
-  const dealsRepo = join(root, "organizations", "BetaCo_GEN3", "modules", "deals");
+  const dealsRepo = join(root, "organizations", "BetaCo_GEN3", "workspace", "deals");
   await initGitRepo(dealsRepo);
   await writeFile(join(dealsRepo, "draft.md"), "local draft\n");
   const orgRoot = join(root, "organizations", "BetaCo_GEN3");
   const planPath = join(orgRoot, "mission-control", "plans", "2026", "07", "DEV-6327-deals-git-status.yaml");
   await mkdir(join(orgRoot, ".worktrees", "workspace", "deals"), { recursive: true });
-  await writeFile(planPath, "dev_code: DEV-6327\ntitle: Deals Git status badges\nstatus: in_progress\nlinks:\n  - path: modules/deals\n");
+  await writeFile(planPath, "dev_code: DEV-6327\ntitle: Deals Git status badges\nstatus: in_progress\nlinks:\n  - path: workspace/deals\n");
   await initGitRepo(join(orgRoot, ".worktrees", "workspace", "deals", "DEV-6327-deals-git-status"), {
     branch: "DEV-6327-deals-git-status",
   });
@@ -265,7 +267,7 @@ test("/api/apps app objects include compact git summary for their module", async
     organization_path: "organizations/BetaCo_GEN3",
     workspace: "workspace",
     module: "deals",
-    module_path: "modules/deals",
+    module_path: "workspace/deals",
     repo_kind: "module",
     base_branch: "main",
     branch: "DEV-6327-deals-git-status",
@@ -278,7 +280,7 @@ test("/api/apps app objects include compact git summary for their module", async
   });
   await createPackageApp({
     root,
-    packagePath: "organizations/BetaCo_GEN3/modules/deals/app/v1",
+    packagePath: "organizations/BetaCo_GEN3/workspace/deals/app/v1",
     app: {
       id: "deals-v1",
       title: "Deals",

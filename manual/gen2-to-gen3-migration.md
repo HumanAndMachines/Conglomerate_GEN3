@@ -151,6 +151,62 @@ personalspace mount neodhaduj z `$(id -un)`; ověř skutečnou složku.
 Do PR/Mission Control handoffu patří SHA, výsledky a klasifikace. Absolutní
 lokální cesty, bundle, credentials a raw klientská data zůstávají mimo Git.
 
+### Povinná local-data preservation gate před smazáním GEN2 checkoutu
+
+Git inventory ani forward-port registry samy o sobě nechrání ignored/untracked
+soubory, lokální Git refs a stashe, nested repozitáře, klientské checkouty,
+runtime data nebo secrets. Před jakýmkoliv smazáním GEN2 použij generický
+metadata-only nástroj z Conglomerate rootu:
+
+```bash
+ARCHIVE="${ROOT}/personalspace/${PS_HANDLE}_GEN3/migration-archive/${ORG}_GEN2-${STAMP}"
+
+# Dry-run; stdout neobsahuje file contents, secret values ani remote credentials.
+bun run preserve:gen2-local -- inventory \
+  --source "$GEN2"
+
+# Apply je explicitní, nikdy nemaže ani nepřejmenovává source. Na macOS/APFS
+# vyžaduje ověřený clone-on-write copy, takže lze bezpečně preservovat i strom
+# větší než aktuální volné místo bez dočasné plné duplikace bloků. Na Linuxu
+# nejdřív ručně ověř dostatek volného místa a přidej explicitní
+# --allow-full-copy; policy failure před startem kopie prázdný destination uklidí.
+# Windows zatím podporuje pouze read-only inventory. Apply i verify fail-closed
+# odmítnou běh, dokud nebude publikovaný ACL-preserving copy/verification
+# adapter; POSIX chmod ani /bin/cp se na Windows nesmějí vydávat za privacy gate.
+bun run preserve:gen2-local -- apply \
+  --source "$GEN2" \
+  --destination "$ARCHIVE" \
+  --personalspace-root "${ROOT}/personalspace/${PS_HANDLE}_GEN3"
+
+# Opakovatelný exact verification gate.
+bun run preserve:gen2-local -- verify \
+  --source "$GEN2" \
+  --destination "$ARCHIVE" \
+  --personalspace-root "${ROOT}/personalspace/${PS_HANDLE}_GEN3"
+```
+
+`apply` i oba `verify` běhy musí používat stejný commitnutý verifier head.
+`manifest.json` a `SUCCESS.json` proto nesou `verifier.git_head` a
+`verifier.script_sha256`; změna verifieru po `apply` zneplatní archive pro
+mazací gate a vyžaduje nový `apply` do nového destination. Git fsmonitor IPC,
+raw index/shared-index a lock files jsou explicitně normalizované runtime
+metadata; ostatní private `.git` metadata se obsahově hashují.
+
+Nástroj uchovává kompletní fallback kopii a lokální evidence pod modem `0700`;
+manifest/success marker mají `0600`. Existující destination, symlink escape,
+cíl pod `organizations/`, externí/absolutní `.git` pointer, chybějící
+clone-on-write podpora nebo jakýkoliv drift jsou hard failure. Verification
+porovnává path-level Git status hash, refs/stashe a pro každý nested repo spouští
+`git -c core.commitGraph=false fsck --connectivity-only --no-dangling`, takže
+stale derived commit-graph neblokuje kontrolu a nechybějící worktree soubory samy o sobě
+nemohou vytvořit falešně zelený archive bez Git objektů. `ClientCompanies/`
+zůstává pouze v quarantined osobním
+archivu: není to aktivovaná Organization a nesmí se automaticky kopírovat do
+Rozjedeme-ai `workspace/` ani `productionspace/`. Aktivace konkrétních dat do
+GEN3 je samostatný, reviewovaný owner-repo krok. Ani zelený `SUCCESS.json`
+neopravňuje Agenta smazat GEN2; destruktivní delete stále vyžaduje explicitní
+pokyn Principála v aktuálním threadu.
+
 ## Fáze 0 — preflight a přesný source snapshot
 
 1. Přečti `AGENTS.md` Conglomerate rootu, GEN2 repa a případných nested rep,
