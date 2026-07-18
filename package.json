@@ -3,14 +3,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "bun test scripts && bun run --cwd launchpad check",
+    "check": "bun test scripts && bun run worktrees:test && bun run --cwd launchpad check",
     "doctor": "bun run --cwd launchpad doctor",
     "doctor:json": "bun run --cwd launchpad doctor:json",
     "launchpad": "bun run --cwd launchpad launch",
     "launchpad:dev": "bun run --cwd launchpad dev",
     "personalspace:create": "bun scripts/create-personalspace.mjs",
-    "check:strict": "bun test scripts && bun run --cwd launchpad check:strict",
+    "check:strict": "bun test scripts && bun run worktrees:test && bun run --cwd launchpad check:strict",
     "install:windows-shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File ./Install-LaunchpadShortcut.ps1",
-    "sync:gen2-gen3:inventory": "bun scripts/gen2-gen3-sync-inventory.mjs"
+    "sync:gen2-gen3:inventory": "bun scripts/gen2-gen3-sync-inventory.mjs",
+    "worktrees:status": "bun .agents/skills/worktree-development-discipline/scripts/worktree-inventory.mjs",
+    "worktrees:check": "bun .agents/skills/worktree-development-discipline/scripts/worktree-inventory.mjs --check",
+    "worktrees:test": "bun test scripts/worktree-inventory.contract.test.mjs"
   }
 }
