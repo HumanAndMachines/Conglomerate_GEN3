@@ -89,7 +89,7 @@ test("identity endpoint is local-only and a foreign root cannot reuse the port",
   expect(await new Response(otherRootLauncher.stderr).text()).toContain("EADDRINUSE");
 });
 
-test("PORT environment configuration is explicit and never falls forward silently", async () => {
+test("PORT environment configuration is implicit and falls forward to a free port", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const blocker = createServer();
@@ -99,18 +99,46 @@ test("PORT environment configuration is explicit and never falls forward silentl
   });
   const { port } = blocker.address();
 
+  const launcher = Bun.spawn(["bun", "src/server.mjs", "--root", root], {
+    cwd: join(import.meta.dirname, ".."),
+    env: { ...process.env, PORT: String(port) },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  servers.push(launcher);
+
   try {
-    const launcher = Bun.spawn(["bun", "src/server.mjs", "--root", root], {
-      cwd: join(import.meta.dirname, ".."),
-      env: { ...process.env, PORT: String(port) },
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    expect(await launcher.exited).not.toBe(0);
-    expect(await new Response(launcher.stderr).text()).toContain("EADDRINUSE");
+    const actualPort = await Promise.race([
+      readLaunchpadPort(launcher),
+      Bun.sleep(5_000).then(() => {
+        throw new Error("Launchpad s implicitním PORT nenastartoval na fallback portu");
+      }),
+    ]);
+    expect(actualPort).not.toBe(port);
+    await waitForHealth(actualPort, launcher);
   } finally {
     await new Promise((resolve) => blocker.close(resolve));
   }
+});
+
+test("explicit --port without a value fails during argument parsing", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const launcher = Bun.spawn(["bun", "src/server.mjs", "--root", root, "--port"], {
+    cwd: join(import.meta.dirname, ".."),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  const outcome = await Promise.race([
+    launcher.exited,
+    Bun.sleep(3_000).then(() => "timeout"),
+  ]);
+  if (outcome === "timeout") launcher.kill();
+
+  expect(outcome).not.toBe("timeout");
+  expect(outcome).not.toBe(0);
+  expect(await new Response(launcher.stderr).text()).toContain("Chybí hodnota pro --port");
 });
 
 test("organization branding serves local logos and design-system themes without symlink escapes", async () => {
@@ -345,6 +373,26 @@ test("Launchpad server creates and publishes a Mission-Control-owned worktree vi
     published.commit.sha,
   );
 });
+
+async function readLaunchpadPort(server) {
+  const reader = server.stdout.getReader();
+  const decoder = new TextDecoder();
+  let output = "";
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (value) output += decoder.decode(value, { stream: true });
+      const match = output.match(/Launchpad GEN3 běží na http:\/\/127\.0\.0\.1:(\d+)/);
+      if (match) return Number(match[1]);
+      if (done) {
+        const stderr = server.stderr ? await new Response(server.stderr).text() : "";
+        throw new Error(`Launchpad skončil před oznámením portu: ${stderr.trim()}`);
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
 
 // Spustí launchpad server na OS-přiděleném volném portu (findFreePort) místo
 // hádání z pevného rozsahu. Fixní rozsahy kolidovaly s reálnými dev servery

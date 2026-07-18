@@ -48,7 +48,7 @@ const canonicalCompaniesRoot = realpathSync(companiesRoot);
 const launchpadRootId = createHash("sha256").update(canonicalCompaniesRoot).digest("hex");
 const host = options.host ?? defaultHost;
 const port = Number(options.port ?? process.env.PORT ?? defaultPort);
-const portWasConfigured = options.port !== undefined || process.env.PORT !== undefined;
+const explicitPort = options.port !== undefined;
 const principalEmail = resolvePrincipalEmail();
 const runtimeManager = createRuntimeManager({ companiesRoot, launchpadRoot });
 const gitStatusService = createGitStatusService();
@@ -78,7 +78,7 @@ if (!allowedHosts.has(host)) {
 const startResult = await startLaunchpadWithPortPolicy({
   requestedPort: port,
   host,
-  explicitPort: portWasConfigured,
+  explicitPort,
   shouldOpen: Boolean(options.open),
   startServer,
   isRunningExpectedLaunchpad: (url) => isRunningLaunchpad(url, launchpadRootId),
@@ -327,6 +327,9 @@ function parseArgs(args) {
       continue;
     }
     if (arg === "--port") {
+      if (args[index + 1] === undefined || args[index + 1].startsWith("--")) {
+        throw new Error("Chybí hodnota pro --port.");
+      }
       parsed.port = args[index + 1];
       index += 1;
       continue;
