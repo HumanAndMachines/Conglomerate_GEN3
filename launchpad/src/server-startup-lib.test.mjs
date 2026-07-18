@@ -56,17 +56,40 @@ test("launch reuses only a same-root instance and opens it", async () => {
   ]);
 });
 
-test("launch refuses a foreign root on the requested port", async () => {
-  await expect(startLaunchpadWithPortPolicy({
+test("launch falls forward when the requested implicit port belongs to a foreign root", async () => {
+  const attempts = [];
+  const calls = [];
+  const result = await startLaunchpadWithPortPolicy({
     requestedPort: 4174,
     explicitPort: false,
+    shouldOpen: true,
+    startServer(port) {
+      attempts.push(port);
+      if (port === 4174) throw addressInUse();
+      return { port };
+    },
+    isRunningExpectedLaunchpad: async (url) => {
+      calls.push(["probe", url]);
+      return false;
+    },
+    openExisting: async () => {
+      throw new Error("must not open foreign root");
+    },
+  });
+
+  expect(attempts).toEqual([4174, 4175]);
+  expect(calls).toEqual([["probe", "http://127.0.0.1:4174"]]);
+  expect(result).toEqual({ mode: "started", server: { port: 4175 } });
+});
+
+test("explicit port with --open stays fail-closed for a foreign root", async () => {
+  await expect(startLaunchpadWithPortPolicy({
+    requestedPort: 4174,
+    explicitPort: true,
     shouldOpen: true,
     startServer() {
       throw addressInUse();
     },
     isRunningExpectedLaunchpad: async () => false,
-    openExisting: async () => {
-      throw new Error("must not open");
-    },
   })).rejects.toMatchObject({ code: "EADDRINUSE" });
 });

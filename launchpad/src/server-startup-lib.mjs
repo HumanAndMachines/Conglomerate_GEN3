@@ -23,10 +23,10 @@ export async function startLaunchpadWithPortPolicy({
           await openExisting(requestedUrl);
           return { mode: "reused", url: requestedUrl };
         }
-        throw error;
+        if (explicitPort) throw error;
       }
 
-      if (explicitPort || shouldOpen || candidatePort >= 65_535) throw error;
+      if (explicitPort || candidatePort >= 65_535) throw error;
       candidatePort += 1;
     }
   }
