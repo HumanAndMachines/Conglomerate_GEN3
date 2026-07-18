@@ -7,6 +7,7 @@ steward:
   github_login: replace-me
   role: organization-steward
 github_organizations:
+  # Exactly one Organization per materialized policy file.
   - ReplaceMe
 workspace_roots:
   gen3: /absolute/path/to/Conglomerate/organizations/ReplaceMe_GEN3
@@ -15,6 +16,7 @@ scope:
   # Materialize from an Organization Admin/governance source. Empty or placeholder
   # rosters are BLOCKED before mutation. Keep owner/no-touch lanes in the roster.
   organization_repository_rosters:
+    # Exactly one roster matching github_organizations[0].
     - github_organization: ReplaceMe
       source: replace-with-authoritative-organization-governance-roster
       required_repositories:
@@ -26,6 +28,7 @@ routing:
 reporting:
   mode: mission-control-steward-reporting
   organization_reports:
+    # Exactly one Organization-local report entry matching this policy.
     - organization_slug: replace-me
       github_organization: ReplaceMe
       steward_seat: replace-me-steward
