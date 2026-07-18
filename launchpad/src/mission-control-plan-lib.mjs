@@ -1,7 +1,11 @@
 import { existsSync } from "fs";
 import { readFile, readdir, realpath } from "fs/promises";
-import { basename, join, posix, relative, resolve, sep } from "path";
+import { basename, join, posix, relative, resolve } from "path";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
+import {
+  inspectCanonicalPathBoundary,
+  isPathDescendant,
+} from "./path-boundary-lib.mjs";
 
 // Mission Control v3 keeps its canonical filesystem database in a nested
 // organization-local data checkout. The legacy root remains readable during
@@ -25,11 +29,19 @@ export async function buildMissionControlPlanIndex({ companiesRoot, organization
     } catch {
       continue;
     }
-    if (!isPathInside(realCompaniesRoot, realOrganizationRoot)) continue;
+    if (!isPathDescendant(realCompaniesRoot, realOrganizationRoot)) continue;
     for (const planRoot of missionControlPlanRoots) {
       const plansRoot = join(companiesRoot, org.path, planRoot);
       if (!existsSync(plansRoot)) continue;
-      for (const file of await walkFiles(plansRoot)) {
+      const plansBoundary = await inspectCanonicalPathBoundary({
+        rootPath: join(companiesRoot, org.path),
+        rootRealPath: realOrganizationRoot,
+        targetPath: plansRoot,
+      });
+      if (!plansBoundary.ok) continue;
+      for (const file of await walkFiles(plansRoot, {
+        rootRealPath: plansBoundary.targetRealPath,
+      })) {
         if (!file.endsWith(".yaml") && !file.endsWith(".yml")) continue;
         const text = await readFile(file, "utf8");
         const plan = parsePlanFile({ companiesRoot, organization: org, file, text, module });
@@ -54,12 +66,12 @@ export async function readMissionControlPlanAt({ companiesRoot, organizationPath
 
   const absoluteCompaniesRoot = resolve(companiesRoot);
   const organizationRoot = resolve(absoluteCompaniesRoot, organizationPath);
-  if (!isPathInside(absoluteCompaniesRoot, organizationRoot)) return null;
+  if (!isPathDescendant(absoluteCompaniesRoot, organizationRoot)) return null;
 
   const planRoot = missionControlPlanRoots.find((root) => planPath.startsWith(`${root}/`));
   const absolutePlanRoot = resolve(organizationRoot, planRoot);
   const absolutePath = resolve(organizationRoot, planPath);
-  if (!isPathInside(absolutePlanRoot, absolutePath)) return null;
+  if (!isPathDescendant(absolutePlanRoot, absolutePath)) return null;
   if (!existsSync(absolutePath)) return null;
 
   // Reject symlink escapes as well as lexical traversal. Nested data repos are
@@ -72,9 +84,9 @@ export async function readMissionControlPlanAt({ companiesRoot, organizationPath
       realpath(absolutePlanRoot),
       realpath(absolutePath),
     ]);
-    if (!isPathInside(realCompaniesRoot, realOrganizationRoot)) return null;
-    if (!isPathInside(realOrganizationRoot, realPlanRoot)) return null;
-    if (!isPathInside(realPlanRoot, realPlanPath)) return null;
+    if (!isPathDescendant(realCompaniesRoot, realOrganizationRoot)) return null;
+    if (!isPathDescendant(realOrganizationRoot, realPlanRoot)) return null;
+    if (!isPathDescendant(realPlanRoot, realPlanPath)) return null;
   } catch {
     return null;
   }
@@ -135,12 +147,25 @@ function stripYamlScalar(raw) {
   return raw.replace(/\s+#.*$/, "").trim();
 }
 
-async function walkFiles(root) {
+async function walkFiles(root, { rootRealPath }) {
   const output = [];
   async function walk(current) {
+    const directoryBoundary = await inspectCanonicalPathBoundary({
+      rootPath: root,
+      rootRealPath,
+      targetPath: current,
+      allowTargetEqual: true,
+    });
+    if (!directoryBoundary.ok) return;
     const entries = await readdir(current, { withFileTypes: true });
     for (const entry of entries) {
       const path = join(current, entry.name);
+      const entryBoundary = await inspectCanonicalPathBoundary({
+        rootPath: root,
+        rootRealPath,
+        targetPath: path,
+      });
+      if (!entryBoundary.ok) continue;
       if (entry.isDirectory()) {
         await walk(path);
       } else if (entry.isFile()) {
@@ -150,10 +175,6 @@ async function walkFiles(root) {
   }
   await walk(root);
   return output;
-}
-
-function isPathInside(parent, candidate) {
-  return candidate.startsWith(`${parent}${sep}`);
 }
 
 function uniqueOrganizations(repos) {
