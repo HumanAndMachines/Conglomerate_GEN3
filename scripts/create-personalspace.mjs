@@ -14,27 +14,18 @@ export function parseCreateArgs(argv) {
     ownerType: "human",
     login: null,
     gbrainRepo: null,
-    withBuddy: false,
-    buddyRepo: null,
     installGbrain: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--apply") options.apply = true;
     else if (arg === "--install-gbrain") options.installGbrain = true;
-    else if (arg === "--with-buddy") options.withBuddy = true;
     else if (arg === "--display-name") options.displayName = requireValue(argv, ++index, arg);
     else if (arg === "--owner-type") options.ownerType = requireValue(argv, ++index, arg);
     else if (arg === "--login") options.login = requireValue(argv, ++index, arg);
     else if (arg === "--gbrain-repo") options.gbrainRepo = requireValue(argv, ++index, arg);
-    else if (arg === "--buddy-repo") options.buddyRepo = requireValue(argv, ++index, arg);
     else if (arg === "--help" || arg === "-h") options.help = true;
     else throw new Error(`Neznámý argument: ${arg}`);
-  }
-  if (options.withBuddy && options.installGbrain) {
-    throw new Error(
-      "--install-gbrain nelze kombinovat s --with-buddy; Buddy-enabled lokální tok připravuje pouze Git zdroje a runtime se aktivuje až na VPS.",
-    );
   }
   return options;
 }
@@ -79,33 +70,6 @@ export function validateGbrainRepoOption(login, value) {
   return issues;
 }
 
-export function validateBuddyRepoOption(login, value, gbrainRepo = null) {
-  if (!value) return [];
-  const normalized = String(value).trim().replace(/\.git$/i, "");
-  const parts = normalized.split("/");
-  const ownerRepo = `${login}/${login}_GEN3`;
-  const effectiveGbrainRepo = String(gbrainRepo ?? `${login}/${login}-gbrain`)
-    .trim()
-    .replace(/\.git$/i, "");
-  const issues = [];
-  if (parts.length !== 2 || parts.some((part) => part === "")) {
-    issues.push("--buddy-repo musí mít tvar <login>/<repo>");
-    return issues;
-  }
-  if (parts[0].toLowerCase() !== login.toLowerCase()) {
-    issues.push("--buddy-repo musí patřit přihlášenému GitHub účtu");
-  }
-  if (!/^[A-Za-z0-9_.-]+$/.test(parts[1])) {
-    issues.push("--buddy-repo obsahuje neplatný název repozitáře");
-  }
-  if (
-    normalized.toLowerCase() === ownerRepo.toLowerCase()
-    || normalized.toLowerCase() === effectiveGbrainRepo.toLowerCase()
-  ) {
-    issues.push("--buddy-repo musí být jiné repo než Personalspace owner a gbrain repo");
-  }
-  return issues;
-}
 
 function requireValue(argv, index, option) {
   const value = argv[index];
@@ -117,7 +81,7 @@ function usage() {
   console.log(`Použití:
   bun run personalspace:create -- --display-name "<jméno>"
       [--owner-type human|ai-colleague] [--gbrain-repo <login>/<repo>]
-      [--install-gbrain | --with-buddy [--buddy-repo <login>/<repo>]]
+      [--install-gbrain]
       [--apply]
 
 Bez --apply proběhne pouze read-only GitHub a lokální preflight.`);
@@ -248,12 +212,6 @@ export async function createPersonalspace(options, { root = process.cwd() } = {}
   const gbrainRepoIssues = validateGbrainRepoOption(login, options.gbrainRepo);
   if (gbrainRepoIssues.length > 0) throw new Error(gbrainRepoIssues.join("; "));
   const gbrainRepo = options.gbrainRepo ?? `${login}/${login}-gbrain`;
-  if (options.buddyRepo && !options.withBuddy) {
-    throw new Error("--buddy-repo lze použít pouze společně s --with-buddy.");
-  }
-  const buddyRepo = options.buddyRepo ?? `${login}/${login}-buddy`;
-  const buddyRepoIssues = validateBuddyRepoOption(login, buddyRepo, gbrainRepo);
-  if (buddyRepoIssues.length > 0) throw new Error(buddyRepoIssues.join("; "));
 
   const template = repoInfo(PERSONALSPACE_TEMPLATE, conglomerateRoot);
   if (String(template.visibility).toLowerCase() !== "public" || template.isTemplate !== true) {
@@ -276,11 +234,7 @@ export async function createPersonalspace(options, { root = process.cwd() } = {}
   if (ownerInfo) assertPrivate(ownerInfo, repo);
   const gbrainInfo = repoInfo(gbrainRepo, conglomerateRoot, { allowMissing: true });
   if (gbrainInfo) assertPrivate(gbrainInfo, gbrainRepo);
-  let buddyInfo = null;
-  if (options.withBuddy) {
-    buddyInfo = repoInfo(buddyRepo, conglomerateRoot, { allowMissing: true });
-    if (buddyInfo) assertPrivate(buddyInfo, buddyRepo);
-  }
+
   if (existsSync(target)) {
     if (!existsSync(join(target, ".git"))) throw new Error(`${target} existuje, ale není Git checkout.`);
     const remote = run("git", ["config", "--get", "remote.origin.url"], { cwd: target }).stdout;
@@ -297,11 +251,7 @@ export async function createPersonalspace(options, { root = process.cwd() } = {}
   console.log(`- owner repo: ${repo} (${ownerInfo ? "private, existuje" : "bude vytvořeno jako private"})`);
   console.log(`- gbrain repo: ${gbrainRepo} (${gbrainInfo ? "private, existuje" : "bude vytvořeno jako private"})`);
   console.log(`- mount: personalspace/${login}_GEN3`);
-  console.log(
-    options.withBuddy
-      ? `- Buddy profile repo: ${buddyRepo} (${buddyInfo ? "private, existuje" : "bude vytvořeno jako private"}); runtime pouze na dedikované VPS, localhost zakázán`
-      : "- Buddy: přeskočen; lze jej doplnit později přes --with-buddy",
-  );
+  console.log("- Buddy: PENDING CAC-0072; tento live příkaz Buddy repo ani runtime nevytváří");
   if (!options.apply) {
     if (ownerInfo) {
       console.log("- apply gate: existující repo se automaticky nespouští; použij kontrolovaný resume postup v manuálu");
@@ -354,8 +304,6 @@ export async function createPersonalspace(options, { root = process.cwd() } = {}
     "--apply",
   ];
   if (options.gbrainRepo) bootstrapArgs.push("--gbrain-repo", options.gbrainRepo);
-  if (options.withBuddy) bootstrapArgs.push("--with-buddy");
-  if (options.buddyRepo) bootstrapArgs.push("--buddy-repo", options.buddyRepo);
   if (options.installGbrain) bootstrapArgs.push("--install-gbrain");
   run("bun", bootstrapArgs, { cwd: target, inherit: true });
   return { applied: true, login, repo, target };

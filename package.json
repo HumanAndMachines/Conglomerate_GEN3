@@ -10,6 +10,7 @@
     "launchpad:dev": "bun run --cwd launchpad dev",
     "personalspace:create": "bun scripts/create-personalspace.mjs",
     "check:strict": "bun test scripts && bun run --cwd launchpad check:strict",
+    "install:windows-shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File ./Install-LaunchpadShortcut.ps1",
     "sync:gen2-gen3:inventory": "bun scripts/gen2-gen3-sync-inventory.mjs"
   }
 }

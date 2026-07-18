@@ -1,8 +1,10 @@
 # Vytvoření vlastního Personalspace GEN3
 
 Personalspace je integrální privátní vrstva Conglomerate GEN3. Conglomerate je
-veřejný direct-pull framework a není GitHub template; pro osobní repo slouží
-public `HumanAndMachines/PersonalspaceTemplate_GEN3`.
+veřejný direct-pull framework a není GitHub template; pro osobní repo je
+připravený `HumanAndMachines/PersonalspaceTemplate_GEN3`. Dokud jeho
+public-readiness audit drží visibility `private`, root příkaz fail-closed nic
+nevytvoří. Public použití začíná až explicitním publication gatem.
 
 Výstupem jsou dva samostatné private repozitáře na osobním GitHub účtu:
 
@@ -14,14 +16,16 @@ Výstupem jsou dva samostatné private repozitáře na osobním GitHub účtu:
 První je katalog a privacy kontrakt Personalspace, druhý drží pouze soukromou
 Markdown paměť. Software se instaluje z veřejného `garrytan/gbrain`.
 
-Pokud vlastník současně onboarduje Buddyho, přidá se třetí private repo:
+Schválený target-state pro pozdější Buddy onboarding přidává třetí private
+repo:
 
 ```text
 <login>/<login>-buddy
 ```
 
 Je to secret-free Hermes Profile Distribution, nikoli runtime backup nebo
-fork Hermes softwaru.
+fork Hermes softwaru. Tato akční varianta je ale **PENDING `CAC-0072`** a
+současný live příkaz ji nevytváří.
 
 ## Self-service
 
@@ -32,16 +36,13 @@ gh auth status
 bun run personalspace:create -- --display-name "<jméno>"
 ```
 
+Preflight musí potvrdit `visibility=public` a `isTemplate=true`. Dnešní
+nepublikovaný template proto očekávaně skončí chybou před jakýmkoli zápisem.
+
 Po kontrole proveď vytvoření a instalaci:
 
 ```text
 bun run personalspace:create -- --display-name "<jméno>" --apply --install-gbrain
-```
-
-Varianta s Buddym:
-
-```text
-bun run personalspace:create -- --display-name "<jméno>" --with-buddy --apply
 ```
 
 Stejný příkaz funguje v macOS/Linux shellu i Windows PowerShellu; implementace
@@ -57,9 +58,7 @@ Bootstrap živě ověří:
 - nepřítomnost `.gitmodules` a gitlinků;
 - manifest bez povinného Buddyho;
 - oddělení veřejného gbrain software od private Markdown dat;
-- s `--with-buddy` také private `<login>-buddy`, gitignored `buddy/` mount,
-  Hermes Profile Distribution, nepřítomnost Hermes secrets/runtime dat a
-  VPS-only runtime invariant.
+- že nepublikovaný `--with-buddy` adapter je odmítnut jako neznámý argument.
 
 `--install-gbrain` instaluje pouze CLI. Gbrain inicializace, API/embedding
 provider a search režim mají privacy i nákladový dopad, proto zůstávají
@@ -68,17 +67,12 @@ vědomým rozhodnutím vlastníka. Navazující přesný postup je v
 upstream
 [`INSTALL_FOR_AGENTS.md`](https://github.com/garrytan/gbrain/blob/master/INSTALL_FOR_AGENTS.md).
 
-Pro Personalspace bez Buddyho může být tato lokální aktivace záměrná. Varianta
-`--with-buddy` ale na pracovní stanici gbrain ani Hermes runtime neaktivuje:
-`buddy.runtime.deployment_target` musí být
-`owner-dedicated-personalspace-vps` a `buddy.runtime.local_execution` musí být
-`forbidden`. Lokální Launchpad nenabízí Buddy Install/Start/Stop/Restart ani
-fallback. Kombinaci `--with-buddy --install-gbrain` CLI odmítne jako chybu.
-
-Pro owner + platform-operator handoff na dedicated VPS pokračuj v
-`personalspace/<login>_GEN3/manual/host-personalspace-with-buddy.md`. Reálný
-VPS deploy zůstává za explicitním cloud/DNS/access/provider gatem a nesmí
-použít placeholder Hermes seam jako hotový runtime.
+Pro Personalspace bez Buddyho může být tato lokální aktivace záměrná. Buddy
+varianta dnes není live: parser odmítá už samotný `--with-buddy`, nevytváří
+třetí repo a negeneruje VPS handoff. Cílový `CAC-0072` kontrakt bude vyžadovat
+`buddy.runtime.deployment_target: owner-dedicated-personalspace-vps` a
+`buddy.runtime.local_execution: forbidden`; reálný cloud/DNS/access/provider
+krok zůstane explicitním human-action gatem.
 
 ## Když owner repo už existuje
 
@@ -87,7 +81,7 @@ nedokazuje původ repa a není oprávněním ke spuštění jeho kódu.
 
 Nová instance musí mít marker `personalspace.template.json` s verzí
 `humanandmachines.personalspace-template.v1`. Zkontroluj marker a bootstrap
-skripty proti aktuálnímu public template, spusť jeho `bun run check` a až potom
+skripty proti aktuálnímu template, spusť jeho `bun run check` a až potom
 pokračuj uvnitř owner checkoutu podle jeho manuálu.
 
 Repo bez markeru je legacy instance. Nematerializuj mu nové hodnoty tichým

@@ -73,9 +73,14 @@ Deklarace v manifestu je autorita pro grupování aplikací do Workspaces:
   podle deklarace.
 - `productionspace` je rezervovaný slug: nesmí být položkou `workspaces[]`
   ani hodnotou `modules[].workspace`. Productionspace repozitáře určuje cesta
-  `productionspace/*` a Launchpad je zobrazuje read-only, bez lifecycle akcí.
-- Konflikty deklarace vs. realita hlásí Doctor check
+  `productionspace/*` a Launchpad je zobrazuje read-only, bez lifecycle akcí;
+  fyzická path boundary má přednost i před konfliktním `space`.
+- Konflikt explicitního `space` s fyzickou path boundary je blokující Doctor
+  chyba. Ostatní přechodové konflikty deklarace vs. realita hlásí Doctor check
   `launchpad.workspace_declarations` jako warn.
+- Neúplný aktivní Organization root slot bez celého `git.url` + `git.branch`
+  se do akčního git/worktree inventáře vůbec nedostane; root branch se nikdy
+  nedoplňuje z Organization defaultu.
 
 Module sloty z manifestu mají readiness stav (decision 0042):
 
@@ -142,7 +147,7 @@ Aplikace deklaruje vlastní port ve svém `package.json`:
       "schema_version": "companyascode.launchpad_app.v1",
       "id": "exampleorg-deals-v2",
       "title": "Deals",
-      "company": "exampleorg",
+      "company": "ExampleOrg",
       "module": "deals",
       "surface": "internal",
       "port": 4301,
@@ -163,9 +168,11 @@ V multi-company rootu platí:
 - `companyascode.app.company` musí odpovídat čistému `organizations[].slug`, pod
   kterým aplikace leží. Fyzická cesta smí mít přechodový generační suffix,
   například `organizations/ExampleOrg_GEN3`, ale app manifest dál používá
-  čistou identitu `ExampleOrg`.
-- `companyascode.app.id` musí být unikátní v celém Launchpad GEN3 root.
-- doporučený tvar ID je `<company-slug>-<module-or-app>-<version>`.
+  čistou proper-case identitu `ExampleOrg`; shoda je case-sensitive.
+- `companyascode.app.id` musí být unikátní v celém Launchpad GEN3 rootu a
+  používat lowercase kebab tvar.
+- doporučený tvar ID je
+  `<lowercase-company-slug>-<module-or-app>-<version>`.
 - port namespace je společný pro celý Launchpad GEN3 root.
 - port collision je fail-closed invariant: runtime nikdy tiše nepřepne aplikaci
   na jiný port. Discovery ale staví computed port ownership index a u duplicate
@@ -521,7 +528,13 @@ Doctor musí hlídat:
 - u Organizací, které přijaly agent-skills entrypoint kontrakt, že
   `.claude/skills` přes `realpath` míří na kanonické `.agents/skills`; shared
   Doctor nikdy nespouští Organization skript ani nematerializuje odkaz, pouze
-  vrací `ok`, `repair_needed` nebo `blocked`
+  vrací `ok`, `repair_needed` nebo `blocked`; explicitní capability mode
+  `codex-only` lze pro lokální Doctor nastavit přes
+  `COMPANYASCODE_AGENT_CAPABILITY_MODE=codex-only`. Jen v tomto režimu je na
+  Windows chybějící odkaz nebo jeho textový Git placeholder stav `ok`, protože
+  Codex čte přímo `.agents/skills`. V bezpečném výchozím režimu
+  `claude-compatible` zůstává entrypoint vyžadovaný; skutečná druhá složka
+  je blokovaná v obou režimech
 
 Když Doctor selže, chyba má být napsaná tak, aby ji mohl opravit další
 agent bez znalosti historie.

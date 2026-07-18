@@ -46,29 +46,22 @@ Lokální mount je `personalspace/<github-login>_GEN3/`. Gbrain software se
 instaluje z veřejného `garrytan/gbrain`, ale osobní Markdown paměť patří do
 odděleného privátního data repa vlastníka mountovaného v `gbrain/`. Detailní
 custody a agentní pravidla drží [personalspace/README.md](personalspace/README.md);
-navržený upstream model drží HumanAndMachines decision 0079 v dosud otevřeném
-PR `Rozjedeme-ai/HumanAndMachines#185`. Kanonickým source of truth se stane až
-po merge upstreamu; tento PR drží závislou implementaci reviewovatelnou
-odděleně. Implementační self-service runbook je
+kanonický upstream model drží HumanAndMachines decisions 0079/0080 na `main`.
+Implementační self-service runbook je
 [manual/create-personalspace.md](manual/create-personalspace.md).
 
-Po zveřejnění template spustí vlastník z tohoto rootu:
+Root příkaz je připravený fail-closed. Dokud upstream public-readiness audit
+drží template jako private, zastaví se ještě v preflightu a nic nevytvoří. Až
+po explicitním publication gatu template spustí vlastník no-Buddy tok:
 
 ```text
 bun run personalspace:create -- --display-name "<jméno>" --apply --install-gbrain
 ```
 
-Pro třírepo onboarding s private Hermes profilem Buddyho:
-
-```text
-bun run personalspace:create -- --display-name "<jméno>" --with-buddy --apply
-```
-
-Tato varianta lokálně pouze vytvoří tři private Git zdroje. Buddy ani jeho
-aktivní gbrain MCP se na localhostu nespouštějí: manifest vyžaduje
-`deployment_target: owner-dedicated-personalspace-vps` a
-`local_execution: forbidden`. Aktivace pokračuje výhradně na dedikované VPS
-vlastníka podle vygenerovaného hosted runbooku.
+Třírepo onboarding s private Hermes profilem Buddyho zůstává **PENDING
+`CAC-0072`**. Live root parser `--with-buddy` odmítá jako neznámý argument a
+nesmí tvrdit vytvoření Buddy repa ani VPS handoffu, dokud nebude samostatný
+adapter publikovaný a cross-repo otestovaný.
 
 ## Hlavní pojmy
 
@@ -121,6 +114,33 @@ patří do `templates/`, ne jako submodule pod `organizations/`.
 bun run launchpad
 bun run check
 bun run doctor
+```
+
+### Windows: Start Menu a hlavní panel
+
+Sdílený Launchpad lze na Windows nainstalovat jako uživatelskou zkratku bez
+administrátorských práv:
+
+```powershell
+bun run install:windows-shortcut
+```
+
+Instalátor vytvoří položku `HumanAndMachine Launchpad GEN3` ve Start Menu,
+nastaví pracovní složku na tento Conglomerate root, použije dodanou ikonu a
+požádá Windows o připnutí na hlavní panel. Existující aktivní zkratku
+se stejným názvem instalátor nahradí; její původní podobu nejdřív zachová
+v oddělené záloze pro Start Menu nebo taskbar pod
+`%LOCALAPPDATA%\HumanAndMachine\Launchpad\shortcut-backups\<timestamp>`.
+
+Windows 11 může programové připnutí na hlavní panel podle místní policy
+odmítnout. V takovém případě zůstane ověřená položka ve Start Menu: vyhledej
+`HumanAndMachine Launchpad GEN3`, klikni pravým tlačítkem a zvol
+**Připnout na hlavní panel**. Instalátor nevypíná ani nemaže starší launchery.
+
+Jen Start Menu bez pokusu o připnutí:
+
+```powershell
+& .\Install-LaunchpadShortcut.ps1 -StartMenuOnly
 ```
 
 Launchpad manifesty a aplikace se objevují z Organizací auto-discovernutých skenem `organizations/*/company.gen3.json`; `launchpad.gen3.json` k tomu drží jen sdílená root metadata a `planned` sloty jdou per-machine do gitignored `launchpad.gen3.local.json`.

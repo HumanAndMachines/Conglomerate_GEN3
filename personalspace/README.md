@@ -86,26 +86,19 @@ Cross-platform automatizaci drží root příkaz:
 bun run personalspace:create -- --display-name "<jméno>" --apply --install-gbrain
 ```
 
+Příkaz před zápisem vyžaduje public + `isTemplate=true` upstream. Dokud
+public-readiness audit drží template jako private, fail-closed skončí v
+preflightu a nevytvoří žádný osobní repozitář ani checkout.
+
 Detail a recovery jsou v `manual/create-personalspace.md`; pilot Matouše
 a cross-platform evidence drží `CAC-0071`.
 
-Vlastník s Buddym použije `--with-buddy`. Tím vznikne třetí private repo
-`<username>/<username>-buddy` a kanonický hosted handoff vygenerovaného
-Personalspace drží `manual/host-personalspace-with-buddy.md`. Sdílený runtime
-zůstává v `HumanAndMachines/Buddy`, Hermes software v
-`NousResearch/hermes-agent`.
-
-Pro hosted variantu spusť:
-
-```text
-bun run personalspace:create -- --display-name "<jméno>" --with-buddy --apply
-```
-
-Manifest fail-closed vyžaduje
-`deployment_target: owner-dedicated-personalspace-vps` a
-`local_execution: forbidden`. Launchpad může zobrazit hosted stav/odkaz, ale
-nesmí Buddyho lokálně instalovat, spouštět, zastavovat ani restartovat a nemá
-localhost fallback.
+Třírepo onboarding s private Hermes profilem Buddyho zůstává **PENDING
+`CAC-0072`**. Live root parser `--with-buddy` odmítá jako neznámý argument;
+Buddy repo ani hosted handoff nevytváří. Cílový binding bude fail-closed
+vyžadovat `deployment_target: owner-dedicated-personalspace-vps` a
+`local_execution: forbidden`, ale akční surface smí vzniknout až po publikaci
+a cross-repo contract testu samostatného adapteru.
 
 Existující neversionované manifesty zůstávají přechodně čitelné s Doctor
 warningem a migrují se podle
