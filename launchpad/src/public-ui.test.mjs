@@ -256,11 +256,15 @@ test("Daily surface hides diagnostics until the hero action requests them", asyn
   expect(js).toContain("Technické detaily");
   expect(css).toContain(".detail-tech");
 
-  // The default detail view renders only identity, status and the next action.
+  // Výchozí detail ukazuje jen identitu a krátké lidské shrnutí. Diagnostika
+  // a interní akce zůstávají pod rozbalenými technickými detaily.
   const detailRender = js.slice(js.indexOf("function renderDetail("), js.indexOf("function renderDetailTech"));
+  expect(detailRender).toContain('state.drawerView === "detail"');
+  expect(detailRender).toContain('toggleAttribute("hidden", !detailOpen)');
   expect(detailRender).toContain("renderDetailHeader");
-  expect(detailRender).toContain("renderDetailStatus");
-  expect(detailRender).toContain("renderDetailNextAction");
+  expect(detailRender).toContain("renderDetailSummary");
+  expect(detailRender).not.toContain("renderDetailStatus");
+  expect(detailRender).not.toContain("renderDetailNextAction");
   expect(detailRender).not.toContain("renderDetailEndpoint");
   expect(detailRender).not.toContain("renderDetailPaths");
 });
@@ -372,6 +376,8 @@ test("CAC-0044: pravé panely Poslední změny + Nejčastější a git chip", as
   // Render funkce + data loading.
   expect(js).toContain("function renderRecentModules");
   expect(js).toContain("function renderMostUsed");
+  expect(js).toContain('state.drawerView = "detail"');
+  expect(js).toContain('elements.mostUsedPanel?.toggleAttribute("hidden", detailOpen)');
   expect(js).toContain("function openRecentModuleModal");
   expect(js).toContain("/api/recent-changes");
   expect(js).toContain("/api/most-used");
@@ -419,6 +425,12 @@ test("CAC-0044: step-005 aktivuje Ukázat změny a guarded Stáhnout novější 
   expect(js).toContain("function pullLatestRepoVersion");
   expect(js).toContain("/changes");
   expect(js).toContain("/pull");
+  expect(js).toContain("`Nová verze - ${incoming} změn`");
+  expect(js).toContain('actionLabel: "Stáhnout"');
+  expect(js).toContain('actionStyle: "secondary"');
+  expect(js).toContain('title: "Změny k odeslání"');
+  expect(js).toContain('warning.actionStyle === "secondary"');
+  expect(js).not.toContain("Můžeš ji bezpečně stáhnout (fast-forward).");
   expect(js).toContain("git.status === \"pull_available\"");
   expect(js).toContain("state.gitChangesByRepo");
   expect(css).toContain(".git-builder-actions");
@@ -441,6 +453,7 @@ test("Launchpad nabízí Organization root stav, autostash pull a jeden globáln
   expect(js).toContain('state.gitReposByModule.get(`${organization}::root`)');
   expect(js).toContain("function canAutostashPull");
   expect(js).toContain("Stáhnout a zachovat změny");
+  expect(js).toContain("`Nová verze - ${incoming} změn`");
   expect(js).toContain('autostash ? "pull-autostash" : "pull"');
   expect(js).toContain("function pullAllRepositories");
   expect(js).toContain('fetchJson("/api/git/pull-all", { method: "POST" })');
@@ -455,12 +468,23 @@ test("CAC-0042: detail panel vysvětluje Mission Control ownership worktrees", a
   ]);
 
   expect(js).toContain("function renderDetailMissionControlOwnership");
+  expect(js).toContain("function renderDetailSummary");
+  expect(js).toContain('"Je uložená na tomto počítači. Ostatní ji zatím nevidí."');
+  expect(js).toContain('summary.textContent = "Technické detaily"');
+  expect(js).toContain("git.repo_key");
+  expect(js).toContain("git.incomingCommitCount");
+  expect(js).toContain("git.outgoingCommitCount");
+  expect(js).toContain("git.changedFiles");
+  expect(js).toContain('app.runtime_status === "unhealthy"');
+  expect(js).toContain('["needs_install", "stale_lockfile"].includes(dependencyState)');
+  expect(js).toContain("button.disabled = pendingKey ? state.pendingAction === pendingKey : false");
   expect(js).toContain("Mission Control ownership");
   expect(js).toContain("Owned by");
   expect(js).toContain("Orphan worktree");
   expect(js).toContain("Pokračovat v plánu");
   expect(js).toContain("Přiřadit Mission Control plán");
   expect(css).toContain(".worktree-list");
+  expect(css).toContain(".detail-summary");
   expect(css).toContain(".worktree-item");
   expect(css).toContain(".worktree-item.is-orphan");
 });
@@ -826,6 +850,7 @@ test("Organization workspace má kompaktní uvítání s dynamickým názvem fir
   expect(js).toContain("`Vítejte v pracovním prostoru ${organizationName}`");
   expect(js).toContain('toggleAttribute("hidden", personal)');
   expect(css).toContain(".workspace-welcome-title");
+  expect(css).toContain("margin-top: 1.5rem");
   expect(css).toContain("font-size: 1.3rem");
   expect(css).toContain("font-weight: 720");
 });
