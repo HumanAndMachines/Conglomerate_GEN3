@@ -74,6 +74,33 @@ bun run check
 bun run doctor
 ```
 
+### Windows: Start Menu a hlavní panel
+
+Sdílený Launchpad lze na Windows nainstalovat jako uživatelskou zkratku bez
+administrátorských práv:
+
+```powershell
+bun run install:windows-shortcut
+```
+
+Instalátor vytvoří položku `HumanAndMachine Launchpad GEN3` ve Start Menu,
+nastaví pracovní složku na tento Conglomerate root, použije dodanou ikonu a
+požádá Windows o připnutí na hlavní panel. Existující aktivní zkratku
+se stejným názvem instalátor nahradí; její původní podobu nejdřív zachová
+v oddělené záloze pro Start Menu nebo taskbar pod
+`%LOCALAPPDATA%\HumanAndMachine\Launchpad\shortcut-backups\<timestamp>`.
+
+Windows 11 může programové připnutí na hlavní panel podle místní policy
+odmítnout. V takovém případě zůstane ověřená položka ve Start Menu: vyhledej
+`HumanAndMachine Launchpad GEN3`, klikni pravým tlačítkem a zvol
+**Připnout na hlavní panel**. Instalátor nevypíná ani nemaže starší launchery.
+
+Jen Start Menu bez pokusu o připnutí:
+
+```powershell
+& .\Install-LaunchpadShortcut.ps1 -StartMenuOnly
+```
+
 Launchpad manifesty a aplikace se objevují z Organizací auto-discovernutých skenem `organizations/*/company.gen3.json`; `launchpad.gen3.json` k tomu drží jen sdílená root metadata a `planned` sloty jdou per-machine do gitignored `launchpad.gen3.local.json`.
 
 ## První klientský rollout

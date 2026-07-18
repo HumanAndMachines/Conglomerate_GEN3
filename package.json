@@ -9,6 +9,7 @@
     "launchpad": "bun run --cwd launchpad launch",
     "launchpad:dev": "bun run --cwd launchpad dev",
     "check:strict": "bun run --cwd launchpad check:strict",
+    "install:windows-shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File ./Install-LaunchpadShortcut.ps1",
     "sync:gen2-gen3:inventory": "bun scripts/gen2-gen3-sync-inventory.mjs",
     "worktrees:status": "bun .agents/skills/worktree-development-discipline/scripts/worktree-inventory.mjs",
     "worktrees:check": "bun .agents/skills/worktree-development-discipline/scripts/worktree-inventory.mjs --check",
