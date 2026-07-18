@@ -1,6 +1,6 @@
 import { existsSync } from "fs";
 import { readFile, readdir } from "fs/promises";
-import { basename, join } from "path";
+import { basename, dirname, join } from "path";
 import { organizationMountStructureIssues } from "./discovery-lib.mjs";
 import {
   isCanonicalOrganizationRepositorySlotPath,
@@ -10,6 +10,10 @@ import {
   organizationSlotScope,
   organizationSlotWorkspace,
 } from "./organization-slot-scope-lib.mjs";
+import {
+  inspectCanonicalPathBoundary,
+  isSamePath,
+} from "./path-boundary-lib.mjs";
 
 export async function buildGitInventory({ companiesRoot, organizations = null } = {}) {
   if (!companiesRoot) throw new Error("buildGitInventory requires companiesRoot");
@@ -20,16 +24,46 @@ export async function buildGitInventory({ companiesRoot, organizations = null } 
   const planned = [];
   const warnings = [];
   const orgs = organizations ?? (await discoverMountedOrganizations(companiesRoot, warnings));
+  let realCompaniesRoot = null;
 
   for (const organization of orgs) {
     const normalized = normalizeOrganization(organization);
     if (!normalized) continue;
     const organizationRoot = join(companiesRoot, normalized.path);
+    let realOrganizationRoot = null;
     // Strukturální gate platí i pro explicitně předané organizations (např.
     // discovery výstup): přítomný mount, který app discovery hard-failuje, se
     // nesmí objevit jako akční repo. Chybějící mount si nechává původní chování
     // (root repo záznam + warning) — nepřítomnost není rozbitá hranice.
     if (existsSync(organizationRoot)) {
+      const organizationMountRoot = dirname(organizationRoot);
+      const mountBoundary = await inspectCanonicalPathBoundary({
+        rootPath: companiesRoot,
+        rootRealPath: realCompaniesRoot,
+        targetPath: organizationMountRoot,
+      });
+      realCompaniesRoot = mountBoundary.rootRealPath;
+      const rootBoundary = mountBoundary.ok
+        ? await inspectCanonicalPathBoundary({
+            rootPath: organizationMountRoot,
+            rootRealPath: mountBoundary.targetRealPath,
+            targetPath: organizationRoot,
+          })
+        : { ok: false, targetRealPath: null };
+      const expectedRealOrganizationRoot = mountBoundary.targetRealPath
+        ? join(mountBoundary.targetRealPath, basename(organizationRoot))
+        : null;
+      if (
+        !rootBoundary.ok
+        || !expectedRealOrganizationRoot
+        || !isSamePath(expectedRealOrganizationRoot, rootBoundary.targetRealPath)
+      ) {
+        warnings.push(
+          `${normalized.path}: mount vynechán z git inventáře — kanonická cesta se přes symlink/junction dostává mimo Conglomerate root nebo ji nejde bezpečně ověřit`,
+        );
+        continue;
+      }
+      realOrganizationRoot = rootBoundary.targetRealPath;
       const structureIssues = organizationMountStructureIssues({
         organizationRoot,
         label: normalized.path,
@@ -69,6 +103,21 @@ export async function buildGitInventory({ companiesRoot, organizations = null } 
       if (!slot.repo) {
         planned.push(slotRecord({ organization: normalized, slot, companiesRoot }));
         continue;
+      }
+      const absoluteSlotPath = join(organizationRoot, slot.path);
+      if (existsSync(absoluteSlotPath)) {
+        const slotBoundary = await inspectCanonicalPathBoundary({
+          rootPath: organizationRoot,
+          rootRealPath: realOrganizationRoot,
+          targetPath: absoluteSlotPath,
+        });
+        realOrganizationRoot = slotBoundary.rootRealPath;
+        if (!slotBoundary.ok) {
+          warnings.push(
+            `${normalized.path}: slot ${slot.path} vynechán z git/worktree inventáře — existující checkout se přes symlink/junction dostává mimo root Organizace nebo jeho kanonickou cestu nejde bezpečně ověřit`,
+          );
+          continue;
+        }
       }
       repos.push(repoRecord({ organization: normalized, slot, companiesRoot }));
     }

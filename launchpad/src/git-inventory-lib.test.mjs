@@ -1,5 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
-import { rm } from "fs/promises";
+import { mkdir, rename, rm, symlink } from "fs/promises";
+import { join } from "path";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
 import { createLaunchpadGitFixture } from "./git-fixture-helpers.test.mjs";
 
@@ -42,6 +43,100 @@ test("inventory reads repo paths from Organization manifests and does not infer 
   });
   expect(repos.has("BetaCo::brainstorm")).toBe(false);
   expect(inventory.planned.map((slot) => `${slot.organization}::${slot.module}`)).toContain("BetaCo::brainstorm");
+});
+
+test("inventory odmítne existující root, workspace i productionspace checkout přes symlink nebo Windows junction mimo Organizaci", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "OmegaCo_GEN3");
+  const manifestPath = join(organizationRoot, "modules.manifest.json");
+  const manifest = await Bun.file(manifestPath).json();
+  manifest.module_slots.push({
+    path: "productionspace/firmware",
+    space: "productionspace",
+    category: "firmware",
+    repo: "git@github.com:OmegaCo/firmware.git",
+    branch: "main",
+  });
+  await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  const externalRoot = join(root, "external-repositories");
+  await Promise.all([
+    mkdir(join(externalRoot, "infra"), { recursive: true }),
+    mkdir(join(externalRoot, "studio"), { recursive: true }),
+    mkdir(join(externalRoot, "firmware"), { recursive: true }),
+    mkdir(join(organizationRoot, "workspace"), { recursive: true }),
+    mkdir(join(organizationRoot, "productionspace"), { recursive: true }),
+  ]);
+  const linkType = process.platform === "win32" ? "junction" : "dir";
+  await Promise.all([
+    symlink(join(externalRoot, "infra"), join(organizationRoot, "infra"), linkType),
+    symlink(join(externalRoot, "studio"), join(organizationRoot, "workspace", "studio"), linkType),
+    symlink(join(externalRoot, "firmware"), join(organizationRoot, "productionspace", "firmware"), linkType),
+  ]);
+
+  const inventory = await buildGitInventory({ companiesRoot: root });
+
+  expect(inventory.repos.some((repo) => repo.key === "OmegaCo::root")).toBe(true);
+  for (const repoKey of ["OmegaCo::infra", "OmegaCo::studio", "OmegaCo::firmware"]) {
+    expect(inventory.repos.some((repo) => repo.key === repoKey)).toBe(false);
+  }
+  expect(inventory.warnings.filter((warning) => warning.includes("symlink/junction"))).toHaveLength(3);
+});
+
+test("inventory odmítne Organization mount přes symlink nebo Windows junction mimo Conglomerate root", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "OmegaCo_GEN3");
+  const externalRoot = join(root, "..", `escaped-organization-${process.pid}-${Date.now()}`);
+  tempRoots.push(externalRoot);
+  await rename(organizationRoot, externalRoot);
+  await symlink(
+    externalRoot,
+    organizationRoot,
+    process.platform === "win32" ? "junction" : "dir",
+  );
+
+  const inventory = await buildGitInventory({
+    companiesRoot: root,
+    organizations: [{
+      slug: "OmegaCo",
+      display_name: "OmegaCo GEN3",
+      path: "organizations/OmegaCo_GEN3",
+      default_branch: "main",
+    }],
+  });
+
+  expect(inventory.repos.some((repo) => repo.organization === "OmegaCo")).toBe(false);
+  expect(inventory.warnings.join("\n")).toContain(
+    "mount vynechán z git inventáře — kanonická cesta se přes symlink/junction dostává mimo Conglomerate root",
+  );
+});
+
+test("inventory odmítne Organization mount aliasovaný přes symlink nebo Windows junction na sourozeneckou Organizaci", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const aliasPath = join(root, "organizations", "AliasCo_GEN3");
+  await symlink(
+    join(root, "organizations", "BetaCo_GEN3"),
+    aliasPath,
+    process.platform === "win32" ? "junction" : "dir",
+  );
+
+  const inventory = await buildGitInventory({
+    companiesRoot: root,
+    organizations: [{
+      slug: "AliasCo",
+      display_name: "AliasCo GEN3",
+      path: "organizations/AliasCo_GEN3",
+      default_branch: "main",
+    }],
+  });
+
+  expect(inventory.repos.some((repo) => repo.organization === "AliasCo")).toBe(false);
+  expect(inventory.warnings.join("\n")).toContain(
+    "organizations/AliasCo_GEN3: mount vynechán z git inventáře",
+  );
 });
 
 test("reserved Organization root path cannot masquerade as a Team module", async () => {
