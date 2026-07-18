@@ -1,4 +1,5 @@
-import { realpath, stat } from "fs/promises";
+import { constants } from "fs";
+import { access, realpath, stat } from "fs/promises";
 import { isAbsolute, relative, resolve, win32 } from "path";
 
 export class ModuleFolderActionError extends Error {
@@ -26,6 +27,7 @@ export function createModuleFolderOpener({
   platform = process.platform,
   env = process.env,
   spawnCommand = runCommand,
+  accessExecutable = verifyExecutable,
 }) {
   return {
     async open({ organization: organizationSlug, modulePath }) {
@@ -83,6 +85,15 @@ export function createModuleFolderOpener({
       if (!command) {
         throw new ModuleFolderActionError(501, "folder_open_unsupported", "Otevírání složek na této platformě není podporované.");
       }
+      try {
+        await accessExecutable(command[0], platform);
+      } catch {
+        throw new ModuleFolderActionError(
+          501,
+          "folder_open_unavailable",
+          "Ověřený systémový program pro otevření složky není dostupný.",
+        );
+      }
       const result = await spawnCommand(command);
       if (!result.ok) {
         throw new ModuleFolderActionError(500, "folder_open_failed", "Systémovou složku se nepodařilo otevřít.");
@@ -101,9 +112,12 @@ export function folderOpenCommand(platform, path, env = process.env) {
   if (platform === "darwin") return ["/usr/bin/open", path];
   if (platform === "win32") {
     const systemRoot = env.SystemRoot ?? env.WINDIR;
-    return [systemRoot ? win32.join(systemRoot, "explorer.exe") : "explorer.exe", path];
+    if (!systemRoot || !win32.isAbsolute(systemRoot)) {
+      throw new Error("SystemRoot/WINDIR musí být absolutní pro bezpečné spuštění explorer.exe.");
+    }
+    return [win32.join(systemRoot, "explorer.exe"), path];
   }
-  if (platform === "linux") return ["xdg-open", path];
+  if (platform === "linux") return ["/usr/bin/xdg-open", path];
   return null;
 }
 
@@ -123,4 +137,8 @@ async function runCommand(command) {
   } catch {
     return { ok: false };
   }
+}
+
+async function verifyExecutable(executable, platform) {
+  await access(executable, platform === "win32" ? constants.F_OK : constants.X_OK);
 }

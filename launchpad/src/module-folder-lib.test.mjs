@@ -22,6 +22,7 @@ test("otevře jen dostupný deklarovaný modul uvnitř Organizace", async () => 
       commands.push(command);
       return { ok: true };
     },
+    accessExecutable: async () => {},
     getAppsResponse: async () => ({
       organizations: [{
         slug: "Demo",
@@ -41,6 +42,37 @@ test("otevře jen dostupný deklarovaný modul uvnitř Organizace", async () => 
     module_path: "workspace/presentation",
   });
   expect(commands).toEqual([["/usr/bin/open", moduleRoot]]);
+
+  let blockedSpawnCount = 0;
+  const unavailableOpener = createModuleFolderOpener({
+    companiesRoot: root,
+    platform: "darwin",
+    getAppsResponse: async () => ({
+      organizations: [{
+        slug: "Demo",
+        path: "organizations/Demo_GEN3",
+        workspaces: [{
+          slug: "workspace",
+          modules: [{ slug: "presentation", path: "workspace/presentation", status: "available" }],
+        }],
+      }],
+    }),
+    accessExecutable: async () => {
+      throw new Error("missing");
+    },
+    spawnCommand: async () => {
+      blockedSpawnCount += 1;
+      return { ok: true };
+    },
+  });
+  await expect(unavailableOpener.open({
+    organization: "Demo",
+    modulePath: "workspace/presentation",
+  })).rejects.toMatchObject({
+    status: 501,
+    code: "folder_open_unavailable",
+  });
+  expect(blockedSpawnCount).toBe(0);
 });
 
 test("odmítne chybějící checkout a symlink mimo Organizaci", async () => {
@@ -121,7 +153,11 @@ test("používá bezpečné systémové příkazy bez shellové interpolace", ()
     "C:\\Windows\\explorer.exe",
     "C:\\demo",
   ]);
-  expect(folderOpenCommand("win32", "C:\\demo", {})).toEqual(["explorer.exe", "C:\\demo"]);
-  expect(folderOpenCommand("linux", "/tmp/demo")).toEqual(["xdg-open", "/tmp/demo"]);
+  expect(() => folderOpenCommand("win32", "C:\\demo", { PATH: "C:\\fake-bin" }))
+    .toThrow("SystemRoot/WINDIR");
+  expect(folderOpenCommand("linux", "/tmp/demo", { PATH: "/tmp/fake-bin" })).toEqual([
+    "/usr/bin/xdg-open",
+    "/tmp/demo",
+  ]);
   expect(folderOpenCommand("freebsd", "/tmp/demo")).toBeNull();
 });
