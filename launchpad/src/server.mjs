@@ -48,7 +48,7 @@ const canonicalCompaniesRoot = realpathSync(companiesRoot);
 const launchpadRootId = createHash("sha256").update(canonicalCompaniesRoot).digest("hex");
 const host = options.host ?? defaultHost;
 const port = Number(options.port ?? process.env.PORT ?? defaultPort);
-const portWasExplicit = options.port !== undefined || process.env.PORT !== undefined;
+const portWasConfigured = options.port !== undefined || process.env.PORT !== undefined;
 const principalEmail = resolvePrincipalEmail();
 const runtimeManager = createRuntimeManager({ companiesRoot, launchpadRoot });
 const gitStatusService = createGitStatusService();
@@ -78,7 +78,7 @@ if (!allowedHosts.has(host)) {
 const startResult = await startLaunchpadWithPortPolicy({
   requestedPort: port,
   host,
-  explicitPort: portWasExplicit,
+  explicitPort: portWasConfigured,
   shouldOpen: Boolean(options.open),
   startServer,
   isRunningExpectedLaunchpad: (url) => isRunningLaunchpad(url, launchpadRootId),

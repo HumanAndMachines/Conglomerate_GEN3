@@ -262,8 +262,10 @@ bun run doctor
 bun run doctor:json
 ```
 
-`dev` spustí webový Launchpad server od `127.0.0.1:4174`; pokud je port
-obsazený a port nebyl zadaný explicitně, použije další volný port. `launch`
+`dev` spustí webový Launchpad server od `127.0.0.1:4174`; pokud je výchozí
+port obsazený a port nebyl nakonfigurovaný přes `--port` ani `PORT`, použije
+další volný port. Explicitní CLI i environment konfigurace fail-closed zůstává
+na zadaném portu. `launch`
 spustí server a pokusí se otevřít prohlížeč. Když na stejném portu už běží
 Launchpad GEN3 ze stejného kanonického rootu, druhé spuštění ověří hash identity
 rootu a pouze otevře existující instanci. Launchpad z jiného rootu ani cizí HTTP

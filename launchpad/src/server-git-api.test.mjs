@@ -89,6 +89,30 @@ test("identity endpoint is local-only and a foreign root cannot reuse the port",
   expect(await new Response(otherRootLauncher.stderr).text()).toContain("EADDRINUSE");
 });
 
+test("PORT environment configuration is explicit and never falls forward silently", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const blocker = createServer();
+  await new Promise((resolve, reject) => {
+    blocker.once("error", reject);
+    blocker.listen(0, "127.0.0.1", resolve);
+  });
+  const { port } = blocker.address();
+
+  try {
+    const launcher = Bun.spawn(["bun", "src/server.mjs", "--root", root], {
+      cwd: join(import.meta.dirname, ".."),
+      env: { ...process.env, PORT: String(port) },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(await launcher.exited).not.toBe(0);
+    expect(await new Response(launcher.stderr).text()).toContain("EADDRINUSE");
+  } finally {
+    await new Promise((resolve) => blocker.close(resolve));
+  }
+});
+
 test("organization branding serves local logos and design-system themes without symlink escapes", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
