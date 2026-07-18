@@ -140,10 +140,18 @@ Nepracuj v konkrétní firmě z rootu. Nejdřív vyber organizaci v `organizatio
 3. **Ověř Git stav** rootu i každého nested checkoutu, kterého se dotkneš.
    Root repo nesmí omylem trackovat cizí Organization historii, submodule
    pointer ani lokální private/runtime data.
-4. **Drž worktree kulturu.** Primární root checkout zůstává na `main` a sleduje
-   `origin/main`. Netriviální změna jde do dedikovaného worktree/branch/PR, ne
-   do primárního checkoutu; malá dokumentační oprava může jít přímo v rootu,
-   ale closeout musí jasně říct, co bylo změněno a jak ověřeno.
+4. **Drž worktree disciplínu bez malých výjimek.** Primární root checkout
+   zůstává na `main` a sleduje `origin/main`; agent v něm nemění žádný
+   Git-trackovaný obsah. Před změnou spusť `bun run worktrees:status` a použij
+   skill `.agents/skills/worktree-development-discipline/SKILL.md`. Jediná
+   kanonická cesta je
+   `.worktrees/root/<canonical-plan-basename>/` se sibling sidecarem; worktrees
+   vedle repa, v `/tmp`, `~/.hermes/worktrees`, `.claude/worktrees` nebo uvnitř
+   jiného repa jsou neplatné. Po merge nebo explicitním opuštění agent provede
+   bezpečný cleanup podle live Git/PR/runtime evidence, nebo přesně předá,
+   který guard odstranění brání. `worktrees:status` je informativní inventura;
+   `bun run worktrees:check` fail-closed ověřuje umístění, metadata a Git
+   zachování, ale jeho PASS nikdy nenahrazuje živý PR/runtime/writer gate.
 5. **Nenechávej rozhodnutí v chatu.** Aktivní nejistoty zapisuj do
    `ISSUES.open.json`, vyřešené do `ISSUES.resolved.json`; follow-upy a blokery
    patří do source of truth, ne jen do konverzace.
@@ -183,6 +191,9 @@ Root upravuj jen když se mění:
 - Desktop-agent collaboration — kanonický domov je skill
   `.agents/skills/desktop-execution-agent-collaboration/SKILL.md`; manuálový
   pointer `manual/desktop-execution-agent-collaboration.md`
+- Worktree create/inventura/předávka/cleanup — consumer skill
+  `.agents/skills/worktree-development-discipline/SKILL.md`; autorita
+  HumanAndMachines decision 0049 a shaping manual `manual/worktree-management.md`
 - Základní agentní skill balíček: `.agents/skills/`
 - Sdílený Launchpad: `launchpad/`
 - Sdílený Guide: `guide/`
