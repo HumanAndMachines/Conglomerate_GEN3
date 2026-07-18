@@ -15,6 +15,9 @@ import { discoverPersonalspace } from "./personalspace-lib.mjs";
 import { GbrainAccessError } from "./gbrain-lib.mjs";
 import { createRuntimeManager } from "./runtime-lib.mjs";
 
+const githubRepositoryPattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+const githubPrivacyCheckTimeoutMs = 10_000;
+
 // Bezpečně vyresolvuje absolutní cestu ke gbrain vaultu daného prostoru přes
 // discovery (žádná cesta z klienta se nedůvěřuje — space se hledá podle
 // dir_name v objevených prostorech). Vrací i metadata o zdroji (mode, name).
@@ -83,6 +86,8 @@ export async function buildPersonalspaceResponse({
   launchpadRoot = join(import.meta.dirname, ".."),
   runtimeManager = createPersonalspaceRuntimeManager({ companiesRoot, launchpadRoot }),
   profileEmail = null,
+  verifyRepositoryPrivacy = false,
+  inspectRepository = inspectGitHubRepository,
 } = {}) {
   const discovery = await discoverPersonalspace(companiesRoot);
 
@@ -121,10 +126,16 @@ export async function buildPersonalspaceResponse({
     appsBySpace.get(app.space).push(app);
   }
 
-  const spaces = discovery.spaces.map((space) => ({
+  let spaces = discovery.spaces.map((space) => ({
     ...space,
     apps: appsBySpace.get(space.dir_name) ?? [],
   }));
+  if (verifyRepositoryPrivacy) {
+    spaces = await attachLiveRepositoryPrivacy(spaces, {
+      cwd: companiesRoot,
+      inspectRepository,
+    });
+  }
 
   const totalApps = appsWithRuntime.length;
   const primarySpace = spaces.find((space) => space.is_owner_primary && space.config_valid);
@@ -159,6 +170,100 @@ export async function buildPersonalspaceResponse({
   };
 }
 
+export async function inspectGitHubRepository(repo, { cwd = process.cwd(), spawnSync = Bun.spawnSync } = {}) {
+  if (typeof repo !== "string" || !githubRepositoryPattern.test(repo)) {
+    throw new Error("Neplatná GitHub repository identita.");
+  }
+  let result;
+  try {
+    result = spawnSync(
+      ["gh", "repo", "view", repo, "--json", "nameWithOwner,visibility"],
+      {
+        cwd,
+        stdout: "pipe",
+        stderr: "pipe",
+        timeout: githubPrivacyCheckTimeoutMs,
+        windowsHide: true,
+        env: {
+          ...process.env,
+          GH_PROMPT_DISABLED: "1",
+          GH_NO_UPDATE_NOTIFIER: "1",
+        },
+      },
+    );
+  } catch {
+    throw new Error(`GitHub repo ${repo} nejde živě ověřit.`);
+  }
+  if (result.exitCode !== 0) {
+    throw new Error(`GitHub repo ${repo} nejde živě ověřit.`);
+  }
+  let info;
+  try {
+    info = JSON.parse(new TextDecoder().decode(result.stdout));
+  } catch {
+    throw new Error(`GitHub repo ${repo} nevrátil validní metadata.`);
+  }
+  return info;
+}
+
+export async function attachLiveRepositoryPrivacy(
+  spaces,
+  { cwd = process.cwd(), inspectRepository = inspectGitHubRepository } = {},
+) {
+  const cache = new Map();
+  const inspect = (repo) => {
+    const key = String(repo).toLowerCase();
+    if (!cache.has(key)) {
+      cache.set(key, inspectRepositoryPrivacy(repo, { cwd, inspectRepository }));
+    }
+    return cache.get(key);
+  };
+  return Promise.all((spaces ?? []).map(async (space) => {
+    if (!space?.config_valid) return space;
+    const repositoryBindings = [
+      ["owner", space.github_repo],
+      ["gbrain", space.gbrain?.repository?.github_repo],
+      ...(space.buddy ? [["buddy", space.buddy?.repository?.github_repo]] : []),
+    ];
+    const missingRoles = repositoryBindings
+      .filter(([, repo]) => typeof repo !== "string" || repo.trim() === "")
+      .map(([role]) => role);
+    const repositories = repositoryBindings
+      .filter(([, repo]) => typeof repo === "string" && repo.trim() !== "");
+    return {
+      ...space,
+      live_repository_privacy_checked: missingRoles.length === 0,
+      repository_privacy_missing_roles: missingRoles,
+      repository_privacy_checks: await Promise.all(
+        repositories.map(async ([role, repo]) => ({
+          role,
+          ...await inspect(repo),
+        })),
+      ),
+    };
+  }));
+}
+
+async function inspectRepositoryPrivacy(repo, { cwd, inspectRepository }) {
+  try {
+    const info = await inspectRepository(repo, { cwd });
+    const actualRepo = typeof info?.nameWithOwner === "string" ? info.nameWithOwner : null;
+    const visibility = typeof info?.visibility === "string"
+      ? info.visibility.toLowerCase()
+      : null;
+    if (!actualRepo || actualRepo.toLowerCase() !== repo.toLowerCase() || !visibility) {
+      return { github_repo: repo, status: "unverified", visibility: null };
+    }
+    return {
+      github_repo: repo,
+      status: visibility === "private" ? "private" : "not_private",
+      visibility,
+    };
+  } catch {
+    return { github_repo: repo, status: "unverified", visibility: null };
+  }
+}
+
 function normalizeProfileEmail(value) {
   if (typeof value !== "string") return null;
   const email = value.trim();
@@ -187,6 +292,7 @@ export function personalspaceDoctorCheck(personalspaceResponse) {
     };
   }
   const invalidSpaces = spaces.filter((space) => !space.config_valid);
+  const repositoryPrivacyFailures = [];
   const details = [];
   for (const space of spaces) {
     const role = space.is_owner_primary ? "primární" : "nasdílený";
@@ -196,8 +302,29 @@ export function personalspaceDoctorCheck(personalspaceResponse) {
     }
     const summary = space.module_summary ?? {};
     const gbrain = space.gbrain?.exists ? `gbrain ${space.gbrain.mode}` : "gbrain nedostupný";
+    const privacyChecks = Array.isArray(space.repository_privacy_checks)
+      ? space.repository_privacy_checks
+      : [];
+    if (space.live_repository_privacy_checked !== true) {
+      const missingRoles = Array.isArray(space.repository_privacy_missing_roles)
+        ? space.repository_privacy_missing_roles
+        : [];
+      repositoryPrivacyFailures.push(
+        missingRoles.length > 0
+          ? `${space.mount_path}: chybí deklarovaný ${missingRoles.join("/")} repository binding pro živé ověření privacy`
+          : `${space.mount_path}: živé ověření repository privacy nebylo provedeno`,
+      );
+    }
+    for (const privacyCheck of privacyChecks) {
+      if (privacyCheck.status !== "private") {
+        repositoryPrivacyFailures.push(repositoryPrivacyFailureDetail(space, privacyCheck));
+      }
+    }
+    const privacySummary = space.live_repository_privacy_checked === true
+      ? privacyChecks.map(repositoryPrivacyDetail).join(", ")
+      : "živá repository privacy neověřena";
     details.push(
-      `${space.mount_path}: ${role}, aplikací ${space.apps?.length ?? 0}, moduly available ${summary.available ?? 0}/missing_access ${summary.missing_access ?? 0}/planned_slot ${summary.planned_slot ?? 0}, ${gbrain}`,
+      `${space.mount_path}: ${role}, aplikací ${space.apps?.length ?? 0}, moduly available ${summary.available ?? 0}/missing_access ${summary.missing_access ?? 0}/planned_slot ${summary.planned_slot ?? 0}, ${gbrain}, ${privacySummary}`,
     );
   }
   if (warnings.length) {
@@ -206,7 +333,12 @@ export function personalspaceDoctorCheck(personalspaceResponse) {
   if (failures.length) {
     details.push(...failures.map((failure) => `failure: ${failure}`));
   }
-  const status = failures.length > 0 || invalidSpaces.length > 0
+  if (repositoryPrivacyFailures.length) {
+    details.push(...repositoryPrivacyFailures.map((failure) => `privacy failure: ${failure}`));
+  }
+  const status = failures.length > 0
+    || invalidSpaces.length > 0
+    || repositoryPrivacyFailures.length > 0
     ? "fail"
     : warnings.length > 0
       ? "warn"
@@ -221,9 +353,29 @@ export function personalspaceDoctorCheck(personalspaceResponse) {
         ? `Personalspace: ${spaces.length} prostor(ů), ${personalspaceResponse.summary?.app_count ?? 0} osobních aplikací (jen metadata).`
         : status === "warn"
           ? `Personalspace má ${warnings.length} varování (jen metadata).`
-          : `Personalspace má nevalidní prostor nebo porušený identity invariant.`,
+          : `Personalspace má nevalidní prostor, porušený identity invariant nebo neověřenou repository privacy.`,
     paths: [personalspaceResponse.mountpoint ?? "personalspace"],
     links: [],
     details,
   };
+}
+
+function repositoryPrivacyDetail(check) {
+  const role = repositoryPrivacyRole(check.role);
+  if (check.status === "private") return `${role} repo živě ověřeno private`;
+  if (check.status === "not_private") {
+    return `${role} repo NENÍ private (live visibility: ${check.visibility ?? "unknown"})`;
+  }
+  return `${role} repo privacy nelze živě ověřit`;
+}
+
+function repositoryPrivacyFailureDetail(space, check) {
+  return `${space.mount_path}: ${repositoryPrivacyDetail(check)} (${check.github_repo ?? "repo neuvedeno"})`;
+}
+
+function repositoryPrivacyRole(role) {
+  if (role === "owner") return "owner";
+  if (role === "gbrain") return "gbrain";
+  if (role === "buddy") return "Buddy";
+  return "neznámé";
 }

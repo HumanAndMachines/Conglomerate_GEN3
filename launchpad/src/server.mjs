@@ -199,19 +199,20 @@ async function buildDoctorReport() {
   // nemíchají do org appsResponse (CAC-0048).
   const [appsResponse, personalspaceResponse] = await Promise.all([
     buildAppsResponse(),
-    buildPersonalspace(),
+    buildPersonalspace({ verifyRepositoryPrivacy: true }),
   ]);
   return buildDoctorReportFromAppsResponse(appsResponse, {
     extraChecks: [personalspaceDoctorCheck(personalspaceResponse)],
   });
 }
 
-async function buildPersonalspace() {
+async function buildPersonalspace({ verifyRepositoryPrivacy = false } = {}) {
   return buildPersonalspaceResponse({
     companiesRoot,
     launchpadRoot,
     runtimeManager: personalspaceRuntimeManager,
     profileEmail: principalEmail,
+    verifyRepositoryPrivacy,
   });
 }
 

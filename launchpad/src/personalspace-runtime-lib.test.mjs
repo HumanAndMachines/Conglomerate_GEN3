@@ -3,13 +3,19 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import {
+  attachLiveRepositoryPrivacy,
   buildPersonalspaceResponse,
+  inspectGitHubRepository,
   personalspaceDoctorCheck,
   resolveSpaceGbrainVault,
 } from "./personalspace-runtime-lib.mjs";
 import { GbrainAccessError } from "./gbrain-lib.mjs";
 
 const tempRoots = [];
+const privateRepoInspector = async (repo) => ({
+  nameWithOwner: repo,
+  visibility: "PRIVATE",
+});
 
 afterAll(async () => {
   await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
@@ -22,10 +28,27 @@ async function writeJson(path, data) {
 
 function personalConfig(username) {
   return {
+    schema_version: "humanandmachines.personal.gen3.v1",
     personal_generation: "gen3",
     owner: { github_username: username, display_name: username, type: "human" },
     buddy: {
       slug: `${username}-buddy`,
+      path: "buddy",
+      repository: {
+        github_repo: `${username}/${username}-buddy`,
+        visibility: "private",
+        mount_strategy: "doctor-managed-nested-repo",
+      },
+      runtime: {
+        github_repo: "HumanAndMachines/Buddy",
+        deployment_target: "owner-dedicated-personalspace-vps",
+        local_execution: "forbidden",
+      },
+      hermes: {
+        software_repo: "NousResearch/hermes-agent",
+        profile_format: "hermes-profile-distribution",
+        profile_path: "buddy",
+      },
       display_name: "Demo Buddy",
       application: { name: "Demo chat", type: "web", url: "https://chat.example.test/" },
       recurring_tasks: {
@@ -33,11 +56,30 @@ function personalConfig(username) {
       },
       gbrain_path: "gbrain",
     },
-    repository: { github_repo: `${username}/${username}_GEN3`, mount_path: `personalspace/${username}_GEN3`, visibility: "private" },
+    repository: {
+      github_repo: `${username}/${username}_GEN3`,
+      mount_path: `personalspace/${username}_GEN3`,
+      visibility: "private",
+      mount_strategy: "doctor-managed-nested-repo",
+    },
     privacy: { default_share: "private", agent_boundary: "personal-context-only", shared_outputs: "metadata-only" },
     modules_manifest_path: "modules.manifest.json",
     workspace_path: "workspace",
-    gbrain: { path: "gbrain", default_shared: false, human_editor: "obsidian", agent_access: "mcp-only" },
+    gbrain: {
+      path: "gbrain",
+      repository: {
+        github_repo: `${username}/${username}-gbrain`,
+        visibility: "private",
+        mount_strategy: "doctor-managed-nested-repo",
+      },
+      software: {
+        github_repo: "garrytan/gbrain",
+        install_source: "github:garrytan/gbrain",
+      },
+      default_shared: false,
+      human_editor: "obsidian",
+      agent_access: "mcp-only",
+    },
     secrets: { path: "secrets", custody_pattern: "personalspace/<owner>_GEN3/secrets/<provider>/<scope>/<purpose>", git: "ignored" },
     shared_spaces: [],
   };
@@ -110,13 +152,19 @@ test("buildPersonalspaceResponse vrací prostory + summary, metadata-only", asyn
 
 test("personalspaceDoctorCheck je metadata-only a nikdy neobsahuje obsah zápisů", async () => {
   const { root } = await createFixture();
-  const response = await buildPersonalspaceResponse({ companiesRoot: root, launchpadRoot: join(root, "launchpad") });
+  const response = await buildPersonalspaceResponse({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    verifyRepositoryPrivacy: true,
+    inspectRepository: privateRepoInspector,
+  });
   const check = personalspaceDoctorCheck(response);
   expect(check.id).toBe("launchpad.personalspace");
   expect(["ok", "warn", "fail", "skip"]).toContain(check.status);
   // Detaily nesou jen počty/validitu/gbrain mode, ne obsah.
   expect(JSON.stringify(check)).not.toContain("soukromá poznámka");
   expect(check.details.join(" ")).toContain("primární");
+  expect(check.details.join(" ")).toContain("gbrain repo živě ověřeno private");
 });
 
 test("personalspaceDoctorCheck = skip, když není žádný osobní prostor", async () => {
@@ -128,9 +176,107 @@ test("personalspaceDoctorCheck = skip, když není žádný osobní prostor", as
   for (const name of ["personal.gen3.schema.json", "launchpad-app.schema.json"]) {
     await writeFile(join(root, "launchpad", "schemas", name), await Bun.file(join(realSchemas, name)).text(), "utf8");
   }
-  const response = await buildPersonalspaceResponse({ companiesRoot: root, launchpadRoot: join(root, "launchpad") });
+  const response = await buildPersonalspaceResponse({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    verifyRepositoryPrivacy: true,
+    inspectRepository: privateRepoInspector,
+  });
   const check = personalspaceDoctorCheck(response);
   expect(check.status).toBe("skip");
+});
+
+test("Doctor fail-closed odmítne public gbrain repo i při private deklaraci v manifestu", async () => {
+  const { root } = await createFixture();
+  const response = await buildPersonalspaceResponse({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    verifyRepositoryPrivacy: true,
+    inspectRepository: async (repo) => ({
+      nameWithOwner: repo,
+      visibility: repo.endsWith("-gbrain") ? "PUBLIC" : "PRIVATE",
+    }),
+  });
+  const check = personalspaceDoctorCheck(response);
+  expect(check.status).toBe("fail");
+  expect(check.details.join(" ")).toContain("gbrain repo NENÍ private");
+  expect(check.details.join(" ")).toContain("live visibility: public");
+});
+
+test("Doctor fail-closed odmítne repo, jehož live GitHub metadata nejdou ověřit", async () => {
+  const { root } = await createFixture();
+  const response = await buildPersonalspaceResponse({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    verifyRepositoryPrivacy: true,
+    inspectRepository: async () => {
+      throw new Error("offline");
+    },
+  });
+  const check = personalspaceDoctorCheck(response);
+  expect(check.status).toBe("fail");
+  expect(check.details.join(" ")).toContain("repo privacy nelze živě ověřit");
+});
+
+test("legacy Personalspace bez deklarovaného gbrain repa není označený jako privacy-checked", async () => {
+  const [space] = await attachLiveRepositoryPrivacy([{
+    mount_path: "personalspace/exampleuser_GEN3",
+    config_valid: true,
+    github_repo: "exampleuser/exampleuser_GEN3",
+    gbrain: { exists: true, mode: "legacy" },
+    module_summary: {},
+  }], { inspectRepository: privateRepoInspector });
+
+  expect(space.live_repository_privacy_checked).toBe(false);
+  expect(space.repository_privacy_missing_roles).toEqual(["gbrain"]);
+  expect(space.repository_privacy_checks).toEqual([{
+    role: "owner",
+    github_repo: "exampleuser/exampleuser_GEN3",
+    status: "private",
+    visibility: "private",
+  }]);
+
+  const check = personalspaceDoctorCheck({
+    mountpoint: "personalspace",
+    spaces: [space],
+    failures: [],
+    warnings: [],
+    summary: { app_count: 0 },
+  });
+  expect(check.status).toBe("fail");
+  expect(check.details.join(" ")).toContain("chybí deklarovaný gbrain repository binding");
+});
+
+test("live GitHub privacy probe používá bounded shell-free gh příkaz", async () => {
+  let observed;
+  const info = await inspectGitHubRepository("exampleuser/exampleuser-gbrain", {
+    cwd: "/tmp/example",
+    spawnSync: (command, options) => {
+      observed = { command, options };
+      return {
+        exitCode: 0,
+        stdout: new TextEncoder().encode(JSON.stringify({
+          nameWithOwner: "exampleuser/exampleuser-gbrain",
+          visibility: "PRIVATE",
+        })),
+      };
+    },
+  });
+  expect(info.visibility).toBe("PRIVATE");
+  expect(observed.command).toEqual([
+    "gh",
+    "repo",
+    "view",
+    "exampleuser/exampleuser-gbrain",
+    "--json",
+    "nameWithOwner,visibility",
+  ]);
+  expect(observed.options).toMatchObject({
+    cwd: "/tmp/example",
+    timeout: 10_000,
+    windowsHide: true,
+  });
+  expect(observed.options.env.GH_PROMPT_DISABLED).toBe("1");
 });
 
 test("Doctor nikdy nečte privátní Buddy presentation warnings", () => {

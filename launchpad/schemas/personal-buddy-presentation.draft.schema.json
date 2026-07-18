@@ -41,7 +41,8 @@
         "url": {
           "type": "string",
           "format": "uri",
-          "pattern": "^(?:https?|tg|sgnl|whatsapp)://"
+          "pattern": "^(?:https?|tg|sgnl|whatsapp)://",
+          "description": "Hosted Buddy nebo messenger odkaz; HTTP(S) loopback/localhost semantická validace odmítne."
         }
       },
       "additionalProperties": true
