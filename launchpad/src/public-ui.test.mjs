@@ -593,12 +593,19 @@ test("UI is prepared for multiple workspaces and read-only productionspace", asy
   expect(sectionMetaCss).toContain("white-space: normal");
   expect(js).toContain("function workspaceModuleCard");
   expect(js).toContain("function workspaceModulesInView");
-  expect(js).toContain("Bez app manifestu");
+  expect(js).toContain("Otevřít složku");
+  expect(js).toContain("function openWorkspaceModuleFolder");
+  expect(js).toContain('fetchJson("/api/modules/open-folder"');
   expect(js).toContain("function productionspaceSectionNode");
   expect(js).toContain("function productionspaceCard");
   expect(js).toContain("Jen pro čtení");
   expect(css).toContain(".app-section-productionspace");
   expect(css).toContain(".system-card");
+  const systemCardCss = css.slice(
+    css.indexOf(".system-card {"),
+    css.indexOf("}", css.indexOf(".system-card {")) + 1,
+  );
+  expect(systemCardCss).toContain("align-self: start");
 
   // Discovery is additively enriched: per-app workspace + per-org module slots + productionspace.
   // Decision 0041: workspace grouping jede z manifest deklarací, ne z cesty.
@@ -652,6 +659,7 @@ test("read-only app and system detail selection opens the right drawer", async (
   const workspaceModuleCard = js.slice(js.indexOf("function workspaceModuleCard"), js.indexOf("// Productionspace systems"));
   expect(workspaceModuleCard).toContain("workspaceModuleDetail");
   expect(workspaceModuleCard).toContain("selectReadonlyDetail(detail)");
+  expect(workspaceModuleCard).toContain("openWorkspaceModuleFolder(detail)");
   const productionspaceCard = js.slice(js.indexOf("function productionspaceCard"), js.indexOf("function productionspaceDetail"));
   expect(productionspaceCard).toContain("productionspaceDetail");
   expect(productionspaceCard).toContain("selectReadonlyDetail(detail)");

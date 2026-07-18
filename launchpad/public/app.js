@@ -1929,8 +1929,11 @@ function workspaceModuleDetail(module, companySlug) {
     },
     package_path: module.path ?? "-",
     cwd: module.path ?? "-",
+    can_open_folder: module.status === "available",
     is_readonly_system: true,
-    readonly_reason: "Workspace modul je zatím manifest-only. Launchpad ho ukazuje jen pro čtení, dokud nepřibude app manifest.",
+    readonly_reason: module.status === "available"
+      ? "Modul nemá vlastní aplikaci, ale jeho lokální složku můžeš otevřít a pracovat s ní."
+      : "Modul nemá vlastní aplikaci a jeho lokální složka zatím není dostupná.",
   };
 }
 
@@ -1980,7 +1983,12 @@ function workspaceModuleCard(module, companySlug) {
 
   const actions = document.createElement("div");
   actions.className = "app-card-actions";
-  const manifestOnly = cardActionButton("Bez app manifestu", null, true);
+  const canOpenFolder = detail.can_open_folder;
+  const manifestOnly = cardActionButton(
+    canOpenFolder ? "Otevřít složku" : module.status === "missing_access" ? "Chybí přístup" : "Zatím není dostupný",
+    canOpenFolder ? () => openWorkspaceModuleFolder(detail) : null,
+    !canOpenFolder,
+  );
   manifestOnly.classList.add("primary-action", "btn", "btn-ghost");
   actions.append(manifestOnly);
 
@@ -2661,6 +2669,30 @@ async function openAppChain(app, { feedback } = {}) {
   }
 }
 
+async function openWorkspaceModuleFolder(module) {
+  if (!module?.company || !module?.cwd || !module.can_open_folder) return;
+  const pendingKey = `${module.id}:open-folder`;
+  if (state.pendingAction === pendingKey) return;
+  state.pendingAction = pendingKey;
+  render();
+  try {
+    await fetchJson("/api/modules/open-folder", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        organization: module.company,
+        module_path: module.cwd,
+      }),
+    });
+    toast(`${module.title}: složka otevřená.`, "success");
+  } catch (error) {
+    toast(`${module.title}: ${error.message}`, "error", 7000);
+  } finally {
+    state.pendingAction = null;
+    render();
+  }
+}
+
 function reserveResultTab(app) {
   const tab = window.open("about:blank", "_blank");
   if (tab) {
@@ -2969,7 +3001,13 @@ function chip(label, toneClass, withDot = false) {
 
 function primaryActionNode(app, nextAction) {
   let node;
-  if (nextAction.type === "open" && app.url) {
+  if (nextAction.type === "folder") {
+    node = cardActionButton(
+      nextAction.label,
+      () => openWorkspaceModuleFolder(app),
+      state.pendingAction === `${app.id}:open-folder`,
+    );
+  } else if (nextAction.type === "open" && app.url) {
     node = openLink(app.url);
     node.textContent = nextAction.label;
   } else if (nextAction.type === "logs") {
@@ -3004,6 +3042,9 @@ function cardActionButton(label, onClick, disabled) {
 
 function primaryNextAction(app) {
   const dependencyState = app.dependencies?.state;
+  if (app.kind === "workspace-module" && app.can_open_folder) {
+    return { type: "folder", label: "Otevřít složku" };
+  }
   if (isProductionspace(app) || app.is_readonly_system) {
     return { type: "disabled", label: "Jen pro čtení" };
   }
@@ -3804,6 +3845,7 @@ function nextActionReason(app, nextAction) {
     return `Akce není dostupná: ${humanDependencyLabel(app.dependencies?.state)}. Vyřeš to přes Doktora nebo sync.`;
   }
   if (nextAction.type === "open") return "Aplikace běží — otevře se v novém panelu, nic se nespouští.";
+  if (nextAction.type === "folder") return "Otevře lokální checkout ve správci souborů; nic v něm nemění.";
   if (nextAction.action === "install") return "Doplní chybějící balíčky v rozsahu cwd aplikace.";
   if (nextAction.action === "repair") return "Přeinstaluje balíčky kvůli drift mezi package a lockfile.";
   if (nextAction.action === "start") return "Spustí lokální dev proces, pokud nejsou runtime konflikty.";

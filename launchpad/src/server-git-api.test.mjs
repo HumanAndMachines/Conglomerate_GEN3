@@ -49,6 +49,8 @@ test("Launchpad server exposes read-only git and Mission Control routes", async 
   const pullAll = await postJson(port, "/api/git/pull-all", {});
   const worktrees = await getJson(port, "/api/git/worktrees?organization=BetaCo&module=deals");
   const plans = await getJson(port, "/api/mission-control/plans?organization=BetaCo&module=deals");
+  const moduleFolderGet = await fetch(`http://127.0.0.1:${port}/api/modules/open-folder`);
+  const invalidModuleFolderPost = await fetch(`http://127.0.0.1:${port}/api/modules/open-folder`, { method: "POST" });
 
   expect(repos.schema_version).toBe("companiesascode.launchpad.git.v1");
   expect(deals.repo.key).toBe("BetaCo::deals");
@@ -63,6 +65,8 @@ test("Launchpad server exposes read-only git and Mission Control routes", async 
   expect(pullAll.results.some((result) => result.repo_key === "OmegaCo::firmware" && result.outcome === "policy_skipped")).toBe(true);
   expect(worktrees.schema_version).toBe("companiesascode.launchpad.worktrees.v1");
   expect(plans.schema_version).toBe("companiesascode.launchpad.mission_control_plans.v1");
+  expect(moduleFolderGet.status).toBe(405);
+  expect(invalidModuleFolderPost.status).toBe(400);
 });
 
 test("organization branding serves local logos and design-system themes without symlink escapes", async () => {
