@@ -3,6 +3,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import {
+  attachLiveRepositoryPrivacy,
   buildPersonalspaceResponse,
   inspectGitHubRepository,
   personalspaceDoctorCheck,
@@ -215,6 +216,35 @@ test("Doctor fail-closed odmítne repo, jehož live GitHub metadata nejdou ově�
   const check = personalspaceDoctorCheck(response);
   expect(check.status).toBe("fail");
   expect(check.details.join(" ")).toContain("repo privacy nelze živě ověřit");
+});
+
+test("legacy Personalspace bez deklarovaného gbrain repa není označený jako privacy-checked", async () => {
+  const [space] = await attachLiveRepositoryPrivacy([{
+    mount_path: "personalspace/exampleuser_GEN3",
+    config_valid: true,
+    github_repo: "exampleuser/exampleuser_GEN3",
+    gbrain: { exists: true, mode: "legacy" },
+    module_summary: {},
+  }], { inspectRepository: privateRepoInspector });
+
+  expect(space.live_repository_privacy_checked).toBe(false);
+  expect(space.repository_privacy_missing_roles).toEqual(["gbrain"]);
+  expect(space.repository_privacy_checks).toEqual([{
+    role: "owner",
+    github_repo: "exampleuser/exampleuser_GEN3",
+    status: "private",
+    visibility: "private",
+  }]);
+
+  const check = personalspaceDoctorCheck({
+    mountpoint: "personalspace",
+    spaces: [space],
+    failures: [],
+    warnings: [],
+    summary: { app_count: 0 },
+  });
+  expect(check.status).toBe("fail");
+  expect(check.details.join(" ")).toContain("chybí deklarovaný gbrain repository binding");
 });
 
 test("live GitHub privacy probe používá bounded shell-free gh příkaz", async () => {

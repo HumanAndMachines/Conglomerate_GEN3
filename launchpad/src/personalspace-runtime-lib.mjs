@@ -220,14 +220,20 @@ export async function attachLiveRepositoryPrivacy(
   };
   return Promise.all((spaces ?? []).map(async (space) => {
     if (!space?.config_valid) return space;
-    const repositories = [
+    const repositoryBindings = [
       ["owner", space.github_repo],
       ["gbrain", space.gbrain?.repository?.github_repo],
-      ["buddy", space.buddy?.repository?.github_repo],
-    ].filter(([, repo]) => typeof repo === "string" && repo.trim() !== "");
+      ...(space.buddy ? [["buddy", space.buddy?.repository?.github_repo]] : []),
+    ];
+    const missingRoles = repositoryBindings
+      .filter(([, repo]) => typeof repo !== "string" || repo.trim() === "")
+      .map(([role]) => role);
+    const repositories = repositoryBindings
+      .filter(([, repo]) => typeof repo === "string" && repo.trim() !== "");
     return {
       ...space,
-      live_repository_privacy_checked: true,
+      live_repository_privacy_checked: missingRoles.length === 0,
+      repository_privacy_missing_roles: missingRoles,
       repository_privacy_checks: await Promise.all(
         repositories.map(async ([role, repo]) => ({
           role,
@@ -300,7 +306,14 @@ export function personalspaceDoctorCheck(personalspaceResponse) {
       ? space.repository_privacy_checks
       : [];
     if (space.live_repository_privacy_checked !== true) {
-      repositoryPrivacyFailures.push(`${space.mount_path}: živé ověření repository privacy nebylo provedeno`);
+      const missingRoles = Array.isArray(space.repository_privacy_missing_roles)
+        ? space.repository_privacy_missing_roles
+        : [];
+      repositoryPrivacyFailures.push(
+        missingRoles.length > 0
+          ? `${space.mount_path}: chybí deklarovaný ${missingRoles.join("/")} repository binding pro živé ověření privacy`
+          : `${space.mount_path}: živé ověření repository privacy nebylo provedeno`,
+      );
     }
     for (const privacyCheck of privacyChecks) {
       if (privacyCheck.status !== "private") {
