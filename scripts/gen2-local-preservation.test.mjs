@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { once } from "node:events";
 import {
@@ -25,6 +25,11 @@ import {
 
 const scriptPath = fileURLToPath(new URL("./gen2-local-preservation.mjs", import.meta.url));
 const tempRoots = [];
+
+// The suite intentionally exercises real Git repositories, refs, stashes,
+// fsck and filesystem metadata. Five seconds is not a meaningful failure
+// boundary under CI or concurrent local load, especially on Windows.
+setDefaultTimeout(process.platform === "win32" ? 45_000 : 20_000);
 
 function run(command, args, cwd) {
   const result = spawnSync(command, args, {
@@ -568,7 +573,19 @@ describe("verification drift detection", () => {
     server.listen(socketPath);
     await once(server, "listening");
     try {
-      const result = cli(verifyArgs(fixture.source, fixture.destination, fixture.personalspaceRoot));
+      const result = cli(
+        verifyArgs(fixture.source, fixture.destination, fixture.personalspaceRoot),
+        {
+          // A live dummy socket must not be mistaken for a real Git fsmonitor
+          // daemon by the verifier's own Git probes; this test exercises the
+          // inventory ignore rule, not the fsmonitor wire protocol.
+          env: {
+            GIT_CONFIG_COUNT: "1",
+            GIT_CONFIG_KEY_0: "core.fsmonitor",
+            GIT_CONFIG_VALUE_0: "false",
+          },
+        },
+      );
 
       expect(result.status).toBe(0);
       expect(JSON.parse(result.stdout).verified).toBe(true);
@@ -576,7 +593,7 @@ describe("verification drift detection", () => {
       server.close();
       await once(server, "close");
     }
-  });
+  }, 15_000);
 
   test("refuses to refresh success when archive or evidence directory permissions become public", async () => {
     for (const target of ["archive", "evidence"]) {
