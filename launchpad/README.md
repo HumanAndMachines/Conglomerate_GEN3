@@ -269,10 +269,14 @@ bun run doctor
 bun run doctor:json
 ```
 
-`dev` spustí webový Launchpad server od `127.0.0.1:4174`; pokud je port
-obsazený a port nebyl zadaný explicitně, použije další volný port. `launch`
+`dev` spustí webový Launchpad server od `127.0.0.1:4174`; pokud je výchozí port
+nebo port z environment `PORT` obsazený, použije další volný port. Pouze
+explicitní CLI `--port` je fail-closed a zůstává na zadaném portu; chybějící
+hodnota explicitního flagu skončí okamžitou chybou. `launch`
 spustí server a pokusí se otevřít prohlížeč. Když na stejném portu už běží
-zdravý Launchpad GEN3, druhé spuštění pouze otevře existující instanci.
+Launchpad GEN3 ze stejného kanonického rootu, druhé spuštění ověří hash identity
+rootu a pouze otevře existující instanci. Launchpad z jiného rootu ani cizí HTTP
+server se nepřevezme.
 `discover` vypíše nalezené aplikace. Discovery nejdřív načte registry metadata
 z `launchpad.gen3.json`, potom automaticky proskenuje lokální
 `organizations/*/company.gen3.json`. `check` validuje `companyascode.app`
