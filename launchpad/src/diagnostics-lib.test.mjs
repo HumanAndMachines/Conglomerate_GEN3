@@ -81,6 +81,71 @@ test("doctor report obsahuje platform, git a gitignore checks", async () => {
   expect(checks.get("launchpad.discovery")?.status).toBe("ok");
 });
 
+test("Doctor launchpad.discovery failuje na Organization cross-file identitě", async () => {
+  const root = await createCompaniesWorkspaceFixture();
+  const companyRoot = join(root, "organizations", "BrokenIdentity_GEN3");
+  await mkdir(join(companyRoot, "manual"), { recursive: true });
+  await mkdir(join(companyRoot, "company", "colleagues"), { recursive: true });
+  await writeJson(join(companyRoot, "company.gen3.json"), {
+    organization_generation: "gen3",
+    company: {
+      slug: "BrokenIdentity",
+      display_name: "Broken Identity",
+      github_org: "CorrectGithubOrg",
+    },
+    teams: [{ slug: "workspace", display_name: "Hlavní Team", default: true }],
+  });
+  await writeJson(join(companyRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "OtherIdentity",
+    github_org: "WrongGithubOrg",
+    module_slots: [],
+  });
+
+  const report = await buildLaunchpadDoctorReport({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+  });
+  const discoveryCheck = report.checks.find((check) => check.id === "launchpad.discovery");
+
+  expect(discoveryCheck?.status).toBe("fail");
+  expect(discoveryCheck?.details.some((detail) => detail.includes("company.slug") && detail.includes("OtherIdentity"))).toBe(true);
+  expect(discoveryCheck?.details.some((detail) => detail.includes("company.github_org") && detail.includes("WrongGithubOrg"))).toBe(true);
+});
+
+test("Doctor failuje, když manifestovaný modul kanonicky uniká do jiné Organization", async () => {
+  const root = await createCompaniesWorkspaceFixture();
+  const companyRoot = join(root, "organizations", "EscapingOrg_GEN3");
+  const foreignPath = join(root, "organizations", "ForeignOrg_GEN3", "workspace", "shared");
+  await mkdir(join(companyRoot, "manual"), { recursive: true });
+  await mkdir(join(companyRoot, "company", "colleagues"), { recursive: true });
+  await mkdir(foreignPath, { recursive: true });
+  await writeJson(join(companyRoot, "company.gen3.json"), {
+    organization_generation: "gen3",
+    company: { slug: "EscapingOrg", display_name: "Escaping Org", github_org: "EscapingOrg" },
+    teams: [{ slug: "workspace", display_name: "Hlavní Team", default: true }],
+  });
+  await writeJson(join(companyRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "EscapingOrg",
+    github_org: "EscapingOrg",
+    module_slots: [
+      { path: "../ForeignOrg_GEN3/workspace/shared", teams: ["workspace"], git: { url: "git@github.com:ForeignOrg/shared.git" } },
+    ],
+  });
+
+  const report = await buildLaunchpadDoctorReport({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+  });
+  const discoveryCheck = report.checks.find((check) => check.id === "launchpad.discovery");
+
+  expect(discoveryCheck?.status).toBe("fail");
+  expect(discoveryCheck?.details.some((detail) => detail.includes("uniká mimo Organization root"))).toBe(true);
+}, 10_000);
+
 test("template mounty nejsou kontrolované Organization-private gitignore probami", async () => {
   const root = await createTemplateMountFixture();
   const report = await buildLaunchpadDoctorReport({
@@ -157,6 +222,7 @@ test("apps response exposes manifest-only workspace modules and productionspace 
   });
   await writeJson(join(companyRoot, "modules.manifest.json"), {
     organization_generation: "gen3",
+    company: "OmegaCo",
     module_slots: [
       {
         path: "modules/knowledgebase",
@@ -327,6 +393,7 @@ test("Doctor drží missing_access bez autoritativního ACL důkazu fail-closed"
   });
   await writeJson(join(companyRoot, "modules.manifest.json"), {
     organization_generation: "gen3",
+    company: "AccessCo",
     module_slots: [
       {
         path: "workspace/restricted",
@@ -416,6 +483,7 @@ test("Doctor neutralizuje role-based missing_access jen s principal-scoped loká
   });
   await writeJson(join(companyRoot, "modules.manifest.json"), {
     organization_generation: "gen3",
+    company: "AccessCo",
     module_slots: [
       {
         path: "workspace/finance",
@@ -478,6 +546,7 @@ test("Mission Control app/code a data jsou root sloty mimo Team dlaždice", asyn
   });
   await writeJson(join(companyRoot, "modules.manifest.json"), {
     organization_generation: "gen3",
+    company: "OmegaCo",
     module_slots: [
       { path: "mission-control", space: "root", git: { url: "git@github.com:OmegaCo/mission-control.git", branch: "main" } },
       { path: "mission-control/db", space: "root", category: "planning-data", git: { url: "git@github.com:OmegaCo/mission-control-data.git", branch: "v3" } },
@@ -909,16 +978,24 @@ test("app workspace se čte z manifest deklarace, ne z filesystem cesty (decisio
   });
   await writeJson(join(companyRoot, "modules.manifest.json"), {
     organization_generation: "gen3",
+    company: "AlfaCo",
     module_slots: [
-      { path: "modules/sidebrand-shop", workspace: "sidebrand" },
-      { path: "modules/wiki" },
+      {
+        path: "workspace/sidebrand-shop",
+        workspace: "sidebrand",
+        git: { url: "git@github.com:AlfaCo/sidebrand-shop.git", branch: "main" },
+      },
+      {
+        path: "workspace/wiki",
+        git: { url: "git@github.com:AlfaCo/wiki.git", branch: "main" },
+      },
     ],
   });
   await writeJson(join(companyRoot, "TODO.tasks.json"), {});
   await writeJson(join(companyRoot, "DONE.tasks.json"), {});
   await writeJson(join(companyRoot, "ISSUES.open.json"), {});
-  const shopApp = join(companyRoot, "modules", "sidebrand-shop", "app", "v1");
-  const wikiApp = join(companyRoot, "modules", "wiki", "app", "v1");
+  const shopApp = join(companyRoot, "workspace", "sidebrand-shop", "app", "v1");
+  const wikiApp = join(companyRoot, "workspace", "wiki", "app", "v1");
   for (const [dir, id, port] of [
     [shopApp, "sidebrand-shop-v1", 5511],
     [wikiApp, "alfaco-wiki-v1", 5512],
@@ -953,8 +1030,7 @@ test("app workspace se čte z manifest deklarace, ne z filesystem cesty (decisio
   });
 
   const workspaceByAppId = new Map(response.apps.map((app) => [app.id, app.workspace]));
-  // Deklarace v manifestu vyhrává; moduly jsou fyzicky v modules/ (plochý
-  // layout), přesto se appka grupuje do deklarovaného Workspace.
+  // Deklarace Teamu v manifestu vyhrává nad pouhou filesystem cestou.
   expect(workspaceByAppId.get("sidebrand-shop-v1")).toBe("sidebrand");
   // Chybějící deklarace = default Workspace se slugem "workspace".
   expect(workspaceByAppId.get("alfaco-wiki-v1")).toBe("workspace");
@@ -983,7 +1059,10 @@ test("invalid_manifest appka je viditelná v apps response a doctor ji hlásí j
     organization_generation: "gen3",
     company: { slug: "BrokenCo", display_name: "Broken Co" },
   });
-  await writeJson(join(companyRoot, "modules.manifest.json"), {});
+  await writeJson(join(companyRoot, "modules.manifest.json"), {
+    company: "BrokenCo",
+    module_slots: [],
+  });
   await writeJson(join(companyRoot, "TODO.tasks.json"), {});
   await writeJson(join(companyRoot, "DONE.tasks.json"), {});
   await writeJson(join(companyRoot, "ISSUES.open.json"), {});

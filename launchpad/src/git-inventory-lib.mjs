@@ -1,7 +1,7 @@
 import { existsSync } from "fs";
 import { readFile, readdir } from "fs/promises";
 import { basename, dirname, join } from "path";
-import { organizationMountStructureIssues } from "./discovery-lib.mjs";
+import { organizationMountStructureIssues, organizationRelativePathIssue } from "./discovery-lib.mjs";
 import {
   isCanonicalOrganizationRepositorySlotPath,
   isOrganizationRootSlotDescendantPath,
@@ -84,11 +84,21 @@ export async function buildGitInventory({ companiesRoot, organizations = null } 
       continue;
     }
     for (const rawSlot of Array.isArray(manifest.module_slots) ? manifest.module_slots : []) {
+      const containmentIssue = organizationRelativePathIssue({
+        organizationRoot,
+        path: rawSlot?.path,
+      });
       const pathBoundaryIssue = slotPathBoundaryInventoryIssue(rawSlot);
       if (pathBoundaryIssue) {
         warnings.push(
-          `${normalized.path}: slot ${String(rawSlot?.path ?? "<missing>")} vynechán z git/worktree inventáře — ${pathBoundaryIssue}`,
+          `${normalized.path}: slot ${String(rawSlot?.path ?? "<missing>")} vynechán z git/worktree inventáře — ${pathBoundaryIssue}${
+            containmentIssue ? `; module_slots[].path ${containmentIssue}` : ""
+          }`,
         );
+        continue;
+      }
+      if (containmentIssue) {
+        warnings.push(`${normalized.path}: module_slots[].path ${containmentIssue}; slot vynechán z akčního Git inventáře`);
         continue;
       }
       const slot = normalizeModuleSlot(rawSlot, normalized);
