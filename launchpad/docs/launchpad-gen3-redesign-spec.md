@@ -147,6 +147,47 @@ binary via a separate release artifact that changes far less often.
 - **On the Workspace Host** the Steward seat holds the update through a
   daily cron (e.g. 05:00) that updates the whole system including tests.
 
+### Action contract: "Aktualizovat" (implemented v1 — git-context axis, CAC-0056)
+
+Implementation note: v1 deliberately deviates from the `git pull --rebase
+--autostash` sketch above and reuses the safer, already-proven per-repo
+primitives — **ff-only merge to an explicit verified channel target**, with
+autostash (stash → ff → exact restore) only as an explicit second action, never
+as a silent default. Channels and client checkout policy are held by decision
+draft 0080 (HumanAndMachines); the binary axis waits for the CI build+sign
+pipeline and is reported as `binary: { state: "not_available" }`.
+
+- **Intent:** bring the Conglomerate root to the current target of the
+  machine's update channel (`stable` = highest `vX.Y.Z` tag, `nightly` =
+  `origin/main`) without ever rewriting history or losing local work.
+- **Source of truth:** channel in gitignored `launchpad.gen3.local.json`
+  (`update_channel`, default `stable`); target resolved from origin tags /
+  `origin/main` after `git fetch origin main --tags --prune`.
+- **Preconditions:** root checkout is a standalone git root on branch `main`;
+  clean tracked files for the default action (`mode: "ff_only"`); dirty
+  tracked state requires the explicit `mode: "preserve_changes"` action and
+  `can_update_with_autostash`; target must be strictly fast-forward.
+- **Side effects:** `git merge --ff-only <verified target sha>` on the root;
+  in preserve mode additionally stash push/apply/drop with exact-identity
+  verification. Records `from_commit`/`to_commit` in the response for a
+  future rollback action. No binary is touched in v1.
+- **Failure mode:** explainable states (`ahead_of_channel_target`, `diverged`,
+  `wrong_branch`, `dirty_worktree`, `no_release_tag`, `fetch_failed`) return
+  HTTP 409 with a Czech message and never mutate; a failed autostash restore
+  keeps the stash backup and says so ("Vyřešit s Agentem" is the recovery
+  path). Never `reset --hard`, never rebase.
+- **Access boundary:** builder control plane only — `POST /api/update` is a
+  mutating API guarded by the trusted-local check (127.0.0.1, same-origin),
+  serialized with background fetches via `withRemoteRefreshPaused`. The root
+  lane is separate from the organization git inventory (`pull-all` never
+  touches the root).
+- **Verification:** `GET /api/update/status` before/after; post-update HEAD
+  must equal the verified target sha (`update_verification_failed`
+  otherwise); read-only Doctor check `update.channel` reports channel
+  validity, branch, and ahead/behind against the last known target without
+  fetching. Covered by `src/update-lib.test.mjs` and
+  `src/diagnostics-lib.test.mjs`.
+
 ## 1b. Builder Bridge API — versioning, transport adapters, CORS/LNA, pairing token, headless mode [PROPOSAL — pending founder ratification of decision 0077]
 
 **Canonical term (founder 2026-07-12).** The **Builder Bridge** is the **headless daemon + versioned API layer of the Launchpad**. It lives HERE — inside the Launchpad app in the source-available Conglomerate core — not as a separate service. The local HTTP API is no longer an internal same-origin surface: it is the Bridge, one versioned API a browser served from another origin (the hosted Dashboard) can reach directly. The existing **agent-over-SSH remote work (decisions 0059/0060/0061) is ONE TRANSPORT under the Bridge umbrella**: remote builder agents keep using plain SSH into the Workspace Host, and the Launchpad/Bridge manages and exposes that access — it does not replace SSH. Canonical contract: `HumanAndMachines/docs/builder-bridge-contract.md`.
@@ -508,6 +549,12 @@ lives in the private `Rozjedeme-ai/HumanAndMachines` repo):
 - DEV instances get their port from Launchpad via the `PORT` env contract; an
   app manifest declares support. A DEV instance never takes the main runtime's
   port — collision is a blocking state.
+- Main i worktree runtime dostává absolutní
+  `COMPANYASCODE_ORGANIZATION_ROOT`. Appka používá tento kontrakt pro
+  Organization-level manifesty, `infra/`, shared compatibility soubory a
+  cesty do jiných modulů; nesmí Organization root odvozovat z worktree `cwd`
+  ani zaměnit za Conglomerate-level `COMPANIES_WORKSPACE_ROOT`. Stejný env je
+  dostupný i dependency install procesu.
 - Launchpad may create a worktree from a planned Mission Control plan (guarded:
   valid plan, clean-enough main, canonical path, sidecar metadata).
 - `Publikovat` means: commit the local draft and push the branch to GitHub.

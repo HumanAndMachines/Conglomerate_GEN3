@@ -40,7 +40,7 @@ test("otevře jen dostupný deklarovaný modul uvnitř Organizace", async () => 
     module: "presentation",
     module_path: "workspace/presentation",
   });
-  expect(commands).toEqual([["open", moduleRoot]]);
+  expect(commands).toEqual([["/usr/bin/open", moduleRoot]]);
 });
 
 test("odmítne chybějící checkout a symlink mimo Organizaci", async () => {
@@ -81,9 +81,47 @@ test("odmítne chybějící checkout a symlink mimo Organizaci", async () => {
   });
 });
 
+test("odmítne Organization mount, jehož realpath uniká mimo Conglomerate root", async () => {
+  const root = join(import.meta.dir, `.tmp-module-folder-${crypto.randomUUID()}`);
+  tempRoots.push(root);
+  const companiesRoot = join(root, "conglomerate");
+  const outsideOrganization = join(root, "outside-org");
+  await mkdir(join(companiesRoot, "organizations"), { recursive: true });
+  await mkdir(join(outsideOrganization, "workspace", "presentation"), { recursive: true });
+  await symlink(outsideOrganization, join(companiesRoot, "organizations", "Escaped_GEN3"));
+  let spawnCount = 0;
+  const opener = createModuleFolderOpener({
+    companiesRoot,
+    getAppsResponse: async () => ({
+      organizations: [{
+        slug: "Escaped",
+        path: "organizations/Escaped_GEN3",
+        workspaces: [{
+          slug: "workspace",
+          modules: [{ slug: "presentation", path: "workspace/presentation", status: "available" }],
+        }],
+      }],
+    }),
+    spawnCommand: async () => {
+      spawnCount += 1;
+      return { ok: true };
+    },
+  });
+
+  await expect(opener.open({ organization: "Escaped", modulePath: "workspace/presentation" })).rejects.toMatchObject({
+    status: 403,
+    code: "module_path_forbidden",
+  });
+  expect(spawnCount).toBe(0);
+});
+
 test("používá bezpečné systémové příkazy bez shellové interpolace", () => {
-  expect(folderOpenCommand("darwin", "/tmp/demo")).toEqual(["open", "/tmp/demo"]);
-  expect(folderOpenCommand("win32", "C:\\demo")).toEqual(["explorer.exe", "C:\\demo"]);
+  expect(folderOpenCommand("darwin", "/tmp/demo")).toEqual(["/usr/bin/open", "/tmp/demo"]);
+  expect(folderOpenCommand("win32", "C:\\demo", { SystemRoot: "C:\\Windows" })).toEqual([
+    "C:\\Windows\\explorer.exe",
+    "C:\\demo",
+  ]);
+  expect(folderOpenCommand("win32", "C:\\demo", {})).toEqual(["explorer.exe", "C:\\demo"]);
   expect(folderOpenCommand("linux", "/tmp/demo")).toEqual(["xdg-open", "/tmp/demo"]);
   expect(folderOpenCommand("freebsd", "/tmp/demo")).toBeNull();
 });

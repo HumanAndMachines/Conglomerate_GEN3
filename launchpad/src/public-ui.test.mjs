@@ -1,8 +1,16 @@
 import { expect, test } from "bun:test";
-import { readFile } from "fs/promises";
+import { readFile as readRawFile } from "fs/promises";
 import { join } from "path";
 
 const publicRoot = join(import.meta.dirname, "..", "public");
+
+function normalizeLineEndings(value) {
+  return value.replace(/\r\n?/g, "\n");
+}
+
+async function readFile(path, encoding) {
+  return normalizeLineEndings(await readRawFile(path, encoding));
+}
 
 test("Launchpad public shell exposes a header space switcher and app cards", async () => {
   const [html, js, css, server] = await Promise.all([

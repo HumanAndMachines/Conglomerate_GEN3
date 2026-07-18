@@ -1,5 +1,5 @@
 import { realpath, stat } from "fs/promises";
-import { isAbsolute, relative, resolve } from "path";
+import { isAbsolute, relative, resolve, win32 } from "path";
 
 export class ModuleFolderActionError extends Error {
   constructor(status, code, message) {
@@ -24,6 +24,7 @@ export function createModuleFolderOpener({
   companiesRoot,
   getAppsResponse,
   platform = process.platform,
+  env = process.env,
   spawnCommand = runCommand,
 }) {
   return {
@@ -56,11 +57,21 @@ export function createModuleFolderOpener({
         );
       }
 
+      const realCompaniesRoot = await realpath(companiesRoot).catch(() => null);
       const organizationRoot = await realpath(resolve(companiesRoot, organization.path)).catch(() => null);
-      const moduleRoot = organizationRoot
-        ? await realpath(resolve(organizationRoot, module.path)).catch(() => null)
-        : null;
-      if (!organizationRoot || !moduleRoot || !isWithin(organizationRoot, moduleRoot)) {
+      const organizationRelativePath = realCompaniesRoot && organizationRoot
+        ? relative(realCompaniesRoot, organizationRoot)
+        : "";
+      if (
+        !realCompaniesRoot
+        || !organizationRoot
+        || !organizationRelativePath
+        || !isWithin(realCompaniesRoot, organizationRoot)
+      ) {
+        throw new ModuleFolderActionError(403, "module_path_forbidden", "Cesta Organizace není bezpečně uvnitř Conglomerate rootu.");
+      }
+      const moduleRoot = await realpath(resolve(organizationRoot, module.path)).catch(() => null);
+      if (!moduleRoot || !isWithin(organizationRoot, moduleRoot)) {
         throw new ModuleFolderActionError(403, "module_path_forbidden", "Cesta modulu není bezpečně uvnitř Organizace.");
       }
       const moduleStats = await stat(moduleRoot).catch(() => null);
@@ -68,7 +79,7 @@ export function createModuleFolderOpener({
         throw new ModuleFolderActionError(409, "module_folder_unavailable", "Lokální složka modulu není dostupná.");
       }
 
-      const command = folderOpenCommand(platform, moduleRoot);
+      const command = folderOpenCommand(platform, moduleRoot, env);
       if (!command) {
         throw new ModuleFolderActionError(501, "folder_open_unsupported", "Otevírání složek na této platformě není podporované.");
       }
@@ -86,9 +97,12 @@ export function createModuleFolderOpener({
   };
 }
 
-export function folderOpenCommand(platform, path) {
-  if (platform === "darwin") return ["open", path];
-  if (platform === "win32") return ["explorer.exe", path];
+export function folderOpenCommand(platform, path, env = process.env) {
+  if (platform === "darwin") return ["/usr/bin/open", path];
+  if (platform === "win32") {
+    const systemRoot = env.SystemRoot ?? env.WINDIR;
+    return [systemRoot ? win32.join(systemRoot, "explorer.exe") : "explorer.exe", path];
+  }
   if (platform === "linux") return ["xdg-open", path];
   return null;
 }
@@ -103,6 +117,7 @@ async function runCommand(command) {
     const child = Bun.spawn(command, {
       stdout: "ignore",
       stderr: "ignore",
+      windowsHide: true,
     });
     return { ok: (await child.exited) === 0 };
   } catch {

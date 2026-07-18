@@ -1,10 +1,27 @@
-import { existsSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { readFile, readdir, stat } from "fs/promises";
 import { basename, join } from "path";
 import { discoverLaunchpadApps, readJson } from "./discovery-lib.mjs";
+import { UPDATE_CHANNELS, selectHighestStableTag } from "./update-lib.mjs";
 import { buildGitApiResponse, compactGitSummaryForApp } from "./git-api-lib.mjs";
-import { createRuntimeManager } from "./runtime-lib.mjs";
+import { createRuntimeManager, resolveBunExecutable } from "./runtime-lib.mjs";
 import { buildWorktreeIndex } from "./worktree-lib.mjs";
+import {
+  GIT_LOCAL_TIMEOUT_MS,
+  resolveGitExecutableSync,
+  safeGitCommandEnv,
+} from "./git-lib.mjs";
+import { agentSkillsEntrypointsDoctorCheck } from "./agent-skills-entrypoint-lib.mjs";
+import {
+  isCanonicalOrganizationRepositorySlotPath,
+  isOrganizationRootSlotDescendantPath,
+  isOrganizationRootSlotPath,
+  isOrganizationSlotContainerPath,
+  normalizeOrganizationSlotPath,
+  organizationSlotPathScope,
+  organizationSlotScope,
+  organizationSlotWorkspace,
+} from "./organization-slot-scope-lib.mjs";
 
 const supportedPlatforms = {
   darwin: "macOS",
@@ -104,14 +121,14 @@ export async function buildLaunchpadAppsResponse({
     // Which workspace inside the organization this module belongs to — from the
     // manifest declaration (module_slots[].workspace / modules[].workspace);
     // missing declaration means the default "workspace" (decision 0041).
-    workspace: workspaceResolvers.get(app.organization_path)?.(app) ?? "workspace",
+    workspace: workspaceForApp(workspaceResolvers, app),
     url: `http://${app.host}:${app.port}`,
     health_url: `http://${app.host}:${app.port}${app.health_path}`,
   })));
   const invalidApps = (discovery.invalid_apps ?? []).map((app) => ({
     ...app,
     company_display_name: companyNames.get(app.company) ?? app.company,
-    workspace: workspaceResolvers.get(app.organization_path)?.(app) ?? "workspace",
+    workspace: workspaceForApp(workspaceResolvers, app),
     url: null,
     health_url: null,
     dependencies: {
@@ -196,7 +213,23 @@ export async function buildLaunchpadDoctorReport(options = {}) {
     companiesRoot: appsResponse.root,
     launchpadRoot: options.launchpadRoot,
   });
-  return buildDoctorReportFromAppsResponse(appsResponse, { environmentChecks, extraChecks: [...worktreeChecks, ...personalspaceChecks] });
+  const agentSkillsChecks = [
+    await agentSkillsEntrypointsDoctorCheck({
+      companiesRoot: appsResponse.root,
+      mounts: [
+        ...(appsResponse.organizations ?? []),
+        ...(appsResponse.template_mounts ?? []),
+      ],
+      agentCapabilityMode:
+        options.agentCapabilityMode
+        ?? process.env.COMPANYASCODE_AGENT_CAPABILITY_MODE
+        ?? "claude-compatible",
+    }),
+  ];
+  return buildDoctorReportFromAppsResponse(appsResponse, {
+    environmentChecks,
+    extraChecks: [...worktreeChecks, ...personalspaceChecks, ...agentSkillsChecks],
+  });
 }
 
 // Oddělený od org appsResponse: personalspace má vlastní lane. Dynamický import,
@@ -595,6 +628,7 @@ export function buildEnvironmentChecks({ companiesRoot, companies = [], template
     ...toolChecks,
     gitRootCheck(companiesRoot),
     gitWorktreeCheck(companiesRoot),
+    updateChannelCheck(companiesRoot),
     gitSubmodulesCheck(companiesRoot),
     gitRepoMountsCheck(companiesRoot, repoMounts),
     gitignoreProtectionCheck(companiesRoot, repoMounts),
@@ -651,7 +685,9 @@ async function readOrganizationSpaces(companiesRoot, organization, localConfig =
   const isNestedChildSlot = (slot) =>
     declarationPaths.some((path) => path !== slot.path && slot.path.startsWith(`${path}/`));
   const tileModules = moduleDeclarations.filter((slot) => !isNestedChildSlot(slot));
-  const workspaceModules = tileModules.filter((slot) => slot.workspace && slot.workspace !== "productionspace");
+  const workspaceModules = tileModules.filter(
+    (slot) => slot.space === "workspace" && slot.workspace,
+  );
   const workspaceSlugs = new Set([
     ...declared.filter((workspace) => workspace !== productionBoundary).map((workspace) => workspace.slug).filter(Boolean),
     ...workspaceModules.map((slot) => slot.workspace),
@@ -701,6 +737,12 @@ async function readOrganizationSpaces(companiesRoot, organization, localConfig =
       manifest,
       config,
     }),
+    root_slot_contract_issues: rootSlotContractIssues(
+      manifest,
+      config,
+      organizationRoot,
+    ),
+    slot_scope_contract_issues: slotScopeContractIssues(manifest, config),
   };
 }
 
@@ -729,7 +771,14 @@ function workspaceConformanceIssues({ declared, productionBoundary, manifest, co
   ];
   for (const { source, slot } of rawSlots) {
     if (!slot || typeof slot.path !== "string") continue;
-    const path = slot.path.replace(/\\/g, "/");
+    const rawPath = slot.path.replace(/\\/g, "/");
+    const path = normalizeOrganizationSlotPath(rawPath);
+    if (!path) continue;
+    if (path !== rawPath) {
+      issues.push(
+        `${source}: slot path "${rawPath}" není kanonický; použij "${path}"`,
+      );
+    }
     if (slot.workspace === "productionspace") {
       issues.push(
         path.startsWith("productionspace/")
@@ -743,6 +792,175 @@ function workspaceConformanceIssues({ declared, productionBoundary, manifest, co
       );
     }
   }
+  return issues;
+}
+
+function slotScopeContractIssues(manifest, config) {
+  const issues = [];
+  const rawSlots = [
+    ...(Array.isArray(manifest?.module_slots) ? manifest.module_slots : []).map((slot) => ({
+      source: "modules.manifest.json",
+      slot,
+    })),
+    ...(Array.isArray(config?.modules) ? config.modules : []).map((slot) => ({
+      source: "company.gen3.json",
+      slot,
+    })),
+  ];
+  for (const { source, slot } of rawSlots) {
+    if (!slot || typeof slot.path !== "string") continue;
+    const path = normalizeOrganizationSlotPath(slot.path);
+    if (isOrganizationSlotContainerPath(path)) {
+      issues.push(
+        `${source}: slot ${path} je Organization kontejner, ne repozitářový slot; použij workspace/<slug>, modules/<slug> nebo productionspace/<slug>`,
+      );
+      continue;
+    }
+    if (isOrganizationRootSlotDescendantPath(path)) {
+      issues.push(
+        `${source}: slot ${path} je uvnitř rezervované Organization root boundary; samostatné root sloty jsou jen design-system, infra, mission-control a mission-control/db`,
+      );
+      continue;
+    }
+    if (!isCanonicalOrganizationRepositorySlotPath(slot.path)) {
+      issues.push(
+        `${source}: slot path ${JSON.stringify(slot.path)} není kanonická podporovaná Organization-relative repo boundary`,
+      );
+      continue;
+    }
+    if (slot.space === undefined) continue;
+    const pathScope = organizationSlotPathScope(path);
+    if (!pathScope || pathScope === "root" || slot.space === pathScope) continue;
+    issues.push(
+      `${source}: slot ${path} musí podle path boundary deklarovat space: "${pathScope}", ne "${slot.space}"`,
+    );
+  }
+  return issues;
+}
+
+// Organization root checkout boundaries mají přísnější kontrakt než běžné
+// Team moduly: scope musí být explicitní, aktivní slot musí nést přesné checkout
+// souřadnice a Mission Control app/data deklarace tvoří jeden pár.
+function rootSlotContractIssues(manifest, config, organizationRoot) {
+  const issues = [];
+  const rootLayerPaths = new Set(["design-system", "infra", "mission-control"]);
+  const slots = Array.isArray(manifest?.module_slots) ? manifest.module_slots : [];
+  const rootSlots = slots
+    .filter((slot) => slot && typeof slot.path === "string")
+    .map((slot) => ({
+      slot,
+      rawPath: slot.path.replace(/\\/g, "/"),
+      path: normalizeOrganizationSlotPath(slot.path),
+    }))
+    .filter(({ path }) => isOrganizationRootSlotPath(path));
+  const declaredPaths = new Set(rootSlots.map(({ path }) => path));
+
+  for (const { slot, rawPath, path } of rootSlots) {
+    if (rawPath !== path) {
+      issues.push(
+        `modules.manifest.json: root slot path "${rawPath}" není kanonický; použij "${path}"`,
+      );
+    }
+    if (slot.space !== "root") {
+      issues.push(
+        `modules.manifest.json: root slot ${path} musí explicitně deklarovat space: "root"`,
+      );
+    }
+
+    const membershipFields = ["workspace", "workspaces", "teams"].filter((field) =>
+      Object.prototype.hasOwnProperty.call(slot, field),
+    );
+    if (membershipFields.length > 0) {
+      issues.push(
+        `modules.manifest.json: root slot ${path} nesmí deklarovat Team/Workspace membership (${membershipFields.join(", ")})`,
+      );
+    }
+
+    const legacyCheckoutFields = ["repo", "repository", "branch"].filter((field) =>
+      Object.prototype.hasOwnProperty.call(slot, field),
+    );
+    if (legacyCheckoutFields.length > 0) {
+      issues.push(
+        `modules.manifest.json: root slot ${path} nesmí deklarovat legacy checkout souřadnice (${legacyCheckoutFields.join(", ")}); používej výhradně git.url a git.branch`,
+      );
+    }
+
+    const gitUrl = typeof slot.git?.url === "string" ? slot.git.url.trim() : "";
+    const gitBranch = typeof slot.git?.branch === "string" ? slot.git.branch.trim() : "";
+    const checkoutExists = existsSync(join(organizationRoot, path));
+    const checkoutCoordinatesStarted = slot.git !== undefined;
+    if (slot.status === "planned_slot" && checkoutExists) {
+      issues.push(
+        `modules.manifest.json: materializovaný root slot ${path} nesmí zůstat status: "planned_slot"; odstraň status a ponech nebo doplň celé git.url i git.branch`,
+      );
+    } else if (slot.status === "planned_slot" && checkoutCoordinatesStarted) {
+      issues.push(
+        `modules.manifest.json: planned root slot ${path} nesmí deklarovat git; s checkout souřadnicemi už jde o aktivní nebo missing-access slot`,
+      );
+    } else if (slot.status !== "planned_slot") {
+      const missingCoordinates = [
+        ...(gitUrl ? [] : ["git.url"]),
+        ...(gitBranch ? [] : ["git.branch"]),
+      ];
+      if (missingCoordinates.length > 0) {
+        issues.push(
+          `modules.manifest.json: materializovaný nebo checkoutem rozepsaný root slot ${path} musí deklarovat ${missingCoordinates.join(" a ")}; bez checkout údajů smí být jen nematerializovaný status: "planned_slot"`,
+        );
+      }
+    }
+    if (path === "mission-control/db" && gitBranch && gitBranch !== "v3") {
+      issues.push(
+        `modules.manifest.json: root slot mission-control/db musí používat větev "v3", deklarována je "${gitBranch}"`,
+      );
+    }
+  }
+
+  const missionControlDeclared = declaredPaths.has("mission-control");
+  const missionControlDataDeclared = declaredPaths.has("mission-control/db");
+  if (missionControlDeclared !== missionControlDataDeclared) {
+    const missingPath = missionControlDeclared ? "mission-control/db" : "mission-control";
+    issues.push(
+      `modules.manifest.json: Mission Control app/data boundary musí deklarovat oba root sloty; chybí ${missingPath} (během migrace smí mít protějšek status: "planned_slot")`,
+    );
+  }
+
+  for (const slot of Array.isArray(config?.modules) ? config.modules : []) {
+    if (!slot || typeof slot.path !== "string") continue;
+    const path = normalizeOrganizationSlotPath(slot.path);
+    if (!isOrganizationRootSlotPath(path)) continue;
+    issues.push(
+      `company.gen3.json: root slot ${path} nesmí být v modules[]; deklaruj ho v modules.manifest.json/module_slots[]`,
+    );
+  }
+
+  const rootLayers = (Array.isArray(config?.layers) ? config.layers : [])
+    .filter((layer) => typeof layer?.path === "string")
+    .map((layer) => ({
+      rawPath: layer.path.replace(/\\/g, "/"),
+      path: normalizeOrganizationSlotPath(layer.path),
+    }))
+    .filter(({ path }) => rootLayerPaths.has(path));
+  const declaredLayerPaths = new Set(rootLayers.map(({ path }) => path));
+  for (const { rawPath, path } of rootLayers) {
+    if (rawPath === path) continue;
+    issues.push(
+      `company.gen3.json: root layer path "${rawPath}" není kanonický; použij "${path}"`,
+    );
+  }
+  for (const path of declaredLayerPaths) {
+    if (!declaredPaths.has(path)) {
+      issues.push(
+        `company.gen3.json: root vrstva ${path} nemá odpovídající modules.manifest.json slot`,
+      );
+    }
+  }
+  for (const path of declaredPaths) {
+    if (!rootLayerPaths.has(path) || declaredLayerPaths.has(path)) continue;
+    issues.push(
+      `modules.manifest.json: root slot ${path} nemá odpovídající company.gen3.json vrstvu`,
+    );
+  }
+
   return issues;
 }
 
@@ -821,8 +1039,13 @@ function workspaceResolverForOrganization(company) {
         if (!match || declaration.path.length > match.path.length) match = declaration;
       }
     }
-    return match?.workspace ?? "workspace";
+    return match?.space === "root" ? null : match?.workspace ?? "workspace";
   };
+}
+
+function workspaceForApp(workspaceResolvers, app) {
+  const resolver = workspaceResolvers.get(app.organization_path);
+  return resolver ? resolver(app) : "workspace";
 }
 
 async function readOrganizationModuleManifest(companiesRoot, organization) {
@@ -842,37 +1065,43 @@ function normalizeModuleSlot(slot) {
   if (!slot || typeof slot !== "object" || typeof slot.path !== "string" || slot.path.trim() === "") {
     return null;
   }
-  const path = slot.path.replace(/\\/g, "/");
-  const workspace = slot.workspace ?? inferModuleWorkspace(slot, path);
-  if (!workspace) return null;
+  if (!isCanonicalOrganizationRepositorySlotPath(slot.path)) return null;
+  const path = normalizeOrganizationSlotPath(slot.path);
+  if (
+    !path
+    || isOrganizationSlotContainerPath(path)
+    || isOrganizationRootSlotDescendantPath(path)
+  ) {
+    return null;
+  }
+  const space = organizationSlotScope(slot, path);
+  const workspace = organizationSlotWorkspace(slot, path);
+  if (space !== "root" && !workspace) return null;
   // Vnořený slot (mission-control/db) potřebuje jméno z celé org-relativní
   // cesty, ne jen z basename ("Db").
   const nestedSegments = path.split("/").filter((segment) => !["workspace", "productionspace", "modules"].includes(segment));
+  const repo =
+    space === "root" ? slot.git?.url ?? null : slot.repo ?? slot.git?.url ?? null;
+  const branch =
+    space === "root" ? slot.git?.branch ?? null : slot.branch ?? slot.git?.branch ?? null;
   return {
     slug: basename(path),
     name: humanizeSlug(nestedSegments.join("-")),
     path,
+    space,
     workspace,
     category: slot.category ?? null,
     default_access: slot.default_access ?? null,
     required_roles: Array.isArray(slot.required_roles) ? slot.required_roles : [],
     classification: slot.classification ?? null,
     launchpad_port: slot.launchpad_port ?? null,
-    repo: slot.repo ?? slot.git?.url ?? null,
-    branch: slot.branch ?? slot.git?.branch ?? null,
+    repo,
+    branch,
   };
 }
 
-// Chybějící deklarace = default Workspace se slugem "workspace" (decision 0041
-// bod 5). Productionspace boundary určuje výhradně cesta productionspace/*
-// (decision 0041 bod 6); classification je jen popisné metadata.
-function inferModuleWorkspace(slot, path) {
-  if (path.startsWith("productionspace/")) return "productionspace";
-  return "workspace";
-}
-
 function productionspaceSystems({ moduleSlots, productionspaceConfig }) {
-  const productionSlots = moduleSlots.filter((slot) => slot.workspace === "productionspace");
+  const productionSlots = moduleSlots.filter((slot) => slot.space === "productionspace");
   const byPath = new Map(productionSlots.map((slot) => [slot.path, slot]));
   const orderedPaths = Array.isArray(productionspaceConfig?.candidate_modules)
     ? productionspaceConfig.candidate_modules.map((path) => path.replace(/\\/g, "/"))
@@ -894,6 +1123,8 @@ function humanizeSlug(slug) {
 
 function platformChecks(companiesRoot) {
   const platformName = supportedPlatforms[process.platform];
+  const bunExecutable = resolveBunExecutable();
+  const gitExecutable = resolveGitExecutableSync();
   return [
     {
       id: "platform.os",
@@ -910,26 +1141,35 @@ function platformChecks(companiesRoot) {
     commandCheck({
       id: "platform.bun",
       title: "Bun runtime",
-      command: "bun",
+      command: bunExecutable,
       args: ["--version"],
       cwd: companiesRoot,
-      okMessage: (result) => `Bun ${result.stdout} je dostupný v PATH.`,
-      failMessage: "Bun není dostupný v PATH.",
+      okMessage: (result) => `Bun ${result.stdout} je dostupný jako ${bunExecutable}.`,
+      failMessage: "Bun nebyl nalezen ani neprošel validací executable kandidáta.",
     }),
     commandCheck({
       id: "platform.git",
       title: "Git",
-      command: "git",
+      command: gitExecutable,
       args: ["--version"],
       cwd: companiesRoot,
       okMessage: (result) => result.stdout,
-      failMessage: "Git není dostupný v PATH.",
+      failMessage: "Git nebyl nalezen ani neprošel validací executable kandidáta.",
+      env: safeGitCommandEnv(),
     }),
   ];
 }
 
-function commandCheck({ id, title, command, args, cwd, okMessage, failMessage }) {
-  const result = runCommand(command, args, { cwd });
+function commandCheck({ id, title, command, args, cwd, okMessage, failMessage, env }) {
+  const result = command
+    ? runCommand(command, args, { cwd, env })
+    : {
+        ok: false,
+        exitCode: null,
+        stdout: "",
+        stderr: "",
+        error: "Executable resolver nevrátil žádného validního kandidáta.",
+      };
   return {
     id,
     status: result.ok ? "ok" : "fail",
@@ -940,7 +1180,7 @@ function commandCheck({ id, title, command, args, cwd, okMessage, failMessage })
     links: [],
     details: result.ok
       ? [`command: ${command} ${args.join(" ")}`]
-      : [`command: ${command} ${args.join(" ")}`, result.stderr || result.error || "Příkaz selhal."],
+      : [`command: ${command ?? "<missing>"} ${args.join(" ")}`, result.stderr || result.error || "Příkaz selhal."],
   };
 }
 
@@ -985,6 +1225,130 @@ function gitWorktreeCheck(companiesRoot) {
     paths: ["."],
     links: [],
     details: dirtyLines.slice(0, 20),
+  };
+}
+
+// Anti-stuck check update kanálu (decision 0059, draft 0080). Read-only:
+// čte jen lokální refs a config, NIKDY nefetchuje ani nemutuje — mutační
+// update je samostatný guarded tool (/api/update), ne Doctor check.
+export function updateChannelCheck(companiesRoot) {
+  const base = {
+    id: "update.channel",
+    severity: "local-state",
+    title: "Update kanál",
+    paths: ["launchpad.gen3.local.json"],
+    links: [],
+  };
+
+  let channel = "stable";
+  let configState = "defaulted";
+  const configPath = join(companiesRoot, "launchpad.gen3.local.json");
+  if (existsSync(configPath)) {
+    try {
+      const configured = JSON.parse(readFileSync(configPath, "utf8"))?.update_channel;
+      if (configured !== undefined && configured !== null && configured !== "") {
+        if (UPDATE_CHANNELS.includes(configured)) {
+          channel = configured;
+          configState = "configured";
+        } else {
+          return {
+            ...base,
+            status: "warn",
+            message: `Neplatný update_channel ${JSON.stringify(configured)}; platí stable. Povolené hodnoty: ${UPDATE_CHANNELS.join(", ")}.`,
+            details: [],
+          };
+        }
+      }
+    } catch {
+      return {
+        ...base,
+        status: "warn",
+        message: "launchpad.gen3.local.json nejde přečíst jako JSON; update kanál platí stable.",
+        details: [],
+      };
+    }
+  }
+
+  const branch = runGit(["branch", "--show-current"], companiesRoot);
+  if (!branch.ok || branch.stdout !== "main") {
+    return {
+      ...base,
+      status: "warn",
+      message: branch.ok && branch.stdout
+        ? `Root checkout je na branchi ${branch.stdout}, ne na main — update kanálu je zablokovaný.`
+        : "Root checkout není na branchi main (detached HEAD nebo nečitelný stav) — update kanálu je zablokovaný.",
+      details: ["Kontrakt: primární checkout zůstává na main; práce patří do worktrees (AGENTS.md)."],
+    };
+  }
+
+  let targetSha = null;
+  let targetLabel = null;
+  if (channel === "nightly") {
+    const originMain = runGit(["rev-parse", "--verify", "origin/main^{commit}"], companiesRoot);
+    if (originMain.ok) {
+      targetSha = originMain.stdout;
+      targetLabel = "origin/main";
+    }
+  } else {
+    const tags = runGit(["tag", "--list"], companiesRoot);
+    const tag = tags.ok ? selectHighestStableTag(tags.stdout.split("\n").filter(Boolean)) : null;
+    if (!tag) {
+      return {
+        ...base,
+        status: "warn",
+        message: "Stable kanál zatím nemá žádný release tag vMAJOR.MINOR.PATCH — update nemá cíl.",
+        details: ["Kanál lze dočasně přepnout na nightly v launchpad.gen3.local.json."],
+      };
+    }
+    const tagSha = runGit(["rev-parse", "--verify", `${tag}^{commit}`], companiesRoot);
+    if (tagSha.ok) {
+      targetSha = tagSha.stdout;
+      targetLabel = tag;
+    }
+  }
+
+  if (!targetSha) {
+    return {
+      ...base,
+      status: "warn",
+      message: `Cíl kanálu ${channel} nejde lokálně přečíst (poslední známý stav chybí).`,
+      details: ["Doctor nefetchuje; stav se zpřesní po akci Aktualizovat nebo git fetch."],
+    };
+  }
+
+  const relation = runGit(["rev-list", "--left-right", "--count", `HEAD...${targetSha}`], companiesRoot);
+  if (!relation.ok) {
+    return {
+      ...base,
+      status: "warn",
+      message: `Vztah HEAD a cíle kanálu ${channel} (${targetLabel}) nejde ověřit.`,
+      details: [relation.stderr || relation.error || "git rev-list selhal"],
+    };
+  }
+  const [ahead, behind] = relation.stdout.split(/\s+/).map((value) => Number(value));
+  if (ahead > 0 && behind > 0) {
+    return {
+      ...base,
+      status: "warn",
+      message: `Root se rozešel s cílem kanálu ${channel} (${targetLabel}): ${ahead} vlastních commitů, ${behind} chybějících.`,
+      details: ["Fail-closed stav — vyřeš s Agentem; žádný reset --hard."],
+    };
+  }
+  if (behind > 0) {
+    return {
+      ...base,
+      status: "warn",
+      message: `Kanál ${channel} má novější verzi (${targetLabel}); root je ${behind} commitů pozadu — spusť Aktualizovat.`,
+      details: [],
+    };
+  }
+  return {
+    ...base,
+    status: "ok",
+    message: ahead > 0
+      ? `Kanál ${channel} (${configState === "defaulted" ? "default" : "nastaveno"}): root je ${ahead} commitů před posledním známým cílem (${targetLabel}) — žádný downgrade se neprovádí.`
+      : `Kanál ${channel} (${configState === "defaulted" ? "default" : "nastaveno"}): root odpovídá poslednímu známému cíli (${targetLabel}).`,
+    details: [],
   };
 }
 
@@ -1165,15 +1529,28 @@ function isIgnored(cwd, path) {
 }
 
 function runGit(args, cwd) {
-  return runCommand("git", args, { cwd });
+  const executable = resolveGitExecutableSync();
+  if (!executable) {
+    return {
+      ok: false,
+      exitCode: null,
+      stdout: "",
+      stderr: "",
+      error: "Git executable was not found or failed validation.",
+    };
+  }
+  return runCommand(executable, args, { cwd, env: safeGitCommandEnv() });
 }
 
-function runCommand(command, args, { cwd }) {
+function runCommand(command, args, { cwd, env } = {}) {
   try {
     const result = Bun.spawnSync([command, ...args], {
       cwd,
+      ...(env ? { env } : {}),
       stdout: "pipe",
       stderr: "pipe",
+      windowsHide: true,
+      timeout: GIT_LOCAL_TIMEOUT_MS,
     });
     return {
       ok: result.exitCode === 0,
@@ -1258,6 +1635,14 @@ function workspaceDeclarationCheck(appsResponse) {
     for (const issue of organization.workspace_conformance_issues ?? []) {
       details.push(`${organization.path}: ${issue}`);
       conformanceIssueCount += 1;
+    }
+    for (const issue of organization.root_slot_contract_issues ?? []) {
+      details.push(`${organization.path}: ${issue}`);
+      blockingSlotCount += 1;
+    }
+    for (const issue of organization.slot_scope_contract_issues ?? []) {
+      details.push(`${organization.path}: ${issue}`);
+      blockingSlotCount += 1;
     }
     const slots = Array.isArray(organization.module_declarations)
       ? organization.module_declarations

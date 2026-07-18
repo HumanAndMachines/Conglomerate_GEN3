@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { createGitStatusService, pullRepoWithAutostash, readGitRepoStatus } from "./git-status-lib.mjs";
-import { initGitRepo, runGit } from "./git-fixture-helpers.test.mjs";
+import { initGitRepo, normalizeLineEndings, runGit } from "./git-fixture-helpers.test.mjs";
 
 const tempRoots = [];
 
@@ -219,9 +219,9 @@ test("autostash pull preserves staged and untracked local changes across a non-c
   expect(result.ok).toBe(true);
   expect(result.autostash).toBe(true);
   expect(result.after.status).toBe("draft_changes");
-  expect(await readFile(join(repo, "README.md"), "utf8")).toBe("# local staged draft\n");
-  expect(await readFile(join(repo, "local-untracked.md"), "utf8")).toBe("untracked draft\n");
-  expect(await readFile(join(repo, "remote.md"), "utf8")).toBe("remote change\n");
+  expect(normalizeLineEndings(await readFile(join(repo, "README.md"), "utf8"))).toBe("# local staged draft\n");
+  expect(normalizeLineEndings(await readFile(join(repo, "local-untracked.md"), "utf8"))).toBe("untracked draft\n");
+  expect(normalizeLineEndings(await readFile(join(repo, "remote.md"), "utf8"))).toBe("remote change\n");
   expect(runGit(["diff", "--cached", "--name-only"], repo)).toBe("README.md");
   expect(runGit(["stash", "list"], repo)).toBe("");
 });
