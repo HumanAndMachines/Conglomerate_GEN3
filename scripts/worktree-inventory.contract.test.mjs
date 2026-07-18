@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +7,7 @@ import {
 } from "../.agents/skills/worktree-development-discipline/scripts/worktree-inventory.mjs";
 
 const cleanupPaths = [];
+setDefaultTimeout(process.platform === "win32" ? 45_000 : 20_000);
 const auditScript = join(
   import.meta.dir,
   "..",
@@ -16,6 +17,81 @@ const auditScript = join(
   "scripts",
   "worktree-inventory.mjs",
 );
+const validPlanContents = `schema_version: companiesascode.mission_control.plan.v2
+id: mcplan-cac-0007
+dev_code: CAC-0007
+title: "Worktree contract fixture"
+status: in_progress
+owner: founder
+priority: high
+priority_rank: 1
+created_at: 2026-07-18
+updated_at: 2026-07-18
+context: "Validate exact worktree ownership."
+current_problem: "Ownership must fail closed."
+target_state: "Only canonical worktrees pass."
+scope:
+  in:
+    - "Validate the fixture."
+  out:
+    - "No production mutation."
+acceptance_criteria:
+  - "Canonical plan validation passes."
+validation:
+  - "Run the contract test."
+`;
+const fixturePlanSchema = {
+  type: "object",
+  required: [
+    "schema_version",
+    "id",
+    "dev_code",
+    "title",
+    "status",
+    "owner",
+    "priority",
+    "priority_rank",
+    "created_at",
+    "updated_at",
+    "context",
+    "current_problem",
+    "target_state",
+    "scope",
+    "acceptance_criteria",
+    "validation",
+  ],
+  properties: {
+    schema_version: { const: "companiesascode.mission_control.plan.v2" },
+    id: { type: "string", pattern: "^mcplan-[a-z]{2,6}-[0-9]{4}$" },
+    dev_code: { type: "string", pattern: "^[A-Z]{2,6}-[0-9]{4}$" },
+  },
+};
+const fixtureSchemaValidator = `export function validateAgainstSchema(value, schema, label = "$") {
+  const failures = [];
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [label + ": expected object"];
+  for (const key of schema.required ?? []) if (!(key in value)) failures.push(label + ": missing " + key);
+  for (const [key, rule] of Object.entries(schema.properties ?? {})) {
+    if (!(key in value)) continue;
+    if (Object.hasOwn(rule, "const") && value[key] !== rule.const) failures.push(label + "." + key + ": const mismatch");
+    if (rule.type === "string" && typeof value[key] !== "string") failures.push(label + "." + key + ": expected string");
+    if (rule.pattern && !new RegExp(rule.pattern).test(value[key])) failures.push(label + "." + key + ": pattern mismatch");
+  }
+  return failures;
+}
+`;
+const fixtureSemanticValidator = `export function loadMissionControlConfig() {
+  return {};
+}
+export function loadPlanSchema(_root, _config) {
+  return {};
+}
+export function validatePlanShape(record) {
+  const expectedId = "mcplan-" + String(record.plan?.dev_code ?? "").toLowerCase();
+  return record.plan?.id === expectedId
+    ? []
+    : [record.path + ": id must match dev_code"];
+}
+`;
 
 afterEach(async () => {
   await Promise.all(cleanupPaths.splice(0).map((path) => rm(path, {
@@ -56,11 +132,83 @@ test("fails closed when the owning Mission Control plan is malformed", async () 
   );
 });
 
+test("fails closed when a matching plan code has a non-canonical schema", async () => {
+  const fixture = await createFixture({
+    authorityAvailable: true,
+    planAvailable: true,
+    planContents: validPlanContents.replace(
+      "companiesascode.mission_control.plan.v2",
+      "not-a-mission-control-plan",
+    ),
+  });
+  const report = await auditRepository(fixture.root, {
+    authorityRoot: fixture.authorityRoot,
+  });
+  expect(canonicalWorktree(report)).toMatchObject({
+    sidecar_valid: false,
+    sidecar_error: expect.stringContaining(
+      "Mission Control plan schema validation failed",
+    ),
+  });
+});
+
+test("fails closed when canonical semantic plan validation rejects a schema-valid plan", async () => {
+  const fixture = await createFixture({
+    authorityAvailable: true,
+    planAvailable: true,
+    planContents: validPlanContents.replace(
+      "id: mcplan-cac-0007",
+      "id: mcplan-cac-9999",
+    ),
+  });
+  const report = await auditRepository(fixture.root, {
+    authorityRoot: fixture.authorityRoot,
+  });
+  expect(canonicalWorktree(report)).toMatchObject({
+    sidecar_valid: false,
+    sidecar_error: expect.stringContaining(
+      "Mission Control plan semantic validation failed",
+    ),
+  });
+});
+
+test("fails closed on root identity, scope and path mutations", async () => {
+  const cases = [
+    ["base_branch", "release"],
+    ["organization", "OtherOrg"],
+    ["organization_path", "../../OtherOrg"],
+    ["organization_path", "/OtherOrg"],
+    ["workspace", "productionspace"],
+    ["module", "OtherModule"],
+    ["module_path", "../../OtherModule"],
+    ["module_path", "C:\\OtherModule"],
+  ];
+  for (const [field, value] of cases) {
+    const fixture = await createFixture({
+      authorityAvailable: true,
+      planAvailable: true,
+      sidecarOverrides: { [field]: value },
+    });
+    const report = await auditRepository(fixture.root, {
+      authorityRoot: fixture.authorityRoot,
+    });
+    expect(canonicalWorktree(report)).toMatchObject({
+      sidecar_valid: false,
+      sidecar_error: `${field} does not match canonical repository identity`,
+    });
+    expect(report.violations.join("\n")).toContain(
+      "canonical worktree has invalid sidecar",
+    );
+  }
+});
+
 test("fails closed when the owning plan dev_code does not match the sidecar", async () => {
   const fixture = await createFixture({
     authorityAvailable: true,
     planAvailable: true,
-    planContents: "dev_code: CAC-9999\n",
+    planContents: validPlanContents
+      .replaceAll("CAC-0007", "CAC-9999")
+      .replace("mcplan-cac-0007", "mcplan-cac-9999"),
   });
   const report = await auditRepository(fixture.root, {
     authorityRoot: fixture.authorityRoot,
@@ -227,24 +375,39 @@ test("fails closed when the live remote branch advanced without a local fetch", 
 async function createFixture({
   authorityAvailable,
   planAvailable,
-  planContents = "dev_code: CAC-0007\n",
+  planContents = validPlanContents,
   objectFormat = "sha1",
+  sidecarOverrides = {},
 }) {
   const sandbox = await mkdtemp(join(tmpdir(), "worktree contract "));
   cleanupPaths.push(sandbox);
   const root = join(sandbox, "Dashboard");
   const authorityRoot = join(sandbox, "HumanAndMachines");
-  const remote = join(sandbox, "remote.git");
+  const remote = join(sandbox, "remotes", "HumanAndMachines", "Dashboard.git");
   const planRelativePath =
     "mission-control/plans/2026/07/CAC-0007-contract.yaml";
   const planPath = join(authorityRoot, ...planRelativePath.split("/"));
 
   await mkdir(root);
-  await mkdir(remote);
+  await mkdir(remote, { recursive: true });
   if (authorityAvailable) {
     await mkdir(join(authorityRoot, "mission-control", "plans", "2026", "07"), {
       recursive: true,
     });
+    await mkdir(join(authorityRoot, "schemas"), { recursive: true });
+    await mkdir(join(authorityRoot, "scripts"), { recursive: true });
+    await writeFile(
+      join(authorityRoot, "schemas", "mission-control-plan.schema.json"),
+      `${JSON.stringify(fixturePlanSchema, null, 2)}\n`,
+    );
+    await writeFile(
+      join(authorityRoot, "scripts", "json-schema-mini.mjs"),
+      fixtureSchemaValidator,
+    );
+    await writeFile(
+      join(authorityRoot, "scripts", "mission-control-lib.mjs"),
+      fixtureSemanticValidator,
+    );
   }
   if (planAvailable) {
     await writeFile(planPath, planContents);
@@ -290,6 +453,7 @@ async function createFixture({
       pr_url: null,
       purpose: "Fail-closed ownership contract fixture.",
       cleanup_rule: "Remove after the test.",
+      ...sidecarOverrides,
     }, null, 2)}\n`,
   );
 

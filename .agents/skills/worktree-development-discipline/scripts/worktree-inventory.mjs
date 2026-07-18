@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
 
-import { access, lstat, opendir, readFile, readdir } from "node:fs/promises";
+import { access, lstat, opendir, readFile, readdir, realpath } from "node:fs/promises";
 import { constants } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir, tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
 
 const GIT_TIMEOUT_MS = 10_000;
 const MAX_PARALLEL_GIT_CHECKS = 4;
@@ -30,6 +31,7 @@ export async function auditRepository(startPath = process.cwd(), options = {}) {
   const authorityRoot = options.authorityRoot
     ? resolve(options.authorityRoot)
     : resolveAuthorityRoot(primaryRoot);
+  const repositoryIdentity = await resolveRepositoryIdentity(primaryRoot);
   const records = parseWorktreePorcelain(
     await gitText(primaryRoot, ["worktree", "list", "--porcelain", "-z"]),
   );
@@ -51,7 +53,13 @@ export async function auditRepository(startPath = process.cwd(), options = {}) {
       : join(dirname(record.path), `${basename(record.path)}.worktree.json`);
     const sidecarExists = sidecarPath ? await pathExists(sidecarPath) : false;
     const sidecar = sidecarExists
-      ? await validateSidecar(primaryRoot, authorityRoot, record, sidecarPath)
+      ? await validateSidecar(
+          primaryRoot,
+          authorityRoot,
+          repositoryIdentity,
+          record,
+          sidecarPath,
+        )
       : { valid: false, error: "missing sidecar", planPath: null };
     const status = exists
       ? await runGit(["status", "--porcelain=v1", "--untracked-files=all"], record.path)
@@ -303,7 +311,13 @@ function classifyLifecycle({
   return "active";
 }
 
-async function validateSidecar(primaryRoot, authorityRoot, record, sidecarPath) {
+async function validateSidecar(
+  primaryRoot,
+  authorityRoot,
+  repositoryIdentity,
+  record,
+  sidecarPath,
+) {
   let data;
   try {
     data = JSON.parse(await readFile(sidecarPath, "utf8"));
@@ -338,6 +352,31 @@ async function validateSidecar(primaryRoot, authorityRoot, record, sidecarPath) 
   ]) {
     if (typeof data[field] !== "string" || data[field].trim() === "") {
       return { valid: false, error: `missing ${field}`, planPath: null };
+    }
+  }
+  if (!repositoryIdentity) {
+    return {
+      valid: false,
+      error: "cannot derive canonical Organization/module identity from origin",
+      planPath: null,
+    };
+  }
+  const canonicalIdentity = {
+    organization: repositoryIdentity.organization,
+    organization_path: ".",
+    workspace: "root",
+    module: repositoryIdentity.module,
+    module_path: ".",
+    repo_kind: "root_repo",
+    base_branch: "main",
+  };
+  for (const [field, expected] of Object.entries(canonicalIdentity)) {
+    if (data[field] !== expected) {
+      return {
+        valid: false,
+        error: `${field} does not match canonical repository identity`,
+        planPath: null,
+      };
     }
   }
   if (data.branch !== record.branch) {
@@ -446,8 +485,10 @@ async function validateSidecar(primaryRoot, authorityRoot, record, sidecarPath) 
     return { valid: false, error: "Mission Control plan does not exist", planPath, advisories };
   }
   let plan;
+  let planSource;
   try {
-    plan = Bun.YAML.parse(await readFile(planPath, "utf8"));
+    planSource = await readFile(planPath, "utf8");
+    plan = Bun.YAML.parse(planSource);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return {
@@ -461,6 +502,20 @@ async function validateSidecar(primaryRoot, authorityRoot, record, sidecarPath) 
     return {
       valid: false,
       error: "Mission Control plan root value is not an object",
+      planPath,
+      advisories,
+    };
+  }
+  const schemaValidation = await validateCanonicalMissionControlPlan(
+    authorityRoot,
+    planPath,
+    planSource,
+    plan,
+  );
+  if (!schemaValidation.valid) {
+    return {
+      valid: false,
+      error: schemaValidation.error,
       planPath,
       advisories,
     };
@@ -485,6 +540,132 @@ async function validateSidecar(primaryRoot, authorityRoot, record, sidecarPath) 
     };
   }
   return { valid: true, error: null, planPath, advisories };
+}
+
+async function resolveRepositoryIdentity(primaryRoot) {
+  let remoteUrl;
+  try {
+    remoteUrl = await gitText(primaryRoot, ["remote", "get-url", "origin"]);
+  } catch {
+    return null;
+  }
+  const normalized = remoteUrl.trim().replaceAll("\\", "/");
+  const githubMatch = normalized.match(
+    /github\.com(?::|\/)([^/]+)\/([^/]+?)(?:\.git)?$/i,
+  );
+  const parts = normalized
+    .replace(/^file:\/\//i, "")
+    .replace(/\/$/, "")
+    .split("/")
+    .filter(Boolean);
+  const organization = githubMatch?.[1] ?? parts.at(-2);
+  const repository = (githubMatch?.[2] ?? parts.at(-1) ?? "")
+    .replace(/\.git$/i, "");
+  if (!organization || !repository) return null;
+  return {
+    organization,
+    module: repository.replace(/_GEN[0-9]+$/i, ""),
+  };
+}
+
+async function validateCanonicalMissionControlPlan(
+  authorityRoot,
+  planPath,
+  planSource,
+  plan,
+) {
+  const schemaPath = join(
+    authorityRoot,
+    "schemas",
+    "mission-control-plan.schema.json",
+  );
+  const validatorPath = join(
+    authorityRoot,
+    "scripts",
+    "json-schema-mini.mjs",
+  );
+  const semanticValidatorPath = join(
+    authorityRoot,
+    "scripts",
+    "mission-control-lib.mjs",
+  );
+  try {
+    const realAuthorityRoot = await realpath(authorityRoot);
+    for (const path of [planPath, schemaPath, validatorPath, semanticValidatorPath]) {
+      const stat = await lstat(path);
+      const realPath = await realpath(path);
+      if (
+        !stat.isFile()
+        || stat.isSymbolicLink()
+        || !isWithin(realAuthorityRoot, realPath)
+      ) {
+        throw new Error("canonical validator path is not a file inside authority root");
+      }
+    }
+    const schema = JSON.parse(await readFile(schemaPath, "utf8"));
+    const validator = await import(pathToFileURL(validatorPath).href);
+    if (typeof validator.validateAgainstSchema !== "function") {
+      throw new Error("canonical schema validator export is unavailable");
+    }
+    const failures = validator.validateAgainstSchema(
+      plan,
+      schema,
+      "Mission Control plan",
+    );
+    if (!Array.isArray(failures)) {
+      throw new Error("canonical schema validator returned an invalid result");
+    }
+    if (failures.length > 0) {
+      return {
+        valid: false,
+        error: `Mission Control plan schema validation failed: ${failures.slice(0, 3).join("; ")}`,
+      };
+    }
+    const semanticValidator = await import(
+      pathToFileURL(semanticValidatorPath).href
+    );
+    for (const exportName of [
+      "loadMissionControlConfig",
+      "loadPlanSchema",
+      "validatePlanShape",
+    ]) {
+      if (typeof semanticValidator[exportName] !== "function") {
+        throw new Error(`canonical semantic validator export is unavailable: ${exportName}`);
+      }
+    }
+    const config = semanticValidator.loadMissionControlConfig(authorityRoot);
+    const semanticSchema = semanticValidator.loadPlanSchema(authorityRoot, config);
+    const record = {
+      path: relative(authorityRoot, planPath).split(sep).join("/"),
+      filePath: planPath,
+      plan,
+      source: planSource,
+      parseError: null,
+    };
+    const semanticFailures = semanticValidator.validatePlanShape(
+      record,
+      config,
+      authorityRoot,
+      semanticSchema,
+    );
+    if (!Array.isArray(semanticFailures)) {
+      throw new Error("canonical semantic validator returned an invalid result");
+    }
+    if (semanticFailures.length > 0) {
+      return {
+        valid: false,
+        error: `Mission Control plan semantic validation failed: ${semanticFailures.slice(0, 3).join("; ")}`,
+      };
+    }
+    return { valid: true, error: null };
+  } catch (error) {
+    return {
+      valid: false,
+      error: `cannot validate Mission Control plan schema: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
 }
 
 async function scanLocalOrphans(primaryRoot, commonDir, records, options = {}) {
