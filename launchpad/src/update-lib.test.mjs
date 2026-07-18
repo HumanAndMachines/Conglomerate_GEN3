@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { initGitRepo, normalizeLineEndings, runGit, writeJson } from "./git-fixture-helpers.test.mjs";
+import { platformTestTimeout } from "./test-platform-setup.mjs";
 import {
   deriveUpdateState,
   parseRemoteTags,
@@ -133,7 +134,7 @@ test("tracked změny blokují default a explicitní autostash je po ff-only obno
   expect(normalizeLineEndings(await readFile(join(fixture.repo, "local-note.txt"), "utf8"))).toBe("untracked draft\n");
   expect(runGit(["diff", "--cached", "--name-only"], fixture.repo)).toBe("README.md");
   expect(runGit(["stash", "list"], fixture.repo)).toBe("");
-});
+}, platformTestTimeout(15_000));
 
 test("stable bez release tagu nic nemění a vysvětlí nightly možnost", async () => {
   const fixture = await createUpdateFixture({ channel: "stable", targetTag: null });
