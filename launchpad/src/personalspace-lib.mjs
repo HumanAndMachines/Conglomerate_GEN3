@@ -38,6 +38,14 @@ const ignoredWorkspaceDirs = new Set([".git", ".worktrees", "node_modules", "dis
 // nemíchaly s org aplikacemi (a nemohly kolidovat na app id). Runtime manager
 // personalspace lane používá tento prefix jako routovací klíč.
 export const PERSONAL_APP_ID_PREFIX = "personal--";
+export const PERSONAL_SCHEMA_VERSION = "humanandmachines.personal.gen3.v1";
+
+export function isLegacyPersonalCustodyConfig(personal) {
+  return personal?.schema_version === undefined
+    && personal?.repository?.mount_strategy === undefined
+    && personal?.gbrain?.repository === undefined
+    && personal?.gbrain?.software === undefined;
+}
 
 export function personalAppRuntimeId(spaceDirName, appId) {
   return `${PERSONAL_APP_ID_PREFIX}${spaceDirName}--${appId}`;
@@ -52,7 +60,9 @@ export function validatePersonalConfig(personal, schema, label) {
     failures.push(`${label}: personal.gen3.json musí být JSON object`);
     return failures;
   }
+  const legacyCustody = isLegacyPersonalCustodyConfig(personal);
   for (const key of schema.required ?? []) {
+    if (legacyCustody && key === "schema_version") continue;
     if (personal[key] === undefined) failures.push(`${label}: chybí povinné pole ${key}`);
   }
   const props = schema.properties ?? {};
@@ -79,6 +89,7 @@ export function validatePersonalConfig(personal, schema, label) {
     }
   };
 
+  checkConst(personal, "schema_version", props.schema_version, "schema_version");
   checkConst(personal, "personal_generation", props.personal_generation, "personal_generation");
   checkConst(personal, "modules_manifest_path", props.modules_manifest_path, "modules_manifest_path");
   checkConst(personal, "workspace_path", props.workspace_path, "workspace_path");
@@ -91,22 +102,103 @@ export function validatePersonalConfig(personal, schema, label) {
   checkPattern(personal.owner, "github_username", ownerSpec.properties?.github_username, "owner.github_username");
   checkEnum(personal.owner, "type", ownerSpec.properties?.type, "owner.type");
 
-  // buddy
-  const buddySpec = props.buddy ?? {};
-  for (const key of buddySpec.required ?? []) {
-    if (personal.buddy?.[key] === undefined) failures.push(`${label}: chybí buddy.${key}`);
+  // Buddy je volitelný (decision 0079). Pokud binding existuje, validuje se
+  // stejně přísně jako dřív; absence nevytváří placeholder ani chybu.
+  if (personal.buddy !== undefined) {
+    const buddySpec = props.buddy ?? {};
+    if (!personal.buddy || typeof personal.buddy !== "object" || Array.isArray(personal.buddy)) {
+      failures.push(`${label}: buddy musí být objekt`);
+    } else {
+      for (const key of buddySpec.required ?? []) {
+        if (legacyCustody && ["path", "repository", "runtime", "hermes"].includes(key)) continue;
+        if (personal.buddy[key] === undefined) failures.push(`${label}: chybí buddy.${key}`);
+      }
+      checkString(personal.buddy, "slug", "buddy.slug", { required: true });
+      checkConst(personal.buddy, "gbrain_path", buddySpec.properties?.gbrain_path, "buddy.gbrain_path");
+      if (!legacyCustody) {
+        checkConst(personal.buddy, "path", buddySpec.properties?.path, "buddy.path");
+        const buddyRepoSpec = buddySpec.properties?.repository ?? {};
+        for (const key of buddyRepoSpec.required ?? []) {
+          if (personal.buddy.repository?.[key] === undefined) {
+            failures.push(`${label}: chybí buddy.repository.${key}`);
+          }
+        }
+        checkPattern(
+          personal.buddy.repository,
+          "github_repo",
+          buddyRepoSpec.properties?.github_repo,
+          "buddy.repository.github_repo",
+        );
+        checkConst(
+          personal.buddy.repository,
+          "visibility",
+          buddyRepoSpec.properties?.visibility,
+          "buddy.repository.visibility",
+        );
+        checkConst(
+          personal.buddy.repository,
+          "mount_strategy",
+          buddyRepoSpec.properties?.mount_strategy,
+          "buddy.repository.mount_strategy",
+        );
+        const buddyRuntimeSpec = buddySpec.properties?.runtime ?? {};
+        for (const key of buddyRuntimeSpec.required ?? []) {
+          if (personal.buddy.runtime?.[key] === undefined) failures.push(`${label}: chybí buddy.runtime.${key}`);
+        }
+        checkConst(
+          personal.buddy.runtime,
+          "github_repo",
+          buddyRuntimeSpec.properties?.github_repo,
+          "buddy.runtime.github_repo",
+        );
+        checkConst(
+          personal.buddy.runtime,
+          "deployment_target",
+          buddyRuntimeSpec.properties?.deployment_target,
+          "buddy.runtime.deployment_target",
+        );
+        checkConst(
+          personal.buddy.runtime,
+          "local_execution",
+          buddyRuntimeSpec.properties?.local_execution,
+          "buddy.runtime.local_execution",
+        );
+        const hermesSpec = buddySpec.properties?.hermes ?? {};
+        for (const key of hermesSpec.required ?? []) {
+          if (personal.buddy.hermes?.[key] === undefined) failures.push(`${label}: chybí buddy.hermes.${key}`);
+        }
+        checkConst(
+          personal.buddy.hermes,
+          "software_repo",
+          hermesSpec.properties?.software_repo,
+          "buddy.hermes.software_repo",
+        );
+        checkConst(
+          personal.buddy.hermes,
+          "profile_format",
+          hermesSpec.properties?.profile_format,
+          "buddy.hermes.profile_format",
+        );
+        checkConst(
+          personal.buddy.hermes,
+          "profile_path",
+          hermesSpec.properties?.profile_path,
+          "buddy.hermes.profile_path",
+        );
+      }
+    }
   }
-  checkString(personal.buddy, "slug", "buddy.slug", { required: true });
-  checkConst(personal.buddy, "gbrain_path", buddySpec.properties?.gbrain_path, "buddy.gbrain_path");
 
   // repository
   const repoSpec = props.repository ?? {};
   for (const key of repoSpec.required ?? []) {
+    if (legacyCustody && key === "mount_strategy") continue;
     if (personal.repository?.[key] === undefined) failures.push(`${label}: chybí repository.${key}`);
   }
   checkPattern(personal.repository, "github_repo", repoSpec.properties?.github_repo, "repository.github_repo");
   checkPattern(personal.repository, "mount_path", repoSpec.properties?.mount_path, "repository.mount_path");
   checkConst(personal.repository, "visibility", repoSpec.properties?.visibility, "repository.visibility");
+  checkConst(personal.repository, "mount_strategy", repoSpec.properties?.mount_strategy, "repository.mount_strategy");
 
   // privacy — tvrdá hranice
   const privacySpec = props.privacy ?? {};
@@ -120,9 +212,50 @@ export function validatePersonalConfig(personal, schema, label) {
   // gbrain
   const gbrainSpec = props.gbrain ?? {};
   for (const key of gbrainSpec.required ?? []) {
+    if (legacyCustody && ["repository", "software"].includes(key)) continue;
     if (personal.gbrain?.[key] === undefined) failures.push(`${label}: chybí gbrain.${key}`);
   }
   checkConst(personal.gbrain, "path", gbrainSpec.properties?.path, "gbrain.path");
+  if (!legacyCustody) {
+    const gbrainRepoSpec = gbrainSpec.properties?.repository ?? {};
+    for (const key of gbrainRepoSpec.required ?? []) {
+      if (personal.gbrain?.repository?.[key] === undefined) failures.push(`${label}: chybí gbrain.repository.${key}`);
+    }
+    checkPattern(
+      personal.gbrain?.repository,
+      "github_repo",
+      gbrainRepoSpec.properties?.github_repo,
+      "gbrain.repository.github_repo",
+    );
+    checkConst(
+      personal.gbrain?.repository,
+      "visibility",
+      gbrainRepoSpec.properties?.visibility,
+      "gbrain.repository.visibility",
+    );
+    checkConst(
+      personal.gbrain?.repository,
+      "mount_strategy",
+      gbrainRepoSpec.properties?.mount_strategy,
+      "gbrain.repository.mount_strategy",
+    );
+    const gbrainSoftwareSpec = gbrainSpec.properties?.software ?? {};
+    for (const key of gbrainSoftwareSpec.required ?? []) {
+      if (personal.gbrain?.software?.[key] === undefined) failures.push(`${label}: chybí gbrain.software.${key}`);
+    }
+    checkConst(
+      personal.gbrain?.software,
+      "github_repo",
+      gbrainSoftwareSpec.properties?.github_repo,
+      "gbrain.software.github_repo",
+    );
+    checkConst(
+      personal.gbrain?.software,
+      "install_source",
+      gbrainSoftwareSpec.properties?.install_source,
+      "gbrain.software.install_source",
+    );
+  }
   checkConst(personal.gbrain, "default_shared", gbrainSpec.properties?.default_shared, "gbrain.default_shared");
   checkEnum(personal.gbrain, "human_editor", gbrainSpec.properties?.human_editor, "gbrain.human_editor");
   checkConst(personal.gbrain, "agent_access", gbrainSpec.properties?.agent_access, "gbrain.agent_access");
@@ -252,6 +385,37 @@ export function identityInvariantIssues(personal, dirName) {
   const expectedRepo = `${owner}/${owner}${gitMarker}`;
   if (personal?.repository?.github_repo !== expectedRepo) {
     issues.push(`repository.github_repo (${personal?.repository?.github_repo ?? "chybí"}) musí být ${expectedRepo}`);
+  }
+  if (!isLegacyPersonalCustodyConfig(personal)) {
+    const gbrainRepo = personal?.gbrain?.repository?.github_repo;
+    const gbrainRepoOwner = personal?.gbrain?.repository?.github_repo?.split("/")?.[0];
+    if (typeof gbrainRepoOwner !== "string" || gbrainRepoOwner.toLowerCase() !== owner.toLowerCase()) {
+      issues.push("gbrain.repository.github_repo musí patřit stejnému GitHub účtu jako Personalspace");
+    }
+    if (gbrainRepo?.toLowerCase() === expectedRepo.toLowerCase()) {
+      issues.push("gbrain.repository.github_repo musí být jiné repo než Personalspace owner repo");
+    }
+    if (personal?.buddy !== undefined) {
+      const buddyRepo = personal?.buddy?.repository?.github_repo;
+      const [buddyRepoOwner, buddyRepoName] = typeof buddyRepo === "string"
+        ? buddyRepo.split("/")
+        : [];
+      if (typeof buddyRepoOwner !== "string" || buddyRepoOwner.toLowerCase() !== owner.toLowerCase()) {
+        issues.push("buddy.repository.github_repo musí patřit stejnému GitHub účtu jako Personalspace");
+      }
+      if (
+        buddyRepo?.toLowerCase() === expectedRepo.toLowerCase()
+        || buddyRepo?.toLowerCase() === gbrainRepo?.toLowerCase()
+      ) {
+        issues.push("buddy.repository.github_repo musí být jiné repo než Personalspace owner a gbrain repo");
+      }
+      if (
+        typeof buddyRepoName !== "string"
+        || personal?.buddy?.slug !== buddyRepoName.toLowerCase()
+      ) {
+        issues.push("buddy.slug musí odpovídat lower-case názvu Buddy profile repa");
+      }
+    }
   }
   return issues;
 }
@@ -398,12 +562,31 @@ function isValidAllowedUrl(value, allowedProtocols) {
     const parsed = new URL(value);
     if (!allowedProtocols.has(parsed.protocol)) return false;
     if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-      return isValidHttpHostname(parsed.hostname);
+      return isValidHttpHostname(parsed.hostname) && !isLoopbackHostname(parsed.hostname);
     }
     return Boolean(parsed.protocol);
   } catch {
     return false;
   }
+}
+
+function isLoopbackHostname(hostname) {
+  const normalized = hostname
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "");
+  if (
+    normalized === "localhost"
+    || normalized.endsWith(".localhost")
+    || normalized === "::1"
+    || normalized === "0:0:0:0:0:0:0:1"
+    || normalized === "0.0.0.0"
+    || normalized.startsWith("::ffff:127.")
+  ) return true;
+  const ipv4 = normalized.split(".");
+  return ipv4.length === 4
+    && ipv4.every((part) => /^\d{1,3}$/.test(part))
+    && Number(ipv4[0]) === 127;
 }
 
 function isValidHttpHostname(hostname) {
@@ -583,22 +766,31 @@ export async function discoverPersonalspace(
       });
       continue;
     }
+    const legacyCustody = isLegacyPersonalCustodyConfig(personal);
+    if (legacyCustody) {
+      warnings.push(
+        `${mountPath}: legacy neversionovaný Personalspace zůstává dočasně čitelný; `
+        + "přejdi na humanandmachines.personal.gen3.v1 podle manual/migrate-personalspace-custody-v1.md",
+      );
+    }
 
     const owner = personal.owner.github_username;
     const isPrimary = primaryOwner ? owner === primaryOwner : false;
     // Buddy prezentace je privátní obsah primárního vlastníka. U nasdílených
     // prostorů ji bez explicitní field-level sharing policy ani nevalidujeme,
     // ani nematerializujeme do /api/personalspace.
-    const buddyPresentation = isPrimary ? buddyPresentationProjection(personal.buddy) : {};
-    const presentationIssues = !isPrimary
+    const buddyPresentation = isPrimary && personal.buddy
+      ? buddyPresentationProjection(personal.buddy)
+      : {};
+    const presentationIssues = !isPrimary || !personal.buddy
       ? []
       : buddyPresentationSchema
         ? validateBuddyPresentation(buddyPresentation, buddyPresentationSchema, mountPath)
         : ["chybí Launchpad-local Buddy presentation schema"];
-    if (presentationIssues.length > 0) {
+    if (personal.buddy && presentationIssues.length > 0) {
       presentationWarnings.push(`${mountPath}: Buddy prezentační metadata se ignorují: ${presentationIssues.join("; ")}`);
     }
-    const presentationValid = isPrimary && presentationIssues.length === 0;
+    const presentationValid = Boolean(personal.buddy) && isPrimary && presentationIssues.length === 0;
 
     // modules.manifest.json — identický kontrakt jako org.
     const { manifest, error: manifestError } = await readPersonalManifest(spaceRoot);
@@ -695,19 +887,29 @@ export async function discoverPersonalspace(
       dir_name: dirName,
       mount_path: mountPath,
       github_repo: personal.repository.github_repo,
+      personal_schema_version: personal.schema_version ?? "legacy-gen3-unversioned",
       is_owner_primary: isPrimary,
       identity_ok: true,
       config_valid: true,
       config_issues: [],
-      buddy: {
-        slug: personal.buddy.slug,
-        display_name: presentationValid ? normalizedText(buddyPresentation.display_name) : null,
-        description: presentationValid ? normalizedText(buddyPresentation.description) : null,
-        avatar_url: presentationValid ? normalizedText(buddyPresentation.avatar_url) : null,
-        application: presentationValid ? normalizeBuddyApplication(buddyPresentation.application) : null,
-        recurring_tasks: presentationValid ? normalizeRecurringTasks(buddyPresentation.recurring_tasks) : [],
-        gbrain_path: personal.buddy.gbrain_path,
-      },
+      buddy: personal.buddy
+        ? {
+            slug: personal.buddy.slug,
+            repository: personal.buddy.repository
+              ? {
+                  github_repo: personal.buddy.repository.github_repo,
+                  visibility: personal.buddy.repository.visibility,
+                  mount_strategy: personal.buddy.repository.mount_strategy,
+                }
+              : null,
+            display_name: presentationValid ? normalizedText(buddyPresentation.display_name) : null,
+            description: presentationValid ? normalizedText(buddyPresentation.description) : null,
+            avatar_url: presentationValid ? normalizedText(buddyPresentation.avatar_url) : null,
+            application: presentationValid ? normalizeBuddyApplication(buddyPresentation.application) : null,
+            recurring_tasks: presentationValid ? normalizeRecurringTasks(buddyPresentation.recurring_tasks) : [],
+            gbrain_path: personal.buddy.gbrain_path,
+          }
+        : null,
       gbrain: {
         // Kanonický mount vždy <space>/gbrain; source je aktuální (možná přechodný) vault.
         canonical_rel: relative(companiesRoot, join(spaceRoot, "gbrain")).split("\\").join("/"),
@@ -717,6 +919,19 @@ export async function discoverPersonalspace(
         default_shared: personal.gbrain.default_shared,
         human_editor: personal.gbrain.human_editor,
         agent_access: personal.gbrain.agent_access,
+        repository: personal.gbrain.repository
+          ? {
+              github_repo: personal.gbrain.repository.github_repo,
+              visibility: personal.gbrain.repository.visibility,
+              mount_strategy: personal.gbrain.repository.mount_strategy,
+            }
+          : null,
+        software: personal.gbrain.software
+          ? {
+              github_repo: personal.gbrain.software.github_repo,
+              install_source: personal.gbrain.software.install_source,
+            }
+          : null,
         transitional_source_path: personal.gbrain.transitional_source_path ?? null,
         transitional_missing: gbrainSource.transitional_missing ?? null,
       },
