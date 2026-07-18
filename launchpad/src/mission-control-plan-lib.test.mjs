@@ -128,7 +128,7 @@ test("Mission Control direct read rejects an Organization mount that is a symlin
   expect(directRead).toBeNull();
 });
 
-test("Mission Control direct read fails closed when an allowed plan root is a symlink escape", async () => {
+test("Mission Control index i direct read fail-closed odmítnou plan root přes symlink nebo Windows junction mimo Organizaci", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const orgRoot = join(root, "organizations", "BetaCo_GEN3");
@@ -148,6 +148,11 @@ test("Mission Control direct read fails closed when an allowed plan root is a sy
     organizationPath: "organizations/BetaCo_GEN3",
     planPath: "mission-control/plans/DEV-6416.yaml",
   });
+  const index = await buildMissionControlPlanIndex({
+    companiesRoot: root,
+    organization: "BetaCo",
+  });
 
   expect(invalid).toBeNull();
+  expect(index.plans.some((plan) => plan.code === "DEV-6416")).toBe(false);
 });

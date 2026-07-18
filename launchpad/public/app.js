@@ -2169,6 +2169,7 @@ function productionspaceInView() {
 }
 
 function workspaceLabel(companySlug, workspaceSlug) {
+  if (workspaceSlug === null) return "Organizace";
   const org = state.companies.find((company) => company.slug === companySlug);
   const workspace = (org?.workspaces ?? []).find((entry) => entry.slug === workspaceSlug);
   return workspace?.display_name ?? (workspaceSlug === "workspace" ? "Workspace" : workspaceSlug);

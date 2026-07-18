@@ -228,6 +228,38 @@ test("discovery podporuje _GEN3 mount cesty při čisté interní identitě Orga
   ]);
 });
 
+test("proper-case company je přesná identita, ale app id musí zůstat lowercase", async () => {
+  const root = await createGenerationMountFixture();
+  const packagePath = join(
+    root,
+    "organizations",
+    "BetaCo_GEN3",
+    "mission-control",
+    "app",
+    "v2",
+    "package.json",
+  );
+  const packageJson = await Bun.file(packagePath).json();
+  packageJson.companyascode.app.id = "BetaCo-mission-control-v2";
+  await writeJson(packagePath, packageJson);
+
+  const { apps, invalid_apps, failures } = await discoverLaunchpadApps(root);
+
+  expect(failures).toEqual([]);
+  expect(apps.map((app) => [app.id, app.company])).toEqual([
+    ["democo-mission-control-v1", "DemoCo"],
+  ]);
+  expect(invalid_apps).toHaveLength(1);
+  expect(invalid_apps[0]).toMatchObject({
+    id: "BetaCo-mission-control-v2",
+    company: "BetaCo",
+    manifest_state: "invalid_manifest",
+  });
+  expect(invalid_apps[0].manifest_issues.join("\n")).toContain(
+    "companyascode.app.id neodpovídá patternu ^[a-z0-9][a-z0-9-]*$",
+  );
+});
+
 test("discovery načte root shared Guide local surface jako Launchpad app", async () => {
   const root = await mkdtemp(join(tmpdir(), "companiesascode-shared-guide-"));
   tempRoots.push(root);
@@ -338,7 +370,7 @@ test("discovery ignoruje organization-local worktree checkouty", async () => {
     companyascode: {
       app: {
         schema_version: "companyascode.launchpad_app.v1",
-        id: "BetaCo-mission-control-v2",
+        id: "betaco-mission-control-v2",
         title: "Mission Control",
         company: "BetaCo",
         module: "mission-control",
@@ -979,7 +1011,7 @@ async function createGenerationMountFixture() {
     path: "organizations/BetaCo_GEN3",
     company: "BetaCo",
     appDir: "mission-control/app/v2",
-    appId: "BetaCo-mission-control-v2",
+    appId: "betaco-mission-control-v2",
     port: 5392,
   });
   await writeGenerationOrg({
@@ -987,7 +1019,7 @@ async function createGenerationMountFixture() {
     path: "organizations/DemoCo_GEN3",
     company: "DemoCo",
     appDir: "mission-control/app/v1",
-    appId: "DemoCo-mission-control-v1",
+    appId: "democo-mission-control-v1",
     port: 5693,
   });
   return root;
