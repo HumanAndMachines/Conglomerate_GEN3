@@ -242,11 +242,59 @@ function isSafeThemeValue(token, value) {
   if (token === "--launchpad-body-background") {
     return value === "linear-gradient(180deg, var(--bg-muted) 0%, var(--bg) 42%)";
   }
+  if (token === "--on-accent") return isSafeOpaqueColor(value);
   return isSafeColor(value);
 }
 
 function isSafeColor(value) {
   return /^(?:#[0-9a-fA-F]{3,8}|(?:rgb|rgba|hsl|hsla)\([\d.%,\s+-]+\)|transparent|white|black)$/.test(value);
+}
+
+function isSafeOpaqueColor(value) {
+  if (value === "white" || value === "black") return true;
+  const hex = value.match(/^#([0-9a-fA-F]+)$/)?.[1];
+  if (hex) {
+    if (hex.length === 3 || hex.length === 6) return true;
+    if (hex.length === 4) return hex.endsWith("f") || hex.endsWith("F");
+    if (hex.length === 8) return hex.endsWith("ff") || hex.endsWith("FF");
+    return false;
+  }
+  const colorFunction = value.match(/^(rgb|rgba|hsl|hsla)\(([\d.%,\s+/-]+)\)$/);
+  if (!colorFunction) return false;
+  const serializedComponents = colorFunction[2].trim();
+  let components;
+  let alpha;
+  if (serializedComponents.includes("/")) {
+    if (serializedComponents.includes(",")) return false;
+    const slashParts = serializedComponents.split("/");
+    if (slashParts.length !== 2) return false;
+    components = slashParts[0].trim().split(/\s+/);
+    alpha = slashParts[1].trim();
+  } else if (serializedComponents.includes(",")) {
+    components = serializedComponents.split(",").map((component) => component.trim());
+    alpha = components.length === 4 ? components.pop() : undefined;
+  } else {
+    components = serializedComponents.split(/\s+/);
+  }
+  if (components.length !== 3 || !alpha && serializedComponents.includes("/")) return false;
+  const [first, second, third] = components;
+  const validComponents = colorFunction[1].startsWith("rgb")
+    ? [first, second, third].every(isCssNumberOrPercentage)
+    : isCssNumber(first) && isCssPercentage(second) && isCssPercentage(third);
+  if (!validComponents) return false;
+  return alpha === undefined || /^(?:1(?:\.0+)?|100(?:\.0+)?%)$/.test(alpha);
+}
+
+function isCssNumber(value) {
+  return /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(value);
+}
+
+function isCssPercentage(value) {
+  return value.endsWith("%") && isCssNumber(value.slice(0, -1));
+}
+
+function isCssNumberOrPercentage(value) {
+  return isCssNumber(value) || isCssPercentage(value);
 }
 
 function isSafeShadow(value) {

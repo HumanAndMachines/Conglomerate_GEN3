@@ -139,6 +139,38 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(css).toContain(".app-card");
 });
 
+test("Organization theme klient přijme stejné neprůhledné on-accent barvy jako server", async () => {
+  const js = await readFile(join(publicRoot, "app.js"), "utf8");
+  const safeOrganizationThemeValue = extractClientThemeValidator(js);
+
+  for (const value of [
+    "#fff",
+    "#ffffffff",
+    "rgb(255, 255, 255)",
+    "rgb(255 255 255 / 1)",
+    "rgba(255 255 255 / 1.0)",
+    "hsl(0 0% 100% / 100%)",
+    "hsla(0 0% 100% / 100.0%)",
+    "black",
+  ]) {
+    expect(safeOrganizationThemeValue("--on-accent", value)).toBe(true);
+  }
+
+  for (const value of [
+    "transparent",
+    "#ffffff80",
+    "rgba(255, 255, 255, 0.5)",
+    "rgb(255 255 255 / 50%)",
+    "hsl(0 0% 100% / 0.5)",
+    "rgb(255 255 255 /)",
+    "rgb(255, 255, 255 / 1)",
+  ]) {
+    expect(safeOrganizationThemeValue("--on-accent", value)).toBe(false);
+  }
+
+  expect(safeOrganizationThemeValue("--accent", "rgb(255 255 255 / 1)")).toBe(false);
+});
+
 test("Launchpad shell ships GEN2-like command center, theme and feedback affordances", async () => {
   const [html, js, css] = await Promise.all([
     readFile(join(publicRoot, "index.html"), "utf8"),
@@ -863,3 +895,11 @@ test("app icon constants initialize before the first data load render", async ()
   expect(js.indexOf("const APP_ICON_PATHS")).toBeLessThan(firstDataLoad);
   expect(js.indexOf("const APP_DESCRIPTION_FALLBACKS")).toBeLessThan(firstDataLoad);
 });
+
+function extractClientThemeValidator(js) {
+  const start = js.indexOf("function safeOrganizationThemeValue");
+  const end = js.indexOf("\nfunction renderSpaceSwitcher", start);
+  expect(start).toBeGreaterThan(-1);
+  expect(end).toBeGreaterThan(start);
+  return Function(`${js.slice(start, end)}\nreturn safeOrganizationThemeValue;`)();
+}

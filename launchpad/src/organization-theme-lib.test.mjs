@@ -183,6 +183,56 @@ test("Schválený Design System bez on-accent v obou režimech se neaktivuje", a
   expect(theme.light["--accent"]).toBe("#6058e9");
 });
 
+test("Schválený Design System přijme jen neprůhledný on-accent foreground", () => {
+  const transparentValues = [
+    "transparent",
+    "rgba(255, 255, 255, 0)",
+    "rgba(255, 255, 255, 0.5)",
+    "rgb(255, 255, 255, 0)",
+    "hsl(0, 0%, 100%, 0.5)",
+    "rgb(255 255 255 / 0)",
+    "rgb(255 255 255 / 50%)",
+    "hsl(0 0% 100% / 0.5)",
+    "rgb(255,,255)",
+    "hsl(,0%,100%)",
+    "rgb(255. 255 255)",
+    "hsl(0 0.% 100%)",
+    "rgb(255 255 255 /)",
+    "rgb(255, 255, 255 / 1)",
+    "#ffffff00",
+    "#ffffff80",
+  ];
+  for (const onAccent of transparentValues) {
+    expect(extractLaunchpadTheme(
+      themeCss("#0056d2", { onAccentLight: onAccent, onAccentDark: onAccent }),
+      { requireOnAccent: true },
+    )).toBeNull();
+  }
+
+  const opaqueValues = [
+    "#fff",
+    "#ffff",
+    "#ffffffff",
+    "rgb(255, 255, 255)",
+    "rgb(255 255 255)",
+    "rgba(255, 255, 255, 1)",
+    "rgb(255 255 255 / 1)",
+    "rgba(255 255 255 / 1.0)",
+    "hsl(0, 0%, 100%)",
+    "hsl(0 0% 100%)",
+    "hsl(0 0% 100% / 100%)",
+    "hsla(0 0% 100% / 100.0%)",
+  ];
+  for (const onAccent of opaqueValues) {
+    const theme = extractLaunchpadTheme(
+      themeCss("#0056d2", { onAccentLight: onAccent, onAccentDark: onAccent }),
+      { requireOnAccent: true },
+    );
+    expect(theme?.light["--on-accent"]).toBe(onAccent);
+    expect(theme?.dark["--on-accent"]).toBe(onAccent);
+  }
+});
+
 test("Organization theme odmítne aktivní CSS hodnoty i symlink mimo Organizaci", async () => {
   const root = await makeOrganizationRoot();
   const organizationRoot = join(root, "organizations", "Example_GEN3");
