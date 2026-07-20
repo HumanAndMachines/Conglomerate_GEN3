@@ -6,5 +6,70 @@
     "path": "Conglomerate_GEN3",
     "owner": "founder"
   },
-  "issues": []
+  "issues": [
+    {
+      "id": "issue-2026-07-20-001",
+      "title": "Launchpad nemá zobrazovat Mission Control DB jako Workspace modul",
+      "status": "implementation_needed",
+      "severity": "medium",
+      "owner": "Launchpad implementační agent",
+      "created_at": "2026-07-20",
+      "updated_at": "2026-07-20",
+      "tags": [
+        "launchpad",
+        "mission-control",
+        "repository-db",
+        "workspace-ui",
+        "module-manifest",
+        "avaltar"
+      ],
+      "question": "Jak zpevnit Launchpad read-model/UI tak, aby root/data slot `mission-control/db` zůstal součástí Git/Doctor diagnostiky, ale nikdy se neukazoval jako Workspace modulová karta ani nezvyšoval počet modulů?",
+      "impact": "V AVALTAR Launchpadu se `Mission control db` zobrazuje jako samostatný modul, přestože jde jen o data repo pro Mission Control. Matěj při klientském nasazení vidí matoucí pátou kartu a klient by mohl data repo považovat za samostatnou aplikaci.",
+      "implementation_brief": {
+        "scope": "Sdílený Conglomerate Launchpad (`launchpad/`), ne AVALTAR klientský Mission Control ani `mission-control-data` repo.",
+        "observed_example": "AVALTAR-HAM_GEN3 na lokálním Launchpadu 2026-07-20 ukazoval karty Design System, Mission Control, Knowledgebase, Mission control db a Infra; `Mission control db` má zmizet z karet i počtu Workspace modulů.",
+        "expected_behavior": [
+          "`mission-control/db` zůstává deklarovatelný root slot v `modules.manifest.json` kvůli mountu, Git inventáři, Doctoru a repository-db publish/readiness flow.",
+          "Workspace tile list a modul count zobrazují jen uživatelské/spustitelné workspace moduly a root app surfaces, ne interní data repa.",
+          "Mission Control app karta zůstává viditelná, pokud existuje jako app/root surface; její data repo se může zobrazit jen v detailu Mission Control, Doctor/Git panelu nebo debug table.",
+          "Filtr nesmí záviset jen na existenci parent slotu `mission-control`; data repo se má skrýt i tehdy, když je `mission-control/db` jediný nebo dočasně samostatně deklarovaný root slot."
+        ],
+        "suggested_implementation": [
+          "Prověř `launchpad/src/diagnostics-lib.mjs` a `launchpad/src/organization-slot-scope-lib.mjs`: současný nested-child filtr vynechává child sloty z tiles jen podle parent declaration; doplň explicitní UI klasifikaci pro root/data sloty.",
+          "Za hlavní pravidlo vezmi `slot.space === \"root\"`, `slot.path === \"mission-control/db\"`, `slot.source_of_truth === \"repository-db:v3\"` nebo obdobný explicitní `ui_exposure`/`slot_kind` kontrakt, ale nepřeruš Doctor/readiness evidenci.",
+          "Přidej regression test s AVALTAR-like manifestem: `mission-control/db` deklarovaný jako root/data slot se neobjeví ve `org.workspaces[].modules`, v počtu Workspace modulů ani jako standalone karta, ale zůstane v `module_declarations`/Doctor detailu.",
+          "Ověř i případ, kdy parent `mission-control` slot existuje i kdy chybí; oba mají stejný UI výsledek pro data repo."
+        ],
+        "acceptance_criteria": [
+          "Na AVALTAR-like fixture Launchpad workspace neobsahuje `mission-control/db` a UI modul count ho nezapočítá.",
+          "Doctor/Git diagnostika pořád vidí `mission-control/db` jako root data repo slot a umí hlásit missing/planned/available stav.",
+          "Žádná změna se nedělá v klientském data repu jen proto, aby se obešel UI bug.",
+          "`bun run check` a relevantní Launchpad testy projdou."
+        ],
+        "non_goals": [
+          "Neměnit AVALTAR business data ani Mission Control data obsah.",
+          "Neschovávat skutečnou Mission Control aplikaci.",
+          "Neodstraňovat `mission-control/db` z manifestu ani z Doctor Git inventáře."
+        ]
+      },
+      "links": [
+        {
+          "label": "Launchpad read-model",
+          "path": "launchpad/src/diagnostics-lib.mjs"
+        },
+        {
+          "label": "Root/data slot scope helper",
+          "path": "launchpad/src/organization-slot-scope-lib.mjs"
+        },
+        {
+          "label": "AVALTAR manifest example",
+          "path": "organizations/AVALTAR-HAM_GEN3/modules.manifest.json"
+        },
+        {
+          "label": "First-client rollout boundary",
+          "path": "manual/first-client-organization-rollout.md"
+        }
+      ]
+    }
+  ]
 }
