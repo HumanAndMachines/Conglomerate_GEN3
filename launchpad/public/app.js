@@ -62,6 +62,7 @@ const state = {
   // Poslední změny žijí v trvalém pravém panelu Organization scope. Nejčastější
   // a detail zůstávají ve skládacím draweru, který detail appky otevře automaticky.
   drawerOpen: false,
+  drawerView: "overview",
   filters: {
     // Scope selector vždy ukazuje právě jeden prostor: personalspace nebo
     // konkrétní Organizaci. Cross-organization pohled „Vše" není v denním UI.
@@ -231,6 +232,7 @@ const elements = {
   recentChangesSidebar: document.querySelector("#recentChangesSidebar"),
   toastRoot: document.querySelector("#toastRoot"),
   recentModules: document.querySelector("#recentModules"),
+  mostUsedPanel: document.querySelector("#mostUsedPanel"),
   organizationGitStatus: document.querySelector("#organizationGitStatus"),
   mostUsed: document.querySelector("#mostUsed"),
   recentModuleModal: document.querySelector("#recentModuleModal"),
@@ -284,7 +286,15 @@ elements.attentionToggle?.addEventListener("click", () => {
 
 // Drawer doplňkových panelů (Nejčastější / detail). Poslední změny jsou v
 // Organization scope trvale viditelné vedle hlavní plochy.
-elements.drawerToggle?.addEventListener("click", () => setDrawer(!state.drawerOpen));
+elements.drawerToggle?.addEventListener("click", () => {
+  if (state.drawerOpen) {
+    setDrawer(false);
+    return;
+  }
+  state.drawerView = "overview";
+  setDrawer(true);
+  render();
+});
 elements.drawerClose?.addEventListener("click", () => setDrawer(false));
 elements.drawerBackdrop?.addEventListener("click", () => setDrawer(false));
 document.addEventListener("keydown", (event) => {
@@ -413,6 +423,7 @@ function applyDrawerState() {
 function selectAppDetail(appId) {
   state.selectedReadonlyDetail = null;
   state.selectedAppId = appId;
+  state.drawerView = "detail";
   if (state.selectedLogs?.app_id !== appId) state.selectedLogs = null;
   setDrawer(true);
   render();
@@ -421,6 +432,7 @@ function selectAppDetail(appId) {
 function selectReadonlyDetail(detail) {
   state.selectedReadonlyDetail = detail;
   state.selectedAppId = null;
+  state.drawerView = "detail";
   state.selectedLogs = null;
   setDrawer(true);
   render();
@@ -824,6 +836,7 @@ function render() {
     }
     // Výběr appky (detail) otevře drawer s panely, ať je detail vidět.
     if (state.selectedAppId && previousSelectedAppId !== state.selectedAppId && !suppressDrawerOpen) {
+      state.drawerView = "detail";
       setDrawer(true);
     }
   }
@@ -1643,6 +1656,9 @@ function openRecentModuleModal(moduleId) {
 function renderMostUsed() {
   const mount = elements.mostUsed;
   if (!mount) return;
+  const detailOpen = state.drawerView === "detail";
+  elements.mostUsedPanel?.toggleAttribute("hidden", detailOpen);
+  if (detailOpen) return;
   mount.replaceChildren();
 
   const usedItems = visibleMostUsed();
@@ -2460,9 +2476,9 @@ function cardWarningModel(app, gitRepo) {
     const incoming = Number(gitRepo.counts?.incoming) || 0;
     return {
       tone: "warn",
-      title: `Nová verze — ${incoming} ${pluralCommit(incoming)} + lokální změny`,
-      detail: "Launchpad může změny bezpečně odložit, stáhnout fast-forward a znovu je obnovit.",
-      actionLabel: "Stáhnout a zachovat změny",
+      title: `Nová verze - ${incoming} změn`,
+      actionLabel: "Stáhnout",
+      actionStyle: "secondary",
       run: () => pullLatestRepoVersion(app, gitRepo, { autostash: true }),
       pending: `${app.id}:git-pull`,
     };
@@ -2473,11 +2489,21 @@ function cardWarningModel(app, gitRepo) {
     const incoming = Number(gitRepo.counts?.incoming) || 0;
     return {
       tone: "warn",
-      title: incoming > 0 ? `Nová verze — ${incoming} ${pluralCommit(incoming)}` : "Nová verze k stažení",
-      detail: "Někdo mezitím poslal novější verzi. Můžeš ji bezpečně stáhnout (fast-forward).",
+      title: `Nová verze - ${incoming} změn`,
       actionLabel: "Stáhnout",
+      actionStyle: "secondary",
       run: () => pullLatestRepoVersion(app, gitRepo),
       pending: `${app.id}:git-pull`,
+    };
+  }
+
+  if (gitRepo?.status === "push_required") {
+    return {
+      tone: "warn",
+      title: "Změny k odeslání",
+      actionLabel: "Zobrazit detail",
+      actionStyle: "secondary",
+      run: () => revealAppDetail(app),
     };
   }
 
@@ -2499,8 +2525,9 @@ function cardWarningModel(app, gitRepo) {
 }
 
 // Inline warning panel na kartě: ikona + nadpis/vysvětlení + volitelné akční
-// tlačítko. Tón řídí barvu i typ tlačítka (warn = primární akce, danger =
-// neutrální ghost). Tlačítko zastaví propagaci, aby neotevřelo kartu.
+// tlačítko. Git upozornění používají klidnější sekundární akci; instalační
+// upozornění zůstává primární, protože bez ní aplikaci nejde otevřít.
+// Tlačítko zastaví propagaci, aby neotevřelo kartu.
 function cardWarningNode(app, warning) {
   const node = document.createElement("div");
   node.className = `card-warning is-${warning.tone}`;
@@ -2528,9 +2555,12 @@ function cardWarningNode(app, warning) {
   if (warning.actionLabel && typeof warning.run === "function") {
     const button = document.createElement("button");
     button.type = "button";
-    // Warn = primární akce (stáhnout/nainstalovat), danger = neutrální ghost,
-    // ať indigo accent nekoliduje s červeným danger panelem.
-    button.className = `btn btn-sm card-warning-action ${warning.tone === "warn" ? "btn-primary" : "btn-ghost"}`;
+    const actionClass = warning.actionStyle === "secondary"
+      ? "btn-secondary"
+      : warning.tone === "warn"
+        ? "btn-primary"
+        : "btn-ghost";
+    button.className = `btn btn-sm card-warning-action ${actionClass}`;
     button.textContent = warning.actionLabel;
     button.disabled = warning.pending ? state.pendingAction === warning.pending : false;
     button.addEventListener("click", (event) => {
@@ -3284,6 +3314,10 @@ function tableCell(content) {
    ========================================================= */
 
 function renderDetail(apps) {
+  const detailOpen = state.drawerView === "detail";
+  elements.appDetail?.toggleAttribute("hidden", !detailOpen);
+  if (!detailOpen) return;
+
   const app = state.selectedReadonlyDetail ?? apps.find((item) => item.id === state.selectedAppId);
   if (!app) {
     elements.appDetail.className = "empty-detail";
@@ -3293,17 +3327,10 @@ function renderDetail(apps) {
 
   const wrapper = document.createElement("div");
   wrapper.className = "detail-block";
-  // Daily surface: who/what, current state, Mission Control ownership, and the one safe next action.
-  wrapper.append(renderDetailHeader(app), renderDetailStatus(app));
-  const ownership = renderDetailMissionControlOwnership(app);
-  if (ownership) wrapper.append(ownership);
-  const gitBuilderActions = renderGitBuilderActions(app);
-  if (gitBuilderActions) wrapper.append(gitBuilderActions);
-  const runtimeSource = renderRuntimeSourceChooser(app);
-  if (runtimeSource) wrapper.append(runtimeSource);
-  const builderActions = renderWorktreeBuilderActions(app);
-  if (builderActions) wrapper.append(builderActions);
-  wrapper.append(renderDetailNextAction(app));
+  // Běžný detail odpovídá jen na tři otázky: co se děje, co to znamená a co
+  // může uživatel udělat. Git/worktree diagnostika zůstává níže pod technickým
+  // rozbalením.
+  wrapper.append(renderDetailHeader(app), renderDetailSummary(app));
   // Logs are user-initiated (the "Logy" button), so show them when present.
   const logs = renderDetailLogs(app);
   if (logs) wrapper.append(logs);
@@ -3314,6 +3341,161 @@ function renderDetail(apps) {
   elements.appDetail.replaceChildren(wrapper);
 }
 
+function renderDetailSummary(app) {
+  const git = gitDetailForApp(app);
+  const model = detailSummaryModel(app, git);
+  const section = document.createElement("section");
+  section.className = `detail-section detail-summary is-${model.tone}`;
+  const title = document.createElement("h3");
+  title.textContent = model.title;
+  const message = document.createElement("p");
+  message.textContent = model.message;
+  section.append(title, message);
+
+  if (model.change) {
+    const change = document.createElement("p");
+    change.className = "detail-summary-change";
+    change.textContent = `Poslední změna: ${model.change}`;
+    section.append(change);
+  }
+
+  if (model.action) {
+    const actions = document.createElement("div");
+    actions.className = "detail-summary-actions";
+    actions.append(model.action);
+    section.append(actions);
+  }
+  return section;
+}
+
+function detailSummaryModel(app, git) {
+  const incoming = Number(git?.counts?.incoming) || 0;
+  const outgoing = Number(git?.counts?.outgoing) || 0;
+  const changedFiles = Number(git?.counts?.changed_files) || 0;
+  const nextAction = primaryNextAction(app);
+  const dependencyState = app.dependencies?.state;
+
+  if (nextAction.type === "disabled") {
+    return {
+      tone: "danger",
+      title: "Aplikaci teď nejde otevřít",
+      message: nextActionReason(app, nextAction),
+      action: primaryActionNode(app, nextAction),
+    };
+  }
+
+  if (app.runtime_status === "unhealthy") {
+    return {
+      tone: "danger",
+      title: "Spuštění se nepovedlo",
+      message: "Podívejte se, co se při spuštění stalo.",
+      action: primaryActionNode(app, nextAction),
+    };
+  }
+
+  if (["needs_install", "stale_lockfile"].includes(dependencyState)) {
+    return {
+      tone: "warn",
+      title: dependencyState === "needs_install" ? "Aplikaci je potřeba připravit" : "Aplikaci je potřeba opravit",
+      message: dependencyState === "needs_install"
+        ? "Než ji otevřete, je potřeba doplnit potřebné součásti."
+        : "Než ji otevřete, je potřeba opravit její součásti.",
+      action: primaryActionNode(app, nextAction),
+    };
+  }
+
+  if (git?.status === "push_required") {
+    return {
+      tone: "warn",
+      title: `${newCommitCountLabel(outgoing)} čeká na odeslání`,
+      message: outgoing === 1
+        ? "Je uložená na tomto počítači. Ostatní ji zatím nevidí."
+        : "Jsou uložené na tomto počítači. Ostatní je zatím nevidí.",
+      change: simpleChangeSubject(git.head?.subject),
+    };
+  }
+
+  if (git?.status === "pull_available") {
+    return {
+      tone: "warn",
+      title: `Nová verze - ${newCommitCountLabel(incoming)}`,
+      message: "Můžete ji bezpečně stáhnout.",
+      action: summaryButton("Stáhnout", () => pullLatestRepoVersion(app, git), `${app.id}:git-pull`),
+    };
+  }
+
+  if (canAutostashPull(git)) {
+    return {
+      tone: "warn",
+      title: `Nová verze - ${newCommitCountLabel(incoming)}`,
+      message: "Můžete ji stáhnout. Vaše změny zůstanou zachované.",
+      action: summaryButton(
+        "Stáhnout",
+        () => pullLatestRepoVersion(app, git, { autostash: true }),
+        `${app.id}:git-pull`,
+      ),
+    };
+  }
+
+  if (git?.status === "draft_changes") {
+    return {
+      tone: "warn",
+      title: "Rozpracované změny",
+      message: `${newCommitCountLabel(changedFiles)} je zatím jen na tomto počítači.`,
+      action: summaryButton("Zobrazit změny", () => showRepoChanges(app, git), `${app.id}:git-changes`),
+    };
+  }
+
+  if (git?.status === "diverged") {
+    return {
+      tone: "danger",
+      title: "Změny je potřeba porovnat",
+      message: "Na tomto počítači i ve sdílené verzi jsou jiné změny.",
+    };
+  }
+
+  if (["wrong_branch", "not_on_main"].includes(git?.status)) {
+    return {
+      tone: "warn",
+      title: "Jiný pracovní režim",
+      message: "Než budete pokračovat, je potřeba stav aplikace zkontrolovat.",
+    };
+  }
+
+  if (app.runtime_status === "healthy") {
+    return {
+      tone: "ok",
+      title: "Aplikace běží",
+      message: "Můžete pokračovat v práci.",
+      action: primaryActionNode(app, nextAction),
+    };
+  }
+  return {
+    tone: "ok",
+    title: "Aplikace je připravená",
+    message: "Můžete ji spustit a pokračovat v práci.",
+    action: primaryActionNode(app, nextAction),
+  };
+}
+
+function simpleChangeSubject(subject) {
+  if (typeof subject !== "string" || !subject.trim()) return null;
+  return subject.trim().replace(/^[^:]{1,48}:\s*/, "");
+}
+
+function summaryButton(label, onClick, pendingKey = null) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "btn btn-primary btn-sm";
+  button.textContent = label;
+  button.disabled = pendingKey ? state.pendingAction === pendingKey : false;
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    onClick();
+  });
+  return button;
+}
+
 function renderDetailTech(app) {
   const details = document.createElement("details");
   details.className = "detail-tech";
@@ -3321,7 +3503,16 @@ function renderDetailTech(app) {
   summary.textContent = "Technické detaily";
   const body = document.createElement("div");
   body.className = "detail-tech-body";
-  body.append(renderDetailEndpoint(app), renderDetailPaths(app));
+  body.append(renderDetailStatus(app));
+  const ownership = renderDetailMissionControlOwnership(app);
+  if (ownership) body.append(ownership);
+  const gitBuilderActions = renderGitBuilderActions(app);
+  if (gitBuilderActions) body.append(gitBuilderActions);
+  const runtimeSource = renderRuntimeSourceChooser(app);
+  if (runtimeSource) body.append(runtimeSource);
+  const builderActions = renderWorktreeBuilderActions(app);
+  if (builderActions) body.append(builderActions);
+  body.append(renderDetailNextAction(app), renderDetailEndpoint(app), renderDetailPaths(app));
   const failure = renderDetailFailure(app);
   if (failure) body.append(failure);
   body.append(pluginNode(app.plugin), renderDebugPayload(app));
@@ -3346,7 +3537,7 @@ function renderDetailHeader(app) {
   if (versionBadge) headingRow.append(versionBadge);
   const sub = document.createElement("p");
   sub.className = "app-card-sub";
-  sub.textContent = [app.company_display_name ?? app.company, app.module].filter(Boolean).join(" · ");
+  sub.textContent = app.company_display_name ?? app.company;
   titles.append(headingRow, sub);
   row.append(titles);
   header.append(row);
@@ -3449,7 +3640,18 @@ function worktreeItemNode(worktree) {
 }
 
 function gitDetailForApp(app) {
-  return gitRepoForApp(app) ?? app.git ?? null;
+  const git = gitRepoForApp(app) ?? app.git ?? null;
+  if (!git) return null;
+  if (git.key && git.counts) return git;
+  return {
+    ...git,
+    key: git.key ?? git.repo_key ?? null,
+    counts: git.counts ?? {
+      incoming: Number(git.incomingCommitCount) || 0,
+      outgoing: Number(git.outgoingCommitCount) || 0,
+      changed_files: Number(git.changedFiles) || 0,
+    },
+  };
 }
 
 function normalizedMissionControlOwnership(git) {
