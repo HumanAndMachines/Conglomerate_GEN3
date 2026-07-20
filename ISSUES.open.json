@@ -30,8 +30,12 @@
         "bun run check",
         "bun run doctor"
       ],
-      "next_action": "Steward review a merge větve codex/FIX-launchpad-hide-data-repo-cards; po merge přesunout issue do ISSUES.resolved.json.",
+      "next_action": "Steward review a merge PR #23; po merge přesunout issue do ISSUES.resolved.json.",
       "links": [
+        {
+          "label": "Implementation PR #23",
+          "url": "https://github.com/HumanAndMachines/Conglomerate_GEN3/pull/23"
+        },
         {
           "label": "Launchpad read-model",
           "path": "launchpad/src/diagnostics-lib.mjs"
