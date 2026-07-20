@@ -38,14 +38,18 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
    `.pr-worktrees`, legacy `.worktrees/<code>` ani uvnitř jiného repa.
 6. Pokud primary není na `main` nebo je dirty, nic nezahazuj. Zachovej cizí
    práci a nový worktree založ z ověřeného `origin/main`.
-7. Před handoffem aktualizuj sidecar a znovu spusť audit i
+7. Po pushi branch hned otevři plnohodnotný PR proti správné base branchi,
+   pokud Principál výslovně neřekl, že PR otevřít nemáš. Remote branch bez PR
+   není dokončený handoff: snadno zapadne, Steward ji nemusí vidět a další
+   agent ji nemusí převzít.
+8. Před handoffem aktualizuj sidecar a znovu spusť audit i
    `bun run worktrees:check`. Check je nutný, ale ne dostačující. Worktree
    odstraň jen
    když je clean včetně untracked souborů, nemá local-only commit, exact HEAD je
    na remote, PR je merged nebo explicitně abandoned se snapshotem, runtime ho
    nepoužívá a neexistuje aktivní writer. Pak použij owner repo
    `git worktree remove <path>` a `git worktree prune`; sidecar smaž až potom.
-8. Plošné `rm -rf`, `--force`, `git branch -D` a automatické mazání podle stáří
+9. Plošné `rm -rf`, `--force`, `git branch -D` a automatické mazání podle stáří
    nejsou běžný cleanup. Nesplněný guard se předává konkrétně.
 
 ## Ověření

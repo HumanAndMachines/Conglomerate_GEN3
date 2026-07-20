@@ -131,6 +131,12 @@ requesty (ne GitHub „draft PR" — normální PR). Otevřený PR je pořád Dr
 v našem smyslu: je vidět, dá se editovat a dá se zavřít; publikací se stává
 až merge, a ten patří Principálovi.
 
+**Push bez PR není hotový handoff.** Když agent pushne branch se změnou v
+Conglomerate rootu, hned otevře plnohodnotný PR proti správné base branchi,
+pokud Principál výslovně neřekl, že PR otevřít nemá. Samotná remote branch se
+snadno ztratí a není dostatečný předávací artefakt pro Stewarda ani dalšího
+agenta.
+
 **Poslední slovo má vždy Principál.** Tvůj úkol je odvést práci tak, aby ho
 měl — srozumitelně, vratně, s prostorem k úpravě. Principál ti dává feedback,
 jestli pracuješ dobře, nebo špatně; tvůj úkol je ten feedback brát vážně
