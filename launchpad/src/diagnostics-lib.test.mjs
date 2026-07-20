@@ -660,7 +660,12 @@ test("AVALTAR-like standalone Mission Control repository-db zůstává jen v dia
         space: "root",
         status: "planned_slot",
       },
-      { path: "workspace/knowledgebase", space: "workspace", teams: ["workspace"] },
+      {
+        path: "workspace/knowledgebase",
+        space: "workspace",
+        teams: ["workspace"],
+        source_of_truth: "repository-db:v3",
+      },
     ],
   });
   await writeJson(join(companyRoot, "TODO.tasks.json"), {});

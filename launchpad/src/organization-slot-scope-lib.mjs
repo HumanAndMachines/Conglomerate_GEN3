@@ -97,10 +97,11 @@ export function organizationSlotUiExposure(slot, normalizedPath = null) {
   const sourceOfTruth = typeof slot?.source_of_truth === "string"
     ? slot.source_of_truth.trim().toLowerCase()
     : "";
+  const repositoryDb = sourceOfTruth === "repository-db"
+    || sourceOfTruth.startsWith("repository-db:");
   if (
     organizationDiagnosticsOnlySlotPaths.has(path)
-    || sourceOfTruth === "repository-db"
-    || sourceOfTruth.startsWith("repository-db:")
+    || (repositoryDb && organizationSlotScope(slot, path) === "root")
   ) {
     return "diagnostics-only";
   }

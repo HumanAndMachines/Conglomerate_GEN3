@@ -24,7 +24,7 @@
         "avaltar"
       ],
       "question": "Jak zpevnit Launchpad read-model/UI tak, aby root/data slot `mission-control/db` zůstal součástí Git/Doctor diagnostiky, ale nikdy se neukazoval jako Workspace modulová karta ani nezvyšoval počet modulů?",
-      "implementation": "Větvený fix klasifikuje mission-control/db a repository-db source-of-truth sloty jako diagnostics-only. Slot zůstává v Doctor/readiness a Git inventáři, ale nevstupuje do org.workspaces[].modules, modulových karet ani Workspace countu; AVALTAR-like standalone scénář kryje regresní test.",
+      "implementation": "Větvený fix klasifikuje mission-control/db a root-scoped repository-db source-of-truth sloty jako diagnostics-only. Slot zůstává v Doctor/readiness a Git inventáři, ale nevstupuje do org.workspaces[].modules, modulových karet ani Workspace countu; AVALTAR-like standalone scénář i zachování Workspace repository-db modulu kryje regresní test.",
       "verification": [
         "bun test launchpad/src/diagnostics-lib.test.mjs",
         "bun run check",
