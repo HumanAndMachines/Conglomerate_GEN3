@@ -47,6 +47,15 @@ Launchpad z obou zdrojů propouští jen allowlist tokenů, odmítá aktivní CS
 hodnoty a symlink úniky a vyžaduje úplnou light i dark variantu. Firemní brand
 v Organization scope uzamyká accent; osobní prostor používá výchozí motiv
 Conglomerate a zachovává uživatelský accent preset.
+Upřesnění 2026-07-18: Design System adaptér se aktivuje jen tehdy, když je
+`design-system/design-system.config.json` bezpečně čitelný běžný soubor uvnitř
+Organization rootu, má `mode: organization`, `content_status: approved`
+a jeho `organization.slug` se case-sensitive shoduje s objevenou identitou
+Organizace. Draft, chybějící či neplatný config a slug mismatch adaptér
+neaktivují; Launchpad může dál použít legacy fallback. Schválený adaptér musí
+v light i dark variantě dodat také neprůhlednou bezpečnou barvu `--on-accent`;
+primární tlačítko ji používá pro čitelný foreground a dark gradient odvozuje
+oba své konce z dark `--accent`.
 Upřesnění 2026-07-15 (nahrazuje podobu stavového pásu z 2026-07-14): agregovaný
 `Stav prostoru` je první kompaktní karta v pravém sloupci, ne pás přes celý
 viewport. Zachovává titul, počet blokátorů nebo upozornění a CTA, ale používá

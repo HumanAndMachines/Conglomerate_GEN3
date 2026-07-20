@@ -61,6 +61,7 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(js).toContain("space.organization.theme");
   expect(js).toContain('root.setAttribute("data-organization-theme"');
   expect(js).toContain("ORGANIZATION_THEME_TOKENS");
+  expect(js).toContain('"--on-accent"');
   expect(js).toContain("safeOrganizationThemeValue");
   expect(js).toContain("accentLockedByOrganization");
   expect(js).toContain('if (state.filters.scope === "org") return false');
@@ -122,6 +123,9 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(css).toContain("var(--launchpad-body-background)");
   expect(css).toContain("color-mix(in srgb, var(--bg) 96%, #000)");
   expect(css).toContain("var(--font-heading, var(--font-body))");
+  expect(css).toContain("--on-accent: #fff;");
+  const primaryButtonBlock = css.slice(css.indexOf(".btn-primary {"), css.indexOf("}", css.indexOf(".btn-primary {")) + 1);
+  expect(primaryButtonBlock).toContain("color: var(--on-accent);");
   expect(css).toContain("min-height: 34px");
   expect(css).toContain("width: min(280px");
   expect(css).toContain(".space-profile-card");
@@ -133,6 +137,38 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(css).not.toContain(".organization-rail");
   expect(css).toContain(".apps-grid");
   expect(css).toContain(".app-card");
+});
+
+test("Organization theme klient přijme stejné neprůhledné on-accent barvy jako server", async () => {
+  const js = await readFile(join(publicRoot, "app.js"), "utf8");
+  const safeOrganizationThemeValue = extractClientThemeValidator(js);
+
+  for (const value of [
+    "#fff",
+    "#ffffffff",
+    "rgb(255, 255, 255)",
+    "rgb(255 255 255 / 1)",
+    "rgba(255 255 255 / 1.0)",
+    "hsl(0 0% 100% / 100%)",
+    "hsla(0 0% 100% / 100.0%)",
+    "black",
+  ]) {
+    expect(safeOrganizationThemeValue("--on-accent", value)).toBe(true);
+  }
+
+  for (const value of [
+    "transparent",
+    "#ffffff80",
+    "rgba(255, 255, 255, 0.5)",
+    "rgb(255 255 255 / 50%)",
+    "hsl(0 0% 100% / 0.5)",
+    "rgb(255 255 255 /)",
+    "rgb(255, 255, 255 / 1)",
+  ]) {
+    expect(safeOrganizationThemeValue("--on-accent", value)).toBe(false);
+  }
+
+  expect(safeOrganizationThemeValue("--accent", "rgb(255 255 255 / 1)")).toBe(false);
 });
 
 test("Launchpad shell ships GEN2-like command center, theme and feedback affordances", async () => {
@@ -884,3 +920,11 @@ test("app icon constants initialize before the first data load render", async ()
   expect(js.indexOf("const APP_ICON_PATHS")).toBeLessThan(firstDataLoad);
   expect(js.indexOf("const APP_DESCRIPTION_FALLBACKS")).toBeLessThan(firstDataLoad);
 });
+
+function extractClientThemeValidator(js) {
+  const start = js.indexOf("function safeOrganizationThemeValue");
+  const end = js.indexOf("\nfunction renderSpaceSwitcher", start);
+  expect(start).toBeGreaterThan(-1);
+  expect(end).toBeGreaterThan(start);
+  return Function(`${js.slice(start, end)}\nreturn safeOrganizationThemeValue;`)();
+}

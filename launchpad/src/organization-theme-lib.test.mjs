@@ -60,16 +60,177 @@ test("Organization theme preferuje explicitní design-system adaptér před GEN2
   const organizationRoot = join(root, "organizations", "Example_GEN3");
   await mkdir(join(organizationRoot, "design-system"), { recursive: true });
   await mkdir(join(organizationRoot, "launchpad", "app", "v1", "web"), { recursive: true });
-  await writeFile(join(organizationRoot, "design-system", "launchpad.tokens.css"), themeCss("#0056d2"));
+  await writeDesignSystemConfig(organizationRoot);
+  await writeFile(
+    join(organizationRoot, "design-system", "launchpad.tokens.css"),
+    themeCss("#0056d2", {
+      darkAccent: "var(--brand-dark, #f97316)",
+      onAccentLight: "#ffffff",
+      onAccentDark: "#111827",
+    }),
+  );
   await writeFile(join(organizationRoot, "launchpad", "app", "v1", "web", "style.css"), themeCss("#6058e9"));
 
-  const theme = await readOrganizationLaunchpadTheme({
-    companiesRoot: root,
-    organization: { path: "organizations/Example_GEN3", status: "mounted" },
-  });
+  const theme = await readExampleTheme(root);
 
   expect(theme.source).toBe("design-system/launchpad.tokens.css");
   expect(theme.light["--accent"]).toBe("#0056d2");
+  expect(theme.light["--on-accent"]).toBe("#ffffff");
+  expect(theme.dark).toMatchObject({
+    "--accent": "#f97316",
+    "--on-accent": "#111827",
+    "--c-accent-400": "#f97316",
+    "--c-accent-500": "#f97316",
+  });
+});
+
+test("Organization theme draft Design System neaktivuje a pokračuje GEN2 fallbackem", async () => {
+  const root = await makeOrganizationRoot();
+  const organizationRoot = join(root, "organizations", "Example_GEN3");
+  await mkdir(join(organizationRoot, "design-system"), { recursive: true });
+  await mkdir(join(organizationRoot, "launchpad", "app", "v1", "web"), { recursive: true });
+  await writeDesignSystemConfig(organizationRoot, { contentStatus: "draft" });
+  await writeFile(
+    join(organizationRoot, "design-system", "launchpad.tokens.css"),
+    themeCss("#0056d2", { onAccentLight: "#fff", onAccentDark: "#fff" }),
+  );
+  await writeFile(join(organizationRoot, "launchpad", "app", "v1", "web", "style.css"), themeCss("#6058e9"));
+
+  const theme = await readExampleTheme(root);
+
+  expect(theme.source).toBe("launchpad/app/v1/web/style.css");
+  expect(theme.light["--accent"]).toBe("#6058e9");
+});
+
+test("Organization theme odmítne chybějící, cizí, neplatný i symlinkovaný Design System config", async () => {
+  const scenarios = [
+    {
+      name: "missing",
+      configure: async () => {},
+    },
+    {
+      name: "slug-mismatch",
+      configure: (organizationRoot) => writeDesignSystemConfig(organizationRoot, { slug: "example" }),
+    },
+    {
+      name: "wrong-mode",
+      configure: (organizationRoot) => writeDesignSystemConfig(organizationRoot, { mode: "template" }),
+    },
+    {
+      name: "invalid-json",
+      configure: (organizationRoot) => writeFile(
+        join(organizationRoot, "design-system", "design-system.config.json"),
+        "{invalid",
+      ),
+    },
+    {
+      name: "symlink",
+      configure: async (organizationRoot) => {
+        const target = join(organizationRoot, "design-system", "approved-config-target.json");
+        await writeFile(target, designSystemConfig());
+        await symlink(
+          target,
+          join(organizationRoot, "design-system", "design-system.config.json"),
+          "file",
+        );
+      },
+    },
+  ];
+  const results = [];
+
+  for (const scenario of scenarios) {
+    const root = await makeOrganizationRoot();
+    const organizationRoot = join(root, "organizations", "Example_GEN3");
+    await mkdir(join(organizationRoot, "design-system"), { recursive: true });
+    await mkdir(join(organizationRoot, "launchpad", "app", "v1", "web"), { recursive: true });
+    await writeFile(
+      join(organizationRoot, "design-system", "launchpad.tokens.css"),
+      themeCss("#0056d2", { onAccentLight: "#fff", onAccentDark: "#fff" }),
+    );
+    await writeFile(join(organizationRoot, "launchpad", "app", "v1", "web", "style.css"), themeCss("#6058e9"));
+    await scenario.configure(organizationRoot);
+
+    const theme = await readExampleTheme(root);
+    results.push({
+      name: scenario.name,
+      source: theme?.source,
+      accent: theme?.light?.["--accent"],
+    });
+  }
+
+  expect(results).toEqual(scenarios.map(({ name }) => ({
+    name,
+    source: "launchpad/app/v1/web/style.css",
+    accent: "#6058e9",
+  })));
+});
+
+test("Schválený Design System bez on-accent v obou režimech se neaktivuje", async () => {
+  const root = await makeOrganizationRoot();
+  const organizationRoot = join(root, "organizations", "Example_GEN3");
+  await mkdir(join(organizationRoot, "design-system"), { recursive: true });
+  await mkdir(join(organizationRoot, "launchpad", "app", "v1", "web"), { recursive: true });
+  await writeDesignSystemConfig(organizationRoot);
+  await writeFile(
+    join(organizationRoot, "design-system", "launchpad.tokens.css"),
+    themeCss("#0056d2", { onAccentLight: "#fff" }),
+  );
+  await writeFile(join(organizationRoot, "launchpad", "app", "v1", "web", "style.css"), themeCss("#6058e9"));
+
+  const theme = await readExampleTheme(root);
+
+  expect(theme.source).toBe("launchpad/app/v1/web/style.css");
+  expect(theme.light["--accent"]).toBe("#6058e9");
+});
+
+test("Schválený Design System přijme jen neprůhledný on-accent foreground", () => {
+  const transparentValues = [
+    "transparent",
+    "rgba(255, 255, 255, 0)",
+    "rgba(255, 255, 255, 0.5)",
+    "rgb(255, 255, 255, 0)",
+    "hsl(0, 0%, 100%, 0.5)",
+    "rgb(255 255 255 / 0)",
+    "rgb(255 255 255 / 50%)",
+    "hsl(0 0% 100% / 0.5)",
+    "rgb(255,,255)",
+    "hsl(,0%,100%)",
+    "rgb(255. 255 255)",
+    "hsl(0 0.% 100%)",
+    "rgb(255 255 255 /)",
+    "rgb(255, 255, 255 / 1)",
+    "#ffffff00",
+    "#ffffff80",
+  ];
+  for (const onAccent of transparentValues) {
+    expect(extractLaunchpadTheme(
+      themeCss("#0056d2", { onAccentLight: onAccent, onAccentDark: onAccent }),
+      { requireOnAccent: true },
+    )).toBeNull();
+  }
+
+  const opaqueValues = [
+    "#fff",
+    "#ffff",
+    "#ffffffff",
+    "rgb(255, 255, 255)",
+    "rgb(255 255 255)",
+    "rgba(255, 255, 255, 1)",
+    "rgb(255 255 255 / 1)",
+    "rgba(255 255 255 / 1.0)",
+    "hsl(0, 0%, 100%)",
+    "hsl(0 0% 100%)",
+    "hsl(0 0% 100% / 100%)",
+    "hsla(0 0% 100% / 100.0%)",
+  ];
+  for (const onAccent of opaqueValues) {
+    const theme = extractLaunchpadTheme(
+      themeCss("#0056d2", { onAccentLight: onAccent, onAccentDark: onAccent }),
+      { requireOnAccent: true },
+    );
+    expect(theme?.light["--on-accent"]).toBe(onAccent);
+    expect(theme?.dark["--on-accent"]).toBe(onAccent);
+  }
 });
 
 test("Organization theme odmítne aktivní CSS hodnoty i symlink mimo Organizaci", async () => {
@@ -77,10 +238,12 @@ test("Organization theme odmítne aktivní CSS hodnoty i symlink mimo Organizaci
   const organizationRoot = join(root, "organizations", "Example_GEN3");
   const designSystemPath = join(organizationRoot, "design-system");
   const outsideDesignSystem = join(root, "outside-design-system");
-  await mkdir(join(organizationRoot, "design-system"), { recursive: true });
   await mkdir(outsideDesignSystem, { recursive: true });
-  await writeFile(join(outsideDesignSystem, "launchpad.tokens.css"), themeCss("#ef4444"));
-  await rm(designSystemPath, { recursive: true, force: true });
+  await writeFile(join(outsideDesignSystem, "design-system.config.json"), designSystemConfig());
+  await writeFile(
+    join(outsideDesignSystem, "launchpad.tokens.css"),
+    themeCss("#ef4444", { onAccentLight: "#fff", onAccentDark: "#fff" }),
+  );
   await symlink(
     outsideDesignSystem,
     designSystemPath,
@@ -89,7 +252,7 @@ test("Organization theme odmítne aktivní CSS hodnoty i symlink mimo Organizaci
 
   const escaped = await readOrganizationLaunchpadTheme({
     companiesRoot: root,
-    organization: { path: "organizations/Example_GEN3", status: "mounted" },
+    organization: { slug: "Example", path: "organizations/Example_GEN3", status: "mounted" },
   });
   expect(escaped).toBeNull();
 
@@ -117,20 +280,59 @@ async function makeOrganizationRoot() {
   return root;
 }
 
-function themeCss(accent) {
+function readExampleTheme(root) {
+  return readOrganizationLaunchpadTheme({
+    companiesRoot: root,
+    organization: { slug: "Example", path: "organizations/Example_GEN3", status: "mounted" },
+  });
+}
+
+async function writeDesignSystemConfig(
+  organizationRoot,
+  { slug = "Example", mode = "organization", contentStatus = "approved" } = {},
+) {
+  await writeFile(
+    join(organizationRoot, "design-system", "design-system.config.json"),
+    designSystemConfig({ slug, mode, contentStatus }),
+  );
+}
+
+function designSystemConfig({
+  slug = "Example",
+  mode = "organization",
+  contentStatus = "approved",
+} = {}) {
+  return JSON.stringify({
+    schema_version: "design-system.v1",
+    mode,
+    organization: { slug, display_name: slug },
+    content_status: contentStatus,
+  });
+}
+
+function themeCss(
+  accent,
+  {
+    darkAccent = accent,
+    onAccentLight = null,
+    onAccentDark = null,
+  } = {},
+) {
   return `
     :root {
       --bg: #ffffff;
       --surface: #ffffff;
       --text: #111827;
       --accent: ${accent};
+      ${onAccentLight ? `--on-accent: ${onAccentLight};` : ""}
       --font-body: system-ui, sans-serif;
     }
     [data-theme="dark"] {
       --bg: #111827;
       --surface: #1f2937;
       --text: #f9fafb;
-      --accent: ${accent};
+      --accent: ${darkAccent};
+      ${onAccentDark ? `--on-accent: ${onAccentDark};` : ""}
     }
   `;
 }
