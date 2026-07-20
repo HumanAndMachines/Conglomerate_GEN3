@@ -12,6 +12,7 @@ import {
   safeGitCommandEnv,
 } from "./git-lib.mjs";
 import { agentSkillsEntrypointsDoctorCheck } from "./agent-skills-entrypoint-lib.mjs";
+import { inspectMacosLaunchpadApp } from "./macos-launchpad-app-lib.mjs";
 import {
   isCanonicalOrganizationRepositorySlotPath,
   isOrganizationRootSlotDescendantPath,
@@ -1143,6 +1144,7 @@ function platformChecks(companiesRoot) {
       links: [],
       details: [`platform: ${process.platform}`, `arch: ${process.arch}`],
     },
+    inspectMacosLaunchpadApp({ companiesRoot }),
     commandCheck({
       id: "platform.bun",
       title: "Bun runtime",

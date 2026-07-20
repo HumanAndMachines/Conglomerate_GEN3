@@ -24,6 +24,8 @@ Conglomerate/
 ├── Launchpad.cmd
 ├── Launchpad.ps1
 ├── launchpad.sh
+├── assets/launchpad.icns       # macOS ikona instalované Launchpad .app
+├── scripts/install-macos-launchpad-app.mjs
 ├── guide/
 ├── personalspace/              # private/gitignored personal repo mount
 │   └── secrets/                 # local ignored secret custody; see manual/security/local-secret-custody.md

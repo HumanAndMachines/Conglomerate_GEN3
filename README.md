@@ -136,6 +136,32 @@ bun run check
 bun run doctor
 ```
 
+### macOS: klikací aplikace a Dock
+
+Doctor read-only kontrolou ověřuje, že v `~/Applications` existuje aplikace
+`HumanAndMachine Launchpad GEN3.app`, míří na tento fyzický Conglomerate root,
+má dodanou Launchpad ikonu a je přítomná v Docku. Explicitní opravu spusť:
+
+```sh
+bun run doctor -- --repair-launchpad-dock
+```
+
+Oprava nevyžaduje administrátorská práva. Vytvoří nebo atomicky nahradí
+uživatelskou `.app`; předchozí bundle zachová pod
+`~/Library/Application Support/HumanAndMachine/Launchpad/app-backups/`.
+Kliknutí na ikonu otevře kanonický `Launchpad.command` z přesného rootu.
+
+Je-li dostupný `dockutil`, oprava požádá o připnutí a znovu je ověří. Bez něj
+nemění křehké číselné indexy ani plist Docku: otevře Finder přímo na nové
+aplikaci. Přetáhni ji do Docku a znovu spusť `bun run doctor`. Dokud Doctor
+Dock položku neověří, explicitní repair skončí nenulovým návratovým kódem.
+
+Samostatný instalátor bez následného celého Doctor reportu:
+
+```sh
+bun run install:macos-launchpad
+```
+
 ### Windows: Start Menu a hlavní panel
 
 Sdílený Launchpad lze na Windows nainstalovat jako uživatelskou zkratku bez

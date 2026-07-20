@@ -329,6 +329,12 @@ stav aplikací. Runtime checks říkají, jestli app-owned port stojí, startuje
 odpovídá, je adoptovaný po restartu Launchpadu nebo je v problému. Doctor
 nikdy aplikace nespouští ani nezastavuje.
 
+Na macOS navíc ověřuje klikací `HumanAndMachine Launchpad GEN3.app`, její
+bundle ID, executable, ikonu, přesný root a přítomnost v Docku. Mutace je pouze
+explicitní repair lane `bun run doctor -- --repair-launchpad-dock`; běžný
+Doctor zůstává read-only. Když chybí `dockutil`, repair otevře aplikaci ve
+Finderu a vyžádá ruční přetažení do Docku místo zápisu nestabilního indexu.
+
 Doctor report zároveň obsahuje platform, Git a `.gitignore` checks:
 
 - podporovaný OS, Bun a Git v PATH
@@ -342,7 +348,7 @@ Tyto checks jsou součást stejného JSON reportu, který čte Launchpad přes
 
 Z Launchpad GEN3 rootu existují stejné spouštěče pro lidi:
 
-- macOS: `Launchpad.command`
+- macOS: `Launchpad.command` nebo nainstalovaná `HumanAndMachine Launchpad GEN3.app`
 - Windows: `Launchpad.cmd` nebo `Launchpad.ps1`
 - Linux: `launchpad.sh`
 

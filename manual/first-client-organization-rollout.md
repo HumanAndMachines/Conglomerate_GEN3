@@ -305,6 +305,7 @@ Povinný výsledek pro klientský handoff:
 | Mounts | Organization mountpoint je Git checkout |
 | Discovery | klientská Organization je objevená; nezaložený modul je `planned_slot` bez repo URL, zatímco `missing_access` má vždy vlastní next action |
 | Runtime | žádné `invalid_manifest`, port collision nebo dependency warning bez next action |
+| Daily launcher na macOS | `platform.macos_launchpad_dock` je `ok`; `.app` má správnou ikonu, exact root a je připnutá v Docku |
 | Support loop | Doctor/Launchpad hlášky jsou `ok` nebo explicitně akceptované planned/stopped stavy |
 
 Template gate pro první instalaci:
@@ -365,6 +366,12 @@ Neprováděj Install/Repair na Productionspace systémech bez explicitního scop
 
 ### 6. Guide / human handoff smoke
 
+Na macOS před handoffem spusť `bun run doctor -- --repair-launchpad-dock`.
+Pokud není dostupný `dockutil`, repair otevře `.app` ve Finderu a skončí
+nenulově: uživatel ji přetáhne do Docku a agent znovu spustí `bun run doctor`.
+Instalace není dokončená, dokud check `platform.macos_launchpad_dock` není
+`ok`. Kliknutím na Dock ikonu nakonec proveď runtime smoke Launchpadu.
+
 Před předáním prvnímu klientovi musí člověk umět odpovědět na tři otázky bez čtení zdrojového kódu:
 
 1. Co je tento lokální Conglomerate/Launchpad root?
@@ -412,6 +419,7 @@ Použij pro první klientský closeout. Pole označené `pokud ...` dokládej je
 - Apps discovered: `<n>`; client apps: `<ids>` (pokud jsou app moduly materializované)
 - `bun run check`: pass/fail + excerpt
 - `bun run doctor`: ok/warn/fail + excerpt
+- Daily launcher: app path + `platform.macos_launchpad_dock` status (macOS)
 - Runtime smoke: `<app-id>` ready/start/repair result (pokud se app runtime předává)
 - Secrets: metadata-only custody check, no values printed (pokud se secrets konfigurovaly)
 - Known accepted warnings: `<none>` or explicit list
@@ -429,6 +437,7 @@ GEN3 je ready pro prvního klienta, když:
 - zvolený rollout režim odpovídá remote stavu: github-first má klientem schválený `origin`, local-first nemá `origin` a `template` má zakázaný push;
 - první klientský pilot modul má validní manifest, nekolidující port a vysvětlitelný dependency/runtime stav;
 - člověk i agent najdou source-of-truth hranice v README/Guide/manuálu;
+- na macOS je klikací Launchpad `.app` se správnou ikonou ověřená v Docku;
 - Organization baseline je z `OrganizationTemplate_GEN3`; Mission Control
   app + data, Knowledgebase, Design System boundary a Infra mají výše popsané
   nested repo/sloty, zatímco další workspace moduly se nezakládají big-bang;

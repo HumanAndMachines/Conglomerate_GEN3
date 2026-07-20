@@ -15,6 +15,7 @@
     "git-policy:test": "bun test scripts/pr-preflight.test.mjs launchpad/src/task-preflight-lib.test.mjs",
     "check:strict": "bun run preservation:test && bun run personalspace:test && bun run worktrees:test && bun run --cwd launchpad check:strict",
     "install:windows-shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File ./Install-LaunchpadShortcut.ps1",
+    "install:macos-launchpad": "bun scripts/install-macos-launchpad-app.mjs",
     "sync:gen2-gen3:inventory": "bun scripts/gen2-gen3-sync-inventory.mjs",
     "preserve:gen2-local": "node scripts/gen2-local-preservation.mjs",
     "preservation:test": "bun test scripts/gen2-gen3-sync-inventory.test.mjs scripts/gen2-local-preservation.test.mjs",

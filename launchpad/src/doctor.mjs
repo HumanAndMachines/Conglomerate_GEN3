@@ -1,9 +1,16 @@
 import { join, resolve } from "path";
 import { buildLaunchpadDoctorReport } from "./diagnostics-lib.mjs";
+import { installMacosLaunchpadApp } from "./macos-launchpad-app-lib.mjs";
 
 const options = parseArgs(Bun.argv.slice(2));
 const companiesRoot = resolve(options.root ?? join(import.meta.dirname, "..", ".."));
 const launchpadRoot = resolve(options.launchpadRoot ?? join(companiesRoot, "launchpad"));
+let repairIncomplete = false;
+if (options.repairLaunchpadDock) {
+  const repairReport = await installMacosLaunchpadApp({ companiesRoot });
+  console.log(JSON.stringify({ repair: "macos_launchpad_dock", ...repairReport }, null, 2));
+  repairIncomplete = repairReport.check.status !== "ok";
+}
 const report = await buildLaunchpadDoctorReport({
   companiesRoot,
   launchpadRoot,
@@ -16,7 +23,7 @@ if (options.json) {
   printHumanReport(report);
 }
 
-if (report.summary.fail > 0) process.exit(1);
+if (report.summary.fail > 0 || repairIncomplete) process.exit(1);
 
 function printHumanReport(doctorReport) {
   console.log(`${doctorReport.summary.status} - ${doctorReport.scope.name}`);
@@ -33,6 +40,7 @@ function parseArgs(args) {
   const parsed = {
     json: false,
     allowMissingOrganizations: false,
+    repairLaunchpadDock: false,
   };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -42,6 +50,10 @@ function parseArgs(args) {
     }
     if (arg === "--allow-missing-organizations") {
       parsed.allowMissingOrganizations = true;
+      continue;
+    }
+    if (arg === "--repair-launchpad-dock") {
+      parsed.repairLaunchpadDock = true;
       continue;
     }
     if (arg.startsWith("--root=")) {
