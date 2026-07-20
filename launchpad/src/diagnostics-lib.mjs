@@ -20,6 +20,7 @@ import {
   normalizeOrganizationSlotPath,
   organizationSlotPathScope,
   organizationSlotScope,
+  organizationSlotUiExposure,
   organizationSlotWorkspace,
 } from "./organization-slot-scope-lib.mjs";
 
@@ -677,15 +678,17 @@ async function readOrganizationSpaces(companiesRoot, organization, localConfig =
     .filter((slot) => !manifestPaths.has(slot.path))
     .map((slot) => moduleSlotWithReadiness(organizationRoot, slot, principalRoles));
   const moduleDeclarations = [...moduleSlots, ...configOnlyModules];
-  // Vnořený child slot (např. mission-control/db — repository-db data
-  // checkout uvnitř app mountu) je technický mount pro Doctor/search/publish
-  // flow, ne samostatná Launchpad module dlaždice. Pro resolver
-  // (module_declarations) zůstává, z tiles a productionspace systems se
-  // vynechává.
+  // Vnořený child slot i explicitní repository-db slot jsou technické mounty
+  // pro Doctor/search/publish flow, ne samostatné Launchpad module dlaždice.
+  // Diagnostics-only klasifikace je záměrně nezávislá na přítomnosti parent
+  // slotu (AVALTAR může dočasně deklarovat jen mission-control/db). Pro resolver
+  // a Doctor (module_declarations) slot zůstává.
   const declarationPaths = moduleDeclarations.map((slot) => slot.path);
   const isNestedChildSlot = (slot) =>
     declarationPaths.some((path) => path !== slot.path && slot.path.startsWith(`${path}/`));
-  const tileModules = moduleDeclarations.filter((slot) => !isNestedChildSlot(slot));
+  const tileModules = moduleDeclarations.filter(
+    (slot) => slot.ui_exposure === "module" && !isNestedChildSlot(slot),
+  );
   const workspaceModules = tileModules.filter(
     (slot) => slot.space === "workspace" && slot.workspace,
   );
@@ -1098,6 +1101,7 @@ function normalizeModuleSlot(slot) {
     launchpad_port: slot.launchpad_port ?? null,
     repo,
     branch,
+    ui_exposure: organizationSlotUiExposure(slot, path),
   };
 }
 
@@ -1653,6 +1657,11 @@ function workspaceDeclarationCheck(appsResponse) {
         ];
     for (const slot of slots) {
       if (slot.status && statusCounts[slot.status] !== undefined) statusCounts[slot.status] += 1;
+      if (slot.ui_exposure === "diagnostics-only") {
+        details.push(
+          `${organization.path}/${slot.path}: diagnostics-only data repo (${slot.status ?? "unknown"})`,
+        );
+      }
       if (slot.readiness?.severity === "blocking") {
         blockingSlotCount += 1;
         details.push(`${organization.path}/${slot.path}: ${slot.readiness.message}`);

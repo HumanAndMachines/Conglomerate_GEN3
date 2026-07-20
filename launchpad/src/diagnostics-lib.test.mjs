@@ -4,6 +4,7 @@ import { join } from "path";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "fs/promises";
 import { buildEnvironmentChecks, buildLaunchpadAppsResponse, buildLaunchpadDoctorReport, runtimeAppStatus, updateChannelCheck } from "./diagnostics-lib.mjs";
 import { createLaunchpadGitFixture, initGitRepo, runGit } from "./git-fixture-helpers.test.mjs";
+import { buildGitInventory } from "./git-inventory-lib.mjs";
 
 const tempRoots = [];
 
@@ -623,6 +624,108 @@ test("Mission Control app/code a data jsou root sloty mimo Team dlaždice", asyn
   });
   const declarationCheck = report.checks.find((check) => check.id === "launchpad.workspace_declarations");
   expect(declarationCheck?.status).toBe("fail");
+  expect(declarationCheck?.details.join("\n")).toContain("mission-control/db");
+});
+
+test("AVALTAR-like standalone Mission Control repository-db zůstává jen v diagnostice", async () => {
+  const root = await createCompaniesWorkspaceFixture();
+  const companyRoot = join(root, "organizations", "AVALTAR-HAM_GEN3");
+  await mkdir(join(companyRoot, "manual"), { recursive: true });
+  await mkdir(join(companyRoot, "company", "colleagues"), { recursive: true });
+  await writeJson(join(root, "launchpad.gen3.json"), {
+    launchpad_root: {
+      slug: "test-companies",
+      display_name: "Test Companies",
+      root_role: "companies-root",
+    },
+  });
+  await writeJson(join(companyRoot, "company.gen3.json"), {
+    organization_generation: "gen3",
+    company: { slug: "AVALTAR-HAM", display_name: "AVALTAR" },
+    workspaces: [{ slug: "workspace", display_name: "Workspace", default: true }],
+    layers: [{ path: "mission-control", kind: "root-docs", ownership: "manual" }],
+    modules: [{ path: "workspace/knowledgebase", teams: ["workspace"] }],
+  });
+  await writeJson(join(companyRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "AVALTAR-HAM",
+    module_slots: [
+      {
+        path: "mission-control/db",
+        slug: "mission-control-data",
+        category: "planning-data",
+        default_access: "expected",
+        required_roles: ["*"],
+        source_of_truth: "repository-db:v3",
+        space: "root",
+        status: "planned_slot",
+      },
+      { path: "workspace/knowledgebase", space: "workspace", teams: ["workspace"] },
+    ],
+  });
+  await writeJson(join(companyRoot, "TODO.tasks.json"), {});
+  await writeJson(join(companyRoot, "DONE.tasks.json"), {});
+  await writeJson(join(companyRoot, "ISSUES.open.json"), {});
+  const missionControlApp = join(companyRoot, "mission-control", "app", "v3");
+  await mkdir(missionControlApp, { recursive: true });
+  await writeJson(join(missionControlApp, "package.json"), {
+    name: "avaltar-mission-control-v3",
+    private: true,
+    type: "module",
+    scripts: { dev: "bun server.mjs" },
+    companyascode: {
+      app: {
+        schema_version: "companyascode.launchpad_app.v1",
+        id: "avaltar-mission-control-v3",
+        title: "Mission Control",
+        company: "AVALTAR-HAM",
+        module: "mission-control",
+        surface: "internal",
+        port: 5293,
+        host: "127.0.0.1",
+        health_path: "/health",
+        dev_script: "dev",
+        tags: ["mission-control"],
+      },
+    },
+  });
+
+  const response = await buildLaunchpadAppsResponse({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+  });
+  const org = response.organizations.find((item) => item.slug === "AVALTAR-HAM");
+  const workspaceModules = (org?.workspaces ?? []).flatMap((workspace) => workspace.modules);
+  const dataDeclaration = org?.module_declarations.find(
+    (slot) => slot.path === "mission-control/db",
+  );
+
+  expect(workspaceModules.map((module) => module.path)).toEqual(["workspace/knowledgebase"]);
+  expect(workspaceModules).toHaveLength(1);
+  expect(dataDeclaration).toMatchObject({
+    path: "mission-control/db",
+    ui_exposure: "diagnostics-only",
+    status: "planned_slot",
+  });
+  expect(response.apps.map((app) => app.id)).toContain("avaltar-mission-control-v3");
+
+  const gitInventory = await buildGitInventory({ companiesRoot: root });
+  expect(gitInventory.planned).toContainEqual(
+    expect.objectContaining({
+      organization: "AVALTAR-HAM",
+      slot_path: "mission-control/db",
+    }),
+  );
+
+  const report = await buildLaunchpadDoctorReport({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+  });
+  const declarationCheck = report.checks.find(
+    (check) => check.id === "launchpad.workspace_declarations",
+  );
   expect(declarationCheck?.details.join("\n")).toContain("mission-control/db");
 });
 
