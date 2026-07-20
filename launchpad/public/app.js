@@ -1527,6 +1527,18 @@ function renderOrganizationGitStatus() {
     action.disabled = state.pendingAction === `git-pull:${rootRepo.key}`;
     card.append(action);
   }
+  if (rootRepo.status === "push_required") {
+    const rootApp = {
+      id: `organization-root:${organization}`,
+      title: `${organization} root`,
+    };
+    const action = builderActionButton(
+      "Odeslat změny",
+      () => publishRepoChanges(rootApp, rootRepo),
+    );
+    action.disabled = state.pendingAction === `${rootApp.id}:git-publish`;
+    card.append(action);
+  }
   mount.append(card);
 
   if (state.bulkPullResult) mount.append(bulkPullSummaryNode(state.bulkPullResult));
@@ -3412,6 +3424,9 @@ function detailSummaryModel(app, git) {
         ? "Je uložená na tomto počítači. Ostatní ji zatím nevidí."
         : "Jsou uložené na tomto počítači. Ostatní je zatím nevidí.",
       change: simpleChangeSubject(git.head?.subject),
+      action: isProductionspace(app)
+        ? null
+        : summaryButton("Odeslat změny", () => publishRepoChanges(app, git), `${app.id}:git-publish`),
     };
   }
 
@@ -3723,6 +3738,14 @@ function renderGitBuilderActions(app) {
     );
     actions.append(pullCard);
   }
+  if (git.status === "push_required") {
+    const publishCard = builderActionCard(
+      "Odeslat uložené změny",
+      "Před odesláním uvidíte přesný seznam commitů a změněných souborů.",
+    );
+    publishCard.append(builderActionButton("Odeslat změny", () => publishRepoChanges(app, git)));
+    actions.append(publishCard);
+  }
 
   section.append(actions);
   const cached = state.gitChangesByRepo.get(git.key);
@@ -3761,6 +3784,44 @@ async function showRepoChanges(app, git) {
     toast(`${appBaseTitle(app)}: změny načtené.`, "success");
   } catch (error) {
     toast(`${appBaseTitle(app)}: ${error.message}`, "error", 7000);
+  } finally {
+    state.pendingAction = null;
+    render();
+  }
+}
+
+async function publishRepoChanges(app, git) {
+  state.pendingAction = `${app.id}:git-publish`;
+  render();
+  try {
+    const review = await fetchJson(`/api/git/repos/${encodeURIComponent(git.key)}/publish-intent`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const commits = review.intent?.commits ?? [];
+    const changes = review.intent?.changes ?? [];
+    const commitLines = commits.map((commit) => `• ${commit.short_sha} ${commit.subject}`).join("\n");
+    const changeLines = changes
+      .flatMap((change) => change.paths.map((path) => `• ${change.status} ${path}`))
+      .join("\n");
+    const confirmed = window.confirm(
+      `Odeslat tyto commity ostatním?\n\n${commitLines || "• Bez popisu"}\n\nZměněné soubory:\n${changeLines || "• Bez změn"}`,
+    );
+    if (!confirmed) return;
+    const payload = await fetchJson(`/api/git/repos/${encodeURIComponent(git.key)}/publish`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        expectedSha: review.intent?.expected_sha,
+        intentHash: review.intent_hash,
+        authorizationToken: review.authorization_token,
+      }),
+    });
+    toast(`${appBaseTitle(app)}: změny byly odeslané.`, "success", 7000);
+    await loadData({ quiet: true });
+  } catch (error) {
+    toast(`${appBaseTitle(app)}: ${error.message}`, "error", 9000);
   } finally {
     state.pendingAction = null;
     render();

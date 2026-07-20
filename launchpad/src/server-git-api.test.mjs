@@ -234,6 +234,8 @@ test("mutating APIs reject cross-origin and DNS-rebinding requests before routin
     "/api/git/pull-all",
     "/api/git/repos/BetaCo%3A%3Adeals/pull",
     "/api/git/repos/BetaCo%3A%3Adeals/pull-autostash",
+    "/api/git/repos/BetaCo%3A%3Adeals/publish-intent",
+    "/api/git/repos/BetaCo%3A%3Adeals/publish",
     "/api/git/repos/BetaCo%3A%3Adeals/worktrees/create",
     "/api/git/repos/BetaCo%3A%3Adeals/worktrees/review-fix/publish",
     "/api/apps/deals-v1/health",

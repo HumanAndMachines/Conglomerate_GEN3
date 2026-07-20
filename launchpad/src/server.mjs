@@ -12,9 +12,12 @@ import {
   buildPullAllResponse,
   buildRepoAutostashPullResponse,
   buildRepoChangesResponse,
+  buildRepoPublishIntentResponse,
+  buildRepoPublishResponse,
   buildRepoPullResponse,
   buildRepoResponse,
   buildWorktreesResponse,
+  createGitPublishAuthorizationStore,
 } from "./git-api-lib.mjs";
 import { RuntimeActionError, createRuntimeManager } from "./runtime-lib.mjs";
 import { createGitStatusService } from "./git-status-lib.mjs";
@@ -54,6 +57,7 @@ const principalEmail = resolvePrincipalEmail();
 const runtimeManager = createRuntimeManager({ companiesRoot, launchpadRoot });
 const moduleFolderOpener = createModuleFolderOpener({ companiesRoot, getAppsResponse: buildAppsResponse });
 const gitStatusService = createGitStatusService();
+const gitPublishAuthorizationStore = createGitPublishAuthorizationStore();
 const organizationLogoCandidates = [
   "launchpad/app/v1/web/launchpad-icon.png",
   "launchpad/app/v1/web/logo-square.png",
@@ -511,6 +515,10 @@ function gitApiRoute(pathname) {
   }
   const changesMatch = pathname.match(/^\/api\/git\/repos\/([^/]+)\/changes$/);
   if (changesMatch) return { kind: "repo_changes", repoKey: decodeURIComponent(changesMatch[1]) };
+  const publishIntentMatch = pathname.match(/^\/api\/git\/repos\/([^/]+)\/publish-intent$/);
+  if (publishIntentMatch) return { kind: "repo_publish_intent", repoKey: decodeURIComponent(publishIntentMatch[1]) };
+  const publishMatch = pathname.match(/^\/api\/git\/repos\/([^/]+)\/publish$/);
+  if (publishMatch) return { kind: "repo_publish", repoKey: decodeURIComponent(publishMatch[1]) };
   const autostashPullMatch = pathname.match(/^\/api\/git\/repos\/([^/]+)\/pull-autostash$/);
   if (autostashPullMatch) return { kind: "repo_autostash_pull", repoKey: decodeURIComponent(autostashPullMatch[1]) };
   const pullMatch = pathname.match(/^\/api\/git\/repos\/([^/]+)\/pull$/);
@@ -557,6 +565,30 @@ async function handleGitApiRoute(request, url, route) {
       if (request.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
       return jsonResponse(await gitStatusService.withRemoteRefreshPaused(() =>
         buildRepoAutostashPullResponse({ companiesRoot, repoKey: route.repoKey, statusService: gitStatusService })));
+    }
+    if (route.kind === "repo_publish") {
+      if (request.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
+      const payload = await jsonRequestPayload(request, "repo_publish_request");
+      return jsonResponse(await gitStatusService.withRemoteRefreshPaused(() =>
+        buildRepoPublishResponse({
+          companiesRoot,
+          repoKey: route.repoKey,
+          expectedSha: payload.expectedSha,
+          intentHash: payload.intentHash,
+          authorizationToken: payload.authorizationToken,
+          authorizationStore: gitPublishAuthorizationStore,
+          statusService: gitStatusService,
+        })));
+    }
+    if (route.kind === "repo_publish_intent") {
+      if (request.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
+      await jsonRequestPayload(request, "repo_publish_intent_request");
+      return jsonResponse(await gitStatusService.withRemoteRefreshPaused(() =>
+        buildRepoPublishIntentResponse({
+          companiesRoot,
+          repoKey: route.repoKey,
+          authorizationStore: gitPublishAuthorizationStore,
+        })));
     }
     if (route.kind === "pull_all") {
       if (request.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);

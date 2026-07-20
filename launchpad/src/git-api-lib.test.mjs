@@ -1,7 +1,16 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdir, readFile, rm, writeFile } from "fs/promises";
+import { mkdir, readFile, rm, symlink, writeFile } from "fs/promises";
 import { join } from "path";
-import { buildGitApiResponse, buildPullAllResponse, buildRepoChangesResponse, buildRepoPullResponse } from "./git-api-lib.mjs";
+import {
+  buildGitApiResponse,
+  buildPullAllResponse,
+  buildRepoChangesResponse,
+  buildRepoPublishIntentResponse,
+  buildRepoPublishResponse,
+  buildRepoPullResponse,
+  createGitPublishAuthorizationStore,
+  remoteIdentityForPublish,
+} from "./git-api-lib.mjs";
 import { buildLaunchpadAppsResponse } from "./diagnostics-lib.mjs";
 import {
   createLaunchpadGitFixture,
@@ -16,6 +25,99 @@ const tempRoots = [];
 
 afterAll(async () => {
   await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
+});
+
+async function declareDealsRemote(root, remotePath) {
+  const manifestPath = join(root, "organizations", "BetaCo_GEN3", "modules.manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  const deals = manifest.module_slots.find((slot) => slot.path === "workspace/deals");
+  deals.git = { url: remotePath, branch: "main" };
+  delete deals.repo;
+  await writeJson(manifestPath, manifest);
+}
+
+test("publish remote identity accepts GitHub forms but rejects lookalike hosts", () => {
+  const cwd = "/tmp/example";
+  expect(remoteIdentityForPublish("Owner/Repo", cwd)).toBe("raw:Owner/Repo");
+  expect(remoteIdentityForPublish("Owner/Repo", cwd, { allowGithubShorthand: true })).toBe("github:owner/repo");
+  expect(remoteIdentityForPublish("git@github.com:Owner/Repo.git", cwd)).toBe("github:owner/repo");
+  expect(remoteIdentityForPublish("https://github.com/Owner/Repo.git", cwd)).toBe("github:owner/repo");
+  expect(remoteIdentityForPublish("https://attacker.example/github.com/Owner/Repo.git", cwd)).not.toBe("github:owner/repo");
+});
+
+test("publish intent refuses a workspace symlink targeting productionspace", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const orgRoot = join(root, "organizations", "BetaCo_GEN3");
+  const firmwareRepo = join(orgRoot, "productionspace", "firmware");
+  const remotePath = join(root, "remotes", "firmware.git");
+  await initGitRepo(firmwareRepo, { remotePath });
+  await mkdir(join(orgRoot, "workspace"), { recursive: true });
+  await symlink(firmwareRepo, join(orgRoot, "workspace", "firmware-link"), "junction");
+  const manifestPath = join(orgRoot, "modules.manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  manifest.module_slots.push({
+    path: "workspace/firmware-link",
+    workspace: "workspace",
+    category: "firmware",
+    git: { url: remotePath, branch: "main" },
+  });
+  await writeJson(manifestPath, manifest);
+  await writeFile(join(firmwareRepo, "release.md"), "must stay local\n");
+  runGit(["add", "release.md"], firmwareRepo);
+  runGit(["commit", "-m", "Neodesílat productionspace"], firmwareRepo);
+
+  try {
+    await buildRepoPublishIntentResponse({
+      companiesRoot: root,
+      repoKey: "BetaCo::firmware-link",
+      authorizationStore: createGitPublishAuthorizationStore(),
+    });
+    throw new Error("expected productionspace symlink publish to be refused");
+  } catch (error) {
+    expect(error.status).toBe(403);
+    expect(error.code).toBe("publish_scope_forbidden");
+  }
+});
+
+test("publish authorization is short-lived and one-use", () => {
+  let now = 1_000;
+  const store = createGitPublishAuthorizationStore({ ttlMs: 50, now: () => now });
+  const first = store.issue({ intentHash: "intent-1", repoKey: "BetaCo::deals", expectedSha: "a".repeat(40) });
+  expect(store.consume({
+    token: first.token,
+    intentHash: "intent-1",
+    repoKey: "BetaCo::deals",
+    expectedSha: "a".repeat(40),
+  })).toMatchObject({ intentHash: "intent-1" });
+  expect(() => store.consume({
+    token: first.token,
+    intentHash: "intent-1",
+    repoKey: "BetaCo::deals",
+    expectedSha: "a".repeat(40),
+  })).toThrow();
+
+  const expired = store.issue({ intentHash: "intent-2", repoKey: "BetaCo::deals", expectedSha: "b".repeat(40) });
+  now += 51;
+  expect(() => store.consume({
+    token: expired.token,
+    intentHash: "intent-2",
+    repoKey: "BetaCo::deals",
+    expectedSha: "b".repeat(40),
+  })).toThrow();
+});
+
+test("publish authorization store evicts abandoned entries at its bound", () => {
+  const store = createGitPublishAuthorizationStore({ maxEntries: 2 });
+  const first = store.issue({ intentHash: "intent-1", repoKey: "BetaCo::deals", expectedSha: "a".repeat(40) });
+  store.issue({ intentHash: "intent-2", repoKey: "BetaCo::deals", expectedSha: "b".repeat(40) });
+  store.issue({ intentHash: "intent-3", repoKey: "BetaCo::deals", expectedSha: "c".repeat(40) });
+  expect(() => store.consume({
+    token: first.token,
+    intentHash: "intent-1",
+    repoKey: "BetaCo::deals",
+    expectedSha: "a".repeat(40),
+  })).toThrow();
 });
 
 test("git API response combines manifest inventory, repo statuses, worktrees and plan ownership", async () => {
@@ -163,6 +265,132 @@ test("pull response refuses dirty repositories instead of hiding local draft wor
     expect(error.code).toBe("pull_not_safe");
     expect(error.message).toContain("rozepsaná práce");
   }
+});
+
+test("publish response pushes an existing commit without changing the working files", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const dealsRepo = join(root, "organizations", "BetaCo_GEN3", "workspace", "deals");
+  const remotePath = join(root, "remotes", "publish-deals.git");
+  await initGitRepo(dealsRepo, { remotePath });
+  await declareDealsRemote(root, remotePath);
+  await writeFile(join(dealsRepo, "saved.md"), "saved change\n");
+  runGit(["add", "saved.md"], dealsRepo);
+  runGit(["commit", "-m", "Uložená změna"], dealsRepo);
+  const expectedSha = runGit(["rev-parse", "HEAD"], dealsRepo);
+  const authorizationStore = createGitPublishAuthorizationStore();
+
+  try {
+    await buildRepoPublishResponse({
+      companiesRoot: root,
+      repoKey: "BetaCo::deals",
+      expectedSha,
+      authorizationStore,
+    });
+    throw new Error("expected publish without reviewed authorization to be refused");
+  } catch (error) {
+    expect(error.status).toBe(409);
+    expect(error.code).toBe("publish_authorization_invalid");
+  }
+  expect(() => runGit(["--git-dir", remotePath, "show", "main:saved.md"], root)).toThrow();
+
+  const review = await buildRepoPublishIntentResponse({
+    companiesRoot: root,
+    repoKey: "BetaCo::deals",
+    authorizationStore,
+  });
+  expect(review.intent).toMatchObject({
+    expected_sha: expectedSha,
+    commits: [{ sha: expectedSha, subject: "Uložená změna" }],
+    changes: [{ status: "A", paths: ["saved.md"] }],
+  });
+  const pushed = await buildRepoPublishResponse({
+    companiesRoot: root,
+    repoKey: "BetaCo::deals",
+    expectedSha,
+    intentHash: review.intent_hash,
+    authorizationToken: review.authorization_token,
+    authorizationStore,
+  });
+
+  expect(pushed).toMatchObject({
+    action: "push",
+    committed: false,
+    pushed: true,
+    after: { status: "up_to_date" },
+  });
+  expect(runGit(["--git-dir", remotePath, "show", "main:saved.md"], root)).toBe("saved change");
+});
+
+test("publish response refuses uncommitted draft files", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const dealsRepo = join(root, "organizations", "BetaCo_GEN3", "workspace", "deals");
+  const remotePath = join(root, "remotes", "draft-publish-deals.git");
+  await initGitRepo(dealsRepo, { remotePath });
+  await declareDealsRemote(root, remotePath);
+  await writeFile(join(dealsRepo, "draft.md"), "must stay local\n");
+  const authorizationStore = createGitPublishAuthorizationStore();
+
+  try {
+    await buildRepoPublishIntentResponse({ companiesRoot: root, repoKey: "BetaCo::deals", authorizationStore });
+    throw new Error("expected draft publish to be refused");
+  } catch (error) {
+    expect(error.status).toBe(409);
+    expect(error.code).toBe("publish_not_safe");
+  }
+
+  expect(() => runGit(["--git-dir", remotePath, "show", "main:draft.md"], root)).toThrow();
+});
+
+test("publish response refuses a detached HEAD draft", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const dealsRepo = join(root, "organizations", "BetaCo_GEN3", "workspace", "deals");
+  const remotePath = join(root, "remotes", "detached-publish-deals.git");
+  await initGitRepo(dealsRepo, { remotePath });
+  await declareDealsRemote(root, remotePath);
+  runGit(["checkout", "--detach"], dealsRepo);
+  await writeFile(join(dealsRepo, "detached-draft.md"), "must stay local\n");
+  const authorizationStore = createGitPublishAuthorizationStore();
+
+  try {
+    await buildRepoPublishIntentResponse({
+      companiesRoot: root,
+      repoKey: "BetaCo::deals",
+      authorizationStore,
+    });
+    throw new Error("expected detached HEAD publish to be refused");
+  } catch (error) {
+    expect(error.status).toBe(409);
+    expect(error.code).toBe("publish_remote_unverified");
+  }
+
+  expect(() => runGit(["--git-dir", remotePath, "show", "main:detached-draft.md"], root)).toThrow();
+});
+
+test("publish response refuses an origin that differs from the declared repository", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const dealsRepo = join(root, "organizations", "BetaCo_GEN3", "workspace", "deals");
+  const actualRemote = join(root, "remotes", "unexpected-origin.git");
+  const declaredRemote = join(root, "remotes", "declared-origin.git");
+  await initGitRepo(dealsRepo, { remotePath: actualRemote });
+  await declareDealsRemote(root, declaredRemote);
+  await writeFile(join(dealsRepo, "saved.md"), "must not push\n");
+  runGit(["add", "saved.md"], dealsRepo);
+  runGit(["commit", "-m", "Neodesílat jinam"], dealsRepo);
+  const authorizationStore = createGitPublishAuthorizationStore();
+
+  try {
+    await buildRepoPublishIntentResponse({ companiesRoot: root, repoKey: "BetaCo::deals", authorizationStore });
+    throw new Error("expected unexpected origin publish to be refused");
+  } catch (error) {
+    expect(error.status).toBe(409);
+    expect(error.code).toBe("publish_remote_unverified");
+  }
+
+  expect(() => runGit(["--git-dir", actualRemote, "show", "main:saved.md"], root)).toThrow();
 });
 
 test("pull response refuses productionspace repos even when a fast-forward pull is available", async () => {

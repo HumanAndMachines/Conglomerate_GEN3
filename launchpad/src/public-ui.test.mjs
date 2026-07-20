@@ -438,6 +438,14 @@ test("CAC-0044: step-005 aktivuje Ukázat změny a guarded Stáhnout novější 
   expect(js).toContain('actionStyle: "secondary"');
   expect(js).toContain('title: "Změny k odeslání"');
   expect(js).toContain('warning.actionStyle === "secondary"');
+  expect(js).toContain('summaryButton("Odeslat změny"');
+  expect(js).toContain("action: isProductionspace(app)");
+  expect(js).toContain("function publishRepoChanges");
+  expect(js).toContain('"Odeslat uložené změny"');
+  expect(js).toContain("/publish-intent");
+  expect(js).toContain("/publish");
+  expect(js).toContain("authorizationToken: review.authorization_token");
+  expect(js).toContain("Odeslat tyto commity ostatním?");
   expect(js).not.toContain("Můžeš ji bezpečně stáhnout (fast-forward).");
   expect(js).toContain("git.status === \"pull_available\"");
   expect(js).toContain("state.gitChangesByRepo");
@@ -459,6 +467,8 @@ test("Launchpad nabízí Organization root stav, autostash pull a jeden globáln
   expect(html).toContain("Pullnout vše");
   expect(js).toContain("function renderOrganizationGitStatus");
   expect(js).toContain('state.gitReposByModule.get(`${organization}::root`)');
+  expect(js).toContain('rootRepo.status === "push_required"');
+  expect(js).toContain('"Odeslat změny"');
   expect(js).toContain("function canAutostashPull");
   expect(js).toContain("Stáhnout a zachovat změny");
   expect(js).toContain("`Nová verze - ${incoming} změn`");
