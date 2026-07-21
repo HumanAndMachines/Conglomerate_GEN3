@@ -50,6 +50,12 @@ kanonický upstream model drží HumanAndMachines decisions 0079/0080 na `main`.
 Implementační self-service runbook je
 [manual/create-personalspace.md](manual/create-personalspace.md).
 
+Na jedné mašině se materializuje pouze Personalspace jejího Principála,
+určený v gitignored `launchpad.gen3.local.json`. Cizí Personalspace se
+nemountuje ani nezobrazuje; historický checkout je Doctor failure a musí se
+odmountovat a jeho GitHub collaborator granty odebrat podle runbooku v
+PersonalspaceTemplate_GEN3 (HumanAndMachines decision 0091).
+
 Root příkaz je připravený fail-closed. Dokud upstream public-readiness audit
 drží template jako private, zastaví se ještě v preflightu a nic nevytvoří. Až
 po explicitním publication gatu template spustí vlastník no-Buddy tok:

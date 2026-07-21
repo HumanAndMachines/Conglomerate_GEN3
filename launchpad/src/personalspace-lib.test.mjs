@@ -151,8 +151,8 @@ function personalAppManifest(username, { id, port, module = "notes", title = "Os
 
 // Root fixture s launchpad.gen3.json + personalspace mountpointem. Vrací root path.
 // Scan-first (decision 0042): trackovaný config vlastníka NEnese a sken ho nikdy
-// neodvozuje (fail-closed privacy hranice — nasdílený cizí prostor vypadá stejně
-// jako vlastní). Primární prostor určuje jen `localOwner`, který se zapíše do
+// neodvozuje (fail-closed privacy hranice). Prostor Principála určuje jen
+// `localOwner`, který se zapíše do
 // gitignored launchpad.gen3.local.json (per-machine override).
 async function createPersonalspaceFixture({ spaces = [], localOwner = null } = {}) {
   const root = await mkdtemp(join(tmpdir(), "personalspace-"));
@@ -293,6 +293,9 @@ test("částečně migrovaný custody kontrakt failuje místo tichého defaultu"
 
   const result = await discoverPersonalspace(root);
   expect(result.failures.some((failure) => failure.includes("gbrain.repository"))).toBe(true);
+  expect(result.spaces).toHaveLength(1);
+  expect(result.spaces[0].is_owner_primary).toBe(true);
+  expect(result.spaces[0].config_valid).toBe(false);
   expect(result.apps).toHaveLength(0);
 });
 
@@ -593,8 +596,7 @@ test("duplicitní ID ve starším seznamu úkolů skryje jen Buddy prezentaci", 
   expect(result.presentation_warnings.some((warning) => warning.includes("daily-check je duplicitní"))).toBe(true);
 });
 
-test("primární prostor vlastníka je první, nasdílený prostor dostane owner badge (is_owner_primary false)", async () => {
-  // Víc prostorů = sken sám nerozhodne; per-machine override určí vlastníka mašiny.
+test("cizí Personalspace se nematerializuje a vyvolá failure", async () => {
   const root = await createPersonalspaceFixture({
     localOwner: "exampleuser",
     spaces: [
@@ -604,17 +606,13 @@ test("primární prostor vlastníka je první, nasdílený prostor dostane owner
   });
   const result = await discoverPersonalspace(root);
 
-  expect(result.failures).toEqual([]);
-  expect(result.spaces).toHaveLength(2);
-  // Primární první.
+  expect(result.spaces).toHaveLength(1);
   expect(result.spaces[0].owner).toBe("exampleuser");
   expect(result.spaces[0].is_owner_primary).toBe(true);
-  // Nasdílený druhý, bez primary příznaku (UI mu dá owner badge).
-  expect(result.spaces[1].owner).toBe("othercolleague");
-  expect(result.spaces[1].is_owner_primary).toBe(false);
+  expect(result.failures.join(" ")).toContain("cizí Personalspace ownera othercolleague");
 });
 
-test("nasdílený prostor nikdy nematerializuje privátní Buddy prezentaci", async () => {
+test("cizí prostor ani jeho privátní Buddy prezentace nevstoupí do odpovědi", async () => {
   const privateMarker = "synthetic-shared-private-marker";
   const root = await createPersonalspaceFixture({
     localOwner: "primary",
@@ -639,14 +637,12 @@ test("nasdílený prostor nikdy nematerializuje privátní Buddy prezentaci", as
 
   const result = await discoverPersonalspace(root);
   const shared = result.spaces.find((space) => space.owner === "shared");
-  expect(shared.buddy.display_name).toBeNull();
-  expect(shared.buddy.recurring_tasks).toEqual([]);
+  expect(shared).toBeUndefined();
+  expect(result.failures.join(" ")).toContain("cizí Personalspace ownera shared");
   expect(JSON.stringify(result)).not.toContain(privateMarker);
 });
 
-test("jediný prostor bez override NENÍ primární — fail-closed privacy hranice (scan-first)", async () => {
-  // Nasdílený cizí prostor se mountuje identicky jako vlastní: kdyby sken z jediného
-  // prostoru odvodil vlastníka, cizí gbrain vault by se otevřel jako vlastníkův.
+test("bez owner override se žádný Personalspace nematerializuje", async () => {
   const root = await createPersonalspaceFixture({
     spaces: [
       { dirName: "othercolleague_GEN3", owner: "othercolleague", config: personalConfig("othercolleague") },
@@ -656,12 +652,13 @@ test("jediný prostor bez override NENÍ primární — fail-closed privacy hran
 
   expect(result.failures).toEqual([]);
   expect(result.primary_owner).toBeNull();
-  expect(result.spaces[0].is_owner_primary).toBe(false);
-  expect(result.warnings.some((warning) => warning.includes("primární vlastník mašiny není určen"))).toBe(true);
+  expect(result.spaces).toEqual([]);
+  expect(result.apps).toEqual([]);
+  expect(result.warnings.some((warning) => warning.includes("Principál mašiny není určen"))).toBe(true);
   expect(result.warnings.some((warning) => warning.includes("othercolleague"))).toBe(true);
 });
 
-test("víc prostorů bez override = žádný primární prostor + warning, žádný fail (scan-first)", async () => {
+test("víc prostorů bez override = žádná materializace + warning", async () => {
   const root = await createPersonalspaceFixture({
     spaces: [
       { dirName: "othercolleague_GEN3", owner: "othercolleague", config: personalConfig("othercolleague") },
@@ -672,8 +669,47 @@ test("víc prostorů bez override = žádný primární prostor + warning, žád
 
   expect(result.failures).toEqual([]);
   expect(result.primary_owner).toBeNull();
-  expect(result.spaces.every((space) => space.is_owner_primary === false)).toBe(true);
-  expect(result.warnings.some((warning) => warning.includes("primární vlastník mašiny není určen"))).toBe(true);
+  expect(result.spaces).toEqual([]);
+  expect(result.apps).toEqual([]);
+  expect(result.warnings.some((warning) => warning.includes("Principál mašiny není určen"))).toBe(true);
+});
+
+test("shared_spaces musí zůstat prázdné", async () => {
+  const config = personalConfig("exampleuser");
+  config.shared_spaces = [{ owner: "othercolleague" }];
+  const root = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
+    spaces: [{ dirName: "exampleuser_GEN3", owner: "exampleuser", config }],
+  });
+  const result = await discoverPersonalspace(root);
+  expect(result.spaces).toHaveLength(1);
+  expect(result.spaces[0].config_valid).toBe(false);
+  expect(result.failures.join(" ")).toContain("shared_spaces musí zůstat prázdné");
+});
+
+test("legacy owner manifest bez reserved shared_spaces zůstává validní", async () => {
+  const config = personalConfig("exampleuser");
+  delete config.shared_spaces;
+  const root = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
+    spaces: [{ dirName: "exampleuser_GEN3", owner: "exampleuser", config }],
+  });
+  const result = await discoverPersonalspace(root);
+  expect(result.spaces).toHaveLength(1);
+  expect(result.spaces[0].config_valid).toBe(true);
+});
+
+test("cizí _GEN3 checkout bez manifestu je privacy failure", async () => {
+  const root = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
+    spaces: [{ dirName: "exampleuser_GEN3", owner: "exampleuser", config: personalConfig("exampleuser") }],
+  });
+  await mkdir(join(root, "personalspace", "othercolleague_GEN3"), { recursive: true });
+  const result = await discoverPersonalspace(root);
+  expect(result.spaces).toHaveLength(1);
+  expect(result.apps).toHaveLength(0);
+  expect(result.failures.join(" ")).toContain("foreign_or_unrecognized_personalspace_dir");
+  expect(result.failures.join(" ")).toContain("cizí Personalspace ownera othercolleague");
 });
 
 test("legacy personalspace_owner ve sdíleném configu se ignoruje s deprecation warningem (scan-first)", async () => {
@@ -699,6 +735,7 @@ test("legacy personalspace_owner ve sdíleném configu se ignoruje s deprecation
 
 test("modul bez lokálního checkoutu s deklarovaným repo je missing_access; bez repo je planned_slot", async () => {
   const root = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
     spaces: [
       {
         dirName: "exampleuser_GEN3",
@@ -733,6 +770,7 @@ test("nevalidní osobní app manifest izoluje jen sebe (prostor zůstává valid
   // Rozbij surface na nepovolenou hodnotu.
   badManifest.companyascode.app.surface = "not-a-surface";
   const root = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
     spaces: [
       {
         dirName: "exampleuser_GEN3",
@@ -758,6 +796,7 @@ test("nevalidní osobní app manifest izoluje jen sebe (prostor zůstává valid
 test("porušený identity invariant → prostor se NEmaterializuje (fail-closed), žádné appky", async () => {
   // owner ≠ dir name (mount adresář lže o vlastníkovi).
   const root = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
     spaces: [
       {
         dirName: "someoneelse_GEN3",
@@ -783,6 +822,7 @@ test("nevalidní privacy const (shared_outputs) selže — tvrdá hranice", asyn
   const leaky = personalConfig("exampleuser");
   leaky.privacy.shared_outputs = "everything"; // musí být metadata-only
   const root = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
     spaces: [{ dirName: "exampleuser_GEN3", owner: "exampleuser", config: leaky }],
   });
   const result = await discoverPersonalspace(root);
@@ -793,6 +833,7 @@ test("nevalidní privacy const (shared_outputs) selže — tvrdá hranice", asyn
 
 test("ORG discovery NIKDY nevidí personalspace (oddělené lane)", async () => {
   const root = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
     spaces: [
       {
         dirName: "exampleuser_GEN3",
@@ -819,18 +860,24 @@ test("ORG discovery NIKDY nevidí personalspace (oddělené lane)", async () => 
   expect(personal.apps).toHaveLength(1);
 });
 
-test("prostor bez personal.gen3.json se přeskočí bez chyby (např. jen živý gbrain checkout)", async () => {
-  const root = await createPersonalspaceFixture({ spaces: [] });
-  // Vytvoř adresář, který vypadá jako mount, ale nemá manifest.
+test("cizí adresář bez _GEN3 názvu a manifestu je Doctor failure a nematerializuje se", async () => {
+  const root = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
+    spaces: [{ dirName: "exampleuser_GEN3", owner: "exampleuser", config: personalConfig("exampleuser") }],
+  });
   await mkdir(join(root, "personalspace", "just-a-vault"), { recursive: true });
   await writeFile(join(root, "personalspace", "just-a-vault", "note.md"), "# ahoj", "utf8");
   const result = await discoverPersonalspace(root);
-  expect(result.failures).toEqual([]);
-  expect(result.spaces).toHaveLength(0);
+  expect(result.failures.join(" ")).toContain("foreign_or_unrecognized_personalspace_dir");
+  expect(result.failures.join(" ")).toContain("personalspace/just-a-vault");
+  expect(result.failures.join(" ")).toContain("není deklarovaný Personalspace Principála exampleuser");
+  expect(result.spaces.map((space) => space.dir_name)).toEqual(["exampleuser_GEN3"]);
+  expect(result.apps).toHaveLength(0);
 });
 
 test("gbrain transitional_source_path uvnitř rootu se použije; útěk mimo root se odmítne na canonical", async () => {
   const root = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
     spaces: [
       {
         dirName: "exampleuser_GEN3",
@@ -852,6 +899,7 @@ test("gbrain transitional_source_path uvnitř rootu se použije; útěk mimo roo
 
   // Teď útěk mimo root:
   const root2 = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
     spaces: [
       {
         dirName: "exampleuser_GEN3",
@@ -870,6 +918,7 @@ test("gbrain transitional_source_path uvnitř rootu se použije; útěk mimo roo
 
 test("gbrain transitional_source_path mířící do organizations/ se odmítne (privátní hranice)", async () => {
   const root = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
     spaces: [
       {
         dirName: "exampleuser_GEN3",

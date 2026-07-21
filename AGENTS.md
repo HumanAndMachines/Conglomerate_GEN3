@@ -106,6 +106,16 @@ jestli pracuješ dobře, nebo špatně; tvůj úkol je ten feedback brát vážn
 a podle něj upravovat nastavení a zvyklosti Organizace tak, aby Agenti
 v ní dělali čím dál lepší práci.
 
+## Security hranice Personalspace
+
+Personalspace je výhradní intimní prostor právě jednoho Principála a jeho
+volitelného Buddyho (HumanAndMachines decision 0091). Cizí Personalspace se na
+mašinu nemountuje, Launchpad ho nematerializuje a Worker Agent ho nečte.
+Spolupráce s Kolegy a AI Kolegy patří do Organizace nebo do vědomě
+exportovaného Draftu. Principál má na své mašině plná práva; procesní hranici
+Worker Agentů drží sandbox jejich harnessu a pravidla práce, ne lokální
+per-modulový IAM.
+
 ## Zásadní pravidlo
 
 Nepracuj v konkrétní firmě z rootu. Nejdřív vyber organizaci v `organizations/<org>/`, přečti její `AGENTS.md` a až potom měň její obsah.
