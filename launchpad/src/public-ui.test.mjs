@@ -494,9 +494,9 @@ test("CAC-0044: step-005 aktivuje Ukázat změny a guarded Stáhnout novější 
   expect(js).toContain("/pull");
   expect(js).toContain("`Nová verze - ${incoming} změn`");
   expect(js).toContain('actionLabel: "Stáhnout"');
-  expect(js).toContain('actionStyle: "secondary"');
   expect(js).toContain('title: "Změny k odeslání"');
-  expect(js).toContain('warning.actionStyle === "secondary"');
+  expect(js).toContain('button.className = "btn btn-sm btn-secondary card-warning-action"');
+  expect(js).not.toContain("warning.actionStyle");
   expect(js).not.toContain("Můžeš ji bezpečně stáhnout (fast-forward).");
   expect(js).toContain("git.status === \"pull_available\"");
   expect(js).toContain("state.gitChangesByRepo");
