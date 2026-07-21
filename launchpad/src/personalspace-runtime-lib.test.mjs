@@ -320,6 +320,21 @@ test("personalspace Doctor neudělá skip při failure bez materializovaného pr
   expect(check.details).toContain("failure: personalspace mount nejde přečíst");
 });
 
+test("personalspace Doctor vypíše kód nerozpoznaného cizího adresáře", async () => {
+  const { root } = await createFixture();
+  await mkdir(join(root, "personalspace", "foreign-vault"), { recursive: true });
+  const response = await buildPersonalspaceResponse({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+  });
+  const check = personalspaceDoctorCheck(response);
+
+  expect(check.status).toBe("fail");
+  expect(check.details.join(" ")).toContain("foreign_or_unrecognized_personalspace_dir");
+  expect(check.details.join(" ")).toContain("personalspace/foreign-vault");
+  expect(response.spaces.map((space) => space.dir_name)).toEqual(["exampleuser_GEN3"]);
+});
+
 test("resolveSpaceGbrainVault vrací vault root jen pro validní prostor s existujícím vaultem", async () => {
   const { root } = await createFixture({ withGbrain: true });
   const vault = await resolveSpaceGbrainVault({ companiesRoot: root, spaceDirName: "exampleuser_GEN3" });

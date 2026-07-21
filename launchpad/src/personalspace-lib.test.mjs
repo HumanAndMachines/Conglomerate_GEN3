@@ -293,6 +293,9 @@ test("částečně migrovaný custody kontrakt failuje místo tichého defaultu"
 
   const result = await discoverPersonalspace(root);
   expect(result.failures.some((failure) => failure.includes("gbrain.repository"))).toBe(true);
+  expect(result.spaces).toHaveLength(1);
+  expect(result.spaces[0].is_owner_primary).toBe(true);
+  expect(result.spaces[0].config_valid).toBe(false);
   expect(result.apps).toHaveLength(0);
 });
 
@@ -704,6 +707,8 @@ test("cizí _GEN3 checkout bez manifestu je privacy failure", async () => {
   await mkdir(join(root, "personalspace", "othercolleague_GEN3"), { recursive: true });
   const result = await discoverPersonalspace(root);
   expect(result.spaces).toHaveLength(1);
+  expect(result.apps).toHaveLength(0);
+  expect(result.failures.join(" ")).toContain("foreign_or_unrecognized_personalspace_dir");
   expect(result.failures.join(" ")).toContain("cizí Personalspace ownera othercolleague");
 });
 
@@ -855,14 +860,19 @@ test("ORG discovery NIKDY nevidí personalspace (oddělené lane)", async () => 
   expect(personal.apps).toHaveLength(1);
 });
 
-test("prostor bez personal.gen3.json se přeskočí bez chyby (např. jen živý gbrain checkout)", async () => {
-  const root = await createPersonalspaceFixture({ spaces: [] });
-  // Vytvoř adresář, který vypadá jako mount, ale nemá manifest.
+test("cizí adresář bez _GEN3 názvu a manifestu je Doctor failure a nematerializuje se", async () => {
+  const root = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
+    spaces: [{ dirName: "exampleuser_GEN3", owner: "exampleuser", config: personalConfig("exampleuser") }],
+  });
   await mkdir(join(root, "personalspace", "just-a-vault"), { recursive: true });
   await writeFile(join(root, "personalspace", "just-a-vault", "note.md"), "# ahoj", "utf8");
   const result = await discoverPersonalspace(root);
-  expect(result.failures).toEqual([]);
-  expect(result.spaces).toHaveLength(0);
+  expect(result.failures.join(" ")).toContain("foreign_or_unrecognized_personalspace_dir");
+  expect(result.failures.join(" ")).toContain("personalspace/just-a-vault");
+  expect(result.failures.join(" ")).toContain("není deklarovaný Personalspace Principála exampleuser");
+  expect(result.spaces.map((space) => space.dir_name)).toEqual(["exampleuser_GEN3"]);
+  expect(result.apps).toHaveLength(0);
 });
 
 test("gbrain transitional_source_path uvnitř rootu se použije; útěk mimo root se odmítne na canonical", async () => {

@@ -30,6 +30,7 @@ const buddyPresentationSchemaPath = join(launchpadRoot, "schemas", "personal-bud
 const defaultPersonalspaceMountpoint = "personalspace";
 const gitMarker = "_GEN3";
 const ignoredSpaceDirs = new Set([".git", ".worktrees", "node_modules", "secrets"]);
+const foreignOrUnrecognizedPersonalspaceDirCode = "foreign_or_unrecognized_personalspace_dir";
 // Osobní workspace moduly leží v ploché složce workspace/<modul>/, stejně jako
 // org workspace. Uvnitř nechodíme do těchto adresářů kvůli aplikačním manifestům.
 const ignoredWorkspaceDirs = new Set([".git", ".worktrees", "node_modules", "dist", "build", ".next", "coverage"]);
@@ -49,6 +50,17 @@ export function isLegacyPersonalCustodyConfig(personal) {
 
 export function personalAppRuntimeId(spaceDirName, appId) {
   return `${PERSONAL_APP_ID_PREFIX}${spaceDirName}--${appId}`;
+}
+
+function foreignOrUnrecognizedPersonalspaceDirFailure({ mountPath, directoryOwner, primaryOwner }) {
+  const principal = primaryOwner ? ` Principála ${primaryOwner}` : " Principála této mašiny";
+  const classification = directoryOwner
+    ? `cizí Personalspace ownera ${directoryOwner}`
+    : "nerozpoznaný adresář, který neodpovídá konvenci <owner>_GEN3";
+  const remediation = directoryOwner
+    ? "odmountuj ho, odeber historické GitHub granty a přesuň data mimo personalspace/"
+    : "odmountuj ho nebo přesuň mimo personalspace/";
+  return `${foreignOrUnrecognizedPersonalspaceDirCode}: ${mountPath}: adresář existuje jako ${classification}, není deklarovaný Personalspace${principal}; ${remediation} (decision 0091)`;
 }
 
 // Schema pro personal.gen3.json je const/enum-heavy; validujeme cíleně proti
@@ -734,16 +746,19 @@ export async function discoverPersonalspace(
     const directoryOwner = dirName.endsWith("_GEN3")
       ? normalizeOwner(dirName.slice(0, -"_GEN3".length))
       : null;
-    // Bez personal.gen3.json to není deklarovaný osobní prostor (může to být jen
-    // živý gbrain checkout apod.) — přeskočíme bez failure.
+    // Manifestless adresář nikdy nematerializujeme. Cizí _GEN3 checkout i
+    // nerozpoznaný název jsou explicitní Doctor failure; jen přesně pojmenovaný
+    // prostor Principála může být nedokončený lokální checkout bez manifestu.
     if (!existsSync(personalPath)) {
       if (
-        primaryOwner
-        && directoryOwner
-        && directoryOwner.toLowerCase() !== primaryOwner.toLowerCase()
+        !directoryOwner
+        || (
+          primaryOwner
+          && directoryOwner.toLowerCase() !== primaryOwner.toLowerCase()
+        )
       ) {
         failures.push(
-          `${mountPath}: cizí Personalspace ownera ${directoryOwner} je na mašině zakázaný; odmountuj ho a odeber historické GitHub granty (decision 0091)`,
+          foreignOrUnrecognizedPersonalspaceDirFailure({ mountPath, directoryOwner, primaryOwner }),
         );
       }
       continue;
@@ -761,7 +776,11 @@ export async function discoverPersonalspace(
     if (!primaryOwner) continue;
     if (!declaredOwner || declaredOwner.toLowerCase() !== primaryOwner.toLowerCase()) {
       failures.push(
-        `${mountPath}: cizí Personalspace ownera ${declaredOwner ?? "neznámý"} je na mašině zakázaný; odmountuj ho a odeber historické GitHub granty (decision 0091)`,
+        foreignOrUnrecognizedPersonalspaceDirFailure({
+          mountPath,
+          directoryOwner: declaredOwner,
+          primaryOwner,
+        }),
       );
       continue;
     }
@@ -780,7 +799,7 @@ export async function discoverPersonalspace(
         dir_name: dirName,
         mount_path: mountPath,
         github_repo: personal?.repository?.github_repo ?? null,
-        is_owner_primary: false,
+        is_owner_primary: true,
         identity_ok: false,
         config_valid: false,
         config_issues: configIssues,

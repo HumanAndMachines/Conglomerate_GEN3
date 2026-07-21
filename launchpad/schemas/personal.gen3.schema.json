@@ -187,6 +187,11 @@
     "workspace_path": {
       "const": "workspace"
     },
+    "shared_spaces": {
+      "type": "array",
+      "maxItems": 0,
+      "description": "Zpětně kompatibilní rezervované pole. Personalspace je výhradní prostor jednoho Principála a jeho volitelného Buddyho; cizí Personalspace se nemountuje, proto pole musí zůstat prázdné (decision 0091)."
+    },
     "gbrain": {
       "type": "object",
       "required": [
@@ -272,11 +277,6 @@
         }
       },
       "additionalProperties": true
-    },
-    "shared_spaces": {
-      "type": "array",
-      "maxItems": 0,
-      "description": "Zpětně kompatibilní rezervované pole. Personalspace je výhradní prostor jednoho Principála a jeho volitelného Buddyho; cizí Personalspace se nemountuje, proto pole musí zůstat prázdné (decision 0091)."
     }
   },
   "additionalProperties": true

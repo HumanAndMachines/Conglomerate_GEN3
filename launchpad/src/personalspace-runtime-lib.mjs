@@ -292,7 +292,6 @@ export function personalspaceDoctorCheck(personalspaceResponse) {
   const repositoryPrivacyFailures = [];
   const details = [];
   for (const space of spaces) {
-    const role = space.is_owner_primary ? "Principálův" : "zakázaný cizí";
     if (!space.config_valid) {
       details.push(`${space.mount_path}: NEVALIDNÍ (${(space.config_issues ?? []).join("; ")})`);
       continue;
@@ -321,7 +320,7 @@ export function personalspaceDoctorCheck(personalspaceResponse) {
       ? privacyChecks.map(repositoryPrivacyDetail).join(", ")
       : "živá repository privacy neověřena";
     details.push(
-      `${space.mount_path}: ${role}, aplikací ${space.apps?.length ?? 0}, moduly available ${summary.available ?? 0}/missing_access ${summary.missing_access ?? 0}/planned_slot ${summary.planned_slot ?? 0}, ${gbrain}, ${privacySummary}`,
+      `${space.mount_path}: Principálův, aplikací ${space.apps?.length ?? 0}, moduly available ${summary.available ?? 0}/missing_access ${summary.missing_access ?? 0}/planned_slot ${summary.planned_slot ?? 0}, ${gbrain}, ${privacySummary}`,
     );
   }
   if (warnings.length) {
