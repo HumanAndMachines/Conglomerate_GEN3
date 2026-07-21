@@ -2332,7 +2332,7 @@ function appCard(app, family = { key: app.id, members: [app], primary: app }) {
   // Sofistikovaný warning panel jen když je co řešit: stáhnout novější verzi,
   // nainstalovat/opravit balíčky, nebo vysvětlit blokující/failed stav. Žádná
   // velká trvalá tlačítka — hlavní akce (otevřít) je klik na celou dlaždici.
-  if (warning) card.append(cardWarningNode(app, warning));
+  if (warning) card.append(cardWarningNode(warning));
   // Runtime stages (founder 2026-07-15/16): kompaktní řádek „Kde spustit" pod
   // kartou — čtyři runy jednoho modulu (PROD / MAIN / DEV remote / DEV local).
   // Launchpad nabízí všechny čtyři; Dashboard by otevřel jen PROD. DEV local
@@ -2480,7 +2480,6 @@ function cardWarningModel(app, gitRepo) {
     return {
       tone: "danger",
       title: app.runtime?.owner === "foreign-port" ? "Cizí checkout na portu" : "Checkout procesu nelze ověřit",
-      detail: app.runtime?.message || "Launchpad nedokázal bezpečně ověřit proces na portu. Otevři detail a vyřeš instanci mimo Launchpad.",
       actionLabel: "Zobrazit detail",
       run: () => revealAppDetail(app),
     };
@@ -2491,8 +2490,10 @@ function cardWarningModel(app, gitRepo) {
   if (["missing_access", "planned_slot", "restricted", "invalid_manifest", "missing_package", "unknown_package_manager"].includes(dependencyState)) {
     return {
       tone: "danger",
-      title: humanDependencyLabel(dependencyState),
-      detail: app.dependencies?.message || "Modul teď nejde spustit. Otevři detail pro další krok.",
+      title: dependencyState === "invalid_manifest" ? "Chyba v nastavení" : humanDependencyLabel(dependencyState),
+      actionLabel: "Zobrazit detail",
+      actionStyle: "secondary",
+      run: () => revealAppDetail(app),
     };
   }
 
@@ -2501,10 +2502,6 @@ function cardWarningModel(app, gitRepo) {
     return {
       tone: "warn",
       title: dependencyState === "needs_install" ? "Chybí balíčky" : "Balíčky k opravě",
-      detail:
-        dependencyState === "needs_install"
-          ? "Modul ještě nemá nainstalované balíčky. Nainstaluj je před prvním spuštěním."
-          : "Zámek balíčků je zastaralý. Oprav balíčky, ať start proběhne čistě.",
       actionLabel: installLabel(app),
       run: () => runRuntimeAction(app, installAction(app)),
       pending: `${app.id}:${installAction(app)}`,
@@ -2516,7 +2513,6 @@ function cardWarningModel(app, gitRepo) {
     return {
       tone: "danger",
       title: "Spuštění selhalo",
-      detail: "Poslední spuštění spadlo. Otevři detail a podívej se do logů.",
       actionLabel: "Zobrazit logy",
       run: () => revealAppDetail(app),
     };
@@ -2564,9 +2560,9 @@ function cardWarningModel(app, gitRepo) {
   if (gitModel && gitModel.attention) {
     return {
       tone: gitModel.tone === "danger" ? "danger" : "warn",
-      title: `Ke kontrole: ${gitModel.label}`,
-      detail: gitModel.message || "Tenhle modul je ke kontrole. Otevři detail pro další krok.",
+      title: gitModel.label.replace(/^./, (character) => character.toUpperCase()),
       actionLabel: "Zobrazit detail",
+      actionStyle: "secondary",
       run: () => revealAppDetail(app),
     };
   }
@@ -2574,11 +2570,13 @@ function cardWarningModel(app, gitRepo) {
   return null;
 }
 
-// Inline warning panel na kartě: ikona + nadpis/vysvětlení + volitelné akční
-// tlačítko. Git upozornění používají klidnější sekundární akci; instalační
-// upozornění zůstává primární, protože bez ní aplikaci nejde otevřít.
+// Inline warning panel na kartě: ikona + krátký lidský stav + akce. Úplná
+// diagnostika zůstává v detailu/Doctoru, aby technické cesty a validační regexy
+// nerozbíjely mřížku builder-facing karet. Git upozornění používají klidnější
+// sekundární akci; instalační upozornění zůstává primární, protože bez ní
+// aplikaci nejde otevřít.
 // Tlačítko zastaví propagaci, aby neotevřelo kartu.
-function cardWarningNode(app, warning) {
+function cardWarningNode(warning) {
   const node = document.createElement("div");
   node.className = `card-warning is-${warning.tone}`;
 
@@ -2593,12 +2591,6 @@ function cardWarningNode(app, warning) {
   title.className = "card-warning-title";
   title.textContent = warning.title;
   body.append(title);
-  if (warning.detail) {
-    const detail = document.createElement("p");
-    detail.className = "card-warning-detail";
-    detail.textContent = warning.detail;
-    body.append(detail);
-  }
 
   node.append(icon, body);
 
@@ -2612,6 +2604,7 @@ function cardWarningNode(app, warning) {
         : "btn-ghost";
     button.className = `btn btn-sm card-warning-action ${actionClass}`;
     button.textContent = warning.actionLabel;
+    button.setAttribute("aria-label", `${warning.actionLabel}: ${warning.title}`);
     button.disabled = warning.pending ? state.pendingAction === warning.pending : false;
     button.addEventListener("click", (event) => {
       event.stopPropagation();
