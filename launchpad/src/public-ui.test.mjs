@@ -405,6 +405,29 @@ test("CAC-0044: karty jsou celé klikatelné a spouští one-click open s guarde
   expect(css).toContain(".app-open-cue");
 });
 
+test("CAC-0044: technická diagnostika nerozbíjí mřížku karet", async () => {
+  const [js, css] = await Promise.all([
+    readFile(join(publicRoot, "app.js"), "utf8"),
+    readFile(join(publicRoot, "styles.css"), "utf8"),
+  ]);
+  const warningModel = js.slice(
+    js.indexOf("function cardWarningModel"),
+    js.indexOf("function cardWarningNode"),
+  );
+  const warningNode = js.slice(
+    js.indexOf("function cardWarningNode"),
+    js.indexOf("function warningGlyph"),
+  );
+
+  expect(warningModel).not.toContain("detail: app.dependencies?.message");
+  expect(warningModel).toContain('dependencyState === "invalid_manifest" ? "Chyba v nastavení"');
+  expect(warningModel).toContain('actionLabel: "Zobrazit detail"');
+  expect(warningNode).not.toContain("card-warning-detail");
+  expect(warningNode).toContain('button.setAttribute("aria-label"');
+  expect(css).toContain("align-items: start");
+  expect(css).toContain("grid-template-columns: auto minmax(0, 1fr) auto");
+});
+
 test("CAC-0044: pravé panely Poslední změny + Nejčastější a git chip", async () => {
   const [html, js, css] = await Promise.all([
     readFile(join(publicRoot, "index.html"), "utf8"),
@@ -831,7 +854,7 @@ test("Owner 2026-07-05: karta modulu je GEN2-minimal dlaždice bez velkých tla�
   // Sofistikovaný warning panel se ukáže, jen když je co řešit (null jinak).
   expect(js).toContain("function cardWarningModel");
   expect(js).toContain("function cardWarningNode");
-  expect(js).toContain("if (warning) card.append(cardWarningNode(app, warning))");
+  expect(js).toContain("if (warning) card.append(cardWarningNode(warning))");
   expect(js).toContain("appCardTone(app, warning)");
   // Dvě přímé akce warning panelu: nainstalovat/opravit balíčky a stáhnout novější verzi.
   expect(js).toContain("runRuntimeAction(app, installAction(app))");
