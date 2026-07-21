@@ -2492,7 +2492,6 @@ function cardWarningModel(app, gitRepo) {
       tone: "danger",
       title: dependencyState === "invalid_manifest" ? "Chyba v nastavení" : humanDependencyLabel(dependencyState),
       actionLabel: "Zobrazit detail",
-      actionStyle: "secondary",
       run: () => revealAppDetail(app),
     };
   }
@@ -2524,7 +2523,6 @@ function cardWarningModel(app, gitRepo) {
       tone: "warn",
       title: `Nová verze - ${incoming} změn`,
       actionLabel: "Stáhnout",
-      actionStyle: "secondary",
       run: () => pullLatestRepoVersion(app, gitRepo, { autostash: true }),
       pending: `${app.id}:git-pull`,
     };
@@ -2537,7 +2535,6 @@ function cardWarningModel(app, gitRepo) {
       tone: "warn",
       title: `Nová verze - ${incoming} změn`,
       actionLabel: "Stáhnout",
-      actionStyle: "secondary",
       run: () => pullLatestRepoVersion(app, gitRepo),
       pending: `${app.id}:git-pull`,
     };
@@ -2548,7 +2545,6 @@ function cardWarningModel(app, gitRepo) {
       tone: "warn",
       title: "Změny k odeslání",
       actionLabel: "Zobrazit detail",
-      actionStyle: "secondary",
       run: () => revealAppDetail(app),
     };
   }
@@ -2562,7 +2558,6 @@ function cardWarningModel(app, gitRepo) {
       tone: gitModel.tone === "danger" ? "danger" : "warn",
       title: gitModel.label.replace(/^./, (character) => character.toUpperCase()),
       actionLabel: "Zobrazit detail",
-      actionStyle: "secondary",
       run: () => revealAppDetail(app),
     };
   }
@@ -2572,9 +2567,8 @@ function cardWarningModel(app, gitRepo) {
 
 // Inline warning panel na kartě: ikona + krátký lidský stav + akce. Úplná
 // diagnostika zůstává v detailu/Doctoru, aby technické cesty a validační regexy
-// nerozbíjely mřížku builder-facing karet. Git upozornění používají klidnější
-// sekundární akci; instalační upozornění zůstává primární, protože bez ní
-// aplikaci nejde otevřít.
+// nerozbíjely mřížku builder-facing karet. Všechny akce používají stejný
+// sekundární styl, aby různá upozornění působila jako jeden systém.
 // Tlačítko zastaví propagaci, aby neotevřelo kartu.
 function cardWarningNode(warning) {
   const node = document.createElement("div");
@@ -2597,12 +2591,7 @@ function cardWarningNode(warning) {
   if (warning.actionLabel && typeof warning.run === "function") {
     const button = document.createElement("button");
     button.type = "button";
-    const actionClass = warning.actionStyle === "secondary"
-      ? "btn-secondary"
-      : warning.tone === "warn"
-        ? "btn-primary"
-        : "btn-ghost";
-    button.className = `btn btn-sm card-warning-action ${actionClass}`;
+    button.className = "btn btn-sm btn-secondary card-warning-action";
     button.textContent = warning.actionLabel;
     button.setAttribute("aria-label", `${warning.actionLabel}: ${warning.title}`);
     button.disabled = warning.pending ? state.pendingAction === warning.pending : false;
