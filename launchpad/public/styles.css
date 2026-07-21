@@ -3359,7 +3359,7 @@ button.runtime-stage.is-available:hover {
 
 /* =========================================================
    Personalspace rail (CAC-0048)
-   Privátní osobní prostory vlastníka mašiny + nasdílené prostory.
+   Privátní osobní prostor Principála mašiny.
    Oddělený povrch od Organization discovery; Private badge, gbrain browser.
    ========================================================= */
 .personalspace-empty {
@@ -3374,16 +3374,6 @@ button.runtime-stage.is-available:hover {
   font-size: 0.7rem;
   font-family: var(--font-mono);
   overflow-wrap: anywhere;
-}
-.personalspace-owner-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.1rem 0.45rem;
-  border-radius: var(--r-pill);
-  font-size: 0.66rem;
-  font-weight: 800;
-  background: var(--accent-soft);
-  color: var(--accent);
 }
 .personalspace-invalid {
   margin: 0;

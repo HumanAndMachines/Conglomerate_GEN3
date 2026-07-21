@@ -275,7 +275,8 @@
     },
     "shared_spaces": {
       "type": "array",
-      "description": "Metadata-only slots for personal spaces shared into this machine. Each nested repo still needs its own GitHub access."
+      "maxItems": 0,
+      "description": "Zpětně kompatibilní rezervované pole. Personalspace je výhradní prostor jednoho Principála a jeho volitelného Buddyho; cizí Personalspace se nemountuje, proto pole musí zůstat prázdné (decision 0091)."
     }
   },
   "additionalProperties": true

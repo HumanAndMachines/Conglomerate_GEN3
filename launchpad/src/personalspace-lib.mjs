@@ -13,10 +13,10 @@
 //   - modules.manifest.json → identický module-slot kontrakt jako Organizace
 //   - workspace/<modul>/ … → osobní aplikace přes companyascode.app manifesty
 //
-// Slot readiness (sdílené prostory!): available (mount existuje) / missing_access
-// (deklarované repo bez lokálního checkoutu — typicky chybějící repo access) /
-// planned_slot (slot bez repo deklarace). Stejná mechanika jako u Organizací
-// (decision 0042), aby dva Kolegové mohli sdílet vybrané osobní moduly.
+// Slot readiness uvnitř ownerova prostoru: available (mount existuje) /
+// missing_access (deklarované repo bez lokálního checkoutu) / planned_slot
+// (slot bez repo deklarace). Cizí Personalspace se podle decision 0091 vůbec
+// nematerializuje.
 
 import { existsSync } from "fs";
 import { readdir } from "fs/promises";
@@ -93,6 +93,11 @@ export function validatePersonalConfig(personal, schema, label) {
   checkConst(personal, "personal_generation", props.personal_generation, "personal_generation");
   checkConst(personal, "modules_manifest_path", props.modules_manifest_path, "modules_manifest_path");
   checkConst(personal, "workspace_path", props.workspace_path, "workspace_path");
+  if (personal.shared_spaces !== undefined && !Array.isArray(personal.shared_spaces)) {
+    failures.push(`${label}: shared_spaces musí být pole`);
+  } else if (personal.shared_spaces?.length !== 0 && personal.shared_spaces !== undefined) {
+    failures.push(`${label}: shared_spaces musí zůstat prázdné; Personalspace je jen pro Principála a jeho Buddyho`);
+  }
 
   // owner
   const ownerSpec = props.owner ?? {};
@@ -646,16 +651,14 @@ async function scanPersonalspaceOwners(personalspaceRoot) {
   return owners;
 }
 
-// Který prostor je primární prostor vlastníka mašiny (zobrazí se první, bez owner
-// badge). Ostatní jsou nasdílené prostory (owner badge). Scan-first (decision
-// 0042): vlastníka určuje VÝHRADNĚ explicitní per-machine override — sken
-// personalspace/* vlastníka nikdy neodvozuje, protože nasdílený cizí prostor se
-// mountuje identicky jako vlastní a primární prostor odemyká privacy hranice
-// (gbrain vault). Fail-closed: bez override žádný prostor není primární.
+// Který prostor patří Principálovi této mašiny. Scan-first (decision 0042):
+// vlastníka určuje VÝHRADNĚ explicitní per-machine override — sken
+// personalspace/* vlastníka nikdy neodvozuje. Decision 0091 zakazuje cizí
+// Personalspace; bez override se proto nematerializuje žádný prostor.
 //   1. options.primaryOwner (explicitní runtime/test override),
 //   2. launchpad.gen3.local.json → personalspace_owner (per-machine override),
-//   3. jinak žádný primární prostor; sken slouží jen jako nápověda kandidátů
-//      ve warningu (žádný prostor = žádný warning).
+//   3. jinak žádný prostor; sken slouží jen jako nápověda kandidátů ve warningu
+//      (žádný prostor = žádný warning).
 // Sdílený launchpad.gen3.json vlastníka NEnese (osobní data v shared repu);
 // legacy personalspace_owner se ignoruje s jedním deprecation warningem.
 async function resolvePrimaryOwner({ companiesRoot, companiesConfig, personalspaceRoot, options, warnings }) {
@@ -674,7 +677,7 @@ async function resolvePrimaryOwner({ companiesRoot, companiesConfig, personalspa
   const owners = await scanPersonalspaceOwners(personalspaceRoot);
   if (owners.length > 0) {
     warnings.push(
-      `personalspace: primární vlastník mašiny není určen — nastav personalspace_owner v launchpad.gen3.local.json (fail-closed privacy hranice: sken nerozliší vlastní prostor od nasdíleného; kandidáti ze skenu: ${owners.join(", ")}). Zatím není žádný prostor označený jako primární.`,
+      `personalspace: Principál mašiny není určen — nastav personalspace_owner v launchpad.gen3.local.json (fail-closed privacy hranice; kandidáti ze skenu: ${owners.join(", ")}). Žádný Personalspace se nematerializuje.`,
     );
   }
   return null;
@@ -728,15 +731,38 @@ export async function discoverPersonalspace(
     const mountPath = `${mountpoint}/${dirName}`;
     const spaceRoot = join(companiesRoot, mountPath);
     const personalPath = join(spaceRoot, "personal.gen3.json");
+    const directoryOwner = dirName.endsWith("_GEN3")
+      ? normalizeOwner(dirName.slice(0, -"_GEN3".length))
+      : null;
     // Bez personal.gen3.json to není deklarovaný osobní prostor (může to být jen
     // živý gbrain checkout apod.) — přeskočíme bez failure.
-    if (!existsSync(personalPath)) continue;
+    if (!existsSync(personalPath)) {
+      if (
+        primaryOwner
+        && directoryOwner
+        && directoryOwner.toLowerCase() !== primaryOwner.toLowerCase()
+      ) {
+        failures.push(
+          `${mountPath}: cizí Personalspace ownera ${directoryOwner} je na mašině zakázaný; odmountuj ho a odeber historické GitHub granty (decision 0091)`,
+        );
+      }
+      continue;
+    }
 
     let personal;
     try {
       personal = await readJson(personalPath);
     } catch (error) {
       failures.push(`${mountPath}: personal.gen3.json nejde přečíst: ${error.message}`);
+      continue;
+    }
+
+    const declaredOwner = normalizeOwner(personal?.owner?.github_username);
+    if (!primaryOwner) continue;
+    if (!declaredOwner || declaredOwner.toLowerCase() !== primaryOwner.toLowerCase()) {
+      failures.push(
+        `${mountPath}: cizí Personalspace ownera ${declaredOwner ?? "neznámý"} je na mašině zakázaný; odmountuj ho a odeber historické GitHub granty (decision 0091)`,
+      );
       continue;
     }
 
@@ -775,14 +801,11 @@ export async function discoverPersonalspace(
     }
 
     const owner = personal.owner.github_username;
-    const isPrimary = primaryOwner ? owner === primaryOwner : false;
-    // Buddy prezentace je privátní obsah primárního vlastníka. U nasdílených
-    // prostorů ji bez explicitní field-level sharing policy ani nevalidujeme,
-    // ani nematerializujeme do /api/personalspace.
-    const buddyPresentation = isPrimary && personal.buddy
+    const isPrimary = true;
+    const buddyPresentation = personal.buddy
       ? buddyPresentationProjection(personal.buddy)
       : {};
-    const presentationIssues = !isPrimary || !personal.buddy
+    const presentationIssues = !personal.buddy
       ? []
       : buddyPresentationSchema
         ? validateBuddyPresentation(buddyPresentation, buddyPresentationSchema, mountPath)
@@ -941,8 +964,8 @@ export async function discoverPersonalspace(
     });
   }
 
-  // Řazení prostorů: primární prostor vlastníka mašiny první, pak nasdílené
-  // prostory abecedně. Nevalidní prostory (identity fail) až nakonec.
+  // Řazení je deterministické; po decision 0091 se materializuje pouze prostor
+  // Principála této mašiny. Nevalidní owner prostor zůstává až nakonec.
   spaces.sort((a, b) => {
     if (a.is_owner_primary !== b.is_owner_primary) return a.is_owner_primary ? -1 : 1;
     if (a.config_valid !== b.config_valid) return a.config_valid ? -1 : 1;

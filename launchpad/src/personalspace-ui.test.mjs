@@ -61,7 +61,7 @@ test("Launchpad renderuje personalspace jako vlastní sekci v hlavní ploše (ne
   expect(appJs).toContain('Boolean(state.personalspace)');
 });
 
-test("personalspace.js renderuje prostory, Private badge, owner badge a runtime akce oddělenou lane", async () => {
+test("personalspace.js renderuje Principálův prostor, Private badge a runtime akce oddělenou lane", async () => {
   const js = await readFile(join(publicRoot, "personalspace.js"), "utf8");
 
   expect(js).toContain("export function renderPersonalspace");
@@ -69,9 +69,9 @@ test("personalspace.js renderuje prostory, Private badge, owner badge a runtime 
   expect(js).toContain("function personalAppCard");
   // Dlaždice jdou do stejné `.apps-grid` mřížky jako workspace sekce.
   expect(js).toContain("apps-grid personalspace-apps-grid");
-  // Primární prostor vs. nasdílený s owner badge.
+  // Runtime propouští pouze Principálův prostor.
   expect(js).toContain("is_owner_primary");
-  expect(js).toContain("personalspace-owner-badge");
+  expect(js).not.toContain("personalspace-owner-badge");
   // Private badge na kartách osobních aplikací.
   expect(js).toContain("personalspace-private-badge");
   expect(js).toContain('badge("Private"');
@@ -88,7 +88,7 @@ test("personalspace.js renderuje prostory, Private badge, owner badge a runtime 
   expect(js).toContain("EADDRINUSE");
   expect(js).toContain('"stop"');
   expect(js).toContain('"restart"');
-  // missing_access / planned_slot sloty (sdílené prostory).
+  // missing_access / planned_slot sloty z historického multi-space UI.
   expect(js).toContain("missing_access");
   expect(js).toContain("planned_slot");
 });
@@ -118,7 +118,7 @@ test("Personalspace je owner-first, Buddy je volitelný a technické údaje jsou
   expect(js).toContain("technicalOpen: new Set()");
   expect(js).toContain("function bindTechnicalDetails");
   expect(js).toContain("details.open = state.technicalOpen.has(spaceKey)");
-  expect(js).toContain("Aplikace v prostoru");
+  expect(js).toContain("Moje aplikace");
   expect(js).toContain("function personalspaceErrorState");
   expect(js).toContain("Osobní prostor se nepodařilo načíst");
   expect(js).not.toContain('textContent = "Demo Buddy"');
@@ -129,11 +129,7 @@ test("Personalspace je owner-first, Buddy je volitelný a technické údaje jsou
   expect(css).toContain(".personalspace-technical");
   expect(css).toContain("@media (max-width: 680px)");
   expect(css).toContain(".layout.is-personal .problems-panel:not(.hidden)");
-  const boundary = js.indexOf("if (!gbrainBrowsable)");
-  const obsidian = js.indexOf('obsidianBtn.textContent = "Otevřít v Obsidianu"');
-  expect(boundary).toBeGreaterThan(-1);
-  expect(obsidian).toBeGreaterThan(boundary);
-  expect(js.slice(boundary, obsidian)).toContain("return section");
+  expect(js).not.toContain("gbrainBrowsable");
   expect(js).toContain("if (!activeSpaceNames.has(spaceName)) state.gbrain.delete(spaceName)");
   const buddyCardStart = js.indexOf("function buddyCard");
   const buddyCardEnd = js.indexOf("function recurringTasksCard", buddyCardStart);
@@ -178,7 +174,7 @@ test("styles.css nese personalspace section + private treatment + drawer styly",
   expect(css).toContain(".app-section-personalspace");
   expect(css).toContain(".personalspace-space-block");
   expect(css).toContain(".personalspace-private-badge");
-  expect(css).toContain(".personalspace-owner-badge");
+  expect(css).not.toContain(".personalspace-owner-badge");
   expect(css).toContain(".personalspace-gbrain");
   expect(css).toContain(".personalspace-gbrain-browser");
   // Osobní logo v header selectoru + skládací drawer pravých panelů (3-col layout).
@@ -196,6 +192,7 @@ test("kanonická Personalspace schema kopie zůstává base kontraktem s privát
   expect(schema.properties.privacy.properties.shared_outputs.const).toBe("metadata-only");
   expect(schema.properties.repository.properties.visibility.const).toBe("private");
   expect(schema.properties.gbrain.properties.default_shared.const).toBe(false);
+  expect(schema.properties.shared_spaces.maxItems).toBe(0);
   expect(schema.properties.gbrain.properties.agent_access.const).toBe("mcp-only");
   expect(schema.properties.buddy.properties.display_name).toBeUndefined();
   expect(schema.properties.buddy.properties.runtime.required).toContain("deployment_target");

@@ -186,8 +186,8 @@ V multi-company rootu platí:
 ## Personalspace (decision 0051, CAC-0048)
 
 Personalspace je **oddělená privátní discovery lane** vedle Organization
-discovery. Je to mountpoint více osobních prostorů vlastníka mašiny (a prostorů
-nasdílených jinými Kolegy); každý prostor je privátní repo
+discovery. Materializuje pouze osobní prostor Principála této mašiny; jde o
+privátní repo
 `<username>/<username>_GEN3` na osobním GitHubu, mimo firemní GitHub organizace.
 
 **Privátní hranice je tvrdá.** Personalspace se NIKDY nemíchá do
@@ -222,18 +222,17 @@ personalspace/*/gbrain/                        (Obsidian-compatible markdown vau
   pouze hosted prezentační metadata a schválený odkaz.
 - `modules.manifest.json` drží **identický kontrakt jako Organizace** (stejné
   `module_slots[]`, stejné readiness stavy `available`/`missing_access`/`planned_slot`).
-  Sdílené prostory: modul bez lokálního checkoutu s deklarovaným repo je
-  `missing_access` — stejná mechanika jako u Organizací, aby dva Kolegové mohli
-  sdílet vybrané osobní moduly.
+  Modul bez lokálního checkoutu s deklarovaným repo je `missing_access`; jde o
+  stav ownerova repa, ne mechanismus sdílení Personalspace.
 - Osobní aplikace nesou příznaky `personal: true` a `surface_scope: "private"`,
   dostávají prefixované runtime id (`personal--<prostor>--<app-id>`) a jsou
   vyloučené z každého org-scoped / shared výstupu. V Launchpad Personalspace
   rail mají **Private badge** a stejné runtime akce jako firemní aplikace
   (Instalovat / Spustit / Zastavit / Restart / Logy / Otevřít) přes oddělenou
   lane `POST /api/personalspace/apps/:id/:action`.
-- Primární prostor vlastníka mašiny (`launchpad.gen3.json` →
-  `personalspace_owner`) je v rail první; nasdílené prostory následují
-  s **owner badge**.
+- Prostor Principála mašiny určuje výhradně gitignored
+  `launchpad.gen3.local.json` → `personalspace_owner`. Bez něj se žádný prostor
+  nematerializuje; cizí mount vyvolá failure (decision 0091).
 
 ### gbrain (root-level vrstva prostoru)
 

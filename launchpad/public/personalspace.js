@@ -2,13 +2,12 @@
 // (CAC-0044/CAC-0048,
 // decision 0051).
 //
-// PRIVÁTNÍ POVRCH. Tento modul renderuje osobní prostory vlastníka mašiny (a
-// prostory nasdílené jinými Kolegy) do rail sekce Launchpadu. Data teče výhradně
+// PRIVÁTNÍ POVRCH. Tento modul renderuje pouze osobní prostor Principála
+// mašiny. Cizí Personalspace discovery odmítá podle decision 0091. Data teče výhradně
 // z lokálního /api/personalspace a /api/personalspace/<space>/gbrain/* (server
 // běží jen na 127.0.0.1). Osobní data se nikde nelogují ani neposílají dál.
 //
-// - Primární prostor vlastníka mašiny je první, bez owner badge.
-// - Nasdílené prostory následují s owner badge.
+// - Personalspace Principála je jediný povolený prostor.
 // - Osobní aplikace jsou GEN2-minimal dlaždice (port appCardu z GEN2-minimal karty): čistá
 //   klikatelná dlaždice (ikona + název + popis + ↗), jediný „● Běží" chip jen
 //   když běží, sekundární akce (Zastavit / Restart / Logy) pod ⋯ menu a inline
@@ -150,23 +149,11 @@ function cssEscape(value) {
   return typeof CSS !== "undefined" && CSS.escape ? CSS.escape(value) : String(value).replace(/["\\]/g, "\\$&");
 }
 
-// Blok jednoho osobního prostoru v hlavní ploše. Primární prostor vlastníka
-// mašiny je bez sub-headeru (patří pod section head „Osobní · Personalspace");
-// nasdílené prostory dostanou sub-header s owner badge, ať je jasně vidět, čí
-// jsou. Uvnitř: `.apps-grid` dlaždic (stejná mřížka jako workspace) + gbrain.
+// Blok jediného povoleného Personalspace Principála v hlavní ploše.
 function spaceBlock(space) {
   const block = document.createElement("div");
-  block.className = `personalspace-space-block ${space.is_owner_primary ? "is-primary" : "is-shared"}`;
+  block.className = "personalspace-space-block is-primary";
   block.setAttribute("aria-label", `Osobní prostor ${space.display_name}`);
-
-  if (!space.is_owner_primary) {
-    const head = document.createElement("div");
-    head.className = "personalspace-space-subhead";
-    const name = document.createElement("strong");
-    name.textContent = space.display_name ?? space.owner ?? space.dir_name;
-    head.append(name, badge(`Vlastník: ${space.owner ?? "?"}`, "personalspace-owner-badge"));
-    block.append(head);
-  }
 
   if (!space.config_valid) {
     const invalid = document.createElement("section");
@@ -356,9 +343,7 @@ function personalAppsSection(space) {
   const section = document.createElement("section");
   section.className = "personal-apps-section";
   const title = document.createElement("h2");
-  title.textContent = space.is_owner_primary
-    ? "Moje aplikace"
-    : `Aplikace v prostoru ${space.display_name ?? space.owner ?? "Kolegy"}`;
+  title.textContent = "Moje aplikace";
   section.append(title);
 
   // Osobní aplikace — stejná `.apps-grid` mřížka jako workspace sekce.
@@ -367,13 +352,9 @@ function personalAppsSection(space) {
     const emptyApps = document.createElement("div");
     emptyApps.className = "personalspace-apps-empty";
     const heading = document.createElement("strong");
-    heading.textContent = space.is_owner_primary
-      ? "Zatím tu nemáš další osobní aplikace"
-      : "V tomto prostoru zatím nejsou dostupné aplikace";
+    heading.textContent = "Zatím tu nemáš další osobní aplikace";
     const copy = document.createElement("p");
-    copy.textContent = space.is_owner_primary
-      ? "Personalspace funguje i bez nich. Až nějakou přidáš, objeví se právě tady."
-      : "Vlastník prostoru sem zatím nepřidal aplikaci nebo ti k ní nenasdílel přístup.";
+    copy.textContent = "Personalspace funguje i bez nich. Až nějakou přidáš, objeví se právě tady.";
     emptyApps.append(heading, copy);
     section.append(emptyApps);
   } else {
@@ -628,19 +609,7 @@ function gbrainSection(space) {
     return section;
   }
 
-  // Boundary per decision 0051: sdílení super-repa nesdílí gbrain. Nejdřív
-  // rozhodneme přístup; neautorizovaný sdílený vault nesmí dostat ani Obsidian
-  // deep link, ani lokální cestu jako fallback, ani klientskou gbrain cache.
-  const gbrainBrowsable = space.is_owner_primary || gbrain.default_shared !== false;
-  if (!gbrainBrowsable) {
-    const priv = document.createElement("p");
-    priv.className = "personalspace-gbrain-private";
-    priv.textContent = "gbrain nasdíleného prostoru se nesdílí — otevření a procházení je nedostupné (přístup vyžaduje vědomé explicitní rozhodnutí vlastníka, decision 0051).";
-    section.append(priv);
-    return section;
-  }
-
-  // Obsidian deep link + read-only browser toggle pro autorizovaný vault.
+  // Obsidian deep link + read-only browser pro Principálův vault.
   const buttons = document.createElement("div");
   buttons.className = "personalspace-gbrain-buttons";
 

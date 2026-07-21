@@ -482,13 +482,13 @@ Personalspace part **implemented by CAC-0048** (decision 0051):
       auto-discovery. Own schema copy `launchpad/schemas/personal.gen3.schema.json`
       (identical to HnM upstream). Identity invariant is fail-closed
       (`owner.github_username` ↔ mount ↔ repo).
-- [x] Personalspace private-module discovery: per-user/per-colleague apps carry
+- [x] Personalspace private-module discovery: Principálovy apps carry
       `personal: true` / `surface_scope: "private"`, prefixed runtime ids
       (`personal--…`), a **Private badge** and the same runtime actions as
       Organization apps, over a separate runtime lane
-      (`POST /api/personalspace/apps/:id/:action`). Primary owner space first,
-      shared spaces with an **owner badge**. `missing_access`/`planned_slot`
-      slots use the same mechanics as Organizations (shared personal modules).
+      (`POST /api/personalspace/apps/:id/:action`). Cizí Personalspace se
+      nematerializuje (decision 0091). `missing_access`/`planned_slot` slots
+      popisují jen stav Principálových modulových rep.
 - [x] GBrain reader/search surface: Obsidian `obsidian://open` deep link +
       read-only tree/note/fulltext over `GET /api/personalspace/:space/gbrain/*`,
       **bounded to the vault** (no path escape), local-only (127.0.0.1), no note
