@@ -195,17 +195,19 @@ test("Doctor odmítne chybějící nebo neexecutable root Launchpad.command", as
   });
 
   const launchpadCommand = join(fixture.root, "Launchpad.command");
-  await chmod(launchpadCommand, 0o644);
-  const nonExecutable = inspectMacosLaunchpadApp({
-    companiesRoot: fixture.root,
-    homeDir: fixture.home,
-    platform: "darwin",
-    dockPlistXml: dockXml,
-  });
-  expect(nonExecutable.status).toBe("warn");
-  expect(nonExecutable.details).toContain(
-    `launchpad_command_missing_or_not_executable: ${launchpadCommand}`,
-  );
+  if (process.platform !== "win32") {
+    await chmod(launchpadCommand, 0o644);
+    const nonExecutable = inspectMacosLaunchpadApp({
+      companiesRoot: fixture.root,
+      homeDir: fixture.home,
+      platform: "darwin",
+      dockPlistXml: dockXml,
+    });
+    expect(nonExecutable.status).toBe("warn");
+    expect(nonExecutable.details).toContain(
+      `launchpad_command_missing_or_not_executable: ${launchpadCommand}`,
+    );
+  }
 
   await rm(launchpadCommand);
   const missing = inspectMacosLaunchpadApp({
