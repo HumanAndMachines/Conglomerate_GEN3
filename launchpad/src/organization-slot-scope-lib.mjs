@@ -7,6 +7,9 @@ const organizationRootSlotPaths = new Set([
   "mission-control",
   "mission-control/db",
 ]);
+const organizationDiagnosticsOnlySlotPaths = new Set([
+  "mission-control/db",
+]);
 
 export function isOrganizationRootSlotPath(path) {
   const normalizedPath = normalizeOrganizationSlotPath(path);
@@ -87,6 +90,22 @@ export function organizationSlotWorkspace(slot, normalizedPath = null) {
   if (space === "root") return null;
   if (space === "productionspace") return "productionspace";
   return slot?.workspace ?? "workspace";
+}
+
+export function organizationSlotUiExposure(slot, normalizedPath = null) {
+  const path = normalizeOrganizationSlotPath(normalizedPath ?? slot?.path);
+  const sourceOfTruth = typeof slot?.source_of_truth === "string"
+    ? slot.source_of_truth.trim().toLowerCase()
+    : "";
+  const repositoryDb = sourceOfTruth === "repository-db"
+    || sourceOfTruth.startsWith("repository-db:");
+  if (
+    organizationDiagnosticsOnlySlotPaths.has(path)
+    || (repositoryDb && organizationSlotScope(slot, path) === "root")
+  ) {
+    return "diagnostics-only";
+  }
+  return "module";
 }
 
 export function normalizeOrganizationSlotPath(path) {

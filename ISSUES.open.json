@@ -59,6 +59,49 @@
           "path": "launchpad/src/runtime-lib.mjs"
         }
       ]
+    },
+    {
+      "id": "issue-2026-07-20-002",
+      "title": "Launchpad nemá zobrazovat Mission Control DB jako Workspace modul",
+      "status": "implementation_ready_for_review",
+      "severity": "medium",
+      "owner": "Launchpad implementační agent",
+      "created_at": "2026-07-20",
+      "updated_at": "2026-07-20",
+      "tags": [
+        "launchpad",
+        "mission-control",
+        "repository-db",
+        "workspace-ui",
+        "module-manifest",
+        "avaltar"
+      ],
+      "question": "Jak zpevnit Launchpad read-model/UI tak, aby root/data slot `mission-control/db` zůstal součástí Git/Doctor diagnostiky, ale nikdy se neukazoval jako Workspace modulová karta ani nezvyšoval počet modulů?",
+      "implementation": "Větvený fix klasifikuje mission-control/db a root-scoped repository-db source-of-truth sloty jako diagnostics-only. Slot zůstává v Doctor/readiness a Git inventáři, ale nevstupuje do org.workspaces[].modules, modulových karet ani Workspace countu; AVALTAR-like standalone scénář i zachování Workspace repository-db modulu kryje regresní test.",
+      "verification": [
+        "bun test launchpad/src/diagnostics-lib.test.mjs",
+        "bun run check",
+        "bun run doctor"
+      ],
+      "next_action": "Steward review a merge PR #23; po merge přesunout issue do ISSUES.resolved.json.",
+      "links": [
+        {
+          "label": "Implementation PR #23",
+          "url": "https://github.com/HumanAndMachines/Conglomerate_GEN3/pull/23"
+        },
+        {
+          "label": "Launchpad read-model",
+          "path": "launchpad/src/diagnostics-lib.mjs"
+        },
+        {
+          "label": "Root/data slot scope helper",
+          "path": "launchpad/src/organization-slot-scope-lib.mjs"
+        },
+        {
+          "label": "AVALTAR-like regression",
+          "path": "launchpad/src/diagnostics-lib.test.mjs"
+        }
+      ]
     }
   ]
 }
