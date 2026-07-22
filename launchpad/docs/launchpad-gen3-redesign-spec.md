@@ -205,6 +205,19 @@ pipeline and is reported as `binary: { state: "not_available" }`.
 - **One contract, two deployments, two security profiles.** `/bridge/v1/...` on the builder's `127.0.0.1` daemon (pairing token over CORS + LNA), or on the Workspace Host VPS as **normal HTTPS behind organization login** (same-origin reverse proxy; platform session CAC-0055; real organization authorization and audit on every request). Identical routes/shapes; transport binding, auth adapter and security profile differ. Maps 1:1 to the localhost-vs-Workspace-Host placement in section 1.
 - **Transport adapters (explicit, swappable):** (a) loopback fetch on Chromium via **Local Network Access (LNA, Chrome 142+; PNA is deprecated/replaced)**, Firefox ~149–151; (b) Workspace Host HTTPS; (c) **mandatory fallback** top-level deep-link 'Continue in local Builder' for Safari (WebKit blocks HTTPS→loopback) and denied/revoked LNA. Loopback is not identity — port 4174 does not establish authenticity or OS-user isolation.
 - **Stable deep-link URL scheme (P1 deliverable, founder 2026-07-12).** Every major Launchpad screen — org, module, Doctor, worktrees — is reachable via a **stable hash route** (e.g. `<deep_link_base>/#/org/<org>/module/<module>`, `…/#/org/<org>/doctor`, `…/#/org/<org>/worktrees`) so the hosted Dashboard can carry **contextual 'Open in local Builder' buttons** that open the local Launchpad at the matching page. **The concrete `deep_link_base` and the versioned route patterns are discovered from `/bridge/meta` — clients never guess the port; `127.0.0.1:4174` here is only the default/example (in the spike: only the fixture default).** This is well-designed cross-navigation UX between Dashboard and Launchpad, and it is a **P1 deliverable independent of whether full embedding ever lands**. The scheme also backs the mandatory Safari / denied-LNA fallback deep-link. Hash routes are part of the compat contract (stable, not ad-hoc) so links from a hosted Dashboard don't break across binary releases.
+- **Chat-first App entry (founder 2026-07-22; first route slice implemented).** A
+  new direct human-Colleague chat with a Codex/ChatGPT App or Claude App Worker
+  Agent is the primary product entry. Once it minimally identifies scope, the
+  Agent opens the local Launchpad in the App-provided browser surface at
+  `/#/org/<company.slug>` or local-only `/#/personalspace`. The Launchpad is the
+  graphical view of the same local context the chat Agent can inspect and help
+  with; a Dock shortcut and manual URL entry are conveniences, not the primary
+  onboarding. This rule excludes Buddy, AI Colleagues, CLI/background/review
+  runs and any App without an actual browser capability; no OS UI simulation or
+  silent external-browser fallback is part of the contract. The local shell now
+  parses these two routes, updates the URL when scope changes, rejects unavailable
+  scopes safely and keeps Personalspace identity/content out of the URL. Module,
+  Doctor and worktree routes remain the rest of the P1 deep-link deliverable.
 - **Local UI is the first client.** `public/` is refactored to consume `/bridge/v1` with no privileged internal calls (already true for data access). Moving the interface into the Dashboard is a shell swap.
 - **Freeze current routes as `/bridge/v1`.** The unprefixed `/api/*` aliases exist **only for the local shell during the transition** and inherit the **same auth/capability policy** as `/bridge/v1/*` **from P2 (pairing) onward — no unauthenticated alias survives past P2**. CORS is **not** an authorization boundary for local processes: it only blocks cross-origin browser reads, not a local process calling an alias directly, so the alias cannot be a softer, token-free path once pairing lands. Cross-origin clients must use `/bridge/v1` + token; aliases are removed at the local-UI deprecation gate.
 - **CORS + LNA + request hygiene.** Add an `OPTIONS`/preflight branch; exact origin allow-list (prod/dev Dashboard + `localhost` dev), reject `null`, no wildcards/suffix/reflected origins; `Vary: Origin`; validate `Origin`/`Host`/method/content-type; custom header on mutations so they can't be submitted as HTML forms; reject unexpected `Host` (DNS rebinding). Attach CORS in `jsonResponse`. Parametrise the `127.0.0.1`-only host gate for headless/Workspace-Host binding, keeping `127.0.0.1` the default; never `0.0.0.0`.
@@ -532,6 +545,11 @@ These layer on Phases A–D and reuse the 'keep the `/api/apps` contract' framin
 - [ ] Exact CORS allow-list restricts Origin to Dashboard (prod/dev) + `localhost` dev; rejects `null`/wildcards/suffix/reflected; `Vary: Origin`; `OPTIONS` handled; **LNA** preflight handling (not PNA as foundation); custom header required on mutations; unexpected `Host` rejected (DNS rebinding).
 - [ ] Three transport adapters implemented; **mandatory fallback deep-link 'Continue in local Builder'** works for Safari and denied/revoked LNA.
 - [ ] **[founder 2026-07-12]** Every major Launchpad screen (org, module, Doctor, worktrees) has a **stable deep-link hash route**; the hosted Dashboard can open the local Launchpad at the matching page via contextual 'Open in local Builder' buttons, and the routes stay stable across binary releases (works independently of whether embedding lands).
+- [x] **[founder 2026-07-22; first route slice]** Local shell resolves stable
+      Organization (`/#/org/<company.slug>`) and local-only Personalspace
+      (`/#/personalspace`) routes, mirrors scope changes back into the URL and
+      fails safely for invalid or unavailable scopes. Remaining module, Doctor
+      and worktree routes keep the full P1 item above open.
 - [ ] Auth required for reads too — only `/health` + `/bridge/meta` unauthenticated; pairing token bound to origin+account+orgs+OS-user+expiry, stored in OS keychain (not localStorage), TTL + rotation, unpair from local shell.
 - [ ] `GET /bridge/meta` negotiates api majors/deployment/capabilities; capabilities granular and not inferred from binary version; older daemon degrades gracefully; when no compatible API, Dashboard offers the local UI.
 - [ ] Mutations carry idempotency keys; long operations return operation IDs; consumer-driven compat tests run against old released binaries; explicit support window documented.

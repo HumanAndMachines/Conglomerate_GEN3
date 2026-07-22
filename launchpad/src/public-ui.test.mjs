@@ -48,6 +48,15 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(js).toContain("function normalizeActiveSpace");
   expect(js).toContain("function spaceOption");
   expect(js).toContain("function selectSpace");
+  expect(js).toContain("function applyLaunchpadHash");
+  expect(js).toContain("function syncActiveSpaceHash");
+  expect(js).toContain("let launchpadScopeDataReady = false");
+  expect(js).toContain("launchpadScopeDataReady = true");
+  expect(js).toContain("if (launchpadScopeDataReady) syncActiveSpaceHash({ replace: true })");
+  expect(js).toContain("!launchpadScopeDataReady || window.location.hash === appliedLaunchpadHash");
+  expect(js).toContain('window.addEventListener("hashchange", applyBrowserLaunchpadHash)');
+  expect(js).toContain("organizationHash(state.filters.company)");
+  expect(js).toContain("personalspaceHash()");
   expect(js).toContain("suppressNextDrawerOpen");
   expect(js).toContain("function visibleRecentModules");
   expect(js).toContain("function visibleMostUsed");
@@ -97,7 +106,7 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(switcherBlock).not.toContain("chip(");
   expect(js).toContain("function renderAppsGrid");
   expect(js).toContain("reconcileSelectedAppId");
-  expect(js).toContain("if (firstSuccessfulLoad) state.suppressNextDrawerOpen = true");
+  expect(js).toContain("if (firstSuccessfulScopeLoad) state.suppressNextDrawerOpen = true");
   expect(js).toContain("function scrollBelowStickyTopbar");
   expect(js).toContain("window.scrollBy({ top: delta, behavior: \"smooth\" })");
   expect(js).toContain("function primaryNextAction");
