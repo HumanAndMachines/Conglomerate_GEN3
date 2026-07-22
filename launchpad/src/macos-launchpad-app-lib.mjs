@@ -9,6 +9,10 @@ import { randomUUID } from "node:crypto";
 export const MACOS_LAUNCHPAD_APP_NAME = "HumanAndMachine Launchpad GEN3.app";
 export const MACOS_LAUNCHPAD_BUNDLE_ID = "ai.humanandmachine.launchpad.gen3";
 export const MACOS_LAUNCHPAD_EXECUTABLE = "HumanAndMachineLaunchpadGEN3";
+export const MACOS_LAUNCHPAD_DISPLAY_NAME = "HumanAndMachine Launchpad GEN3";
+
+const DEFAULT_DOCK_VERIFICATION_ATTEMPTS = 8;
+const DEFAULT_DOCK_VERIFICATION_DELAY_MS = 250;
 
 export function macosLaunchpadAppPath(homeDir = homedir()) {
   return join(homeDir, "Applications", MACOS_LAUNCHPAD_APP_NAME);
@@ -41,6 +45,7 @@ export function inspectMacosLaunchpadApp({
   const executablePath = join(contents, "MacOS", MACOS_LAUNCHPAD_EXECUTABLE);
   const iconPath = join(contents, "Resources", "launchpad.icns");
   const rootPath = join(contents, "Resources", "root-path.txt");
+  const launchpadCommandPath = join(expectedRoot, "Launchpad.command");
   const problems = [];
 
   if (!existsSync(appPath)) problems.push(`app_bundle_missing: ${appPath}`);
@@ -49,6 +54,9 @@ export function inspectMacosLaunchpadApp({
   if (!isExecutable(executablePath)) problems.push(`launcher_missing_or_not_executable: ${executablePath}`);
   if (!existsSync(iconPath)) problems.push(`icon_missing: ${iconPath}`);
   if (readTrimmed(rootPath) !== expectedRoot) problems.push(`launchpad_root_mismatch: expected ${expectedRoot}`);
+  if (!isExecutable(launchpadCommandPath)) {
+    problems.push(`launchpad_command_missing_or_not_executable: ${launchpadCommandPath}`);
+  }
 
   const xml = dockPlistXml ?? exportDockPlist(runCommand);
   const dockPinned = problems.length === 0 && dockContainsApp(xml, appPath);
@@ -88,6 +96,9 @@ export async function installMacosLaunchpadApp({
   runCommand = runCommandSync,
   pinToDock = true,
   revealOnFallback = true,
+  dockVerificationAttempts = DEFAULT_DOCK_VERIFICATION_ATTEMPTS,
+  dockVerificationDelayMs = DEFAULT_DOCK_VERIFICATION_DELAY_MS,
+  wait = waitFor,
 } = {}) {
   if (platform !== "darwin") throw new Error("macOS Launchpad app lze instalovat pouze na macOS.");
   const root = resolve(companiesRoot);
@@ -138,7 +149,15 @@ export async function installMacosLaunchpadApp({
         const pin = runCommand(dockutil, pinArgs);
         if (pin.ok) {
           runCommand("/usr/bin/killall", ["Dock"]);
-          dockStatus = dockContainsApp(exportDockPlist(runCommand), appPath) ? "pinned" : "pin_unverified";
+          dockStatus = await waitForDockItem({
+            appPath,
+            runCommand,
+            attempts: dockVerificationAttempts,
+            delayMs: dockVerificationDelayMs,
+            wait,
+          })
+            ? "pinned"
+            : "pin_unverified";
         } else {
           dockStatus = "pin_failed";
         }
@@ -148,20 +167,115 @@ export async function installMacosLaunchpadApp({
     }
   }
 
+  const check = inspectMacosLaunchpadApp({ companiesRoot: root, homeDir, platform, runCommand });
+  if (dockStatus === "pin_unverified" && check.status === "ok") {
+    dockStatus = "pinned";
+  }
   if (["manual_required", "pin_failed", "pin_unverified"].includes(dockStatus) && revealOnFallback) {
     runCommand("/usr/bin/open", ["-R", appPath]);
   }
-
-  const check = inspectMacosLaunchpadApp({ companiesRoot: root, homeDir, platform, runCommand });
   return { root, app_path: appPath, backup_path: backupPath, dock_status: dockStatus, check };
 }
 
 export function dockContainsApp(xml, appPath) {
   if (!xml) return false;
   const fileUrl = pathToFileURL(appPath).href;
-  const exactPath = xml.includes(appPath) || xml.includes(fileUrl);
-  const identity = xml.includes(MACOS_LAUNCHPAD_BUNDLE_ID) || xml.includes(MACOS_LAUNCHPAD_APP_NAME);
-  return exactPath && identity;
+  return persistentDockItemBlocks(xml).some((item) => {
+    const values = xmlStringValues(item);
+    const exactPath = values.some((value) =>
+      sameDockTarget(value, appPath, fileUrl),
+    );
+    const identity = values.some((value) =>
+      [
+        MACOS_LAUNCHPAD_BUNDLE_ID,
+        MACOS_LAUNCHPAD_DISPLAY_NAME,
+        MACOS_LAUNCHPAD_APP_NAME,
+      ].includes(value),
+    );
+    return exactPath && identity;
+  });
+}
+
+async function waitForDockItem({ appPath, runCommand, attempts, delayMs, wait }) {
+  const safeAttempts = Number.isSafeInteger(attempts) && attempts > 0
+    ? attempts
+    : DEFAULT_DOCK_VERIFICATION_ATTEMPTS;
+  const safeDelayMs = Number.isSafeInteger(delayMs) && delayMs >= 0
+    ? delayMs
+    : DEFAULT_DOCK_VERIFICATION_DELAY_MS;
+  for (let attempt = 0; attempt < safeAttempts; attempt += 1) {
+    if (dockContainsApp(exportDockPlist(runCommand), appPath)) return true;
+    if (attempt + 1 < safeAttempts) await wait(safeDelayMs);
+  }
+  return false;
+}
+
+function persistentDockItemBlocks(xml) {
+  const key = /<key>\s*persistent-apps\s*<\/key>/u.exec(xml);
+  if (!key) return [];
+  const arrayStart = xml.indexOf("<array>", key.index + key[0].length);
+  if (arrayStart < 0) return [];
+  const arrayBlock = xmlElementBlock(xml, arrayStart, "array");
+  if (!arrayBlock) return [];
+
+  const entries = [];
+  const tagPattern = /<\/?dict\b[^>]*>/gu;
+  let depth = 0;
+  let entryStart = -1;
+  for (const match of arrayBlock.matchAll(tagPattern)) {
+    const closing = match[0].startsWith("</");
+    if (!closing) {
+      if (depth === 0) entryStart = match.index;
+      depth += 1;
+      continue;
+    }
+    if (depth === 0) return [];
+    depth -= 1;
+    if (depth === 0 && entryStart >= 0) {
+      entries.push(arrayBlock.slice(entryStart, match.index + match[0].length));
+      entryStart = -1;
+    }
+  }
+  return depth === 0 ? entries : [];
+}
+
+function xmlElementBlock(xml, start, tagName) {
+  const tagPattern = new RegExp(`<\\/?${tagName}\\b[^>]*>`, "gu");
+  tagPattern.lastIndex = start;
+  let depth = 0;
+  for (const match of xml.matchAll(tagPattern)) {
+    const closing = match[0].startsWith("</");
+    depth += closing ? -1 : 1;
+    if (depth === 0) return xml.slice(start, match.index + match[0].length);
+    if (depth < 0) return null;
+  }
+  return null;
+}
+
+function xmlStringValues(xml) {
+  return [...xml.matchAll(/<string>([\s\S]*?)<\/string>/gu)]
+    .map((match) => decodeXmlText(match[1]).trim());
+}
+
+function decodeXmlText(value) {
+  return value
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&apos;", "'")
+    .replaceAll("&amp;", "&");
+}
+
+function sameDockTarget(value, appPath, fileUrl) {
+  const withoutTrailingSlash = value.replace(/\/+$/u, "");
+  return (
+    withoutTrailingSlash === appPath.replace(/\/+$/u, "") ||
+    withoutTrailingSlash === fileUrl.replace(/\/+$/u, "")
+  );
+}
+
+function waitFor(milliseconds) {
+  return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
 }
 
 function fileContains(path, expected) {
