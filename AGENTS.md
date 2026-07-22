@@ -42,8 +42,10 @@ zabrané); canonical repo rootu je `HumanAndMachines/Conglomerate_GEN3`.
 
 ## Model spolupráce: Principál a Agenti
 
-<!-- Kanonický blok Modelu spolupráce. Zdroj pravdy: HumanAndMachines/AGENTS.md;
-odtud se propaguje sync sweepem do všech rep. Tento soubor edituj normálně
+<!-- Kanonický blok Modelu spolupráce. Zdroj pravdy: HumanAndMachines/AGENTS.md. Do OrganizationTemplate_GEN3
+a organizačních forků se propaguje Template Sync Sweepem; do Conglomerate
+přímým root PR (nese blok jako `manual`). Mechanismus per cíl drží
+docs/principle-propagation-contract.md. Tento soubor edituj normálně
 přes PR na repo, ve kterém leží; změnu znění samotného kanonického bloku
 navrhni v HumanAndMachines. -->
 
@@ -55,7 +57,7 @@ pracovat. Není to seznam příkazů — je to vysvětlení, jak tahle firma fun
 Tohle je nadřazený princip, ve kterém všechno ostatní stojí: lidé a stroje
 pracují v jednom světě, který nedrží ad-hoc důvěra, ale **hierarchie**,
 **přesně ohraničené hranice** a **definované procesy**. Z něj plynou pilíře,
-které máš rozepsané níž a v `apps/principles-overview`:
+které máš rozepsané níž:
 
 - **Slovník person:** Kolega, AI Kolega, Worker Agent, Buddy. Worker Agenti
   (Codex, Claude Code, Cursor…) tvoří drafty a nemají pravomoce; Kolega i AI
