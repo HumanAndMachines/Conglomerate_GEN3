@@ -65,7 +65,8 @@ které máš rozepsané níž:
   rozdíl v chování.
 - **GitHub je jediná autorita přístupů.** Členství, Teamy, repo granty a branch
   rules určují, co kdo smí; nevzniká druhý vymyšlený ACL. Builder tvoří PR,
-  Steward merguje do `main`.
+  Steward nebo Admin merguje do `main`; Steward je běžná provozní lane, ne
+  povinný bottleneck pro Admina.
 - **Vlastní mašina, vlastní Personalspace.** Každý Kolega i Buddy má vlastní
   mašinu s plnými lokálními právy a vlastní **privátní Personalspace**, který
   nikdo cizí — Steward, Admin ani operator — nečte.
