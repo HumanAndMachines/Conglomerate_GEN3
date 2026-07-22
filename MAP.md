@@ -58,3 +58,7 @@ Conglomerate/
   secrets patří do organization-local `private/secrets/...`
 - `templates/` — šablony
 - `drafts/` — lokální netrackované návrhy bez dlouhodobé autority (sdílené drafty žijí v privátním Rozjedeme-ai/HumanAndMachines)
+- **V jakém světě jsi (koexistence Human↔Machine):** začni sekcí
+  `AGENTS.md → Model spolupráce → Koexistence Human and Machine`. Vysvětluje
+  hierarchii, hranice a procesy, ve kterých tenhle root a všechny Organizace
+  fungují — pro lidi i agenty.

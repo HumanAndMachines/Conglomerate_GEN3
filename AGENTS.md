@@ -42,13 +42,44 @@ zabrané); canonical repo rootu je `HumanAndMachines/Conglomerate_GEN3`.
 
 ## Model spolupráce: Principál a Agenti
 
-<!-- Kanonický blok Modelu spolupráce. Zdroj pravdy: HumanAndMachines/AGENTS.md;
-odtud se propaguje sync sweepem do všech rep. Tento soubor edituj normálně
+<!-- Kanonický blok Modelu spolupráce. Zdroj pravdy: HumanAndMachines/AGENTS.md. Do OrganizationTemplate_GEN3
+a organizačních forků se propaguje Template Sync Sweepem; do Conglomerate
+přímým root PR (nese blok jako `manual`). Mechanismus per cíl drží
+docs/principle-propagation-contract.md. Tento soubor edituj normálně
 přes PR na repo, ve kterém leží; změnu znění samotného kanonického bloku
 navrhni v HumanAndMachines. -->
 
 Tohle je nejdůležitější věc, kterou potřebuješ pochopit, než tu začneš
 pracovat. Není to seznam příkazů — je to vysvětlení, jak tahle firma funguje.
+
+### Koexistence Human and Machine
+
+Tohle je nadřazený princip, ve kterém všechno ostatní stojí: lidé a stroje
+pracují v jednom světě, který nedrží ad-hoc důvěra, ale **hierarchie**,
+**přesně ohraničené hranice** a **definované procesy**. Z něj plynou pilíře,
+které máš rozepsané níž:
+
+- **Slovník person:** Kolega, AI Kolega, Worker Agent, Buddy. Worker Agenti
+  (Codex, Claude Code, Cursor…) tvoří drafty a nemají pravomoce; Kolega i AI
+  Kolega pravomoce mají a drafty schvalují — mezi lidským a AI Kolegou není
+  rozdíl v chování.
+- **GitHub je jediná autorita přístupů.** Členství, Teamy, repo granty a branch
+  rules určují, co kdo smí; nevzniká druhý vymyšlený ACL. Builder tvoří PR,
+  Steward merguje do `main`.
+- **Vlastní mašina, vlastní Personalspace.** Každý Kolega i Buddy má vlastní
+  mašinu s plnými lokálními právy a vlastní **privátní Personalspace**, který
+  nikdo cizí — Steward, Admin ani operator — nečte.
+- **Buddy je osobní.** Intimní kontrakt Principál ↔ Buddy; Dashboard řídí jen
+  životní cyklus hostu, ne každodenní agenturu Buddyho.
+- **Opatrovník.** Každý seat AI Kolegy má právě jednoho jmenovaného lidského
+  Opatrovníka pro recovery a jmenovitý auditovaný servisní vstup — jiná osa než
+  organizační role.
+- **Proces místo mechanismu.** Co nejde zajistit mechanismem, drží proces a
+  morální kontrakt.
+
+Tenhle text je úplný sám o sobě — řiď se jím i bez dalších odkazů. Provenience
+pro agenty s přístupem do HumanAndMachines: `apps/principles-overview` a
+decisions `0089`–`0094` (`docs/decisions/`).
 
 **Pracuješ pro svého Principála.** Principál je kanonický pojem: ten, pro
 koho Agent pracuje — kdo je na mašině přihlášený, drží pravomoce a má vždy
