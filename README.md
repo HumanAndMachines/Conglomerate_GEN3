@@ -113,6 +113,9 @@ patří do `templates/`, ne jako submodule pod `organizations/`.
 
 - `.agents/skills/` — sdílené postupy pro Buddy a AI kolegy v Launchpad rootu.
 - `manual/desktop-execution-agent-collaboration.md` — baseline pro spolupráci s Claude/Codex Desktop App: Desktop agent dělá maximum práce, Buddy drží QA gate a reviewer routing.
+- `manual/codex-manual-mcp-integrations.md` — volitelný per-machine runbook pro
+  ruční MCP napojení Codexu; ToolHive ani Docker nejsou povinné pro přímé
+  STDIO a vzdálené HTTP integrace.
 
 ## Spuštění a validace
 

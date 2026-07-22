@@ -28,6 +28,10 @@ Maintenance agent před zásahem ověřuje:
 - `drafts/` — lokální prostor bez dlouhodobé autority.
 - `manual/security/local-secret-custody.md` — standard pro lokální držení
   OAuth client JSONů, token helper souborů a dalších secret artefaktů mimo Git.
+- `manual/codex-manual-mcp-integrations.md` — volitelný runbook pro ruční
+  přidání lokálních STDIO a vzdálených HTTP MCP serverů do Codexu bez povinného
+  ToolHive; obsahuje per-machine OAuth custody, approval policy, ClickUp a
+  komunitní Google Workspace příklad.
 - `manual/first-client-organization-rollout.md` — obecný rollout runbook pro první klientskou Organization: repo hranice, mount, manifesty, Doctor/Launchpad support-loop gate, Install/Repair smoke a rollback.
 - `manual/desktop-execution-agent-collaboration.md` — baseline spolupráce Buddy a workspace-local AI kolegů s Claude/Codex Desktop App agenty: Desktop agent dělá maximum práce, Buddy drží QA gate a reviewer routing.
 - `manual/worktree-management.md` — cílový CAC-0065 kontrakt pro standardizované
@@ -93,6 +97,9 @@ runtime/cache cesty, ne custody source of truth.
 
 ## Rollout runbooky
 
+- [Ruční MCP integrace pro Codex](codex-manual-mcp-integrations.md) — bezpečný
+  per-machine postup jako alternativa k ChatGPT pluginům a cloudovému
+  integračnímu brokeru; přímé STDIO/HTTP varianty Docker nepotřebují.
 - [First-client Organization rollout](first-client-organization-rollout.md) — od čistého root preflightu přes klientský Organization mount po zelený Doctor/Launchpad handoff.
 - [GEN2 → GEN3 migration manual](gen2-to-gen3-migration.md) — převod GEN2 workspace do Organization modelu včetně pravidla, že obecný Organization-local `guide/` se maže a nahrazuje shared `Conglomerate/guide`.
 - [Workspace module version lifecycle](workspace-module-version-lifecycle.md) — standard `v0`/`v1`/`v2`/`v3` pro standardní workspace moduly, repository-db v3 writer/draft/publish pipeline, template propagation a Pricebook v3 dogfood.
