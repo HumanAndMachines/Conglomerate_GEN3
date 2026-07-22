@@ -34,17 +34,33 @@ test("PR preflight vyžaduje clean feature branch", async () => {
   expect(result.code).toBe("dirty_worktree");
 });
 
-function fixtureGit({ relation = "3 0", status = "", remoteHead = "c".repeat(40) } = {}) {
+test("PR preflight odmítne shell metaznaky v branchi před vytvořením příkazu", async () => {
+  const result = await runPrPreflight({
+    repoRoot: "/repo",
+    gitRunner: fixtureGit({ branch: "feature;touch-pwned" }),
+  });
+
+  expect(result.ok).toBe(false);
+  expect(result.code).toBe("unsafe_branch_name");
+  expect(result.push_command).toBeUndefined();
+});
+
+function fixtureGit({
+  branch = "feature",
+  relation = "3 0",
+  status = "",
+  remoteHead = "c".repeat(40),
+} = {}) {
   return async (args) => {
     const command = args.join(" ");
     if (command === "fetch origin main --prune") return ok("");
-    if (command === "branch --show-current") return ok("feature");
+    if (command === "branch --show-current") return ok(branch);
     if (command === "status --porcelain=v1 --untracked-files=normal") return ok(status);
     if (command === "rev-parse --verify HEAD^{commit}") return ok("a".repeat(40));
     if (command === "rev-parse --verify origin/main^{commit}") return ok("b".repeat(40));
     if (command === "rev-list --left-right --count HEAD...origin/main") return ok(relation);
-    if (command === "ls-remote --heads origin refs/heads/feature") {
-      return ok(remoteHead ? `${remoteHead}\trefs/heads/feature` : "");
+    if (command === `ls-remote --heads origin refs/heads/${branch}`) {
+      return ok(remoteHead ? `${remoteHead}\trefs/heads/${branch}` : "");
     }
     throw new Error(`Unexpected git command: ${command}`);
   };
