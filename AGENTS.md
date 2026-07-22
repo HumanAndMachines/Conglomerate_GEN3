@@ -165,6 +165,34 @@ per-modulový IAM.
 
 Nepracuj v konkrétní firmě z rootu. Nejdřív vyber organizaci v `organizations/<org>/`, přečti její `AGENTS.md` a až potom měň její obsah.
 
+## Chat-first vstup do Launchpadu pro App Agenty
+
+Když **Kolega přímo zahájí nový chat s Worker Agentem v Codex/ChatGPT App nebo
+Claude App**, Agent po minimálním určení scope otevře jako svůj první viditelný
+pracovní krok Launchpad GEN3 ve vestavěném browser povrchu dané App. Otevření
+provede jednou pro nový chat/task, ne znovu při každé zprávě, a pokud už správná
+karta existuje, znovu ji použije. Launchpad je grafické rozhraní ke stejnému
+lokálnímu kontextu, který Agent čte a ve kterém Kolegovi pomáhá; produktový
+vstup pro Kolegu proto začíná v chatu, ne ručním hledáním URL.
+
+Agent používá skutečný zdravý origin, který ohlásila běžící instance Launchpadu
+(případně ji spustí kanonickým root launcherem), a port nikdy nehádá ani
+nehardcoduje. K originu připojí stabilní hash route:
+
+- Organizace: `/#/org/<URL-encoded company.slug>`;
+- lokální Personalspace Principála: `/#/personalspace` — URL nikdy nenese
+  username, jméno ani osobní obsah;
+- nejasný nebo skutečně cross-organization chat: kořen Launchpadu bez
+  vymyšleného scope; Agent nejdřív nechá Kolegu scope určit a nikdy nemíchá
+  data Organizací.
+
+Použij pouze browser capability, kterou App Agentovi skutečně poskytuje.
+Nesimuluj klávesové zkratky ani ovládání OS a při chybějícím vestavěném browseru
+potichu nepřepínej požadavek do externího Chrome/Safari; omezení stručně oznam
+Kolegovi a pokračuj v chatu. Toto pravidlo se **nevztahuje** na AI Kolegy ani
+Buddyho a neplatí pro CLI agenty, background automations, review boty a jiné
+neinteraktivní běhy bez přímého App chatu s Kolegou.
+
 ## Agentní orientace před prací
 
 1. **Vytáhni poznatky, zapiš je až nakonec (behavior #1).** První povinnost

@@ -24,6 +24,28 @@ Není to místo pro business pravdu konkrétní firmy.
 - source of truth pro access policy
 - přímé zápisy do modulových dat bez validovaného writeru
 
+## Stabilní odkazy na prostor
+
+Launchpad přijímá a při přepnutí prostoru sám udržuje stabilní hash route:
+
+- `/#/org/<URL-encoded company.slug>` otevře přesnou lokálně dostupnou
+  Organizaci;
+- `/#/personalspace` otevře Personalspace Principála na této mašině. Route je
+  záměrně local-only a neobsahuje username, jméno ani osobní data;
+- `/` bez hash route zachová výchozí výběr a po načtení URL kanonizuje podle
+  aktivního prostoru.
+
+Neznámý Organization slug, nedostupný Personalspace nebo neplatná route se
+nepoužijí jako nový scope: Launchpad zůstane v dostupném bezpečném prostoru,
+adresu kanonizuje a zobrazí varování. Slug je přesná hodnota `company.slug`
+z `company.gen3.json`, ne display name.
+
+Odkaz vždy stav na originu, který ohlásila skutečně běžící instance. Port
+nehádej ani nehardcoduj; výchozí `127.0.0.1:4174` je jen příklad a Launchpad při
+kolizi zvolí jiný port. Tento Organization/Personalspace slice je první část
+širšího Builder Bridge kontraktu pro stabilní odkazy na moduly, Doctor a
+worktrees.
+
 ## Discovery model
 
 Launchpad skládá dostupné Organizace ze dvou vrstev:

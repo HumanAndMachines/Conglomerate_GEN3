@@ -17,6 +17,11 @@ import {
 } from "./app-state.js";
 import { gitChipModel } from "./git-status-copy.js";
 import { semanticAppIconKey } from "./app-icon-key.js";
+import {
+  organizationHash,
+  personalspaceHash,
+  resolveLaunchpadHash,
+} from "./deep-link.js";
 // Personalspace (CAC-0048) je samostatný privátní povrch v odděleném modulu —
 // čte jen z lokálního /api/personalspace, nikdy se nemíchá do org discovery ani
 // filtrů aplikací. Renderuje se jako vlastní vizuálně odlišená sekce v hlavní
@@ -84,6 +89,8 @@ let quietPollTimer = null;
 let restoreSpaceMenuFocusOnClose = false;
 let drawerReturnFocus = null;
 let organizationThemeRenderKey = null;
+let appliedLaunchpadHash = null;
+let launchpadScopeDataReady = false;
 
 // Appearance is split into two independent axes so a future settings panel can
 // drive both dynamically: `mode` (light/dark via data-theme) and `accent`
@@ -313,6 +320,9 @@ document.addEventListener("click", (event) => {
     closeMobileOverflow();
   }
 });
+
+window.addEventListener("hashchange", applyBrowserLaunchpadHash);
+window.addEventListener("popstate", applyBrowserLaunchpadHash);
 
 function initResponsiveChrome() {
   const syncPanels = () => {
@@ -600,7 +610,7 @@ function scheduleQuietPoll({ immediate = false } = {}) {
 }
 
 async function runLoadData({ quiet = false } = {}) {
-  const firstSuccessfulLoad = !state.loaded;
+  const firstSuccessfulScopeLoad = !launchpadScopeDataReady;
   if (!quiet) {
     state.doctorRunState = "running";
     renderDoctorStatus();
@@ -643,11 +653,13 @@ async function runLoadData({ quiet = false } = {}) {
       state.doctorRunState = "complete";
     }
     state.loaded = true;
+    launchpadScopeDataReady = true;
+    applyLaunchpadHash({ notify: firstSuccessfulScopeLoad });
     // První reconcile vybere aplikaci aktivní Organizace. Když je první položka
     // globálního discovery seznamu z jiného scope (např. root Guide), nesmí tato
     // technická změna výběru sama otevřít desktop drawer ani mobilní bottom
     // sheet a zakrýt uživateli denní plochu ještě před první interakcí.
-    if (firstSuccessfulLoad) state.suppressNextDrawerOpen = true;
+    if (firstSuccessfulScopeLoad) state.suppressNextDrawerOpen = true;
     if (!state.selectedAppId && state.apps.length > 0) {
       state.selectedAppId = state.apps[0].id;
     }
@@ -816,6 +828,10 @@ function syncAttentionToggle() {
 
 function render() {
   normalizeActiveSpace();
+  // Transientní chyba prvního discovery nesmí zničit požadovaný deep-link.
+  // URL kanonizujeme až poté, co máme první autoritativní seznam prostorů;
+  // úspěšný retry pak může stále aplikovat původní Organization hash.
+  if (launchpadScopeDataReady) syncActiveSpaceHash({ replace: true });
   applyOrganizationTheme();
   const previousSelectedAppId = state.selectedAppId;
   const suppressDrawerOpen = state.suppressNextDrawerOpen;
@@ -1180,6 +1196,57 @@ function activeSpace() {
     : { kind: "personal", label: "Osobní", slug: "personal" };
 }
 
+function applyBrowserLaunchpadHash() {
+  if (!state.loaded || !launchpadScopeDataReady || window.location.hash === appliedLaunchpadHash) return;
+  const changed = applyLaunchpadHash({ notify: true });
+  render();
+  if (changed) void loadSidePanels();
+}
+
+function applyLaunchpadHash({ notify = false } = {}) {
+  const hash = window.location.hash;
+  const resolution = resolveLaunchpadHash(hash, {
+    companies: state.companies,
+    personalspaceAvailable: Boolean(state.personalspace),
+  });
+  appliedLaunchpadHash = hash;
+  if (resolution.status === "none") return false;
+  if (resolution.status !== "matched") {
+    if (notify) {
+      const message = resolution.status === "not_found"
+        ? `Organizace ${resolution.route.organization} na této mašině není dostupná.`
+        : resolution.status === "unavailable"
+          ? "Personalspace na této mašině není dostupný."
+          : "Odkaz na Launchpad není platný.";
+      toast(message, "warning");
+    }
+    return false;
+  }
+
+  const changed = state.filters.scope !== resolution.scope || state.filters.company !== resolution.company;
+  state.filters.scope = resolution.scope;
+  state.filters.company = resolution.company;
+  if (changed) resetSpaceSelection();
+  return changed;
+}
+
+function syncActiveSpaceHash({ replace = false } = {}) {
+  const hash = state.filters.scope === "personal"
+    ? personalspaceHash()
+    : organizationHash(state.filters.company);
+  writeLaunchpadHash(hash, { replace });
+}
+
+function writeLaunchpadHash(hash, { replace = false } = {}) {
+  if (window.location.hash === hash) {
+    appliedLaunchpadHash = hash;
+    return;
+  }
+  const method = replace ? "replaceState" : "pushState";
+  window.history[method](null, "", hash);
+  appliedLaunchpadHash = hash;
+}
+
 // Shared Launchpad drží layout a chování, ale aktivní Organizace dodává skin.
 // Server propustí jen povolené sémantické tokeny z jejího design systému / GEN2
 // adaptéru; klient je znovu allowlistuje a aplikuje podle light/dark režimu.
@@ -1423,13 +1490,7 @@ function spaceOption(space) {
 function selectSpace(space) {
   restoreSpaceMenuFocusOnClose = true;
   state.spaceMenuOpen = false;
-  state.suppressNextDrawerOpen = true;
-  state.selectedReadonlyDetail = null;
-  state.selectedAppId = null;
-  state.selectedLogs = null;
-  state.problemsRequested = false;
-  state.problemsExpanded = false;
-  setDrawer(false);
+  resetSpaceSelection();
   if (space.kind === "personal") {
     state.filters.scope = "personal";
     state.filters.company = "all";
@@ -1437,8 +1498,19 @@ function selectSpace(space) {
     state.filters.scope = "org";
     state.filters.company = space.organization.slug;
   }
+  syncActiveSpaceHash();
   render();
   void loadSidePanels();
+}
+
+function resetSpaceSelection() {
+  state.suppressNextDrawerOpen = true;
+  state.selectedReadonlyDetail = null;
+  state.selectedAppId = null;
+  state.selectedLogs = null;
+  state.problemsRequested = false;
+  state.problemsExpanded = false;
+  setDrawer(false);
 }
 
 function renderSpaceLogo(mount, space) {
