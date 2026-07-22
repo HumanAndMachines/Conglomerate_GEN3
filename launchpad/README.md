@@ -486,6 +486,16 @@ pohled ukazuje jeho Git stav, incoming počet, freshness a vhodnou pull/autostas
 akci v panelu **Git Organizace**. Globální `Pullnout vše` je ve stejném panelu;
 uživatel nemusí otevírat jednotlivé moduly.
 
+Když se stažení nepovede, modulová karta drží chybu jako trvalý recovery
+warning a instruuje uživatele, aby její screenshot vložil agentovi do Codexu.
+Launchpad sám při `Stáhnout` stále nikdy nerebasuje: používá pouze `ff-only`
+a explicitní autostash. Pokud ale Git read model zjistí rebase rozpracovaný
+jiným nástrojem nebo agentem, karta nabídne guarded **Abortnout rebase**.
+`POST /api/git/repos/<repo-key>/rebase-abort` před mutací znovu ověří deklarovaný
+Organization/workspace scope i živý rebase marker, spustí jen `git rebase
+--abort` a výsledek znovu přečte; nikdy nepoužívá `reset --hard` ani nemaže
+stash.
+
 ### Čerstvost Git stavu
 
 Údaj „novější verze / N commitů pozadu“ se počítá vůči lokálním remote refs,

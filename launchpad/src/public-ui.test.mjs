@@ -509,10 +509,16 @@ test("CAC-0044: step-005 aktivuje Ukázat změny a guarded Stáhnout novější 
   expect(js).not.toContain("Můžeš ji bezpečně stáhnout (fast-forward).");
   expect(js).toContain("git.status === \"pull_available\"");
   expect(js).toContain("state.gitChangesByRepo");
+  expect(js).toContain("state.gitRecoveryByRepo");
+  expect(js).toContain("Abortnout rebase");
+  expect(js).toContain("Udělejte screenshot této hlášky a vložte ho agentovi do Codexu");
+  expect(js).toContain("function abortGitRebase");
+  expect(js).toContain("/rebase-abort");
   expect(css).toContain(".git-builder-actions");
   expect(css).toContain(".git-change-list");
   expect(css).toContain(".toast.is-success");
   expect(css).toContain(".toast.is-error");
+  expect(css).toContain(".card-warning-message");
 });
 
 test("Launchpad nabízí Organization root stav, autostash pull a jeden globální Pullnout vše", async () => {
