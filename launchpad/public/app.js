@@ -2553,10 +2553,18 @@ function runningSharedPortPeer(app) {
     candidate.id !== app.id
     && candidate.company !== app.company
     && candidate.port === app.port
-    && candidate.host === app.host
+    && runtimeHostsShareListener(candidate.host, app.host)
     && (declaredOwners.size === 0 || declaredOwners.has(candidate.id))
     && ["current-instance", "adopted-port"].includes(candidate.runtime?.owner)
   ) ?? null;
+}
+
+// Manifest povoluje dvě ekvivalentní loopback identity. Pro ownership je
+// localhost a 127.0.0.1 tentýž lokální listener endpoint, i když URL zůstává
+// přesně podle manifestu.
+function runtimeHostsShareListener(left, right) {
+  const normalize = (host) => host === "localhost" ? "127.0.0.1" : host;
+  return normalize(left) === normalize(right);
 }
 
 function cardWarningModel(app, gitRepo) {

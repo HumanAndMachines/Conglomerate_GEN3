@@ -9,6 +9,7 @@ import {
   createRuntimeManager,
   parseWindowsListeningPid,
   resolveBunExecutable,
+  runtimeHostsShareListener,
   windowsNetstatCommand,
   windowsPowerShellExecutable,
   windowsTaskkillCommand,
@@ -23,6 +24,14 @@ const testWithInspectableProcessCwd = process.platform === "win32" ? test.skip :
 
 afterAll(async () => {
   await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
+});
+
+test("runtime ownership považuje localhost a 127.0.0.1 za tentýž listener", () => {
+  expect(runtimeHostsShareListener("localhost", "127.0.0.1")).toBe(true);
+  expect(runtimeHostsShareListener("127.0.0.1", "localhost")).toBe(true);
+  expect(runtimeHostsShareListener("localhost", "localhost")).toBe(true);
+  expect(runtimeHostsShareListener("127.0.0.1", "127.0.0.1")).toBe(true);
+  expect(runtimeHostsShareListener("localhost", "0.0.0.0")).toBe(false);
 });
 
 test("runtime manager spustí, změří a zastaví managed aplikaci", async () => {

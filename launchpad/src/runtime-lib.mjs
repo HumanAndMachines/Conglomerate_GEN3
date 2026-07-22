@@ -24,6 +24,11 @@ const errorTailBytes = 4_000;
 const packageLockfileNames = ["bun.lock", "bun.lockb", "package-lock.json", "pnpm-lock.yaml", "yarn.lock"];
 const supportedInstallManagers = new Set(["bun"]);
 
+export function runtimeHostsShareListener(left, right) {
+  const normalize = (host) => host === "localhost" ? "127.0.0.1" : host;
+  return normalize(left) === normalize(right);
+}
+
 export class RuntimeActionError extends Error {
   constructor(status, code, message, details = [], metadata = {}) {
     super(message);
@@ -185,7 +190,7 @@ export function createRuntimeManager({
       candidate.id !== app.id
       && candidate.company !== app.company
       && candidate.port === app.port
-      && candidate.host === app.host
+      && runtimeHostsShareListener(candidate.host, app.host)
     );
     for (const candidate of candidates) {
       const runtime = await healthForApp(candidate);
