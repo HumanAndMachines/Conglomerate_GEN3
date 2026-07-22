@@ -10,11 +10,11 @@
     {
       "id": "issue-2026-07-20-001",
       "title": "Dodefinovat Launchpad převzetí app-owned portu místo fallback portů",
-      "status": "decision_needed",
+      "status": "implementation_ready_for_review",
       "severity": "medium",
-      "owner": "founder",
+      "owner": "Launchpad implementační agent",
       "created_at": "2026-07-20",
-      "updated_at": "2026-07-20",
+      "updated_at": "2026-07-22",
       "tags": [
         "launchpad",
         "runtime",
@@ -45,6 +45,14 @@
         "Doctor runtime diagnostics copy",
         "port ownership UX before broader client rollout"
       ],
+      "decision": "Founder refinement 2026-07-22: deklarovaný port patří app surface a smí se opakovat napříč moduly či Organizacemi; nejde o discovery failure. Na jednom portu může současně běžet jen jedna aplikace. Launchpad nabídne potvrzené přepnutí pouze tehdy, když živý listener pozitivně přiřadí jiné známé Launchpad aplikaci. Foreign/unknown listener zůstává fail-closed a Launchpad ho nikdy automaticky neukončí.",
+      "implementation": "Discovery zachová všechny aplikace se stejným portem a vrátí owner-aware port_overlaps do API a Doctora. Runtime přidává potvrzovanou Switch akci, která před Stopem znovu ověří PID/CWD nahrazované známé aplikace a potom spustí zvolenou appku na jejím stabilním portu. UI nabídne Přepnout a spustit jen u bezpečně rozpoznané známé kolize; cizí a neověřitelný proces dál pouze vysvětlí a zablokuje.",
+      "verification": [
+        "bun test launchpad/src/discovery-lib.test.mjs launchpad/src/diagnostics-lib.test.mjs launchpad/src/runtime-lib.test.mjs",
+        "bun run check",
+        "bun run doctor"
+      ],
+      "next_action": "Steward review koordinovaného HumanAndMachines decision refinement PR a Conglomerate implementation PR; po merge přesunout issue do ISSUES.resolved.json.",
       "links": [
         {
           "label": "Launchpad README port contract",

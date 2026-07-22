@@ -356,7 +356,7 @@ read-only. Admin Organizace (Organization Admin), vstup Uživatelů Organizace
 konfigurace patří do Conglomerate Dashboardu GEN3; Launchpad je pro Buildery
 Organizace a nemá být běžný admin panel.
 
-Shared Launchpad nesmí držet hardcodovaný port map jedné organizace. Aplikace deklaruje svůj port ve vlastním `package.json` manifestu. Productionspace repozitáře nespouštěj ani nereleasuj z rootu, pokud konkrétní Organizace nemá explicitní policy.
+Shared Launchpad nesmí držet hardcodovaný port map jedné organizace. Aplikace deklaruje svůj stabilní port ve vlastním `package.json` manifestu. Stejný port smí deklarovat více app surfaces napříč Organizacemi; současně na něm běží nejvýše jedna. Launchpad smí po potvrzení přepnout jen mezi známými pozitivně ověřenými aplikacemi, nikdy automaticky neukončuje cizí nebo neověřitelný listener. Productionspace repozitáře nespouštěj ani nereleasuj z rootu, pokud konkrétní Organizace nemá explicitní policy.
 
 ## Handoff / closeout
 

@@ -86,6 +86,89 @@ export function createRuntimeManager({
     return startRuntimeApp(app);
   }
 
+  // Dvě známé app surfaces smějí vlastnit stejný deklarovaný port, ale běžet
+  // může jen jedna. Switch je jediná destruktivní cesta: vyžaduje explicitní
+  // potvrzení, main runtime na obou stranách a před Stopem znovu sváže živý PID
+  // s pozitivně ověřeným checkoutem nahrazované aplikace. Foreign/unknown
+  // listenery se touto cestou nikdy neukončují.
+  async function switchApp(appId, { replace_app_id: replaceAppId = null, confirmed = false, source = null } = {}) {
+    if (confirmed !== true) {
+      throw new RuntimeActionError(
+        400,
+        "app_switch_confirmation_required",
+        "Přepnutí aplikace vyžaduje výslovné potvrzení uživatele.",
+      );
+    }
+    if (typeof replaceAppId !== "string" || replaceAppId.trim() === "" || replaceAppId === appId) {
+      throw new RuntimeActionError(
+        400,
+        "invalid_app_switch",
+        "Přepnutí vyžaduje id jiné známé aplikace, která nyní používá stejný port.",
+      );
+    }
+
+    const target = await runtimeAppForAction(appId, { source });
+    if (runtimeSourceForApp(target).type !== "main") {
+      throw new RuntimeActionError(
+        409,
+        "app_switch_main_only",
+        "Přepnutí sdíleného app-owned portu je povolené jen mezi main checkouty; worktree runtime používá vlastní DEV port.",
+      );
+    }
+    const replaced = await runtimeAppForAction(replaceAppId.trim(), { source: { type: "main" } });
+    if (target.port !== replaced.port) {
+      throw new RuntimeActionError(
+        409,
+        "app_switch_port_mismatch",
+        `${target.title} a ${replaced.title} nesdílejí stejný app-owned port.`,
+        [`target_port: ${target.port}`, `replace_port: ${replaced.port}`],
+      );
+    }
+
+    const [targetRuntime, replacedRuntime] = await Promise.all([
+      healthForApp(target),
+      healthForApp(replaced),
+    ]);
+    const targetPid = targetRuntime.port_owner?.pid ?? targetRuntime.pid;
+    const replacedOwner = await resolvePortOwnerFn(replaced.port, {
+      expectedCwd: join(companiesRoot, replaced.cwd ?? dirname(replaced.package_path ?? "package.json")),
+    });
+    if (
+      !["current-instance", "adopted-port"].includes(replacedRuntime.owner)
+      || targetRuntime.owner !== "foreign-port"
+      || !Number.isInteger(targetPid)
+      || replacedOwner?.cwd_matches !== true
+      || replacedOwner.pid !== targetPid
+    ) {
+      throw new RuntimeActionError(
+        409,
+        "app_switch_owner_unverified",
+        "Proces na sdíleném portu už nelze bezpečně přiřadit zvolené Launchpad aplikaci; obnov stav a zkontroluj Doctor.",
+        [
+          `target_owner: ${targetRuntime.owner}`,
+          `target_pid: ${targetPid ?? "unknown"}`,
+          `replace_owner: ${replacedRuntime.owner}`,
+          `replace_listener_pid: ${replacedOwner?.pid ?? "unknown"}`,
+          `replace_cwd_verified: ${replacedOwner?.cwd_matches === true}`,
+        ],
+        { failure_kind: "port_owner_unverified", port: target.port },
+      );
+    }
+
+    const stopped = await stop(replaced.id, { source: { type: "main" } });
+    const started = await startRuntimeApp(target);
+    return {
+      action: "switch",
+      app_id: target.id,
+      replaced_app_id: replaced.id,
+      port: target.port,
+      stopped,
+      started,
+      runtime: started.runtime,
+      url: started.runtime?.url ?? appUrl(target),
+    };
+  }
+
   async function startRuntimeApp(app) {
     const runtimeKey = runtimeKeyForApp(app);
     const runtimeSource = runtimeSourceForApp(app);
@@ -1526,6 +1609,7 @@ export function createRuntimeManager({
     appsWithRuntime,
     health,
     start,
+    switchApp,
     install,
     open,
     stop,

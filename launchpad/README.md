@@ -156,9 +156,10 @@ Nevalidní `companyascode.app` manifest izoluje jen dotčenou appku (decision
 0043): appka je viditelná ve stavu `invalid_manifest`, runtime akce jsou pro ni
 zamčené a zbytek rootu běží. Duplicitní app id je také scoped: druhý manifest
 (deterministicky podle cesty) se izoluje jako `invalid_manifest`, první platí.
-Bezpečnostní invarianty (port kolize, plugin read-only violation, únik plugin
-cesty mimo Organizaci) zůstávají hard failure pro registry i auto-discovered
-Organizace (decision 0042 bezpečnostní parita).
+Bezpečnostní invarianty (živý cizí/neověřitelný listener, plugin read-only
+violation, únik plugin cesty mimo Organizaci) zůstávají hard failure pro
+registry i auto-discovered Organizace (decision 0042 bezpečnostní parita).
+Samotný deklarovaný překryv portů chyba není.
 
 Aplikace deklaruje vlastní port ve svém `package.json`:
 
@@ -195,12 +196,15 @@ V multi-company rootu platí:
   používat lowercase kebab tvar.
 - doporučený tvar ID je
   `<lowercase-company-slug>-<module-or-app>-<version>`.
-- port namespace je společný pro celý Launchpad GEN3 root.
-- port collision je fail-closed invariant: runtime nikdy tiše nepřepne aplikaci
-  na jiný port. Discovery ale staví computed port ownership index a u duplicate
-  portu vypíše vlastníky plus deterministic `suggested_free_port` pro následný
-  manifest edit / PR. Algoritmus hledá první volný port v rozsahu schématu
-  `1024..65535`, od kolidujícího portu + 1 nahoru a potom jednou wrapne.
+- port namespace je společný pro běžící procesy v lokálním Launchpad GEN3
+  rootu, ale dvě app surfaces smějí deklarovat stejný stabilní port. Současně
+  na něm může běžet jen jedna aplikace.
+- discovery vrací computed owner-aware `port_overlaps`; Doctor překryv ukáže
+  informačně a žádnou appku kvůli němu neizoluje ani nepřemapuje.
+- živý konflikt je fail-closed invariant: runtime nikdy tiše nepřepne aplikaci
+  na jiný port. Je-li listener pozitivně ověřená jiná známá Launchpad appka,
+  UI nabídne potvrzené `Přepnout a spustit`. Foreign/unknown listener zůstane
+  blokující a Launchpad ho automaticky neukončí.
 - shared root nesmí držet hardcoded mapu portů konkrétních Organizací. Budoucí
   rezervace pro nemountnuté/planned appky musí být owner-declared metadata, ne
   centrální root tabulka.
@@ -373,6 +377,8 @@ Web shell v1 je pracovní dashboard nad discovery a runtime daty. Poskytuje:
 - `/health` pro health samotného Launchpadu
 - `/api/apps/:id/health` pro runtime status konkrétní aplikace
 - `/api/apps/:id/start` pro spuštění manifestem povoleného `dev_script`
+- `/api/apps/:id/switch` pro potvrzené zastavení jiné známé aplikace na stejném
+  portu a spuštění cílové aplikace
 - `/api/apps/:id/install` pro lokální app-scoped dependency install v app package
   cwd
 - `/api/apps/:id/repair` pro stejný app-scoped install mechanismus v repair
@@ -387,6 +393,13 @@ Explicitní mismatch je `foreign-port`; neověřitelný CWD je `unknown-port`.
 Ani jeden stav Launchpad nepřevezme, nenabídne mu Stop/Restart a automaticky
 jej neukončí. Tím se například legacy GEN2 proces na stejném portu nemůže
 vydávat za GEN3 aplikaci ani na OS s omezeným CWD lookupem.
+
+Výjimkou není „kill cizího procesu“, ale bezpečný switch mezi dvěma známými
+appkami. Cílová appka musí mít main runtime a stejný deklarovaný port;
+nahrazovaná appka musí být `current-instance` nebo `adopted-port`. Po potvrzení
+uživatele backend znovu ověří PID i CWD živého listeneru proti nahrazované
+appce, teprve potom ji zastaví a spustí cíl. Pokud se evidence mezitím změní,
+switch selže bez signálu.
 
 Web shell nemění konfiguraci a nezapisuje business data. Runtime stav drží
 mimo Git v `launchpad/runtime/` a `launchpad/logs/`. Výjimka k riziku side
@@ -467,6 +480,8 @@ jasný mechanismus:
   guardem. Nikdy nepoužije `taskkill` jen podle obsazeného portu; neověřený
   nebo cizí listener zůstává nedotčený.
 - `Restart` je `Stop` + `Start` nad app-owned portem.
+- `Přepnout a spustit` je potvrzený `Stop` jiné známé pozitivně ověřené appky
+  se stejným portem + `Start` cíle; není dostupné pro foreign/unknown listener.
 - `Logs` čte lokální log mimo Git.
 - `Stáhnout novější verzi` provede pouze fresh-remote-verified
   `git pull --ff-only` na čistém expected-branch checkoutu.

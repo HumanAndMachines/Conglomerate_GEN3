@@ -2544,9 +2544,34 @@ function isUntrustedPortOwner(app) {
   return ["foreign-port", "unknown-port"].includes(app.runtime?.owner);
 }
 
+function runningSharedPortPeer(app) {
+  if (app.runtime?.owner !== "foreign-port" || selectedRuntimeSourceForApp(app).type !== "main") return null;
+  const targetPid = app.runtime?.pid;
+  if (!Number.isInteger(targetPid)) return null;
+  const declaredOwners = new Set((app.shared_port_owners ?? []).map((owner) => owner.app_id));
+  return state.apps.find((candidate) =>
+    candidate.id !== app.id
+    && candidate.port === app.port
+    && candidate.host === app.host
+    && (declaredOwners.size === 0 || declaredOwners.has(candidate.id))
+    && ["current-instance", "adopted-port"].includes(candidate.runtime?.owner)
+  ) ?? null;
+}
+
 function cardWarningModel(app, gitRepo) {
   if (isProductionspace(app)) return null;
   const dependencyState = app.dependencies?.state;
+  const sharedPortPeer = runningSharedPortPeer(app);
+
+  if (sharedPortPeer) {
+    return {
+      tone: "warn",
+      title: `Port používá ${appBaseTitle(sharedPortPeer)}`,
+      actionLabel: "Přepnout a spustit",
+      run: () => switchRuntimeApp(app, sharedPortPeer),
+      pending: `${app.id}:switch`,
+    };
+  }
 
   if (isUntrustedPortOwner(app)) {
     return {
@@ -2708,6 +2733,14 @@ function cardHasMenu(app, others) {
 // detailu/logů. Čistá zastavená dlaždice nevrací nic (žádné ⋯).
 function cardMenuActions(app) {
   const actions = [];
+  const sharedPortPeer = runningSharedPortPeer(app);
+  if (sharedPortPeer) {
+    actions.push({
+      label: `Přepnout z ${appBaseTitle(sharedPortPeer)}`,
+      run: () => switchRuntimeApp(app, sharedPortPeer),
+      pending: `${app.id}:switch`,
+    });
+  }
   if (canStop(app)) {
     actions.push({ label: "Zastavit", run: () => runRuntimeAction(app, "stop"), pending: `${app.id}:stop` });
   }
@@ -3131,7 +3164,13 @@ function chip(label, toneClass, withDot = false) {
 
 function primaryActionNode(app, nextAction) {
   let node;
-  if (nextAction.type === "folder") {
+  if (nextAction.type === "switch") {
+    node = cardActionButton(
+      nextAction.label,
+      () => switchRuntimeApp(app, nextAction.peer),
+      state.pendingAction === `${app.id}:switch`,
+    );
+  } else if (nextAction.type === "folder") {
     node = cardActionButton(
       nextAction.label,
       () => openWorkspaceModuleFolder(app),
@@ -3172,11 +3211,15 @@ function cardActionButton(label, onClick, disabled) {
 
 function primaryNextAction(app) {
   const dependencyState = app.dependencies?.state;
-  if (app.kind === "workspace-module" && app.can_open_folder) {
-    return { type: "folder", label: "Otevřít složku" };
-  }
   if (isProductionspace(app) || app.is_readonly_system) {
     return { type: "disabled", label: "Jen pro čtení" };
+  }
+  const sharedPortPeer = runningSharedPortPeer(app);
+  if (sharedPortPeer) {
+    return { type: "switch", label: "Přepnout a spustit", peer: sharedPortPeer };
+  }
+  if (app.kind === "workspace-module" && app.can_open_folder) {
+    return { type: "folder", label: "Otevřít složku" };
   }
   if (isUntrustedPortOwner(app)) {
     return {
@@ -3315,14 +3358,29 @@ function actionButtons(app) {
   wrapper.className = "action-buttons";
   // Appka s nevalidním manifestem nemá URL — odkaz se nenabízí.
   if (app.url) wrapper.append(openLink(app.url));
+  const sharedPortPeer = runningSharedPortPeer(app);
   wrapper.append(
     runtimeButton(app, installAction(app), installLabel(app), !canInstall(app)),
     runtimeButton(app, "start", "Spustit", !canStart(app)),
+    switchRuntimeButton(app, sharedPortPeer),
     runtimeButton(app, "stop", "Zastavit", !canStop(app)),
     runtimeButton(app, "restart", "Restart", !canRestart(app)),
     logsButton(app),
   );
   return wrapper;
+}
+
+function switchRuntimeButton(app, peer) {
+  const button = document.createElement("button");
+  button.className = "small-button";
+  button.type = "button";
+  button.textContent = "Přepnout";
+  button.disabled = !peer || state.pendingAction === `${app.id}:switch`;
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (peer) void switchRuntimeApp(app, peer);
+  });
+  return button;
 }
 
 function runtimeButton(app, action, label, disabled) {
@@ -4232,6 +4290,9 @@ function nextActionReason(app, nextAction) {
     }
     return `Akce není dostupná: ${humanDependencyLabel(app.dependencies?.state)}. Vyřeš to přes Doktora nebo sync.`;
   }
+  if (nextAction.type === "switch") {
+    return `Port ${app.port} teď bezpečně vlastní ${appBaseTitle(nextAction.peer)}. Po potvrzení ji Launchpad zastaví a spustí tuto aplikaci.`;
+  }
   if (nextAction.type === "open") return "Aplikace běží — otevře se v novém panelu, nic se nespouští.";
   if (nextAction.type === "folder") return "Otevře lokální checkout ve správci souborů; nic v něm nemění.";
   if (nextAction.action === "install") return "Doplní chybějící balíčky v rozsahu cwd aplikace.";
@@ -4630,6 +4691,44 @@ async function runRuntimeAction(app, action) {
     };
     toast(`${app.title}: ${error.message}`, "fail", 6000);
     render();
+  } finally {
+    state.pendingAction = null;
+    render();
+  }
+}
+
+async function switchRuntimeApp(app, peer) {
+  if (!peer || state.pendingAction === `${app.id}:switch`) return;
+  const confirmed = window.confirm(
+    `Port ${app.port} teď používá ${appBaseTitle(peer)}. Zastavit ji a spustit ${appBaseTitle(app)}?`,
+  );
+  if (!confirmed) return;
+
+  state.pendingAction = `${app.id}:switch`;
+  state.actionMessage = null;
+  render();
+  try {
+    await fetchJson(`/api/apps/${encodeURIComponent(app.id)}/switch`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        source: sourcePayloadForApp(app),
+        replace_app_id: peer.id,
+        confirmed: true,
+      }),
+    });
+    state.actionMessage = {
+      type: "ok",
+      message: `${appBaseTitle(peer)} zastavena; ${appBaseTitle(app)} se spouští.`,
+    };
+    toast(`${appBaseTitle(app)}: přepnutí dokončeno.`, "ok");
+    await loadData({ quiet: true });
+  } catch (error) {
+    state.actionMessage = {
+      type: "fail",
+      message: `${appBaseTitle(app)}: ${error.message}`,
+    };
+    toast(`${appBaseTitle(app)}: ${error.message}`, "fail", 6000);
   } finally {
     state.pendingAction = null;
     render();

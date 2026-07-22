@@ -133,11 +133,12 @@ If the answer to #4 is yes, stop and anonymize or keep it local.
 
 ## Port allocation guardrail
 
-Do **not** fix Launchpad port collisions by choosing ad-hoc local ports. GEN3
-needs an Organization-wide and root-visible port allocation/validation path so
-every builder and Workspace Host uses stable module ports. If discovery reports a
-collision, treat it as a registry/manifest governance issue: find the canonical
-module port, update docs/manifests, and only then change package metadata.
+Do **not** fix Launchpad port overlaps by choosing ad-hoc local ports. Každá app
+surface vlastní stabilní port ve svém package manifestu a více Organizací jej
+smí deklarovat stejně; pak může být v jednom lokálním rootu aktivní jen jedna
+z nich. Port měň pouze tehdy, když modul skutečně potřebuje souběžný runtime,
+ne proto, aby discovery prošlo. Doctor ukazuje vlastníky překryvu a Launchpad
+smí po potvrzení přepnout jen mezi pozitivně ověřenými známými aplikacemi.
 
 ## Next stage before apply mode
 

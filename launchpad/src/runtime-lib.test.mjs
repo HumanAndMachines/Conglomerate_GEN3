@@ -781,6 +781,82 @@ testWithInspectableProcessCwd("runtime manager neadoptuje zdravý app-owned port
   }
 });
 
+testWithInspectableProcessCwd("runtime manager po potvrzení bezpečně přepne dvě známé aplikace na sdíleném portu", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port });
+  const sourceRoot = join(root, "organizations", "TestCompany", "modules", "demo", "app", "v1");
+  const targetRoot = join(root, "organizations", "TestCompany", "modules", "other", "app", "v1");
+  await cp(sourceRoot, targetRoot, { recursive: true });
+  const targetPackagePath = join(targetRoot, "package.json");
+  const targetPackage = JSON.parse(await readFile(targetPackagePath, "utf8"));
+  targetPackage.name = "other-app";
+  targetPackage.companyascode.app = {
+    ...targetPackage.companyascode.app,
+    id: "test-company-other-v1",
+    title: "Other v1",
+    module: "other",
+  };
+  await writeJson(targetPackagePath, targetPackage);
+
+  const sourceApp = fixtureDiscoveryApp({ port });
+  const targetApp = fixtureDiscoveryApp({
+    port,
+    overrides: {
+      id: "test-company-other-v1",
+      title: "Other v1",
+      module: "other",
+      package_path: "organizations/TestCompany/modules/other/app/v1/package.json",
+      cwd: "organizations/TestCompany/modules/other/app/v1",
+    },
+  });
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "shared-port-instance",
+    discover: discoveryWithApps(sourceApp, targetApp),
+  });
+
+  try {
+    await runtime.start(sourceApp.id);
+    const sourceHealth = await waitForStatus(() => runtime.health(sourceApp.id), "healthy");
+    const targetHealth = await runtime.health(targetApp.id);
+    expect(targetHealth).toMatchObject({
+      status: "unhealthy",
+      owner: "foreign-port",
+    });
+    expect(targetHealth.pid).toBeNumber();
+    expect(sourceHealth.pid).toBeNumber();
+
+    await expect(runtime.switchApp(targetApp.id, { replace_app_id: sourceApp.id })).rejects.toMatchObject({
+      status: 400,
+      code: "app_switch_confirmation_required",
+    });
+
+    const switched = await runtime.switchApp(targetApp.id, {
+      replace_app_id: sourceApp.id,
+      confirmed: true,
+      source: { type: "main" },
+    });
+    expect(switched).toMatchObject({
+      action: "switch",
+      app_id: targetApp.id,
+      replaced_app_id: sourceApp.id,
+      port,
+    });
+    const targetRunning = await waitForStatus(() => runtime.health(targetApp.id), "healthy");
+    expect(targetRunning.owner).toBe("current-instance");
+    expect((await runtime.health(sourceApp.id))).toMatchObject({
+      status: "unhealthy",
+      owner: "foreign-port",
+    });
+  } finally {
+    const targetHealth = await runtime.health(targetApp.id);
+    if (["current-instance", "adopted-port"].includes(targetHealth.owner)) {
+      await runtime.stop(targetApp.id);
+    }
+  }
+}, platformTestTimeout(15_000));
+
 test("runtime manager fail-closed neadoptuje zdravý port při neznámém CWD (Windows/restricted lookup)", async () => {
   const port = await findFreePort();
   const root = await createCompaniesWorkspaceFixture({ port });
@@ -1511,6 +1587,10 @@ function fixtureDiscoveryApp({ port, overrides = {} }) {
 
 function discoveryWithApp(app) {
   return async () => ({ apps: [app], invalid_apps: [], failures: [], warnings: [] });
+}
+
+function discoveryWithApps(...apps) {
+  return async () => ({ apps, invalid_apps: [], failures: [], warnings: [] });
 }
 
 async function writeJson(path, data) {

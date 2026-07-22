@@ -27,7 +27,7 @@ self-contained provedení těchto rozhodnutí z repozitáře HumanAndMachines:
 | `HumanAndMachines/docs/decisions/0037-mission-control-v3-at-gen3-migration-boundary.md` | Mission Control v3 není GEN2 prerequisite; jeho app/data hranice se řeší až v cílové Organizaci GEN3. |
 | `HumanAndMachines/docs/decisions/0041-flat-workspace-folder-and-manifest-grouping.md` | Workspace moduly fyzicky žijí v jedné `workspace/`; příslušnost ke Workspace určuje manifest, ne cesta. Productionspace je rezervovaná org-level hranice. |
 | `HumanAndMachines/docs/decisions/0042-auto-discovery-first-launchpad.md` | Přítomná Organizace se objevuje skenem `organizations/*/company.gen3.json`; root registry není allowlist. |
-| `HumanAndMachines/docs/decisions/0043-launchpad-invalid-manifest-isolation.md` | Vadný app manifest se izoluje, ale port kolize a bezpečnostní porušení zůstávají tvrdé chyby. |
+| `HumanAndMachines/docs/decisions/0043-launchpad-invalid-manifest-isolation.md` | Vadný app manifest se izoluje; deklarovaný port overlap je povolený, ale živý foreign/unknown listener a bezpečnostní porušení zůstávají tvrdé chyby. |
 | `HumanAndMachines/docs/decisions/0045-genn-permanent-generation-marker.md` | Repo a mount si `_GEN3` nechávají i po cutoveru; `company.slug`, brand a app company suffix nenesou. |
 | `HumanAndMachines/docs/decisions/0049-worktree-runtime-contract.md` | Každá migrační změna vzniká v Mission-Control-owned worktree s kanonickou cestou a sidecarem; hlavní checkout zůstává na `main`. |
 
@@ -997,7 +997,7 @@ Cutover blokuje:
 - jakýkoli Doctor/check `fail`, nevalidní task/issue ledger nebo security
   violation;
 - dirty/unknown repo, nečekaná větev mimo schválenou productionspace policy;
-- duplicate/invalid app id, port collision nebo required app bez manifestu;
+- duplicate/invalid app id, živý neověřený port conflict nebo required app bez manifestu;
 - orphan worktree, nejasný writer nebo neexistující Mission Control plan;
 - nevyřešený live consumer mazané cesty, zejména `launchpad/contracts`;
 - dvě skill knihovny, unmapped colleague overlay nebo secret/private data v
@@ -1124,7 +1124,8 @@ Migrace Organizace je hotová teprve když:
 - všichni cohort colleagues mají schválené `company/colleagues/<os-user>`
   mapování bez privátních dat;
 - každá required app má právě jednu autoritu v package `companyascode.app`,
-  bez globální id/port kolize;
+  bez globální app id kolize; deklarované port overlapy mají owner-aware Doctor
+  evidenci a souběžný runtime jen tam, kde jsou porty skutečně rozdílné;
 - Mission Control má jednu app-code a jednu data autoritu, legacy fallback je
   vypnutý pouze po decision-0036 gates;
 - DEV kódy jsou unikátní nebo sémanticky remapované s provenance;

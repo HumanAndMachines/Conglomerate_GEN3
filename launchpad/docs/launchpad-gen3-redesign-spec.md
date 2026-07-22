@@ -636,8 +636,12 @@ a blokující dependency stavy zůstávají read-only (jen selekce do detailu).
 `POST /api/apps/:id/open` (`src/runtime-lib.mjs` → `open`) je idempotentní řetěz:
 ensure install (jen když dependency stav vyžaduje a jde bezpečně) → ensure start
 (běžící appka se reuse-ne, nespouští znovu) → vrátit URL. Každý krok je
-idempotentní a přerušitelný; **port kolize je blokující stav** (decision 0049),
-žádný tichý fallback — konflikt propadne do srozumitelné chyby. UI rezervuje tab
+idempotentní a přerušitelný; **živá port kolize je blokující stav** (decision
+0049), žádný tichý fallback — konflikt propadne do srozumitelné chyby.
+Deklarovaný overlap dvou app surfaces je povolený. Pokud port živě vlastní jiná
+známá a pozitivně ověřená Launchpad aplikace, samostatná potvrzená akce
+`POST /api/apps/:id/switch` ji bezpečně zastaví a spustí cíl; foreign/unknown
+listener nikdy automaticky neukončí. UI rezervuje tab
 před akcí (aby ho prohlížeč nezablokoval), ukazuje průběh „Otevírám…", toasty a
 klasifikaci chyb do lidského jazyka (`classifyOpenError`).
 

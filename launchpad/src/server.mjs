@@ -374,7 +374,7 @@ async function isRunningLaunchpad(url, expectedRootId) {
 }
 
 function appRuntimeRoute(pathname) {
-  const match = pathname.match(/^\/api\/apps\/([^/]+)\/(health|install|repair|start|open|stop|restart|logs)$/);
+  const match = pathname.match(/^\/api\/apps\/([^/]+)\/(health|install|repair|start|switch|open|stop|restart|logs)$/);
   if (!match) return null;
   return {
     appId: decodeURIComponent(match[1]),
@@ -639,6 +639,9 @@ async function handleRuntimeRoute(request, route) {
     if (route.action === "start" && request.method === "POST") {
       return jsonResponse(await runtimeManager.start(route.appId, runtimeOptions));
     }
+    if (route.action === "switch" && request.method === "POST") {
+      return jsonResponse(await runtimeManager.switchApp(route.appId, runtimeOptions));
+    }
     // One-click builder chain (CAC-0044): ensure install → ensure start → URL.
     if (route.action === "open" && request.method === "POST") {
       return jsonResponse(await runtimeManager.open(route.appId, runtimeOptions));
@@ -667,7 +670,11 @@ async function runtimeRequestOptions(request) {
     throw new RuntimeActionError(400, "invalid_runtime_request", "Runtime request body musí být validní JSON.");
   }
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return {};
-  return payload.source ? { source: payload.source } : {};
+  return {
+    ...(payload.source ? { source: payload.source } : {}),
+    ...(typeof payload.replace_app_id === "string" ? { replace_app_id: payload.replace_app_id } : {}),
+    ...(payload.confirmed === true ? { confirmed: true } : {}),
+  };
 }
 
 function startServer(startPort) {

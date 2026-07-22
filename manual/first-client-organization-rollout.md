@@ -281,7 +281,10 @@ Kontrolní pravidla:
   proces nebo služba modulu — například klientské Mission Control API — smí
   mít vlastní app-owned port ve své konfiguraci nebo env; tento API port se
   nekopíruje do Launchpad app manifestu a nemusí se rovnat UI portu.
-- Porty jsou unikátní napříč lokálním rootem. Pro prvního klienta začínej v klientském bloku okolo `5500+` a ověř kolize přes Launchpad `/api/apps`.
+- App surface drží stabilní port ve svém manifestu. Stejný port smí deklarovat
+  více modulů či Organizací; v jednom lokálním rootu pak současně běží jen
+  jedna z nich. Unikátní port zvol pouze tam, kde je požadovaný souběžný runtime,
+  a owner-aware overlap ověř přes Launchpad `/api/apps` a Doctor.
 - Launchpad `/api/apps` ověří manifestové app porty. Modul s dalším interním
   API portem odpovídá i za jeho collision/readiness kontrolu; root kvůli němu
   nezavádí druhý port registry.
@@ -304,7 +307,7 @@ Povinný výsledek pro klientský handoff:
 | Git root | čistý root checkout, žádné Organization submoduly |
 | Mounts | Organization mountpoint je Git checkout |
 | Discovery | klientská Organization je objevená; nezaložený modul je `planned_slot` bez repo URL, zatímco `missing_access` má vždy vlastní next action |
-| Runtime | žádné `invalid_manifest`, port collision nebo dependency warning bez next action |
+| Runtime | žádné `invalid_manifest`, živý foreign/unknown port conflict nebo dependency warning bez next action; deklarovaný overlap má známé vlastníky |
 | Support loop | Doctor/Launchpad hlášky jsou `ok` nebo explicitně akceptované planned/stopped stavy |
 
 Template gate pro první instalaci:
