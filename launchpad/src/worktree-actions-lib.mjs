@@ -24,6 +24,9 @@ export async function createWorktreeFromPlan({
   planPath,
   branch,
   createdBy = "launchpad-builder",
+  conversationOrigin = null,
+  recoveryHandoff = null,
+  environment = process.env,
 } = {}) {
   if (!companiesRoot) throw new Error("createWorktreeFromPlan requires companiesRoot");
   const repo = await resolveRepo(companiesRoot, repoKey);
@@ -52,6 +55,20 @@ export async function createWorktreeFromPlan({
       code: "branch_missing_plan_code",
     });
   }
+
+  const createdAt = new Date().toISOString();
+  const resolvedConversationOrigin = resolveConversationOrigin({
+    provided: conversationOrigin,
+    createdBy,
+    environment,
+    capturedAt: createdAt,
+  });
+  const resolvedRecoveryHandoff = resolveRecoveryHandoff({
+    provided: recoveryHandoff,
+    plan,
+    repo,
+    updatedAt: createdAt,
+  });
 
   await assertRepoCanCreateWorktree(repo);
 
@@ -96,8 +113,10 @@ export async function createWorktreeFromPlan({
     mission_control_plan_code: plan.code,
     mission_control_plan_path: normalizedPlanPath,
     worktree_path: paths.organizationRelativeWorktreePath,
-    created_at: new Date().toISOString(),
+    created_at: createdAt,
     created_by: createdBy,
+    conversation_origin: resolvedConversationOrigin,
+    recovery_handoff: resolvedRecoveryHandoff,
     status: "active",
   };
   await writeJson(paths.absoluteSidecarPath, metadata);
@@ -118,6 +137,8 @@ export async function publishWorktreeDraft({
   slug,
   commitMessage,
   publisher = "launchpad-builder",
+  conversationOrigin = null,
+  environment = process.env,
 } = {}) {
   if (!companiesRoot) throw new Error("publishWorktreeDraft requires companiesRoot");
   const repo = await resolveRepo(companiesRoot, repoKey);
@@ -129,6 +150,13 @@ export async function publishWorktreeDraft({
     });
   }
   const message = validateCommitMessage(commitMessage);
+  const publishedAt = new Date().toISOString();
+  const resolvedConversationOrigin = resolveConversationOrigin({
+    provided: conversationOrigin,
+    createdBy: publisher,
+    environment,
+    capturedAt: publishedAt,
+  });
   const absoluteWorktreePath = join(companiesRoot, worktree.path);
   const absoluteSidecarPath = join(companiesRoot, worktree.sidecar_path);
   await assertWorktreePathsInsideOrganization({
@@ -170,7 +198,6 @@ export async function publishWorktreeDraft({
   });
   if (!push.ok) throwGitPublishError("git_push_failed", push);
 
-  const publishedAt = new Date().toISOString();
   await updateSidecar(join(companiesRoot, worktree.sidecar_path), {
     last_touched: publishedAt,
     last_published_at: publishedAt,
@@ -178,6 +205,14 @@ export async function publishWorktreeDraft({
     last_published_commit: sha,
     pr_url: null,
     status: "active",
+    conversation_origin: resolvedConversationOrigin,
+    recovery_handoff: {
+      state: "ready_for_pr",
+      summary: `Draft byl commitnutý a branch pushnutá na ${sha}.`,
+      blocker: null,
+      next_action: "Otevři nebo aktualizuj pull request proti main a zapiš jeho přesnou URL do sidecaru.",
+      updated_at: publishedAt,
+    },
   });
 
   return {
@@ -347,6 +382,132 @@ function validateCommitMessage(commitMessage) {
     throw new WorktreeActionError("Commit message musí být vyplněná.", { status: 400, code: "missing_commit_message" });
   }
   return commitMessage.trim();
+}
+
+const RECOVERY_STATES = new Set([
+  "in_progress",
+  "blocked",
+  "paused",
+  "ready_to_commit",
+  "ready_to_push",
+  "ready_for_pr",
+  "ready_for_review",
+  "completed",
+]);
+
+function resolveConversationOrigin({ provided, createdBy, environment, capturedAt }) {
+  if (provided !== null && (typeof provided !== "object" || Array.isArray(provided))) {
+    throw new WorktreeActionError("conversationOrigin musí být object.", {
+      status: 400,
+      code: "invalid_conversation_origin",
+    });
+  }
+  const env = environment && typeof environment === "object" ? environment : {};
+  const explicitThreadId = optionalMetadataString(provided?.thread_id, "conversationOrigin.thread_id", 512);
+  const genericThreadId = optionalMetadataString(env.HUMANANDMACHINE_THREAD_ID, "HUMANANDMACHINE_THREAD_ID", 512);
+  const codexThreadId = optionalMetadataString(env.CODEX_THREAD_ID, "CODEX_THREAD_ID", 512);
+  const claudeThreadId = optionalMetadataString(env.CLAUDE_SESSION_ID, "CLAUDE_SESSION_ID", 512);
+  const explicitLocatorStatus = provided?.thread_locator_status;
+  const useEnvironmentLocator = explicitLocatorStatus === undefined || explicitLocatorStatus === "captured";
+  const threadId = explicitThreadId ?? (useEnvironmentLocator
+    ? genericThreadId ?? codexThreadId ?? claudeThreadId
+    : null);
+  const inferredSurface = genericThreadId
+    ? "humanandmachine-agent"
+    : codexThreadId
+      ? "codex"
+      : claudeThreadId
+        ? "claude-code"
+        : "launchpad";
+  const surface = requiredMetadataString(
+    provided?.surface ?? env.HUMANANDMACHINE_AGENT_SURFACE ?? inferredSurface,
+    "conversationOrigin.surface",
+    80,
+  );
+  if (!/^[a-z0-9][a-z0-9._-]*$/.test(surface)) {
+    throw new WorktreeActionError("conversationOrigin.surface musí být lowercase machine slug.", {
+      status: 400,
+      code: "invalid_conversation_origin",
+    });
+  }
+  const agentLabel = requiredMetadataString(
+    provided?.agent_label ?? env.HUMANANDMACHINE_AGENT_LABEL ?? createdBy,
+    "conversationOrigin.agent_label",
+    120,
+  );
+  const locatorStatus = explicitLocatorStatus ?? (threadId ? "captured" : "unavailable");
+  if (!["captured", "unavailable", "not_applicable"].includes(locatorStatus)) {
+    throw new WorktreeActionError("conversationOrigin.thread_locator_status je neplatný.", {
+      status: 400,
+      code: "invalid_conversation_origin",
+    });
+  }
+  if ((locatorStatus === "captured") !== Boolean(threadId)) {
+    throw new WorktreeActionError("captured conversation origin vyžaduje thread_id; ostatní stavy jej nesmí nést.", {
+      status: 400,
+      code: "invalid_conversation_origin",
+    });
+  }
+  if (provided?.local_only === false) {
+    throw new WorktreeActionError("conversationOrigin je vždy local_only.", {
+      status: 400,
+      code: "invalid_conversation_origin",
+    });
+  }
+  return {
+    surface,
+    agent_label: agentLabel,
+    thread_id: threadId ?? null,
+    thread_locator_status: locatorStatus,
+    local_only: true,
+    captured_at: capturedAt,
+  };
+}
+
+function resolveRecoveryHandoff({ provided, plan, repo, updatedAt }) {
+  if (provided !== null && (typeof provided !== "object" || Array.isArray(provided))) {
+    throw new WorktreeActionError("recoveryHandoff musí být object.", {
+      status: 400,
+      code: "invalid_recovery_handoff",
+    });
+  }
+  const state = provided?.state ?? "in_progress";
+  if (!RECOVERY_STATES.has(state)) {
+    throw new WorktreeActionError("recoveryHandoff.state je neplatný.", {
+      status: 400,
+      code: "invalid_recovery_handoff",
+    });
+  }
+  return {
+    state,
+    summary: requiredMetadataString(
+      provided?.summary ?? `Zahájena práce ${plan.code} — ${plan.title} pro ${repo.module}.`,
+      "recoveryHandoff.summary",
+      1000,
+    ),
+    blocker: optionalMetadataString(provided?.blocker, "recoveryHandoff.blocker", 1000),
+    next_action: requiredMetadataString(
+      provided?.next_action ?? "Pokračuj podle Mission Control plánu a před pauzou tento handoff aktualizuj.",
+      "recoveryHandoff.next_action",
+      1000,
+    ),
+    updated_at: updatedAt,
+  };
+}
+
+function requiredMetadataString(value, label, maxLength) {
+  if (typeof value !== "string" || value.trim() === "" || value.length > maxLength || /[\0\r\n]/.test(value)) {
+    throw new WorktreeActionError(`${label} musí být neprázdný jednořádkový text do ${maxLength} znaků.`, {
+      status: 400,
+      code: "invalid_worktree_metadata",
+    });
+  }
+  return value.trim();
+}
+
+function optionalMetadataString(value, label, maxLength) {
+  if (value === undefined || value === null || value === "") return null;
+  return requiredMetadataString(value, label, maxLength);
 }
 
 function throwGitPublishError(code, result) {

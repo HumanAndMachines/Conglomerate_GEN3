@@ -21,6 +21,7 @@ test("guarded create makes a canonical Mission-Control-owned worktree with sidec
     planPath: "mission-control/plans/2026/07/CAC-0042-deals-publish.yaml",
     branch: "CAC-0042-deals-publish",
     createdBy: "test-agent",
+    environment: { CODEX_THREAD_ID: "019f8950-test-thread" },
   });
 
   expect(created).toMatchObject({
@@ -58,8 +59,21 @@ test("guarded create makes a canonical Mission-Control-owned worktree with sidec
     mission_control_plan_path: "mission-control/plans/2026/07/CAC-0042-deals-publish.yaml",
     worktree_path: ".worktrees/workspace/deals/CAC-0042-deals-publish",
     created_by: "test-agent",
+    conversation_origin: {
+      surface: "codex",
+      agent_label: "test-agent",
+      thread_id: "019f8950-test-thread",
+      thread_locator_status: "captured",
+      local_only: true,
+    },
+    recovery_handoff: {
+      state: "in_progress",
+      blocker: null,
+    },
     status: "active",
   });
+  expect(sidecar.conversation_origin.captured_at).toBe(sidecar.created_at);
+  expect(sidecar.recovery_handoff.updated_at).toBe(sidecar.created_at);
 
   const index = await buildWorktreeIndex({ companiesRoot: root, organization: "BetaCo", module: "deals" });
   expect(index.worktrees.find((worktree) => worktree.slug === "CAC-0042-deals-publish")).toMatchObject({
@@ -79,6 +93,7 @@ test("guarded create writes a sidecar satisfying every worktree.schema.json requ
     planPath: "mission-control/plans/2026/07/CAC-0042-deals-publish.yaml",
     branch: "CAC-0042-deals-publish",
     createdBy: "test-agent",
+    environment: {},
   });
 
   const schema = JSON.parse(await readFile(join(import.meta.dir, "..", "schemas", "worktree.schema.json"), "utf8"));
@@ -92,6 +107,17 @@ test("guarded create writes a sidecar satisfying every worktree.schema.json requ
   expect(schema.properties.repo_kind.enum).toContain(sidecar.repo_kind);
   expect(schema.properties.status.enum).toContain(sidecar.status);
   expect(sidecar.mission_control_plan_code).toMatch(new RegExp(schema.properties.mission_control_plan_code.pattern));
+  expect(sidecar.conversation_origin).toMatchObject({
+    surface: "launchpad",
+    agent_label: "test-agent",
+    thread_id: null,
+    thread_locator_status: "unavailable",
+    local_only: true,
+  });
+  expect(sidecar.recovery_handoff).toMatchObject({
+    state: "in_progress",
+    blocker: null,
+  });
 });
 
 test("guarded create accepts the canonical nested Mission Control v3 data path and keeps it exact in the sidecar", async () => {
@@ -397,6 +423,66 @@ test("publish assistant commits local draft and pushes branch without opening PR
   });
   expect(sidecar.last_published_by).toBe("test-agent");
   expect(sidecar.last_published_commit).toBe(published.commit.sha);
+  expect(sidecar.recovery_handoff).toMatchObject({
+    state: "ready_for_pr",
+    blocker: null,
+  });
+  expect(sidecar.recovery_handoff.summary).toContain(published.commit.sha);
+});
+
+test("guarded create rejects contradictory conversation locator metadata", async () => {
+  const { root } = await setupDealsRepoWithPlan();
+
+  await expect(
+    createWorktreeFromPlan({
+      companiesRoot: root,
+      repoKey: "BetaCo::deals",
+      planPath: "mission-control/plans/2026/07/CAC-0042-deals-publish.yaml",
+      branch: "CAC-0042-invalid-thread-origin",
+      createdBy: "test-agent",
+      conversationOrigin: {
+        surface: "codex",
+        agent_label: "test-agent",
+        thread_id: null,
+        thread_locator_status: "captured",
+      },
+      environment: {},
+    }),
+  ).rejects.toMatchObject({
+    name: "WorktreeActionError",
+    code: "invalid_conversation_origin",
+    status: 400,
+  });
+});
+
+test("explicit non-captured conversation status suppresses an ambient session ID", async () => {
+  const { root, orgRoot } = await setupDealsRepoWithPlan();
+
+  await createWorktreeFromPlan({
+    companiesRoot: root,
+    repoKey: "BetaCo::deals",
+    planPath: "mission-control/plans/2026/07/CAC-0042-deals-publish.yaml",
+    branch: "CAC-0042-no-thread-capture",
+    createdBy: "cleanup-automation",
+    conversationOrigin: {
+      surface: "automation",
+      agent_label: "Night cleanup",
+      thread_id: null,
+      thread_locator_status: "not_applicable",
+    },
+    environment: { CODEX_THREAD_ID: "must-not-leak-into-sidecar" },
+  });
+
+  const sidecar = JSON.parse(
+    await readFile(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-no-thread-capture.worktree.json"), "utf8"),
+  );
+  expect(sidecar.conversation_origin).toMatchObject({
+    surface: "automation",
+    agent_label: "Night cleanup",
+    thread_id: null,
+    thread_locator_status: "not_applicable",
+    local_only: true,
+  });
 });
 
 async function setupDealsRepoWithPlan({
