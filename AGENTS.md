@@ -132,6 +132,16 @@ requesty (ne GitHub „draft PR" — normální PR). Otevřený PR je pořád Dr
 v našem smyslu: je vidět, dá se editovat a dá se zavřít; publikací se stává
 až merge, a ten patří Principálovi.
 
+**Popis PR předává Stewardovi kontext k rozhodnutí.** Agent nesmí nechat
+Stewarda odvozovat důvod změny pouze z diffu, názvů commitů nebo seznamu
+souborů. Každý plnohodnotný popis PR proto pravdivě a srozumitelně popíše,
+proč PR vznikl (motivaci, problém a relevantní souvislosti), jaký cílový
+stav nebo přínos má merge přinést, co se mění a případně záměrně nemění, jak
+byla změna ověřena a jaká zůstávají rizika, blokery nebo follow-upy. Popis se
+po změně scope, rebase nebo zásadním review nálezu aktualizuje, aby při merge
+rozhodnutí odpovídal skutečnému HEADu. Technický seznam změn bez vysvětlení
+„proč" a cíle není hotový handoff.
+
 **Push bez PR není hotový handoff.** Když agent pushne branch se změnou v
 Conglomerate rootu, hned otevře plnohodnotný PR proti správné base branchi,
 pokud Principál výslovně neřekl, že PR otevřít nemá. Samotná remote branch se

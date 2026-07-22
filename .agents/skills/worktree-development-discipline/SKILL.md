@@ -42,24 +42,31 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
    `.pr-worktrees`, legacy `.worktrees/<code>` ani uvnitř jiného repa.
 6. Pokud primary není na `main` nebo je dirty, nic nezahazuj. Zachovej cizí
    práci a nový worktree založ z ověřeného `origin/main`.
-7. Před každým pushem PR branche spusť v edit worktree `bun run
+7. Ještě před otevřením nebo předáním PR napiš rozhodnutelný popis: motivaci a
+   relevantní souvislosti, cílový stav a přínos merge, skutečný rozsah včetně
+   vědomě vynechaných částí, ověření a zbývající rizika, blokery či navazující
+   kroky. Steward nesmí být nucen odvozovat „proč" jen z diffu. Popis po změně
+   scope, rebase nebo zásadním review nálezu srovnej se skutečným HEADem a
+   Mission Control plánem; samotný seznam souborů, commitů nebo testů není
+   dokončený handoff.
+8. Před každým pushem PR branche spusť v edit worktree `bun run
    pr:preflight`. Gate fetchne `origin/main`, vyžaduje clean commit a čerstvý
    main jako předka HEAD. Pokud neprojde, udělej `git rebase origin/main`,
    zopakuj validace a gate; přepsanou branch pushni pouze příkazem s exact
    `--force-with-lease`, který gate vypíše. Po pushi ověř na GitHubu PR base
    `main`, exact head, mergeability a checks.
-8. Po prvním pushi branch hned otevři plnohodnotný PR proti správné base branchi,
+9. Po prvním pushi branch hned otevři plnohodnotný PR proti správné base branchi,
    pokud Principál výslovně neřekl, že PR otevřít nemáš. Remote branch bez PR
    není dokončený handoff: snadno zapadne, Steward ji nemusí vidět a další
    agent ji nemusí převzít.
-9. Před handoffem aktualizuj sidecar a znovu spusť audit i
+10. Před handoffem aktualizuj sidecar a znovu spusť audit i
    `bun run worktrees:check`. Check je nutný, ale ne dostačující. Worktree
    odstraň jen
    když je clean včetně untracked souborů, nemá local-only commit, exact HEAD je
    na remote, PR je merged nebo explicitně abandoned se snapshotem, runtime ho
    nepoužívá a neexistuje aktivní writer. Pak použij owner repo
    `git worktree remove <path>` a `git worktree prune`; sidecar smaž až potom.
-10. Plošné `rm -rf`, `--force`, `git branch -D` a automatické mazání podle stáří
+11. Plošné `rm -rf`, `--force`, `git branch -D` a automatické mazání podle stáří
    nejsou běžný cleanup. Nesplněný guard se předává konkrétně.
 
 ## Ověření
