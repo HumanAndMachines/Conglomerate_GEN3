@@ -72,6 +72,9 @@ adresář ani branch.
 10. Root práce a Organization práce se nemíchají do jedné Git/access hranice.
     Shared změnu vlastní `CAC-XXXX`; Organization rollout má vlastní plán a
     prefix.
+11. Sidecar nese minimální lokální conversation provenance a recovery handoff.
+    Thread ID pomáhá otevřít původní kontext na stejné mašině, ale cleanup i
+    publish rozhodnutí vždy vycházejí z živé Git/PR/runtime/MC evidence.
 
 ## Tři podporované typy environmentu
 
@@ -375,6 +378,21 @@ Minimální obsah:
   "root_path": ".worktrees/root/DEV-6500-installations-history",
   "created_at": "2026-07-11T00:00:00Z",
   "created_by": "builder-id",
+  "conversation_origin": {
+    "surface": "codex",
+    "agent_label": "Codex",
+    "thread_id": "<opaque-local-thread-id>",
+    "thread_locator_status": "captured",
+    "local_only": true,
+    "captured_at": "2026-07-11T00:00:00Z"
+  },
+  "recovery_handoff": {
+    "state": "in_progress",
+    "summary": "Implementace environment inventáře pokračuje.",
+    "blocker": null,
+    "next_action": "Spustit contract test a zkontrolovat diff.",
+    "updated_at": "2026-07-11T00:00:00Z"
+  },
   "members": [
     {
       "repo_path": ".",
@@ -425,6 +443,16 @@ Do sidecaru nepatří autoritativní `dirty`, `ahead`, `behind`, `pr_state`,
 `runtime_state` ani `ready_to_delete`. Tyto hodnoty zastarávají a Doctor je
 odvozuje při každém status/cleanup běhu. Sidecar smí držet timestampovaný PR
 cache/readback, ale report musí jasně ukázat jeho stáří.
+
+`conversation_origin` je vždy lokální minimum: agentní surface, čitelný label
+agenta a opaque thread/session locator nebo výslovný stav `unavailable` či
+`not_applicable`. Kde runtime poskytuje stabilní ID (například
+`CODEX_THREAD_ID`), writer ho zachytí automaticky. Do sidecaru ani sdíleného
+Gitu se nekopíruje raw transcript, reasoning, secrets, citlivý obsah jiné
+Organizace ani absolutní transcript path. `recovery_handoff` se aktualizuje při
+pauze, blockeru, předání a před koncem běhu; stručné summary a next action musí
+umožnit převzetí i bez dostupné historie. Legacy v1 sidecar bez těchto polí je
+migration advisory, ne invalid nebo cleanup autorizace.
 
 Create transakce navíc používá lokální journal. Sidecar se označí jako active
 až po úspěšném root + member vytvoření a validaci. Při pádu Doctor pokračuje z

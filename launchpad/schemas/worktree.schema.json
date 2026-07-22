@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://humanandmachines.local/schemas/worktree.schema.json",
-  "title": "CompaniesAsCode Worktree Sidecar",
+  "title": "HumanAndMachine Worktree Sidecar",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -39,6 +39,66 @@
     "worktree_path": { "type": "string", "minLength": 1 },
     "created_at": { "type": "string", "minLength": 1 },
     "created_by": { "type": "string", "minLength": 1 },
+    "conversation_origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "surface",
+        "agent_label",
+        "thread_id",
+        "thread_locator_status",
+        "local_only",
+        "captured_at"
+      ],
+      "properties": {
+        "surface": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$",
+          "maxLength": 80
+        },
+        "agent_label": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "thread_id": { "type": ["string", "null"], "minLength": 1, "maxLength": 512 },
+        "thread_locator_status": {
+          "type": "string",
+          "enum": ["captured", "unavailable", "not_applicable"]
+        },
+        "local_only": { "const": true },
+        "captured_at": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "thread_locator_status": { "const": "captured" } }
+          },
+          "then": { "properties": { "thread_id": { "type": "string", "minLength": 1 } } },
+          "else": { "properties": { "thread_id": { "type": "null" } } }
+        }
+      ]
+    },
+    "recovery_handoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "summary", "blocker", "next_action", "updated_at"],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "in_progress",
+            "blocked",
+            "paused",
+            "ready_to_commit",
+            "ready_to_push",
+            "ready_for_pr",
+            "ready_for_review",
+            "completed"
+          ]
+        },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "blocker": { "type": ["string", "null"], "minLength": 1, "maxLength": 1000 },
+        "next_action": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "updated_at": { "type": "string", "minLength": 1 }
+      }
+    },
     "last_touched": { "type": "string" },
     "status": {
       "type": "string",

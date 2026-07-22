@@ -370,6 +370,25 @@ export function detectNonCanonicalSidecarFields(metadata) {
   if (metadata.status && !CANONICAL_STATUSES.has(metadata.status)) {
     warnings.push(`status "${metadata.status}" není v kanonickém enumu (${[...CANONICAL_STATUSES].join(", ")}).`);
   }
+  if (!metadata.conversation_origin) {
+    warnings.push("Sidecar nemá conversation_origin; doplň lokální agent surface a thread locator při nejbližším bezpečném dotyku.");
+  } else if (
+    typeof metadata.conversation_origin.surface !== "string"
+    || typeof metadata.conversation_origin.agent_label !== "string"
+    || !["captured", "unavailable", "not_applicable"].includes(metadata.conversation_origin.thread_locator_status)
+    || metadata.conversation_origin.local_only !== true
+  ) {
+    warnings.push("conversation_origin nemá kanonický tvar.");
+  }
+  if (!metadata.recovery_handoff) {
+    warnings.push("Sidecar nemá recovery_handoff; doplň stav, summary, blocker a next action před pauzou nebo předáním.");
+  } else if (
+    typeof metadata.recovery_handoff.state !== "string"
+    || typeof metadata.recovery_handoff.summary !== "string"
+    || typeof metadata.recovery_handoff.next_action !== "string"
+  ) {
+    warnings.push("recovery_handoff nemá kanonický tvar.");
+  }
   return warnings;
 }
 
