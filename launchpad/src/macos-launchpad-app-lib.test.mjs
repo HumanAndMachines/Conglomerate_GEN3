@@ -7,6 +7,7 @@ import {
   dockContainsApp,
   inspectMacosLaunchpadApp,
   installMacosLaunchpadApp,
+  macosLaunchpadRepairIsIncomplete,
 } from "./macos-launchpad-app-lib.mjs";
 
 const tempRoots = [];
@@ -61,6 +62,7 @@ test("installer bez dockutil otevře Finder a Doctor zůstane ve varování do r
 
   expect(report.dock_status).toBe("manual_required");
   expect(report.check.status).toBe("warn");
+  expect(macosLaunchpadRepairIsIncomplete(report)).toBe(true);
   expect(report.check.details).toContain(`dock_item_missing: ${report.app_path}`);
   expect(calls).toContainEqual(["/usr/bin/open", "-R", report.app_path]);
 });
@@ -172,6 +174,42 @@ test("installer po dockutil úspěchu bounded polluje pomalu obnovené Dock pref
   expect(report.check.status).toBe("ok");
   expect(exportsAfterAdd).toBeGreaterThanOrEqual(10);
   expect(waits).toEqual(Array(9).fill(500));
+});
+
+test("dockutil úspěch po deadline zůstane retryable pending bez falešného Finder fallbacku", async () => {
+  const fixture = await createFixture();
+  const calls = [];
+  const runCommand = (command, args) => {
+    calls.push([command, ...args]);
+    if (command.endsWith("defaults")) return { ok: true, stdout: dockPlist(), stderr: "" };
+    if (command === "/opt/homebrew/bin/dockutil" && args[0] === "--version") {
+      return { ok: true, stdout: "3.1.3", stderr: "" };
+    }
+    if (command === "/opt/homebrew/bin/dockutil" && args[0] === "--find") {
+      return { ok: false, stdout: "", stderr: "not found" };
+    }
+    if (command === "/opt/homebrew/bin/dockutil" && args[0] === "--add") {
+      return { ok: true, stdout: "", stderr: "" };
+    }
+    if (command === "/usr/bin/killall") return { ok: true, stdout: "", stderr: "" };
+    return { ok: false, stdout: "", stderr: "unexpected" };
+  };
+
+  const report = await installMacosLaunchpadApp({
+    companiesRoot: fixture.root,
+    homeDir: fixture.home,
+    platform: "darwin",
+    sourceIconPath: fixture.icon,
+    runCommand,
+    dockVerificationAttempts: 2,
+    dockVerificationDelayMs: 0,
+    wait: async () => {},
+  });
+
+  expect(report.dock_status).toBe("pin_pending");
+  expect(report.check.status).toBe("warn");
+  expect(macosLaunchpadRepairIsIncomplete(report)).toBe(false);
+  expect(calls.some(([command]) => command === "/usr/bin/open")).toBe(false);
 });
 
 test("Doctor odmítne chybějící, neexecutable nebo adresářový root Launchpad.command", async () => {

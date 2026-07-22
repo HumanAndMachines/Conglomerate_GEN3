@@ -1,6 +1,9 @@
 import { join, resolve } from "path";
 import { buildLaunchpadDoctorReport } from "./diagnostics-lib.mjs";
-import { installMacosLaunchpadApp } from "./macos-launchpad-app-lib.mjs";
+import {
+  installMacosLaunchpadApp,
+  macosLaunchpadRepairIsIncomplete,
+} from "./macos-launchpad-app-lib.mjs";
 
 const options = parseArgs(Bun.argv.slice(2));
 const companiesRoot = resolve(options.root ?? join(import.meta.dirname, "..", ".."));
@@ -9,7 +12,7 @@ let repairIncomplete = false;
 if (options.repairLaunchpadDock) {
   const repairReport = await installMacosLaunchpadApp({ companiesRoot });
   console.log(JSON.stringify({ repair: "macos_launchpad_dock", ...repairReport }, null, 2));
-  repairIncomplete = repairReport.check.status !== "ok";
+  repairIncomplete = macosLaunchpadRepairIsIncomplete(repairReport);
 }
 const report = await buildLaunchpadDoctorReport({
   companiesRoot,

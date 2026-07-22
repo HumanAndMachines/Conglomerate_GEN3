@@ -369,6 +369,9 @@ Neprováděj Install/Repair na Productionspace systémech bez explicitního scop
 Na macOS před handoffem spusť `bun run doctor -- --repair-launchpad-dock`.
 Pokud není dostupný `dockutil`, repair otevře `.app` ve Finderu a skončí
 nenulově: uživatel ji přetáhne do Docku a agent znovu spustí `bun run doctor`.
+Stav `pin_pending` znamená, že `dockutil` změnu přijal, ale Dock preferences ji
+ještě nepotvrdily; repair zůstává bezpečně opakovatelný a agent po krátkém
+čekání znovu spustí read-only `bun run doctor`.
 Instalace není dokončená, dokud check `platform.macos_launchpad_dock` není
 `ok`. Kliknutím na Dock ikonu nakonec proveď runtime smoke Launchpadu.
 

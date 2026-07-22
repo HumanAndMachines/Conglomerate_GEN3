@@ -157,7 +157,7 @@ export async function installMacosLaunchpadApp({
             wait,
           })
             ? "pinned"
-            : "pin_unverified";
+            : "pin_pending";
         } else {
           dockStatus = "pin_failed";
         }
@@ -168,13 +168,17 @@ export async function installMacosLaunchpadApp({
   }
 
   const check = inspectMacosLaunchpadApp({ companiesRoot: root, homeDir, platform, runCommand });
-  if (dockStatus === "pin_unverified" && check.status === "ok") {
+  if (dockStatus === "pin_pending" && check.status === "ok") {
     dockStatus = "pinned";
   }
-  if (["manual_required", "pin_failed", "pin_unverified"].includes(dockStatus) && revealOnFallback) {
+  if (["manual_required", "pin_failed"].includes(dockStatus) && revealOnFallback) {
     runCommand("/usr/bin/open", ["-R", appPath]);
   }
   return { root, app_path: appPath, backup_path: backupPath, dock_status: dockStatus, check };
+}
+
+export function macosLaunchpadRepairIsIncomplete(report) {
+  return report?.check?.status !== "ok" && report?.dock_status !== "pin_pending";
 }
 
 export function dockContainsApp(xml, appPath) {
