@@ -1,7 +1,9 @@
 # Doctor worktree management
 
-Status: **cílový kontrakt a implementační plán CAC-0065 — zatím neaktivní
-operátorský postup**.
+Status: **cílový kontrakt a implementační plán CAC-0065**. Fresh-main task
+preflight a PR push preflight popsané níže jsou aktivní; plánované
+`doctor worktrees ...` create/hydrate/cleanup příkazy zatím aktivním
+operátorským postupem nejsou.
 
 Tento dokument přesně definuje, jak má HumanAndMachine GEN3 vytvářet,
 zobrazovat, kontrolovat a uklízet Git worktrees pro Conglomerate root a pro
@@ -57,9 +59,12 @@ adresář ani branch.
    `.pr-worktrees` ani v jiné agentem zvolené cestě.
 6. Sidecar deklaruje záměr a membership. Dirty/ahead/behind/PR/runtime stav se
    vždy znovu odvozuje z reality; ručně zapsaný status neopravňuje k mazání.
-7. Diagnostický Doctor je read-only. `create`, `hydrate`, `refresh-prs`,
-   `cleanup`, `prune` a `adopt` jsou zvláštní guarded akce pod stejným CLI
-   prefixem a sdílenou knihovnou.
+7. Výchozí diagnostický Doctor je read-only vůči Git refs i tracked obsahu.
+   Explicitní `doctor:task` freshness lane smí provést pouze bounded fetch
+   remote-tracking `origin/main`; working tree, current branch ani lokální
+   commity nemění. `create`, `hydrate`, `refresh-prs`, `cleanup`, `prune` a
+   `adopt` jsou zvláštní guarded akce pod stejným CLI prefixem a sdílenou
+   knihovnou.
 8. Cleanup je defaultně dry-run, odstraňuje child worktrees před root obálkou
    a nikdy implicitně nemaže lokální ani remote branch.
 9. Productionspace zůstává read-only, pokud konkrétní owner repo nemá explicitní
@@ -96,6 +101,42 @@ legacy stav; fail-closed `bun run worktrees:check` ověřuje umístění, metada
 Git zachování, ale jeho PASS není cleanup autorizace bez živého
 PR/runtime/writer gate. Toto je přechodový bootstrap, ne druhý
 dlouhodobý action layer.
+
+## Aktivní freshness gate před taskem a PR pushem
+
+Před převzetím každého tasku agent spustí v primárním Conglomerate checkoutu:
+
+```sh
+bun run doctor:task
+```
+
+Lane provede `git fetch origin main --prune` s vypnutým interaktivním promptem
+a fail-closed rozliší clean/up-to-date, clean/behind, dirty, ahead, diverged a
+wrong-branch stav. Jen clean/behind má jednoduchou nápravu:
+
+```sh
+git pull --ff-only
+bun run doctor:task
+```
+
+Na dirty primary se automaticky nepoužívá `git pull --rebase --autostash`.
+Autostash by skryl cizí nebo nedokončenou práci a rebase primárního mainu by
+maskoval porušení reference-checkout kontraktu. Agent zachová práci v
+plan-owned worktree a primary opraví bez ztráty historie.
+
+Bezprostředně před každým pushem PR branche agent spustí v edit worktree:
+
+```sh
+bun run pr:preflight
+```
+
+Gate vyžaduje clean feature branch a ověří, že fresh `origin/main` je předkem
+exact `HEAD`. Pokud ne, agent udělá `git rebase origin/main`, zopakuje všechny
+relevantní validace a preflight. Pro existující remote branch gate vypíše
+exact `--force-with-lease=refs/heads/<branch>:<expected-remote-head>`; obecné
+`--force` se nepoužívá. Po pushi se z live GitHub stavu ověří PR URL, base
+`main`, exact head, mergeability a checks. Stejný gate se opakuje těsně před
+merge, protože main i review evidence mohly mezitím zestárnout.
 
 ### Conglomerate root environment
 

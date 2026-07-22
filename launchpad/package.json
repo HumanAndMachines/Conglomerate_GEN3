@@ -6,6 +6,7 @@
     "check": "bun src/check-launchpad-discovery.mjs --allow-missing-organizations && bun src/run-tests.mjs",
     "check:strict": "bun src/check-launchpad-discovery.mjs && bun src/run-tests.mjs",
     "doctor": "bun src/doctor.mjs",
+    "doctor:task": "bun src/task-doctor.mjs",
     "doctor:json": "bun src/doctor.mjs --json",
     "dev": "bun src/server.mjs",
     "discover": "bun src/discover-apps.mjs --allow-missing-organizations",
