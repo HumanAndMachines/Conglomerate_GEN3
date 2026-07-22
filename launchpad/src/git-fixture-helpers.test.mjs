@@ -158,3 +158,25 @@ export function runGit(args, cwd) {
   }
   return new TextDecoder().decode(result.stdout).trim();
 }
+
+export async function startConflictingRebase(repo) {
+  runGit(["checkout", "-b", "rebase-target"], repo);
+  await writeFile(join(repo, "README.md"), "# shared target\n");
+  runGit(["add", "README.md"], repo);
+  runGit(["commit", "-m", "shared target"], repo);
+  runGit(["checkout", "main"], repo);
+  await writeFile(join(repo, "README.md"), "# local draft\n");
+  runGit(["add", "README.md"], repo);
+  runGit(["commit", "-m", "local draft"], repo);
+  const result = Bun.spawnSync(["git", "rebase", "rebase-target"], {
+    cwd: repo,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: {
+      ...process.env,
+      GIT_TERMINAL_PROMPT: "0",
+      GCM_INTERACTIVE: "never",
+    },
+  });
+  if (result.exitCode === 0) throw new Error("Fixture expected a conflicting rebase, but git rebase succeeded.");
+}

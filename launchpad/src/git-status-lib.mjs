@@ -1,6 +1,6 @@
 import { existsSync } from "fs";
 import { realpath } from "fs/promises";
-import { resolve } from "path";
+import { isAbsolute, resolve } from "path";
 import {
   GIT_FETCH_CONCURRENCY,
   GIT_FETCH_TIMEOUT_MS,
@@ -18,6 +18,7 @@ export const GIT_STATUS_VALUES = [
   "push_required",
   "diverged",
   "wrong_branch",
+  "rebase_in_progress",
   "repo_missing",
   "git_unavailable",
   "check_failed",
@@ -244,6 +245,7 @@ export async function readGitRepoStatus(repo, { refresh = false } = {}) {
     head: null,
     remote: repo.remote ?? null,
     upstream: null,
+    operation: null,
     counts: {
       incoming: 0,
       outgoing: 0,
@@ -269,7 +271,10 @@ export async function readGitRepoStatus(repo, { refresh = false } = {}) {
     return withDescriptor(base, "repo_missing", { details: [topLevel.stderr || topLevel.error].filter(Boolean) });
   }
 
-  if (refresh) {
+  const operation = await readGitOperationState(repo);
+  base.operation = operation;
+
+  if (refresh && operation?.kind !== "rebase") {
     const fetchResult = await refreshGitRepoRemote(repo);
     if (!fetchResult.ok) {
       return withDescriptor(base, "check_failed", {
@@ -331,10 +336,77 @@ export async function readGitRepoStatus(repo, { refresh = false } = {}) {
         }
       : null,
     upstream,
+    operation,
     counts,
   };
 
   return withDescriptor(enriched, deriveGitRepoStatus(enriched));
+}
+
+export async function readGitOperationState(repo) {
+  for (const [marker, backend] of [["rebase-merge", "merge"], ["rebase-apply", "apply"]]) {
+    const gitPath = await runGit(["rev-parse", "--git-path", marker], {
+      cwd: repo.absolute_path,
+      timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+    });
+    if (!gitPath.ok || !gitPath.stdout) continue;
+    const markerPath = isAbsolute(gitPath.stdout)
+      ? gitPath.stdout
+      : resolve(repo.absolute_path, gitPath.stdout);
+    if (existsSync(markerPath)) {
+      return {
+        kind: "rebase",
+        backend,
+        can_abort_rebase: true,
+      };
+    }
+  }
+  return null;
+}
+
+export async function abortRepoRebase(repo) {
+  const before = await readGitRepoStatus(repo);
+  if (before.operation?.kind !== "rebase") {
+    return {
+      ok: false,
+      code: "rebase_not_in_progress",
+      message: "V tomto repozitáři teď neprobíhá rebase, takže není co abortnout.",
+      before,
+    };
+  }
+
+  const abort = await runGit(["rebase", "--abort"], {
+    cwd: repo.absolute_path,
+    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+    env: safeGitRemoteEnv(),
+  });
+  if (!abort.ok) {
+    return {
+      ok: false,
+      code: "rebase_abort_failed",
+      message: abort.stderr || abort.error || "Rebase se nepodařilo bezpečně abortnout.",
+      before,
+    };
+  }
+
+  const after = await readGitRepoStatus(repo);
+  if (after.operation?.kind === "rebase") {
+    return {
+      ok: false,
+      code: "rebase_abort_verification_failed",
+      message: "Git příkaz doběhl, ale rebase je stále aktivní. Stav musí zkontrolovat Agent.",
+      before,
+      after,
+    };
+  }
+
+  return {
+    ok: true,
+    before,
+    after,
+    stdout: abort.stdout,
+    stderr: abort.stderr,
+  };
 }
 
 export async function refreshGitRepoRemote(repo) {
@@ -374,7 +446,7 @@ export async function pullRepoFastForward(repo, { preflight = null } = {}) {
   // explanation even when its remote is unavailable. A clean candidate must
   // still pass a fresh remote fetch before Launchpad allows the pull.
   const local = await readGitRepoStatus(repo);
-  if (["draft_changes", "wrong_branch", "push_required", "diverged"].includes(local.status)) {
+  if (["draft_changes", "wrong_branch", "push_required", "diverged", "rebase_in_progress"].includes(local.status)) {
     return {
       ok: false,
       code: "pull_not_safe",
@@ -554,6 +626,9 @@ function autostashGuardMessage(status) {
 }
 
 function pullGuardMessage(status) {
+  if (status.status === "rebase_in_progress") {
+    return "Repo má rozpracovaný rebase. Abortni ho, nebo vlož screenshot této chyby agentovi do Codexu.";
+  }
   if (status.status === "draft_changes") {
     return "Repo má rozepsaná práce; nejdřív ji zabal do commitu nebo vědomě ukliď.";
   }
@@ -572,7 +647,8 @@ function pullGuardMessage(status) {
   return status.message || "Repo není ve stavu, který jde bezpečně stáhnout.";
 }
 
-export function deriveGitRepoStatus({ branch, expected_branch, counts }) {
+export function deriveGitRepoStatus({ branch, expected_branch, counts, operation }) {
+  if (operation?.kind === "rebase") return "rebase_in_progress";
   if (branch && expected_branch && branch !== expected_branch) return "wrong_branch";
   if (counts.changed_files > 0) return "draft_changes";
   if (counts.incoming > 0 && counts.outgoing > 0) return "diverged";
@@ -621,7 +697,7 @@ function isoTime(value) {
 }
 
 function remoteRefreshEligible(status) {
-  return !["repo_missing", "git_unavailable", "check_failed"].includes(status?.status);
+  return !["repo_missing", "git_unavailable", "check_failed", "rebase_in_progress"].includes(status?.status);
 }
 
 function stableJitter(repo, maxMs) {
@@ -668,6 +744,12 @@ const descriptors = {
     title: "Checkout není na očekávané branchi",
     message: ({ branch, expected_branch }) => `Checkout je na ${branch || "detached HEAD"}, očekává se ${expected_branch}.`,
     recommended_action: "Přesuň práci do worktree nebo vrať referenční checkout na očekávanou branch.",
+  },
+  rebase_in_progress: {
+    severity: "fail",
+    title: "Rebase je rozpracovaný",
+    message: () => "Git čeká na dokončení nebo abortnutí rozpracovaného rebase.",
+    recommended_action: "Abortnout rebase, nebo předat screenshot a stav agentovi do Codexu.",
   },
   repo_missing: {
     severity: "fail",
