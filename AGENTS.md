@@ -137,6 +137,14 @@ pokud Principál výslovně neřekl, že PR otevřít nemá. Samotná remote bra
 snadno ztratí a není dostatečný předávací artefakt pro Stewarda ani dalšího
 agenta.
 
+**PR se staví jen na čerstvém mainu.** Bezprostředně před každým pushem PR
+branche spusť ve worktree `bun run pr:preflight`. Gate provede bounded fetch
+`origin/main`, vyžaduje clean přesný commit a ověří, že čerstvý `origin/main`
+je předkem `HEAD`. Pokud main chybí, nejdřív `git rebase origin/main`, zopakuj
+validace i gate a přepsanou remote branch publikuj pouze exact
+`--force-with-lease`, který gate vypíše. Po pushi ověř na GitHubu exact HEAD,
+base `main`, mergeability a checks; handoff vždy obsahuje přesnou PR URL a base.
+
 **Poslední slovo má vždy Principál.** Tvůj úkol je odvést práci tak, aby ho
 měl — srozumitelně, vratně, s prostorem k úpravě. Principál ti dává feedback,
 jestli pracuješ dobře, nebo špatně; tvůj úkol je ten feedback brát vážně
@@ -184,9 +192,17 @@ Nepracuj v konkrétní firmě z rootu. Nejdřív vyber organizaci v `organizatio
    `personalspace/`. Pokud je úkol o firmě, klientovi, modulu, Mission Control
    plánu nebo productionspace repu, pokračuj v Organization checkoutu a jeho
    vlastním `AGENTS.md`, ne podle root pravidel.
-3. **Ověř Git stav** rootu i každého nested checkoutu, kterého se dotkneš.
-   Root repo nesmí omylem trackovat cizí Organization historii, submodule
-   pointer ani lokální private/runtime data.
+3. **Ověř Git stav a čerstvý main.** Před založením nebo převzetím jakéhokoli
+   tasku spusť v primárním Conglomerate checkoutu `bun run doctor:task`. Tato
+   explicitní Doctor lane provede bounded `git fetch origin main --prune` a
+   fail-closed porovná čistý `main` s `origin/main`. Je-li clean main pouze
+   pozadu, spusť `git pull --ff-only` a Doctor zopakuj. Dirty, ahead, diverged,
+   wrong-branch nebo neověřitelný stav se automaticky nestashuje ani
+   nerebasuje: zachovej práci v plan-owned worktree a primary oprav bez ztráty
+   historie. `git pull --rebase --autostash` proto není defaultní agentní
+   preflight. Root repo nesmí omylem trackovat cizí Organization historii,
+   submodule pointer ani lokální private/runtime data. Stejný Git preflight
+   proveď pro každý nested checkout, kterého se task dotkne, podle jeho policy.
 4. **Drž worktree disciplínu bez malých výjimek.** Primární root checkout
    zůstává na `main` a sleduje `origin/main`; agent v něm nemění žádný
    Git-trackovaný obsah. Před změnou spusť `bun run worktrees:status` a použij
@@ -321,6 +337,8 @@ Před handoffem uveď:
 - které scope/repo bylo změněno (root vs Organization vs nested modul);
 - jaké příkazy opravdu proběhly a s jakým výsledkem;
 - zda zůstaly změny v rootu nebo nested checkoutu;
+- přesnou PR URL, target base branch a exact pushed HEAD každého editovaného
+  repa; obecné „push/PR hotovo" nestačí;
 - kam je zapsaný případný blocker nebo next action (`ISSUES.open.json`,
   Organization Mission Control, TODO ledger apod.).
 
