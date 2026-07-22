@@ -139,7 +139,7 @@ test("installer po dockutil úspěchu bounded polluje pomalu obnovené Dock pref
       if (added) exportsAfterAdd += 1;
       return {
         ok: true,
-        stdout: added && exportsAfterAdd >= 3
+        stdout: added && exportsAfterAdd >= 10
           ? dockPlist(dockItem({ identity: MACOS_LAUNCHPAD_APP_NAME, target: appPath }))
           : dockPlist(),
         stderr: "",
@@ -165,15 +165,13 @@ test("installer po dockutil úspěchu bounded polluje pomalu obnovené Dock pref
     platform: "darwin",
     sourceIconPath: fixture.icon,
     runCommand,
-    dockVerificationAttempts: 5,
-    dockVerificationDelayMs: 25,
     wait: async (milliseconds) => waits.push(milliseconds),
   });
 
   expect(report.dock_status).toBe("pinned");
   expect(report.check.status).toBe("ok");
-  expect(exportsAfterAdd).toBeGreaterThanOrEqual(3);
-  expect(waits).toEqual([25, 25]);
+  expect(exportsAfterAdd).toBeGreaterThanOrEqual(10);
+  expect(waits).toEqual(Array(9).fill(500));
 });
 
 test("Doctor odmítne chybějící, neexecutable nebo adresářový root Launchpad.command", async () => {

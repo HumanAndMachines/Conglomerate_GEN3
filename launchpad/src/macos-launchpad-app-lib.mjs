@@ -11,8 +11,8 @@ export const MACOS_LAUNCHPAD_BUNDLE_ID = "ai.humanandmachine.launchpad.gen3";
 export const MACOS_LAUNCHPAD_EXECUTABLE = "HumanAndMachineLaunchpadGEN3";
 export const MACOS_LAUNCHPAD_DISPLAY_NAME = "HumanAndMachine Launchpad GEN3";
 
-const DEFAULT_DOCK_VERIFICATION_ATTEMPTS = 8;
-const DEFAULT_DOCK_VERIFICATION_DELAY_MS = 250;
+const DEFAULT_DOCK_VERIFICATION_ATTEMPTS = 21;
+const DEFAULT_DOCK_VERIFICATION_DELAY_MS = 500;
 
 export function macosLaunchpadAppPath(homeDir = homedir()) {
   return join(homeDir, "Applications", MACOS_LAUNCHPAD_APP_NAME);
