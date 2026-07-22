@@ -31,17 +31,14 @@ export async function resolveSpaceGbrainVault({ companiesRoot, spaceDirName }) {
   if (!space.config_valid) {
     throw new GbrainAccessError(409, "space_invalid", "Osobní prostor má nevalidní config nebo porušený identity invariant; gbrain je nedostupný.");
   }
-  // Boundary gate per decision 0051: sdílení super-repa NEsdílí gbrain. Gbrain je
-  // defaultně privátní (access jen pár Kolega ↔ jeho Buddy) a nasdílení jinému
-  // člověku je vědomé explicitní rozhodnutí vlastníka. Nasdílený (ne-primární)
-  // prostor s default_shared === false proto browse API odmítá fail-closed —
-  // i kdyby jeho vault byl lokálně namountovaný. Tuto hranici vynucuje kód, ne
-  // jen informativní UI hláška.
-  if (!space.is_owner_primary && space.gbrain?.default_shared === false) {
+  // Defense-in-depth pro decision 0091: discovery cizí Personalspace vůbec
+  // nevrací. Kdyby adaptér někdy dodal ne-owner prostor, gbrain API ho i tak
+  // odmítne bez ohledu na manifestové sharing pole.
+  if (!space.is_owner_primary) {
     throw new GbrainAccessError(
       403,
-      "gbrain_not_shared",
-      "gbrain tohoto nasdíleného prostoru není sdílený; procházení vyžaduje vědomé explicitní rozhodnutí vlastníka (decision 0051).",
+      "foreign_personalspace_forbidden",
+      "Cizí Personalspace není na této mašině přístupný (decision 0091).",
     );
   }
   if (!space.gbrain?.exists) {
@@ -70,7 +67,7 @@ function personalspaceDiscoveryAdapter(companiesRoot) {
   };
 }
 
-// Sdílený personalspace runtime manager per companiesRoot. Používá stejné
+// Jeden personalspace runtime manager per companiesRoot. Používá stejné
 // runtime/logs adresáře jako org lane — díky prefixovanému id (personal--…) se
 // stav/logy nekříží.
 export function createPersonalspaceRuntimeManager({ companiesRoot, launchpadRoot }) {
@@ -295,7 +292,6 @@ export function personalspaceDoctorCheck(personalspaceResponse) {
   const repositoryPrivacyFailures = [];
   const details = [];
   for (const space of spaces) {
-    const role = space.is_owner_primary ? "primární" : "nasdílený";
     if (!space.config_valid) {
       details.push(`${space.mount_path}: NEVALIDNÍ (${(space.config_issues ?? []).join("; ")})`);
       continue;
@@ -324,7 +320,7 @@ export function personalspaceDoctorCheck(personalspaceResponse) {
       ? privacyChecks.map(repositoryPrivacyDetail).join(", ")
       : "živá repository privacy neověřena";
     details.push(
-      `${space.mount_path}: ${role}, aplikací ${space.apps?.length ?? 0}, moduly available ${summary.available ?? 0}/missing_access ${summary.missing_access ?? 0}/planned_slot ${summary.planned_slot ?? 0}, ${gbrain}, ${privacySummary}`,
+      `${space.mount_path}: Principálův, aplikací ${space.apps?.length ?? 0}, moduly available ${summary.available ?? 0}/missing_access ${summary.missing_access ?? 0}/planned_slot ${summary.planned_slot ?? 0}, ${gbrain}, ${privacySummary}`,
     );
   }
   if (warnings.length) {

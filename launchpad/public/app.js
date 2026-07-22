@@ -17,6 +17,11 @@ import {
 } from "./app-state.js";
 import { gitChipModel } from "./git-status-copy.js";
 import { semanticAppIconKey } from "./app-icon-key.js";
+import {
+  organizationHash,
+  personalspaceHash,
+  resolveLaunchpadHash,
+} from "./deep-link.js";
 // Personalspace (CAC-0048) je samostatný privátní povrch v odděleném modulu —
 // čte jen z lokálního /api/personalspace, nikdy se nemíchá do org discovery ani
 // filtrů aplikací. Renderuje se jako vlastní vizuálně odlišená sekce v hlavní
@@ -84,6 +89,8 @@ let quietPollTimer = null;
 let restoreSpaceMenuFocusOnClose = false;
 let drawerReturnFocus = null;
 let organizationThemeRenderKey = null;
+let appliedLaunchpadHash = null;
+let launchpadScopeDataReady = false;
 
 // Appearance is split into two independent axes so a future settings panel can
 // drive both dynamically: `mode` (light/dark via data-theme) and `accent`
@@ -96,7 +103,7 @@ const ACCENT_PRESETS = ["default", "emerald", "amber", "rose", "slate"];
 const ORGANIZATION_THEME_TOKENS = new Set([
   "--bg", "--bg-elevated", "--bg-subtle", "--bg-muted", "--surface", "--surface-console",
   "--text", "--text-muted", "--text-subtle", "--line", "--line-strong", "--accent",
-  "--accent-soft", "--accent-ring", "--shadow-sm", "--shadow-md", "--shadow-lg",
+  "--on-accent", "--accent-soft", "--accent-ring", "--shadow-sm", "--shadow-md", "--shadow-lg",
   "--shadow-hover", "--r-sm", "--r-md", "--r-lg", "--r-pill", "--font-body",
   "--font-heading", "--font-mono", "--c-accent-200", "--c-accent-400", "--c-accent-500",
   "--c-accent-700", "--c-accent-800", "--c-accent-900", "--launchpad-body-background",
@@ -313,6 +320,9 @@ document.addEventListener("click", (event) => {
     closeMobileOverflow();
   }
 });
+
+window.addEventListener("hashchange", applyBrowserLaunchpadHash);
+window.addEventListener("popstate", applyBrowserLaunchpadHash);
 
 function initResponsiveChrome() {
   const syncPanels = () => {
@@ -600,7 +610,7 @@ function scheduleQuietPoll({ immediate = false } = {}) {
 }
 
 async function runLoadData({ quiet = false } = {}) {
-  const firstSuccessfulLoad = !state.loaded;
+  const firstSuccessfulScopeLoad = !launchpadScopeDataReady;
   if (!quiet) {
     state.doctorRunState = "running";
     renderDoctorStatus();
@@ -643,11 +653,13 @@ async function runLoadData({ quiet = false } = {}) {
       state.doctorRunState = "complete";
     }
     state.loaded = true;
+    launchpadScopeDataReady = true;
+    applyLaunchpadHash({ notify: firstSuccessfulScopeLoad });
     // První reconcile vybere aplikaci aktivní Organizace. Když je první položka
     // globálního discovery seznamu z jiného scope (např. root Guide), nesmí tato
     // technická změna výběru sama otevřít desktop drawer ani mobilní bottom
     // sheet a zakrýt uživateli denní plochu ještě před první interakcí.
-    if (firstSuccessfulLoad) state.suppressNextDrawerOpen = true;
+    if (firstSuccessfulScopeLoad) state.suppressNextDrawerOpen = true;
     if (!state.selectedAppId && state.apps.length > 0) {
       state.selectedAppId = state.apps[0].id;
     }
@@ -816,6 +828,10 @@ function syncAttentionToggle() {
 
 function render() {
   normalizeActiveSpace();
+  // Transientní chyba prvního discovery nesmí zničit požadovaný deep-link.
+  // URL kanonizujeme až poté, co máme první autoritativní seznam prostorů;
+  // úspěšný retry pak může stále aplikovat původní Organization hash.
+  if (launchpadScopeDataReady) syncActiveSpaceHash({ replace: true });
   applyOrganizationTheme();
   const previousSelectedAppId = state.selectedAppId;
   const suppressDrawerOpen = state.suppressNextDrawerOpen;
@@ -1180,6 +1196,57 @@ function activeSpace() {
     : { kind: "personal", label: "Osobní", slug: "personal" };
 }
 
+function applyBrowserLaunchpadHash() {
+  if (!state.loaded || !launchpadScopeDataReady || window.location.hash === appliedLaunchpadHash) return;
+  const changed = applyLaunchpadHash({ notify: true });
+  render();
+  if (changed) void loadSidePanels();
+}
+
+function applyLaunchpadHash({ notify = false } = {}) {
+  const hash = window.location.hash;
+  const resolution = resolveLaunchpadHash(hash, {
+    companies: state.companies,
+    personalspaceAvailable: Boolean(state.personalspace),
+  });
+  appliedLaunchpadHash = hash;
+  if (resolution.status === "none") return false;
+  if (resolution.status !== "matched") {
+    if (notify) {
+      const message = resolution.status === "not_found"
+        ? `Organizace ${resolution.route.organization} na této mašině není dostupná.`
+        : resolution.status === "unavailable"
+          ? "Personalspace na této mašině není dostupný."
+          : "Odkaz na Launchpad není platný.";
+      toast(message, "warning");
+    }
+    return false;
+  }
+
+  const changed = state.filters.scope !== resolution.scope || state.filters.company !== resolution.company;
+  state.filters.scope = resolution.scope;
+  state.filters.company = resolution.company;
+  if (changed) resetSpaceSelection();
+  return changed;
+}
+
+function syncActiveSpaceHash({ replace = false } = {}) {
+  const hash = state.filters.scope === "personal"
+    ? personalspaceHash()
+    : organizationHash(state.filters.company);
+  writeLaunchpadHash(hash, { replace });
+}
+
+function writeLaunchpadHash(hash, { replace = false } = {}) {
+  if (window.location.hash === hash) {
+    appliedLaunchpadHash = hash;
+    return;
+  }
+  const method = replace ? "replaceState" : "pushState";
+  window.history[method](null, "", hash);
+  appliedLaunchpadHash = hash;
+}
+
 // Shared Launchpad drží layout a chování, ale aktivní Organizace dodává skin.
 // Server propustí jen povolené sémantické tokeny z jejího design systému / GEN2
 // adaptéru; klient je znovu allowlistuje a aplikuje podle light/dark režimu.
@@ -1233,7 +1300,57 @@ function safeOrganizationThemeValue(token, value) {
   if (token === "--launchpad-body-background") {
     return value === "linear-gradient(180deg, var(--bg-muted) 0%, var(--bg) 42%)";
   }
+  if (token === "--on-accent") return safeOpaqueOrganizationColor(value);
   return /^(?:#[0-9a-fA-F]{3,8}|(?:rgb|rgba|hsl|hsla)\([\d.%,\s+-]+\)|transparent|white|black)$/.test(value);
+}
+
+function safeOpaqueOrganizationColor(value) {
+  if (value === "white" || value === "black") return true;
+  const hex = value.match(/^#([0-9a-fA-F]+)$/)?.[1];
+  if (hex) {
+    if (hex.length === 3 || hex.length === 6) return true;
+    if (hex.length === 4) return hex.endsWith("f") || hex.endsWith("F");
+    if (hex.length === 8) return hex.endsWith("ff") || hex.endsWith("FF");
+    return false;
+  }
+  const colorFunction = value.match(/^(rgb|rgba|hsl|hsla)\(([\d.%,\s+/-]+)\)$/);
+  if (!colorFunction) return false;
+  const serializedComponents = colorFunction[2].trim();
+  let components;
+  let alpha;
+  if (serializedComponents.includes("/")) {
+    if (serializedComponents.includes(",")) return false;
+    const slashParts = serializedComponents.split("/");
+    if (slashParts.length !== 2) return false;
+    components = slashParts[0].trim().split(/\s+/);
+    alpha = slashParts[1].trim();
+  } else if (serializedComponents.includes(",")) {
+    components = serializedComponents.split(",").map((component) => component.trim());
+    alpha = components.length === 4 ? components.pop() : undefined;
+  } else {
+    components = serializedComponents.split(/\s+/);
+  }
+  if (components.length !== 3 || !alpha && serializedComponents.includes("/")) return false;
+  const [first, second, third] = components;
+  const validComponents = colorFunction[1].startsWith("rgb")
+    ? [first, second, third].every(isOrganizationThemeCssNumberOrPercentage)
+    : isOrganizationThemeCssNumber(first)
+      && isOrganizationThemeCssPercentage(second)
+      && isOrganizationThemeCssPercentage(third);
+  if (!validComponents) return false;
+  return alpha === undefined || /^(?:1(?:\.0+)?|100(?:\.0+)?%)$/.test(alpha);
+}
+
+function isOrganizationThemeCssNumber(value) {
+  return /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(value);
+}
+
+function isOrganizationThemeCssPercentage(value) {
+  return value.endsWith("%") && isOrganizationThemeCssNumber(value.slice(0, -1));
+}
+
+function isOrganizationThemeCssNumberOrPercentage(value) {
+  return isOrganizationThemeCssNumber(value) || isOrganizationThemeCssPercentage(value);
 }
 
 function renderSpaceSwitcher() {
@@ -1373,13 +1490,7 @@ function spaceOption(space) {
 function selectSpace(space) {
   restoreSpaceMenuFocusOnClose = true;
   state.spaceMenuOpen = false;
-  state.suppressNextDrawerOpen = true;
-  state.selectedReadonlyDetail = null;
-  state.selectedAppId = null;
-  state.selectedLogs = null;
-  state.problemsRequested = false;
-  state.problemsExpanded = false;
-  setDrawer(false);
+  resetSpaceSelection();
   if (space.kind === "personal") {
     state.filters.scope = "personal";
     state.filters.company = "all";
@@ -1387,8 +1498,19 @@ function selectSpace(space) {
     state.filters.scope = "org";
     state.filters.company = space.organization.slug;
   }
+  syncActiveSpaceHash();
   render();
   void loadSidePanels();
+}
+
+function resetSpaceSelection() {
+  state.suppressNextDrawerOpen = true;
+  state.selectedReadonlyDetail = null;
+  state.selectedAppId = null;
+  state.selectedLogs = null;
+  state.problemsRequested = false;
+  state.problemsExpanded = false;
+  setDrawer(false);
 }
 
 function renderSpaceLogo(mount, space) {
@@ -2282,7 +2404,7 @@ function appCard(app, family = { key: app.id, members: [app], primary: app }) {
   // Sofistikovaný warning panel jen když je co řešit: stáhnout novější verzi,
   // nainstalovat/opravit balíčky, nebo vysvětlit blokující/failed stav. Žádná
   // velká trvalá tlačítka — hlavní akce (otevřít) je klik na celou dlaždici.
-  if (warning) card.append(cardWarningNode(app, warning));
+  if (warning) card.append(cardWarningNode(warning));
   // Runtime stages (founder 2026-07-15/16): kompaktní řádek „Kde spustit" pod
   // kartou — čtyři runy jednoho modulu (PROD / MAIN / DEV remote / DEV local).
   // Launchpad nabízí všechny čtyři; Dashboard by otevřel jen PROD. DEV local
@@ -2430,7 +2552,6 @@ function cardWarningModel(app, gitRepo) {
     return {
       tone: "danger",
       title: app.runtime?.owner === "foreign-port" ? "Cizí checkout na portu" : "Checkout procesu nelze ověřit",
-      detail: app.runtime?.message || "Launchpad nedokázal bezpečně ověřit proces na portu. Otevři detail a vyřeš instanci mimo Launchpad.",
       actionLabel: "Zobrazit detail",
       run: () => revealAppDetail(app),
     };
@@ -2441,8 +2562,9 @@ function cardWarningModel(app, gitRepo) {
   if (["missing_access", "planned_slot", "restricted", "invalid_manifest", "missing_package", "unknown_package_manager"].includes(dependencyState)) {
     return {
       tone: "danger",
-      title: humanDependencyLabel(dependencyState),
-      detail: app.dependencies?.message || "Modul teď nejde spustit. Otevři detail pro další krok.",
+      title: dependencyState === "invalid_manifest" ? "Chyba v nastavení" : humanDependencyLabel(dependencyState),
+      actionLabel: "Zobrazit detail",
+      run: () => revealAppDetail(app),
     };
   }
 
@@ -2451,10 +2573,6 @@ function cardWarningModel(app, gitRepo) {
     return {
       tone: "warn",
       title: dependencyState === "needs_install" ? "Chybí balíčky" : "Balíčky k opravě",
-      detail:
-        dependencyState === "needs_install"
-          ? "Modul ještě nemá nainstalované balíčky. Nainstaluj je před prvním spuštěním."
-          : "Zámek balíčků je zastaralý. Oprav balíčky, ať start proběhne čistě.",
       actionLabel: installLabel(app),
       run: () => runRuntimeAction(app, installAction(app)),
       pending: `${app.id}:${installAction(app)}`,
@@ -2466,7 +2584,6 @@ function cardWarningModel(app, gitRepo) {
     return {
       tone: "danger",
       title: "Spuštění selhalo",
-      detail: "Poslední spuštění spadlo. Otevři detail a podívej se do logů.",
       actionLabel: "Zobrazit logy",
       run: () => revealAppDetail(app),
     };
@@ -2478,7 +2595,6 @@ function cardWarningModel(app, gitRepo) {
       tone: "warn",
       title: `Nová verze - ${incoming} změn`,
       actionLabel: "Stáhnout",
-      actionStyle: "secondary",
       run: () => pullLatestRepoVersion(app, gitRepo, { autostash: true }),
       pending: `${app.id}:git-pull`,
     };
@@ -2491,7 +2607,6 @@ function cardWarningModel(app, gitRepo) {
       tone: "warn",
       title: `Nová verze - ${incoming} změn`,
       actionLabel: "Stáhnout",
-      actionStyle: "secondary",
       run: () => pullLatestRepoVersion(app, gitRepo),
       pending: `${app.id}:git-pull`,
     };
@@ -2502,7 +2617,6 @@ function cardWarningModel(app, gitRepo) {
       tone: "warn",
       title: "Změny k odeslání",
       actionLabel: "Zobrazit detail",
-      actionStyle: "secondary",
       run: () => revealAppDetail(app),
     };
   }
@@ -2514,8 +2628,7 @@ function cardWarningModel(app, gitRepo) {
   if (gitModel && gitModel.attention) {
     return {
       tone: gitModel.tone === "danger" ? "danger" : "warn",
-      title: `Ke kontrole: ${gitModel.label}`,
-      detail: gitModel.message || "Tenhle modul je ke kontrole. Otevři detail pro další krok.",
+      title: gitModel.label.replace(/^./, (character) => character.toUpperCase()),
       actionLabel: "Zobrazit detail",
       run: () => revealAppDetail(app),
     };
@@ -2524,11 +2637,12 @@ function cardWarningModel(app, gitRepo) {
   return null;
 }
 
-// Inline warning panel na kartě: ikona + nadpis/vysvětlení + volitelné akční
-// tlačítko. Git upozornění používají klidnější sekundární akci; instalační
-// upozornění zůstává primární, protože bez ní aplikaci nejde otevřít.
+// Inline warning panel na kartě: ikona + krátký lidský stav + akce. Úplná
+// diagnostika zůstává v detailu/Doctoru, aby technické cesty a validační regexy
+// nerozbíjely mřížku builder-facing karet. Všechny akce používají stejný
+// sekundární styl, aby různá upozornění působila jako jeden systém.
 // Tlačítko zastaví propagaci, aby neotevřelo kartu.
-function cardWarningNode(app, warning) {
+function cardWarningNode(warning) {
   const node = document.createElement("div");
   node.className = `card-warning is-${warning.tone}`;
 
@@ -2543,25 +2657,15 @@ function cardWarningNode(app, warning) {
   title.className = "card-warning-title";
   title.textContent = warning.title;
   body.append(title);
-  if (warning.detail) {
-    const detail = document.createElement("p");
-    detail.className = "card-warning-detail";
-    detail.textContent = warning.detail;
-    body.append(detail);
-  }
 
   node.append(icon, body);
 
   if (warning.actionLabel && typeof warning.run === "function") {
     const button = document.createElement("button");
     button.type = "button";
-    const actionClass = warning.actionStyle === "secondary"
-      ? "btn-secondary"
-      : warning.tone === "warn"
-        ? "btn-primary"
-        : "btn-ghost";
-    button.className = `btn btn-sm card-warning-action ${actionClass}`;
+    button.className = "btn btn-sm btn-secondary card-warning-action";
     button.textContent = warning.actionLabel;
+    button.setAttribute("aria-label", `${warning.actionLabel}: ${warning.title}`);
     button.disabled = warning.pending ? state.pendingAction === warning.pending : false;
     button.addEventListener("click", (event) => {
       event.stopPropagation();

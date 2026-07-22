@@ -48,6 +48,15 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(js).toContain("function normalizeActiveSpace");
   expect(js).toContain("function spaceOption");
   expect(js).toContain("function selectSpace");
+  expect(js).toContain("function applyLaunchpadHash");
+  expect(js).toContain("function syncActiveSpaceHash");
+  expect(js).toContain("let launchpadScopeDataReady = false");
+  expect(js).toContain("launchpadScopeDataReady = true");
+  expect(js).toContain("if (launchpadScopeDataReady) syncActiveSpaceHash({ replace: true })");
+  expect(js).toContain("!launchpadScopeDataReady || window.location.hash === appliedLaunchpadHash");
+  expect(js).toContain('window.addEventListener("hashchange", applyBrowserLaunchpadHash)');
+  expect(js).toContain("organizationHash(state.filters.company)");
+  expect(js).toContain("personalspaceHash()");
   expect(js).toContain("suppressNextDrawerOpen");
   expect(js).toContain("function visibleRecentModules");
   expect(js).toContain("function visibleMostUsed");
@@ -61,6 +70,7 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(js).toContain("space.organization.theme");
   expect(js).toContain('root.setAttribute("data-organization-theme"');
   expect(js).toContain("ORGANIZATION_THEME_TOKENS");
+  expect(js).toContain('"--on-accent"');
   expect(js).toContain("safeOrganizationThemeValue");
   expect(js).toContain("accentLockedByOrganization");
   expect(js).toContain('if (state.filters.scope === "org") return false');
@@ -96,7 +106,7 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(switcherBlock).not.toContain("chip(");
   expect(js).toContain("function renderAppsGrid");
   expect(js).toContain("reconcileSelectedAppId");
-  expect(js).toContain("if (firstSuccessfulLoad) state.suppressNextDrawerOpen = true");
+  expect(js).toContain("if (firstSuccessfulScopeLoad) state.suppressNextDrawerOpen = true");
   expect(js).toContain("function scrollBelowStickyTopbar");
   expect(js).toContain("window.scrollBy({ top: delta, behavior: \"smooth\" })");
   expect(js).toContain("function primaryNextAction");
@@ -122,6 +132,9 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(css).toContain("var(--launchpad-body-background)");
   expect(css).toContain("color-mix(in srgb, var(--bg) 96%, #000)");
   expect(css).toContain("var(--font-heading, var(--font-body))");
+  expect(css).toContain("--on-accent: #fff;");
+  const primaryButtonBlock = css.slice(css.indexOf(".btn-primary {"), css.indexOf("}", css.indexOf(".btn-primary {")) + 1);
+  expect(primaryButtonBlock).toContain("color: var(--on-accent);");
   expect(css).toContain("min-height: 34px");
   expect(css).toContain("width: min(280px");
   expect(css).toContain(".space-profile-card");
@@ -133,6 +146,38 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(css).not.toContain(".organization-rail");
   expect(css).toContain(".apps-grid");
   expect(css).toContain(".app-card");
+});
+
+test("Organization theme klient přijme stejné neprůhledné on-accent barvy jako server", async () => {
+  const js = await readFile(join(publicRoot, "app.js"), "utf8");
+  const safeOrganizationThemeValue = extractClientThemeValidator(js);
+
+  for (const value of [
+    "#fff",
+    "#ffffffff",
+    "rgb(255, 255, 255)",
+    "rgb(255 255 255 / 1)",
+    "rgba(255 255 255 / 1.0)",
+    "hsl(0 0% 100% / 100%)",
+    "hsla(0 0% 100% / 100.0%)",
+    "black",
+  ]) {
+    expect(safeOrganizationThemeValue("--on-accent", value)).toBe(true);
+  }
+
+  for (const value of [
+    "transparent",
+    "#ffffff80",
+    "rgba(255, 255, 255, 0.5)",
+    "rgb(255 255 255 / 50%)",
+    "hsl(0 0% 100% / 0.5)",
+    "rgb(255 255 255 /)",
+    "rgb(255, 255, 255 / 1)",
+  ]) {
+    expect(safeOrganizationThemeValue("--on-accent", value)).toBe(false);
+  }
+
+  expect(safeOrganizationThemeValue("--accent", "rgb(255 255 255 / 1)")).toBe(false);
 });
 
 test("Launchpad shell ships GEN2-like command center, theme and feedback affordances", async () => {
@@ -369,6 +414,29 @@ test("CAC-0044: karty jsou celé klikatelné a spouští one-click open s guarde
   expect(css).toContain(".app-open-cue");
 });
 
+test("CAC-0044: technická diagnostika nerozbíjí mřížku karet", async () => {
+  const [js, css] = await Promise.all([
+    readFile(join(publicRoot, "app.js"), "utf8"),
+    readFile(join(publicRoot, "styles.css"), "utf8"),
+  ]);
+  const warningModel = js.slice(
+    js.indexOf("function cardWarningModel"),
+    js.indexOf("function cardWarningNode"),
+  );
+  const warningNode = js.slice(
+    js.indexOf("function cardWarningNode"),
+    js.indexOf("function warningGlyph"),
+  );
+
+  expect(warningModel).not.toContain("detail: app.dependencies?.message");
+  expect(warningModel).toContain('dependencyState === "invalid_manifest" ? "Chyba v nastavení"');
+  expect(warningModel).toContain('actionLabel: "Zobrazit detail"');
+  expect(warningNode).not.toContain("card-warning-detail");
+  expect(warningNode).toContain('button.setAttribute("aria-label"');
+  expect(css).toContain("align-items: start");
+  expect(css).toContain("grid-template-columns: auto minmax(0, 1fr) auto");
+});
+
 test("CAC-0044: pravé panely Poslední změny + Nejčastější a git chip", async () => {
   const [html, js, css] = await Promise.all([
     readFile(join(publicRoot, "index.html"), "utf8"),
@@ -435,9 +503,9 @@ test("CAC-0044: step-005 aktivuje Ukázat změny a guarded Stáhnout novější 
   expect(js).toContain("/pull");
   expect(js).toContain("`Nová verze - ${incoming} změn`");
   expect(js).toContain('actionLabel: "Stáhnout"');
-  expect(js).toContain('actionStyle: "secondary"');
   expect(js).toContain('title: "Změny k odeslání"');
-  expect(js).toContain('warning.actionStyle === "secondary"');
+  expect(js).toContain('button.className = "btn btn-sm btn-secondary card-warning-action"');
+  expect(js).not.toContain("warning.actionStyle");
   expect(js).not.toContain("Můžeš ji bezpečně stáhnout (fast-forward).");
   expect(js).toContain("git.status === \"pull_available\"");
   expect(js).toContain("state.gitChangesByRepo");
@@ -795,7 +863,7 @@ test("Owner 2026-07-05: karta modulu je GEN2-minimal dlaždice bez velkých tla�
   // Sofistikovaný warning panel se ukáže, jen když je co řešit (null jinak).
   expect(js).toContain("function cardWarningModel");
   expect(js).toContain("function cardWarningNode");
-  expect(js).toContain("if (warning) card.append(cardWarningNode(app, warning))");
+  expect(js).toContain("if (warning) card.append(cardWarningNode(warning))");
   expect(js).toContain("appCardTone(app, warning)");
   // Dvě přímé akce warning panelu: nainstalovat/opravit balíčky a stáhnout novější verzi.
   expect(js).toContain("runRuntimeAction(app, installAction(app))");
@@ -884,3 +952,11 @@ test("app icon constants initialize before the first data load render", async ()
   expect(js.indexOf("const APP_ICON_PATHS")).toBeLessThan(firstDataLoad);
   expect(js.indexOf("const APP_DESCRIPTION_FALLBACKS")).toBeLessThan(firstDataLoad);
 });
+
+function extractClientThemeValidator(js) {
+  const start = js.indexOf("function safeOrganizationThemeValue");
+  const end = js.indexOf("\nfunction renderSpaceSwitcher", start);
+  expect(start).toBeGreaterThan(-1);
+  expect(end).toBeGreaterThan(start);
+  return Function(`${js.slice(start, end)}\nreturn safeOrganizationThemeValue;`)();
+}

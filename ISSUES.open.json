@@ -9,6 +9,59 @@
   "issues": [
     {
       "id": "issue-2026-07-20-001",
+      "title": "Dodefinovat Launchpad převzetí app-owned portu místo fallback portů",
+      "status": "decision_needed",
+      "severity": "medium",
+      "owner": "founder",
+      "created_at": "2026-07-20",
+      "updated_at": "2026-07-20",
+      "tags": [
+        "launchpad",
+        "runtime",
+        "ports",
+        "decision"
+      ],
+      "question": "Jak má Launchpad bezpečně převzít app-owned port, když je při Start/Restart obsazený jiným procesem, a kdy smí proces ukončit místo toho, aby uživatele poslal port uvolnit ručně?",
+      "impact": "Founder 2026-07-20 upřesnil, že moduly mají vlastnit svůj deklarovaný port a Launchpad nemá vybírat náhradní porty pro modulové aplikace. Pokud dvě organizace/moduly sdílí port, může běžet jen jedna instance. Současný kontrakt už zakazuje tichý fallback port, ale foreign/unknown listener nechává fail-closed kvůli riziku zabití cizího procesu. Bez rozhodnutí budou agenti driftovat mezi automatickým killnutím a ručním řešením kolize.",
+      "options": [
+        {
+          "label": "Managed auto-reclaim only",
+          "summary": "Automaticky ukončit jen Launchpadem ověřený managed/adopted proces stejné app identity; foreign/unknown proces zůstane blokující stav s explicitním návodem.",
+          "tradeoff": "Nejbezpečnější varianta pro klientské mašiny, ale uživatel musí ručně řešit port obsazený starou nebo cizí instancí."
+        },
+        {
+          "label": "Explicit user reclaim",
+          "summary": "Přidat v UI akci 'Převzít port', která před zabitím cizího procesu ukáže PID/CWD/důvod a vyžaduje vědomé potvrzení Principála.",
+          "tradeoff": "Ladí s app-owned port mental modelem a snižuje ruční práci, ale vyžaduje dobré vysvětlení rizika a platform-specific kill guardy."
+        },
+        {
+          "label": "Automatic foreign kill",
+          "summary": "Při Start/Restart automaticky ukončit jakýkoli listener na app-owned portu a spustit vybranou app instanci.",
+          "tradeoff": "Nejrychlejší UX, ale největší riziko ztráty práce nebo zabití nesouvisející služby; vyžaduje silné procesní důkazy, jinak porušuje bezpečný lokální runtime model."
+        }
+      ],
+      "decision_needed_for": [
+        "Launchpad Start/Restart runtime policy",
+        "Doctor runtime diagnostics copy",
+        "port ownership UX before broader client rollout"
+      ],
+      "links": [
+        {
+          "label": "Launchpad README port contract",
+          "path": "launchpad/README.md"
+        },
+        {
+          "label": "Runtime UI copy for foreign-port",
+          "path": "launchpad/public/app.js"
+        },
+        {
+          "label": "Runtime manager implementation",
+          "path": "launchpad/src/runtime-lib.mjs"
+        }
+      ]
+    },
+    {
+      "id": "issue-2026-07-20-002",
       "title": "Launchpad nemá zobrazovat Mission Control DB jako Workspace modul",
       "status": "implementation_ready_for_review",
       "severity": "medium",

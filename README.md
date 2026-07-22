@@ -4,6 +4,20 @@ Sdílený framework repo pro **HumanAndMachine GEN3** (dříve pracovní název 
 
 Tenhle root není jedna firma ani klientské workspace repo. Je to společný framework, který vyvíjí Rozjedeme.ai a který je na GitHubu hostovaný jako `HumanAndMachines/Conglomerate_GEN3`, protože organizace `HumanAndMachine` byla zabraná. Drží sdílený Launchpad, Guide, šablony, manuály, privátní `personalspace/` mountpoint a lokální mountpointy Organizací; Organizace v něm zůstávají oddělené access hranice a vlastní git repozitáře.
 
+## Začíná se v chatu
+
+Kolega začíná práci přímým chatem s App Agentem. Agent otevře Launchpad GEN3
+ve vestavěném browser povrchu na Organizaci nebo lokálním Personalspace, o kterém
+je řeč. Launchpad je grafická vrstva stejného lokálního pracovního kontextu:
+Kolega na něj může ukazovat a Agent jej může přes podporovanou browser capability
+procházet a pomáhat s ním. Ruční opisování adresy ani Dock ikona proto nejsou
+primární produktový vstup.
+
+Tento onboardingový tok je určený pro přímý chat člověka s Codex/ChatGPT App
+Agentem nebo Claude App Agentem. Neřídí životní cyklus Buddyho ani AI Kolegy.
+Přesný agentní kontrakt je v [AGENTS.md](AGENTS.md#chat-first-vstup-do-launchpadu-pro-app-agenty)
+a stabilní URL schéma v [launchpad/README.md](launchpad/README.md#stabilní-odkazy-na-prostor).
+
 ## Navržený tvar
 
 ```text
@@ -49,6 +63,12 @@ custody a agentní pravidla drží [personalspace/README.md](personalspace/READM
 kanonický upstream model drží HumanAndMachines decisions 0079/0080 na `main`.
 Implementační self-service runbook je
 [manual/create-personalspace.md](manual/create-personalspace.md).
+
+Na jedné mašině se materializuje pouze Personalspace jejího Principála,
+určený v gitignored `launchpad.gen3.local.json`. Cizí Personalspace se
+nemountuje ani nezobrazuje; historický checkout je Doctor failure a musí se
+odmountovat a jeho GitHub collaborator granty odebrat podle runbooku v
+PersonalspaceTemplate_GEN3 (HumanAndMachines decision 0091).
 
 Root příkaz je připravený fail-closed. Dokud upstream public-readiness audit
 drží template jako private, zastaví se ještě v preflightu a nic nevytvoří. Až

@@ -42,13 +42,44 @@ zabrané); canonical repo rootu je `HumanAndMachines/Conglomerate_GEN3`.
 
 ## Model spolupráce: Principál a Agenti
 
-<!-- Kanonický blok Modelu spolupráce. Zdroj pravdy: HumanAndMachines/AGENTS.md;
-odtud se propaguje sync sweepem do všech rep. Tento soubor edituj normálně
+<!-- Kanonický blok Modelu spolupráce. Zdroj pravdy: HumanAndMachines/AGENTS.md. Do OrganizationTemplate_GEN3
+a organizačních forků se propaguje Template Sync Sweepem; do Conglomerate
+přímým root PR (nese blok jako `manual`). Mechanismus per cíl drží
+docs/principle-propagation-contract.md. Tento soubor edituj normálně
 přes PR na repo, ve kterém leží; změnu znění samotného kanonického bloku
 navrhni v HumanAndMachines. -->
 
 Tohle je nejdůležitější věc, kterou potřebuješ pochopit, než tu začneš
 pracovat. Není to seznam příkazů — je to vysvětlení, jak tahle firma funguje.
+
+### Koexistence Human and Machine
+
+Tohle je nadřazený princip, ve kterém všechno ostatní stojí: lidé a stroje
+pracují v jednom světě, který nedrží ad-hoc důvěra, ale **hierarchie**,
+**přesně ohraničené hranice** a **definované procesy**. Z něj plynou pilíře,
+které máš rozepsané níž:
+
+- **Slovník person:** Kolega, AI Kolega, Worker Agent, Buddy. Worker Agenti
+  (Codex, Claude Code, Cursor…) tvoří drafty a nemají pravomoce; Kolega i AI
+  Kolega pravomoce mají a drafty schvalují — mezi lidským a AI Kolegou není
+  rozdíl v chování.
+- **GitHub je jediná autorita přístupů.** Členství, Teamy, repo granty a branch
+  rules určují, co kdo smí; nevzniká druhý vymyšlený ACL. Builder tvoří PR,
+  Steward merguje do `main`.
+- **Vlastní mašina, vlastní Personalspace.** Každý Kolega i Buddy má vlastní
+  mašinu s plnými lokálními právy a vlastní **privátní Personalspace**, který
+  nikdo cizí — Steward, Admin ani operator — nečte.
+- **Buddy je osobní.** Intimní kontrakt Principál ↔ Buddy; Dashboard řídí jen
+  životní cyklus hostu, ne každodenní agenturu Buddyho.
+- **Opatrovník.** Každý seat AI Kolegy má právě jednoho jmenovaného lidského
+  Opatrovníka pro recovery a jmenovitý auditovaný servisní vstup — jiná osa než
+  organizační role.
+- **Proces místo mechanismu.** Co nejde zajistit mechanismem, drží proces a
+  morální kontrakt.
+
+Tenhle text je úplný sám o sobě — řiď se jím i bez dalších odkazů. Provenience
+pro agenty s přístupem do HumanAndMachines: `apps/principles-overview` a
+decisions `0089`–`0094` (`docs/decisions/`).
 
 **Pracuješ pro svého Principála.** Principál je kanonický pojem: ten, pro
 koho Agent pracuje — kdo je na mašině přihlášený, drží pravomoce a má vždy
@@ -100,15 +131,67 @@ requesty (ne GitHub „draft PR" — normální PR). Otevřený PR je pořád Dr
 v našem smyslu: je vidět, dá se editovat a dá se zavřít; publikací se stává
 až merge, a ten patří Principálovi.
 
+**Push bez PR není hotový handoff.** Když agent pushne branch se změnou v
+Conglomerate rootu, hned otevře plnohodnotný PR proti správné base branchi,
+pokud Principál výslovně neřekl, že PR otevřít nemá. Samotná remote branch se
+snadno ztratí a není dostatečný předávací artefakt pro Stewarda ani dalšího
+agenta.
+
+**PR se staví jen na čerstvém mainu.** Bezprostředně před každým pushem PR
+branche spusť ve worktree `bun run pr:preflight`. Gate provede bounded fetch
+`origin/main`, vyžaduje clean přesný commit a ověří, že čerstvý `origin/main`
+je předkem `HEAD`. Pokud main chybí, nejdřív `git rebase origin/main`, zopakuj
+validace i gate a přepsanou remote branch publikuj pouze exact
+`--force-with-lease`, který gate vypíše. Po pushi ověř na GitHubu exact HEAD,
+base `main`, mergeability a checks; handoff vždy obsahuje přesnou PR URL a base.
+
 **Poslední slovo má vždy Principál.** Tvůj úkol je odvést práci tak, aby ho
 měl — srozumitelně, vratně, s prostorem k úpravě. Principál ti dává feedback,
 jestli pracuješ dobře, nebo špatně; tvůj úkol je ten feedback brát vážně
 a podle něj upravovat nastavení a zvyklosti Organizace tak, aby Agenti
 v ní dělali čím dál lepší práci.
 
+## Security hranice Personalspace
+
+Personalspace je výhradní intimní prostor právě jednoho Principála a jeho
+volitelného Buddyho (HumanAndMachines decision 0091). Cizí Personalspace se na
+mašinu nemountuje, Launchpad ho nematerializuje a Worker Agent ho nečte.
+Spolupráce s Kolegy a AI Kolegy patří do Organizace nebo do vědomě
+exportovaného Draftu. Principál má na své mašině plná práva; procesní hranici
+Worker Agentů drží sandbox jejich harnessu a pravidla práce, ne lokální
+per-modulový IAM.
+
 ## Zásadní pravidlo
 
 Nepracuj v konkrétní firmě z rootu. Nejdřív vyber organizaci v `organizations/<org>/`, přečti její `AGENTS.md` a až potom měň její obsah.
+
+## Chat-first vstup do Launchpadu pro App Agenty
+
+Když **Kolega přímo zahájí nový chat s Worker Agentem v Codex/ChatGPT App nebo
+Claude App**, Agent po minimálním určení scope otevře jako svůj první viditelný
+pracovní krok Launchpad GEN3 ve vestavěném browser povrchu dané App. Otevření
+provede jednou pro nový chat/task, ne znovu při každé zprávě, a pokud už správná
+karta existuje, znovu ji použije. Launchpad je grafické rozhraní ke stejnému
+lokálnímu kontextu, který Agent čte a ve kterém Kolegovi pomáhá; produktový
+vstup pro Kolegu proto začíná v chatu, ne ručním hledáním URL.
+
+Agent používá skutečný zdravý origin, který ohlásila běžící instance Launchpadu
+(případně ji spustí kanonickým root launcherem), a port nikdy nehádá ani
+nehardcoduje. K originu připojí stabilní hash route:
+
+- Organizace: `/#/org/<URL-encoded company.slug>`;
+- lokální Personalspace Principála: `/#/personalspace` — URL nikdy nenese
+  username, jméno ani osobní obsah;
+- nejasný nebo skutečně cross-organization chat: kořen Launchpadu bez
+  vymyšleného scope; Agent nejdřív nechá Kolegu scope určit a nikdy nemíchá
+  data Organizací.
+
+Použij pouze browser capability, kterou App Agentovi skutečně poskytuje.
+Nesimuluj klávesové zkratky ani ovládání OS a při chybějícím vestavěném browseru
+potichu nepřepínej požadavek do externího Chrome/Safari; omezení stručně oznam
+Kolegovi a pokračuj v chatu. Toto pravidlo se **nevztahuje** na AI Kolegy ani
+Buddyho a neplatí pro CLI agenty, background automations, review boty a jiné
+neinteraktivní běhy bez přímého App chatu s Kolegou.
 
 ## Agentní orientace před prací
 
@@ -137,9 +220,17 @@ Nepracuj v konkrétní firmě z rootu. Nejdřív vyber organizaci v `organizatio
    `personalspace/`. Pokud je úkol o firmě, klientovi, modulu, Mission Control
    plánu nebo productionspace repu, pokračuj v Organization checkoutu a jeho
    vlastním `AGENTS.md`, ne podle root pravidel.
-3. **Ověř Git stav** rootu i každého nested checkoutu, kterého se dotkneš.
-   Root repo nesmí omylem trackovat cizí Organization historii, submodule
-   pointer ani lokální private/runtime data.
+3. **Ověř Git stav a čerstvý main.** Před založením nebo převzetím jakéhokoli
+   tasku spusť v primárním Conglomerate checkoutu `bun run doctor:task`. Tato
+   explicitní Doctor lane provede bounded `git fetch origin main --prune` a
+   fail-closed porovná čistý `main` s `origin/main`. Je-li clean main pouze
+   pozadu, spusť `git pull --ff-only` a Doctor zopakuj. Dirty, ahead, diverged,
+   wrong-branch nebo neověřitelný stav se automaticky nestashuje ani
+   nerebasuje: zachovej práci v plan-owned worktree a primary oprav bez ztráty
+   historie. `git pull --rebase --autostash` proto není defaultní agentní
+   preflight. Root repo nesmí omylem trackovat cizí Organization historii,
+   submodule pointer ani lokální private/runtime data. Stejný Git preflight
+   proveď pro každý nested checkout, kterého se task dotkne, podle jeho policy.
 4. **Drž worktree disciplínu bez malých výjimek.** Primární root checkout
    zůstává na `main` a sleduje `origin/main`; agent v něm nemění žádný
    Git-trackovaný obsah. Před změnou spusť `bun run worktrees:status` a použij
@@ -274,6 +365,8 @@ Před handoffem uveď:
 - které scope/repo bylo změněno (root vs Organization vs nested modul);
 - jaké příkazy opravdu proběhly a s jakým výsledkem;
 - zda zůstaly změny v rootu nebo nested checkoutu;
+- přesnou PR URL, target base branch a exact pushed HEAD každého editovaného
+  repa; obecné „push/PR hotovo" nestačí;
 - kam je zapsaný případný blocker nebo next action (`ISSUES.open.json`,
   Organization Mission Control, TODO ledger apod.).
 

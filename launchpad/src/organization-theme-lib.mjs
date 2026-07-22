@@ -3,12 +3,14 @@ import { lstat, open, realpath } from "fs/promises";
 import { isAbsolute, relative, resolve } from "path";
 
 const maxThemeBytes = 256 * 1024;
+const designSystemThemeCandidate = "design-system/launchpad.tokens.css";
+const designSystemConfigCandidate = "design-system/design-system.config.json";
 
 // Explicitní adaptér v design systému je cílový kontrakt. Starší Organization
 // mounty už nesou GEN2 Launchpad skin odvozený ze stejného design systému, takže
 // funguje jako kompatibilní fallback bez hardcodování názvů firem.
 export const organizationThemeCandidates = [
-  "design-system/launchpad.tokens.css",
+  designSystemThemeCandidate,
   "launchpad/app/v1/web/style.css",
 ];
 
@@ -25,6 +27,7 @@ export const launchpadThemeTokenNames = new Set([
   "--line",
   "--line-strong",
   "--accent",
+  "--on-accent",
   "--accent-soft",
   "--accent-ring",
   "--shadow-sm",
@@ -62,32 +65,83 @@ export async function readOrganizationLaunchpadTheme({ companiesRoot, organizati
   }
 
   for (const candidate of organizationThemeCandidates) {
-    const candidatePath = resolve(organizationRoot, candidate);
-    let themeFile;
+    const isDesignSystemAdapter = candidate === designSystemThemeCandidate;
+    if (
+      isDesignSystemAdapter
+      && !await isApprovedOrganizationDesignSystem({
+        organizationRoot,
+        realOrganizationRoot,
+        organizationSlug: organization.slug,
+      })
+    ) {
+      continue;
+    }
+
     try {
-      const stats = await lstat(candidatePath);
-      if (!stats.isFile() || stats.isSymbolicLink() || stats.size > maxThemeBytes) continue;
-      const realCandidatePath = await realpath(candidatePath);
-      const relativePath = relative(realOrganizationRoot, realCandidatePath);
-      if (!relativePath || relativePath.startsWith("..") || isAbsolute(relativePath)) continue;
-      themeFile = await open(candidatePath, constants.O_RDONLY | constants.O_NOFOLLOW);
-      const openedStats = await themeFile.stat();
-      if (!openedStats.isFile() || openedStats.size > maxThemeBytes) continue;
-      const themeBytes = await themeFile.readFile();
-      if (themeBytes.byteLength > maxThemeBytes) continue;
+      const themeBytes = await readSafeOrganizationFile({
+        organizationRoot,
+        realOrganizationRoot,
+        candidate,
+      });
+      if (!themeBytes) continue;
       const css = themeBytes.toString("utf8");
-      const theme = extractLaunchpadTheme(css);
+      const theme = extractLaunchpadTheme(css, { requireOnAccent: isDesignSystemAdapter });
       if (theme) return { source: candidate, ...theme };
     } catch {
       // Chybějící, nečitelný nebo nekompatibilní kandidát není blokátor.
-    } finally {
-      await themeFile?.close();
     }
   }
   return null;
 }
 
-export function extractLaunchpadTheme(css) {
+async function isApprovedOrganizationDesignSystem({
+  organizationRoot,
+  realOrganizationRoot,
+  organizationSlug,
+}) {
+  if (typeof organizationSlug !== "string" || !organizationSlug) return false;
+  try {
+    const configBytes = await readSafeOrganizationFile({
+      organizationRoot,
+      realOrganizationRoot,
+      candidate: designSystemConfigCandidate,
+    });
+    if (!configBytes) return false;
+    const config = JSON.parse(configBytes.toString("utf8"));
+    return (
+      config?.mode === "organization"
+      && config?.content_status === "approved"
+      && config?.organization?.slug === organizationSlug
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function readSafeOrganizationFile({
+  organizationRoot,
+  realOrganizationRoot,
+  candidate,
+}) {
+  const candidatePath = resolve(organizationRoot, candidate);
+  let file;
+  try {
+    const stats = await lstat(candidatePath);
+    if (!stats.isFile() || stats.isSymbolicLink() || stats.size > maxThemeBytes) return null;
+    const realCandidatePath = await realpath(candidatePath);
+    const relativePath = relative(realOrganizationRoot, realCandidatePath);
+    if (!relativePath || relativePath.startsWith("..") || isAbsolute(relativePath)) return null;
+    file = await open(candidatePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const openedStats = await file.stat();
+    if (!openedStats.isFile() || openedStats.size > maxThemeBytes) return null;
+    const bytes = await file.readFile();
+    return bytes.byteLength <= maxThemeBytes ? bytes : null;
+  } finally {
+    await file?.close();
+  }
+}
+
+export function extractLaunchpadTheme(css, { requireOnAccent = false } = {}) {
   const withoutComments = String(css ?? "").replace(/\/\*[\s\S]*?\*\//g, "");
   const rootBlock = extractCssBlock(withoutComments, /:root\s*\{/g);
   if (!rootBlock) return null;
@@ -96,11 +150,22 @@ export function extractLaunchpadTheme(css) {
   const darkBlock = extractCssBlock(withoutComments, /\[data-theme\s*=\s*["']dark["']\]\s*\{/g);
   const darkSource = darkBlock ? parseCustomProperties(darkBlock) : new Map();
   const light = resolvedAllowedTokens(lightSource);
-  if (!requiredThemeTokens.every((token) => light[token])) return null;
+  const requiredLightTokens = requireOnAccent
+    ? [...requiredThemeTokens, "--on-accent"]
+    : requiredThemeTokens;
+  if (!requiredLightTokens.every((token) => light[token])) return null;
 
   const dark = resolvedAllowedTokens(new Map([...lightSource, ...darkSource]), new Set(darkSource.keys()));
-  if (!requiredDarkThemeTokens.every((token) => dark[token])) return null;
-  addAccentAliases({ light, dark, lightSource, darkSource });
+  const requiredDarkTokens = requireOnAccent
+    ? [...requiredDarkThemeTokens, "--on-accent"]
+    : requiredDarkThemeTokens;
+  if (!requiredDarkTokens.every((token) => dark[token])) return null;
+  addAccentAliases({
+    light,
+    dark,
+    lightSource,
+    alignDarkAccentRamp: requireOnAccent,
+  });
   light["--font-heading"] ??= light["--font-body"];
   light["--launchpad-body-background"] = "linear-gradient(180deg, var(--bg-muted) 0%, var(--bg) 42%)";
   dark["--launchpad-body-background"] = "linear-gradient(180deg, var(--bg-muted) 0%, var(--bg) 42%)";
@@ -177,11 +242,59 @@ function isSafeThemeValue(token, value) {
   if (token === "--launchpad-body-background") {
     return value === "linear-gradient(180deg, var(--bg-muted) 0%, var(--bg) 42%)";
   }
+  if (token === "--on-accent") return isSafeOpaqueColor(value);
   return isSafeColor(value);
 }
 
 function isSafeColor(value) {
   return /^(?:#[0-9a-fA-F]{3,8}|(?:rgb|rgba|hsl|hsla)\([\d.%,\s+-]+\)|transparent|white|black)$/.test(value);
+}
+
+function isSafeOpaqueColor(value) {
+  if (value === "white" || value === "black") return true;
+  const hex = value.match(/^#([0-9a-fA-F]+)$/)?.[1];
+  if (hex) {
+    if (hex.length === 3 || hex.length === 6) return true;
+    if (hex.length === 4) return hex.endsWith("f") || hex.endsWith("F");
+    if (hex.length === 8) return hex.endsWith("ff") || hex.endsWith("FF");
+    return false;
+  }
+  const colorFunction = value.match(/^(rgb|rgba|hsl|hsla)\(([\d.%,\s+/-]+)\)$/);
+  if (!colorFunction) return false;
+  const serializedComponents = colorFunction[2].trim();
+  let components;
+  let alpha;
+  if (serializedComponents.includes("/")) {
+    if (serializedComponents.includes(",")) return false;
+    const slashParts = serializedComponents.split("/");
+    if (slashParts.length !== 2) return false;
+    components = slashParts[0].trim().split(/\s+/);
+    alpha = slashParts[1].trim();
+  } else if (serializedComponents.includes(",")) {
+    components = serializedComponents.split(",").map((component) => component.trim());
+    alpha = components.length === 4 ? components.pop() : undefined;
+  } else {
+    components = serializedComponents.split(/\s+/);
+  }
+  if (components.length !== 3 || !alpha && serializedComponents.includes("/")) return false;
+  const [first, second, third] = components;
+  const validComponents = colorFunction[1].startsWith("rgb")
+    ? [first, second, third].every(isCssNumberOrPercentage)
+    : isCssNumber(first) && isCssPercentage(second) && isCssPercentage(third);
+  if (!validComponents) return false;
+  return alpha === undefined || /^(?:1(?:\.0+)?|100(?:\.0+)?%)$/.test(alpha);
+}
+
+function isCssNumber(value) {
+  return /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(value);
+}
+
+function isCssPercentage(value) {
+  return value.endsWith("%") && isCssNumber(value.slice(0, -1));
+}
+
+function isCssNumberOrPercentage(value) {
+  return isCssNumber(value) || isCssPercentage(value);
 }
 
 function isSafeShadow(value) {
@@ -191,9 +304,13 @@ function isSafeShadow(value) {
   return /(?:^|\s)-?\d/.test(value) && /(?:#[0-9a-fA-F]{3,8}|(?:rgb|rgba|hsl|hsla)\()/.test(value);
 }
 
-function addAccentAliases({ light, dark, lightSource, darkSource }) {
+function addAccentAliases({
+  light,
+  dark,
+  lightSource,
+  alignDarkAccentRamp,
+}) {
   const lightAccentReference = referencedToken(lightSource.get("--accent"));
-  const darkCombined = new Map([...lightSource, ...darkSource]);
   for (const weight of [200, 400, 500, 700, 800, 900]) {
     const sourceToken = lightAccentReference?.replace(/-(?:50|100|200|400|500|600|700|800|900)$/, `-${weight}`);
     const sourceValue = sourceToken ? resolveCustomProperty(sourceToken, lightSource) : null;
@@ -203,11 +320,11 @@ function addAccentAliases({ light, dark, lightSource, darkSource }) {
   light["--c-accent-400"] ??= light["--accent"];
   light["--c-accent-700"] ??= light["--accent"];
 
-  const darkAccentReference = referencedToken(darkSource.get("--accent"));
-  const darkAccent = darkAccentReference
-    ? resolveCustomProperty(darkAccentReference, darkCombined)
-    : dark["--accent"];
-  if (isSafeThemeValue("--c-accent-400", darkAccent)) dark["--c-accent-400"] = darkAccent;
+  const darkAccent = dark["--accent"];
+  if (isSafeThemeValue("--c-accent-400", darkAccent)) {
+    dark["--c-accent-400"] = darkAccent;
+    if (alignDarkAccentRamp) dark["--c-accent-500"] = darkAccent;
+  }
 }
 
 function referencedToken(value) {
