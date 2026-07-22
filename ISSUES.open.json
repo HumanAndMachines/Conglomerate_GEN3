@@ -10,11 +10,11 @@
     {
       "id": "issue-2026-07-20-001",
       "title": "Dodefinovat Launchpad převzetí app-owned portu místo fallback portů",
-      "status": "decision_needed",
+      "status": "implementation_ready_for_review",
       "severity": "medium",
-      "owner": "founder",
+      "owner": "Launchpad implementační agent",
       "created_at": "2026-07-20",
-      "updated_at": "2026-07-20",
+      "updated_at": "2026-07-22",
       "tags": [
         "launchpad",
         "runtime",
@@ -45,6 +45,14 @@
         "Doctor runtime diagnostics copy",
         "port ownership UX before broader client rollout"
       ],
+      "decision": "Founder refinement 2026-07-22: deklarovaný port patří app surface. Uvnitř jedné Organizace musí být porty unikátní a duplicita je discovery failure. Různé Organizace smějí deklarovat stejný port; na jednom hostu může současně běžet jen jedna z jejich aplikací a poslední uživatelské Otevřít vyhraje. Launchpad smí předchozí proces ukončit pouze tehdy, když jej pozitivně přiřadí známé aplikaci jiné Organizace. Foreign/unknown listener bez takové vazby zůstává fail-closed.",
+      "implementation": "Discovery vynucuje intra-Organization unikátnost, ale cross-Organization překryv zachová a vrátí owner-aware port_overlaps do API a Doctora. One-click Open při známém překryvu automaticky zastaví aplikaci dříve otevřené Organizace a spustí cíl; těsně před Stopem znovu ověří PID/CWD. Samostatná Switch API akce dál vyžaduje potvrzený intent. Cizí a neověřitelný proces bez známé Organization vazby zůstává blokující.",
+      "verification": [
+        "bun test launchpad/src/discovery-lib.test.mjs launchpad/src/diagnostics-lib.test.mjs launchpad/src/runtime-lib.test.mjs",
+        "bun run check",
+        "bun run doctor"
+      ],
+      "next_action": "Steward review koordinovaného HumanAndMachines decision refinement PR a Conglomerate implementation PR; po merge přesunout issue do ISSUES.resolved.json.",
       "links": [
         {
           "label": "Launchpad README port contract",

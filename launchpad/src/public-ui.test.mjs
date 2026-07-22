@@ -116,6 +116,16 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(js).toContain("planned_slot");
   expect(js).toContain('["current-instance", "adopted-port"].includes(app.runtime?.owner)');
   expect(js).toContain('return ["foreign-port", "unknown-port"].includes(app.runtime?.owner)');
+  expect(js).toContain("function runningSharedPortPeer");
+  expect(js).toContain("runtimeHostsShareListener(candidate.host, app.host)");
+  expect(js).toContain('host === "localhost" ? "127.0.0.1" : host');
+  expect(js).toContain('actionLabel: "Otevřít a převzít port"');
+  expect(js).toContain('candidate.company !== app.company');
+  expect(js).toContain("function switchRuntimeApp");
+  expect(js).toContain("replace_app_id: peer.id");
+  expect(js).toContain("confirmed: true");
+  expect(server).toContain("health|install|repair|start|switch|open|stop|restart|logs");
+  expect(server).toContain("runtimeManager.switchApp(route.appId, runtimeOptions)");
   expect(js).toContain('title: app.runtime?.owner === "foreign-port" ? "Cizí checkout na portu" : "Checkout procesu nelze ověřit"');
   expect(js).toContain('actionLabel: "Zobrazit detail"');
   expect(js).toContain('label: app.runtime?.owner === "foreign-port" ? "Cizí checkout na portu" : "Checkout procesu nelze ověřit"');
