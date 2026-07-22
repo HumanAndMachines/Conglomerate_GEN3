@@ -2551,6 +2551,7 @@ function runningSharedPortPeer(app) {
   const declaredOwners = new Set((app.shared_port_owners ?? []).map((owner) => owner.app_id));
   return state.apps.find((candidate) =>
     candidate.id !== app.id
+    && candidate.company !== app.company
     && candidate.port === app.port
     && candidate.host === app.host
     && (declaredOwners.size === 0 || declaredOwners.has(candidate.id))
@@ -2567,9 +2568,8 @@ function cardWarningModel(app, gitRepo) {
     return {
       tone: "warn",
       title: `Port používá ${appBaseTitle(sharedPortPeer)}`,
-      actionLabel: "Přepnout a spustit",
-      run: () => switchRuntimeApp(app, sharedPortPeer),
-      pending: `${app.id}:switch`,
+      actionLabel: "Otevřít a převzít port",
+      run: () => openAppChain(app),
     };
   }
 
@@ -2736,9 +2736,8 @@ function cardMenuActions(app) {
   const sharedPortPeer = runningSharedPortPeer(app);
   if (sharedPortPeer) {
     actions.push({
-      label: `Přepnout z ${appBaseTitle(sharedPortPeer)}`,
-      run: () => switchRuntimeApp(app, sharedPortPeer),
-      pending: `${app.id}:switch`,
+      label: `Otevřít místo ${appBaseTitle(sharedPortPeer)}`,
+      run: () => openAppChain(app),
     });
   }
   if (canStop(app)) {
@@ -3164,11 +3163,11 @@ function chip(label, toneClass, withDot = false) {
 
 function primaryActionNode(app, nextAction) {
   let node;
-  if (nextAction.type === "switch") {
+  if (nextAction.type === "open_chain") {
     node = cardActionButton(
       nextAction.label,
-      () => switchRuntimeApp(app, nextAction.peer),
-      state.pendingAction === `${app.id}:switch`,
+      () => openAppChain(app),
+      state.openingApps.has(app.id),
     );
   } else if (nextAction.type === "folder") {
     node = cardActionButton(
@@ -3216,7 +3215,7 @@ function primaryNextAction(app) {
   }
   const sharedPortPeer = runningSharedPortPeer(app);
   if (sharedPortPeer) {
-    return { type: "switch", label: "Přepnout a spustit", peer: sharedPortPeer };
+    return { type: "open_chain", label: "Otevřít a převzít port", peer: sharedPortPeer };
   }
   if (app.kind === "workspace-module" && app.can_open_folder) {
     return { type: "folder", label: "Otevřít složku" };
@@ -4290,8 +4289,8 @@ function nextActionReason(app, nextAction) {
     }
     return `Akce není dostupná: ${humanDependencyLabel(app.dependencies?.state)}. Vyřeš to přes Doktora nebo sync.`;
   }
-  if (nextAction.type === "switch") {
-    return `Port ${app.port} teď bezpečně vlastní ${appBaseTitle(nextAction.peer)}. Po potvrzení ji Launchpad zastaví a spustí tuto aplikaci.`;
+  if (nextAction.type === "open_chain") {
+    return `Port ${app.port} teď bezpečně vlastní ${appBaseTitle(nextAction.peer)} z jiné Organizace. Otevřením ji Launchpad zastaví a spustí tuto aplikaci; poslední otevřený modul vyhraje.`;
   }
   if (nextAction.type === "open") return "Aplikace běží — otevře se v novém panelu, nic se nespouští.";
   if (nextAction.type === "folder") return "Otevře lokální checkout ve správci souborů; nic v něm nemění.";

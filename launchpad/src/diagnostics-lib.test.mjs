@@ -85,7 +85,8 @@ test("Doctor reportuje deklarovaný port overlap owner-aware bez konfiguračníh
   const check = report.checks.find((item) => item.id === "launchpad.port_ownership");
 
   expect(check?.status).toBe("ok");
-  expect(check?.message).toContain("1 sdílený port");
+  expect(check?.message).toContain("1 cross-Organization sdílený port");
+  expect(check?.message).toContain("poslední otevřená aplikace");
   expect(check?.details).toEqual([
     "port 5392: alpha-app (organizations/Alpha/workspace/app/package.json), beta-app (organizations/Beta/workspace/app/package.json)",
   ]);

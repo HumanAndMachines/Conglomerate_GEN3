@@ -134,11 +134,11 @@ If the answer to #4 is yes, stop and anonymize or keep it local.
 ## Port allocation guardrail
 
 Do **not** fix Launchpad port overlaps by choosing ad-hoc local ports. Každá app
-surface vlastní stabilní port ve svém package manifestu a více Organizací jej
-smí deklarovat stejně; pak může být v jednom lokálním rootu aktivní jen jedna
-z nich. Port měň pouze tehdy, když modul skutečně potřebuje souběžný runtime,
-ne proto, aby discovery prošlo. Doctor ukazuje vlastníky překryvu a Launchpad
-smí po potvrzení přepnout jen mezi pozitivně ověřenými známými aplikacemi.
+surface vlastní stabilní port ve svém package manifestu. Uvnitř jedné
+Organizace musí být porty unikátní; různé Organizace jej smějí deklarovat
+stejně a v jednom lokálním rootu bude aktivní poslední otevřená z nich. Doctor
+ukazuje vlastníky cross-Organization překryvu a Launchpad přepne jen mezi
+pozitivně ověřenými známými aplikacemi.
 
 ## Next stage before apply mode
 

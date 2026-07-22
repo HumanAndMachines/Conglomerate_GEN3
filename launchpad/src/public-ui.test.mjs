@@ -117,7 +117,8 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(js).toContain('["current-instance", "adopted-port"].includes(app.runtime?.owner)');
   expect(js).toContain('return ["foreign-port", "unknown-port"].includes(app.runtime?.owner)');
   expect(js).toContain("function runningSharedPortPeer");
-  expect(js).toContain('actionLabel: "Přepnout a spustit"');
+  expect(js).toContain('actionLabel: "Otevřít a převzít port"');
+  expect(js).toContain('candidate.company !== app.company');
   expect(js).toContain("function switchRuntimeApp");
   expect(js).toContain("replace_app_id: peer.id");
   expect(js).toContain("confirmed: true");

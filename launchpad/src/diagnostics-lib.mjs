@@ -1631,10 +1631,10 @@ function discoveryCheck(appsResponse) {
   };
 }
 
-// Deklarovaný overlap není chyba konfigurace: app-owned port je stabilní
-// součást app surface a napříč Organizacemi se smí opakovat. Doctor vlastníky
-// vypíše jako informační evidence; bezpečnostní fail řeší až runtime check,
-// pokud je na portu právě živý cizí nebo neověřitelný listener.
+// Cross-Organization overlap není chyba konfigurace: app-owned port je
+// stabilní součást app surface a mezi Organizacemi se smí opakovat. Intra-org
+// duplicitu už discovery failne. Doctor cross-org vlastníky vypíše jako
+// informační evidence; neznámý živý listener dál failuje v runtime checku.
 function portOverlapCheck(appsResponse) {
   const overlaps = appsResponse.port_overlaps ?? [];
   const details = overlaps.map(({ port, owners = [] }) => {
@@ -1647,8 +1647,8 @@ function portOverlapCheck(appsResponse) {
     severity: "runtime",
     title: "App-owned porty",
     message: overlaps.length === 0
-      ? "Deklarované app-owned porty nemají překryv."
-      : `${formatCount(overlaps.length, "sdílený port", "sdílené porty", "sdílených portů")}; na každém může současně běžet jedna aplikace.`,
+      ? "Deklarované app-owned porty nemají cross-Organization překryv."
+      : `${formatCount(overlaps.length, "cross-Organization sdílený port", "cross-Organization sdílené porty", "cross-Organization sdílených portů")}; poslední otevřená aplikace na každém portu vyhraje.`,
     paths: ["organizations"],
     links: [],
     details,

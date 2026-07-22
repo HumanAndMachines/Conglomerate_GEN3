@@ -86,11 +86,11 @@ export function createRuntimeManager({
     return startRuntimeApp(app);
   }
 
-  // Dvě známé app surfaces smějí vlastnit stejný deklarovaný port, ale běžet
-  // může jen jedna. Switch je jediná destruktivní cesta: vyžaduje explicitní
-  // potvrzení, main runtime na obou stranách a před Stopem znovu sváže živý PID
-  // s pozitivně ověřeným checkoutem nahrazované aplikace. Foreign/unknown
-  // listenery se touto cestou nikdy neukončují.
+  // Dvě známé app surfaces různých Organizací smějí vlastnit stejný
+  // deklarovaný port, ale běžet může jen jedna. Switch vyžaduje explicitní
+  // intent (samostatné potvrzení nebo uživatelské Open), main runtime na obou
+  // stranách a před Stopem znovu sváže živý PID s pozitivně ověřeným checkoutem
+  // nahrazované aplikace. Foreign/unknown listenery se nikdy neukončují.
   async function switchApp(appId, { replace_app_id: replaceAppId = null, confirmed = false, source = null } = {}) {
     if (confirmed !== true) {
       throw new RuntimeActionError(
@@ -116,6 +116,14 @@ export function createRuntimeManager({
       );
     }
     const replaced = await runtimeAppForAction(replaceAppId.trim(), { source: { type: "main" } });
+    if (target.company === replaced.company) {
+      throw new RuntimeActionError(
+        409,
+        "app_switch_same_organization",
+        "Přepnutí sdíleného portu je povolené jen mezi různými Organizacemi; uvnitř jedné Organizace musí být app-owned porty unikátní.",
+        [`organization: ${target.company}`, `target_app: ${target.id}`, `replace_app: ${replaced.id}`],
+      );
+    }
     if (target.port !== replaced.port) {
       throw new RuntimeActionError(
         409,
@@ -167,6 +175,23 @@ export function createRuntimeManager({
       runtime: started.runtime,
       url: started.runtime?.url ?? appUrl(target),
     };
+  }
+
+  async function runningCrossOrganizationPortPeer(app) {
+    if (runtimeSourceForApp(app).type !== "main") return null;
+    const discovery = await discover(companiesRoot);
+    if (discovery.failures.length > 0) return null;
+    const candidates = discovery.apps.filter((candidate) =>
+      candidate.id !== app.id
+      && candidate.company !== app.company
+      && candidate.port === app.port
+      && candidate.host === app.host
+    );
+    for (const candidate of candidates) {
+      const runtime = await healthForApp(candidate);
+      if (["current-instance", "adopted-port"].includes(runtime.owner)) return candidate;
+    }
+    return null;
   }
 
   async function startRuntimeApp(app) {
@@ -473,7 +498,8 @@ export function createRuntimeManager({
   // One-click builder chain (CAC-0044, step-003): idempotentní řetěz
   // ensure install → ensure start → vrátit URL. Každý krok je idempotentní a
   // vlastní kroky (install/start) samy házejí RuntimeActionError s blokujícím
-  // stavem — port kolize nikdy tiše nefallbackuje (decision 0049).
+  // stavem — port se nikdy tiše nepřemapuje. Open poslední aplikace smí převzít
+  // port jen od pozitivně ověřené známé aplikace jiné Organizace.
   async function open(appId, { source = null } = {}) {
     const app = await runtimeAppForAction(appId, { source });
     const runtimeKey = runtimeKeyForApp(app);
@@ -503,8 +529,9 @@ export function createRuntimeManager({
     }
 
     // 2) Ensure start — idempotentní. Když už appka běží (managed nebo
-    //    adopted-port healthy), start přeskočíme a jen vrátíme URL. Nezdravý
-    //    obsazený port propadne do start(), který vyhodí blokující konflikt.
+    //    adopted-port healthy), start přeskočíme a jen vrátíme URL. Pokud port
+    //    drží známá appka jiné Organizace, poslední uživatelské Open ji bezpečně
+    //    vystřídá. Foreign/unknown proces propadne do blokujícího konfliktu.
     let runtime = await healthForApp(app);
     if (runtime.status === "healthy") {
       steps.push({ step: "reuse", status: runtime.status });
@@ -512,8 +539,19 @@ export function createRuntimeManager({
       steps.push({ step: "reuse", status: runtime.status });
       shouldConfirmStability = true;
     } else {
-      const startResult = await startRuntimeApp(app);
-      steps.push({ step: "start", status: startResult.runtime?.status ?? "starting" });
+      const sharedPortPeer = runtime.owner === "foreign-port"
+        ? await runningCrossOrganizationPortPeer(app)
+        : null;
+      const startResult = sharedPortPeer
+        ? await switchApp(app.id, {
+            replace_app_id: sharedPortPeer.id,
+            confirmed: true,
+            source: runtimeSource,
+          })
+        : await startRuntimeApp(app);
+      steps.push(sharedPortPeer
+        ? { step: "switch", replaced_app_id: sharedPortPeer.id, status: startResult.runtime?.status ?? "starting" }
+        : { step: "start", status: startResult.runtime?.status ?? "starting" });
       shouldConfirmStability = true;
       runtime = startResult.runtime ?? (await healthForApp(app));
     }

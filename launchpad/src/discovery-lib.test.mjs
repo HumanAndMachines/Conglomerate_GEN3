@@ -530,6 +530,29 @@ test("deklarovaný port overlap zachová obě auto-discovered Organizace", async
   expect(apps.find((app) => app.id === "omegaco-mission-control-v3")?.shared_port_owners).toHaveLength(2);
 });
 
+test("port musí být unikátní mezi app surfaces uvnitř jedné Organizace", async () => {
+  const root = await createGenerationMountFixture();
+  await writeGenerationOrg({
+    root,
+    path: "organizations/BetaCo_GEN3",
+    company: "BetaCo",
+    appDir: "warehouse/app/v1",
+    appId: "betaco-warehouse-v1",
+    port: 5392,
+  });
+
+  const { apps, failures, port_overlaps: portOverlaps } = await discoverLaunchpadApps(root);
+
+  expect(failures.some((failure) =>
+    failure.includes("port 5392")
+    && failure.includes("Organization BetaCo")
+    && failure.includes("unikátní porty")
+  )).toBe(true);
+  expect(apps.some((app) => app.id === "betaco-mission-control-v2")).toBe(true);
+  expect(apps.some((app) => app.id === "betaco-warehouse-v1")).toBe(false);
+  expect(portOverlaps.some((overlap) => overlap.port === 5392)).toBe(false);
+});
+
 test("duplicitní app id izoluje druhý manifest, první zůstává platný (decision 0043)", async () => {
   const root = await createCompaniesWorkspaceFixture({
     plugin: {
@@ -743,7 +766,7 @@ test("mount bez markeru zůstává běžná Organizace i s jménem OrganizationT
   expect(template_mounts).toEqual([]);
 });
 
-test("template appky smějí sdílet deklarovaný port bez root failure", async () => {
+test("template app manifest s duplicitním portem uvnitř Organizace je izolovaný warning", async () => {
   const root = await createGenerationMountFixture();
   await writeGenerationOrg({
     root,
@@ -754,7 +777,7 @@ test("template appky smějí sdílet deklarovaný port bez root failure", async 
     port: 5297,
     organizationKind: "template",
   });
-  // Druhá template appka deklaruje stejný stabilní port jako první.
+  // Druhá template appka stejné Organizace porušuje intra-org unikátnost.
   await writeGenerationOrg({
     root,
     path: "organizations/OrganizationTemplate_GEN3",
@@ -767,13 +790,14 @@ test("template appky smějí sdílet deklarovaný port bez root failure", async 
 
   const { apps, template_apps, failures, warnings } = await discoverLaunchpadApps(root);
 
-  // Deklarovaný překryv není nevalidní manifest ani warning; template appky
-  // jsou stejně jako reálné app surfaces validované bez globální port mapy.
+  // Template chyba nikdy neshodí runtime reálných firem, ale druhý manifest
+  // je nevalidní stejně jako v budoucím Organization forku.
   expect(failures).toEqual([]);
   expect(apps.length).toBeGreaterThan(0);
-  expect(warnings.some((warning) => warning.includes("template port"))).toBe(false);
+  expect(warnings.some((warning) => warning.includes("template port 5297"))).toBe(true);
   expect(template_apps.filter((app) => app.port === 5297)).toHaveLength(2);
-  expect(template_apps.every((app) => app.manifest_state === "template")).toBe(true);
+  expect(template_apps.filter((app) => app.manifest_state === "template")).toHaveLength(1);
+  expect(template_apps.filter((app) => app.manifest_state === "invalid_manifest")).toHaveLength(1);
 });
 
 test("template mount s placeholder slugem se objeví, slug se bere z adresáře mountu", async () => {

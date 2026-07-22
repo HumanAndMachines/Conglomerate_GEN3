@@ -781,19 +781,20 @@ testWithInspectableProcessCwd("runtime manager neadoptuje zdravý app-owned port
   }
 });
 
-testWithInspectableProcessCwd("runtime manager po potvrzení bezpečně přepne dvě známé aplikace na sdíleném portu", async () => {
+testWithInspectableProcessCwd("runtime manager při Open přepne port na poslední aplikaci jiné Organizace", async () => {
   const port = await findFreePort();
   const root = await createCompaniesWorkspaceFixture({ port });
   const sourceRoot = join(root, "organizations", "TestCompany", "modules", "demo", "app", "v1");
-  const targetRoot = join(root, "organizations", "TestCompany", "modules", "other", "app", "v1");
+  const targetRoot = join(root, "organizations", "OtherCompany", "modules", "other", "app", "v1");
   await cp(sourceRoot, targetRoot, { recursive: true });
   const targetPackagePath = join(targetRoot, "package.json");
   const targetPackage = JSON.parse(await readFile(targetPackagePath, "utf8"));
   targetPackage.name = "other-app";
   targetPackage.companyascode.app = {
     ...targetPackage.companyascode.app,
-    id: "test-company-other-v1",
+    id: "other-company-other-v1",
     title: "Other v1",
+    company: "other-company",
     module: "other",
   };
   await writeJson(targetPackagePath, targetPackage);
@@ -802,18 +803,28 @@ testWithInspectableProcessCwd("runtime manager po potvrzení bezpečně přepne 
   const targetApp = fixtureDiscoveryApp({
     port,
     overrides: {
-      id: "test-company-other-v1",
+      id: "other-company-other-v1",
       title: "Other v1",
+      company: "other-company",
       module: "other",
-      package_path: "organizations/TestCompany/modules/other/app/v1/package.json",
-      cwd: "organizations/TestCompany/modules/other/app/v1",
+      package_path: "organizations/OtherCompany/modules/other/app/v1/package.json",
+      organization_path: "organizations/OtherCompany",
+      company_workspace_path: "organizations/OtherCompany",
+      cwd: "organizations/OtherCompany/modules/other/app/v1",
+    },
+  });
+  const sameOrganizationApp = fixtureDiscoveryApp({
+    port,
+    overrides: {
+      id: "test-company-duplicate-port-v1",
+      title: "Duplicate port v1",
     },
   });
   const runtime = createRuntimeManager({
     companiesRoot: root,
     launchpadRoot: join(root, "launchpad"),
     instanceId: "shared-port-instance",
-    discover: discoveryWithApps(sourceApp, targetApp),
+    discover: discoveryWithApps(sourceApp, targetApp, sameOrganizationApp),
   });
 
   try {
@@ -831,18 +842,25 @@ testWithInspectableProcessCwd("runtime manager po potvrzení bezpečně přepne 
       status: 400,
       code: "app_switch_confirmation_required",
     });
-
-    const switched = await runtime.switchApp(targetApp.id, {
+    await expect(runtime.switchApp(sameOrganizationApp.id, {
       replace_app_id: sourceApp.id,
       confirmed: true,
       source: { type: "main" },
+    })).rejects.toMatchObject({
+      status: 409,
+      code: "app_switch_same_organization",
     });
-    expect(switched).toMatchObject({
-      action: "switch",
+
+    const opened = await runtime.open(targetApp.id, { source: { type: "main" } });
+    expect(opened).toMatchObject({
+      action: "open",
       app_id: targetApp.id,
-      replaced_app_id: sourceApp.id,
-      port,
+      status: "healthy",
     });
+    expect(opened.steps).toContainEqual(expect.objectContaining({
+      step: "switch",
+      replaced_app_id: sourceApp.id,
+    }));
     const targetRunning = await waitForStatus(() => runtime.health(targetApp.id), "healthy");
     expect(targetRunning.owner).toBe("current-instance");
     expect((await runtime.health(sourceApp.id))).toMatchObject({
