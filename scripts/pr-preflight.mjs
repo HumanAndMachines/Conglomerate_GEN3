@@ -46,6 +46,16 @@ export async function runPrPreflight({
   if (!branchName || branchName === baseBranch) {
     return failed("invalid_pr_branch", `PR preflight vyžaduje feature branch, ne ${branchName || "detached HEAD"}.`, evidence);
   }
+  if (!safePortableBranchName(branchName)) {
+    return failed(
+      "unsafe_branch_name",
+      "Branch obsahuje znaky, které nelze bezpečně vložit do přenositelného copy/paste push příkazu.",
+      {
+        ...evidence,
+        recommended_action: "Přejmenuj branch na alfanumerický kebab/slash název a preflight spusť znovu.",
+      },
+    );
+  }
   if (dirty.length > 0) {
     return failed("dirty_worktree", `Worktree má ${dirty.length} lokálních změn; před pushem musí být přesný commit.`, {
       ...evidence,
@@ -79,6 +89,10 @@ export async function runPrPreflight({
 
 function failed(code, message, evidence = {}) {
   return { ok: false, code, message, ...evidence };
+}
+
+function safePortableBranchName(branchName) {
+  return /^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(branchName);
 }
 
 function parseArgs(args) {
