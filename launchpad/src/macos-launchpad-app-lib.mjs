@@ -1,4 +1,4 @@
-import { accessSync, existsSync, readFileSync } from "node:fs";
+import { accessSync, existsSync, readFileSync, statSync } from "node:fs";
 import { access, chmod, cp, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { homedir } from "node:os";
@@ -287,7 +287,13 @@ function readTrimmed(path) {
 }
 
 function isExecutable(path) {
-  try { accessSync(path, constants.X_OK); return true; } catch { return false; }
+  try {
+    if (!statSync(path).isFile()) return false;
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function exportDockPlist(runCommand) {

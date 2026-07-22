@@ -176,7 +176,7 @@ test("installer po dockutil úspěchu bounded polluje pomalu obnovené Dock pref
   expect(waits).toEqual([25, 25]);
 });
 
-test("Doctor odmítne chybějící nebo neexecutable root Launchpad.command", async () => {
+test("Doctor odmítne chybějící, neexecutable nebo adresářový root Launchpad.command", async () => {
   const fixture = await createFixture();
   const appPath = join(fixture.home, "Applications", MACOS_LAUNCHPAD_APP_NAME);
   const dockXml = dockPlist(
@@ -217,6 +217,18 @@ test("Doctor odmítne chybějící nebo neexecutable root Launchpad.command", as
     dockPlistXml: dockXml,
   });
   expect(missing.details).toContain(
+    `launchpad_command_missing_or_not_executable: ${launchpadCommand}`,
+  );
+
+  await mkdir(launchpadCommand);
+  const directory = inspectMacosLaunchpadApp({
+    companiesRoot: fixture.root,
+    homeDir: fixture.home,
+    platform: "darwin",
+    dockPlistXml: dockXml,
+  });
+  expect(directory.status).toBe("warn");
+  expect(directory.details).toContain(
     `launchpad_command_missing_or_not_executable: ${launchpadCommand}`,
   );
 });
