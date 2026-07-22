@@ -209,7 +209,32 @@ test("dockutil úspěch po deadline zůstane retryable pending bez falešného F
   expect(report.dock_status).toBe("pin_pending");
   expect(report.check.status).toBe("warn");
   expect(macosLaunchpadRepairIsIncomplete(report)).toBe(false);
+  expect(macosLaunchpadRepairIsIncomplete({
+    ...report,
+    check: {
+      ...report.check,
+      details: [
+        ...report.check.details,
+        `launchpad_command_missing_or_not_executable: ${join(fixture.root, "Launchpad.command")}`,
+      ],
+    },
+  })).toBe(true);
   expect(calls.some(([command]) => command === "/usr/bin/open")).toBe(false);
+});
+
+test("installer odmítne adresářový Launchpad.command už před vytvořením app bundle", async () => {
+  const fixture = await createFixture();
+  const launchpadCommand = join(fixture.root, "Launchpad.command");
+  await rm(launchpadCommand);
+  await mkdir(launchpadCommand);
+
+  await expect(installMacosLaunchpadApp({
+    companiesRoot: fixture.root,
+    homeDir: fixture.home,
+    platform: "darwin",
+    sourceIconPath: fixture.icon,
+    runCommand: () => ({ ok: false, stdout: "", stderr: "not called" }),
+  })).rejects.toThrow("Launchpad.command musí být regular file");
 });
 
 test("Doctor odmítne chybějící, neexecutable nebo adresářový root Launchpad.command", async () => {

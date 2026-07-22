@@ -1,5 +1,5 @@
 import { accessSync, existsSync, readFileSync, statSync } from "node:fs";
-import { access, chmod, cp, mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { access, chmod, cp, mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
@@ -103,6 +103,9 @@ export async function installMacosLaunchpadApp({
   if (platform !== "darwin") throw new Error("macOS Launchpad app lze instalovat pouze na macOS.");
   const root = resolve(companiesRoot);
   const launchpadCommand = join(root, "Launchpad.command");
+  if (!(await stat(launchpadCommand)).isFile()) {
+    throw new Error(`Launchpad.command musí být regular file: ${launchpadCommand}`);
+  }
   await access(launchpadCommand, constants.X_OK);
   await access(sourceIconPath, constants.R_OK);
 
@@ -178,7 +181,15 @@ export async function installMacosLaunchpadApp({
 }
 
 export function macosLaunchpadRepairIsIncomplete(report) {
-  return report?.check?.status !== "ok" && report?.dock_status !== "pin_pending";
+  if (report?.check?.status === "ok") return false;
+  const details = report?.check?.details ?? [];
+  const onlyDockPending =
+    report?.dock_status === "pin_pending" &&
+    details.some((detail) => detail.startsWith("dock_item_missing:")) &&
+    details.every((detail) =>
+      detail.startsWith("dock_item_missing:") || detail.startsWith("repair:"),
+    );
+  return !onlyDockPending;
 }
 
 export function dockContainsApp(xml, appPath) {
