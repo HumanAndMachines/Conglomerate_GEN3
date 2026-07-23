@@ -532,6 +532,8 @@ async function handleGitApiRoute(request, url, route) {
           planPath: payload.planPath,
           branch: payload.branch,
           createdBy: payload.createdBy,
+          conversationOrigin: payload.conversationOrigin,
+          recoveryHandoff: payload.recoveryHandoff,
         }),
       );
     }
@@ -545,6 +547,7 @@ async function handleGitApiRoute(request, url, route) {
           slug: route.slug,
           commitMessage: payload.commitMessage,
           publisher: payload.publisher,
+          conversationOrigin: payload.conversationOrigin,
         }),
       );
     }

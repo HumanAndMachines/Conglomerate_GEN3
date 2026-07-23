@@ -56,7 +56,7 @@ test("worktree scanner resolves canonical sidecar metadata to an owning Mission 
   });
 });
 
-test("detectNonCanonicalSidecarFields flags legacy alias keys but stays quiet for canonical sidecars", () => {
+test("detectNonCanonicalSidecarFields flags legacy aliases and missing recovery metadata but stays quiet for canonical sidecars", () => {
   expect(
     detectNonCanonicalSidecarFields({
       plan_code: "CAC-0042",
@@ -64,12 +64,14 @@ test("detectNonCanonicalSidecarFields flags legacy alias keys but stays quiet fo
       repo_kind: "root",
       status: "in_review",
     }),
-  ).toEqual([
+  ).toEqual(expect.arrayContaining([
     expect.stringContaining("plan_code"),
     expect.stringContaining("owner"),
     expect.stringContaining("root"),
     expect.stringContaining("in_review"),
-  ]);
+    expect.stringContaining("conversation_origin"),
+    expect.stringContaining("recovery_handoff"),
+  ]));
 
   expect(
     detectNonCanonicalSidecarFields({
@@ -77,6 +79,21 @@ test("detectNonCanonicalSidecarFields flags legacy alias keys but stays quiet fo
       created_by: "ultracode-opus",
       repo_kind: "root_repo",
       status: "merged_cleanup_needed",
+      conversation_origin: {
+        surface: "codex",
+        agent_label: "Ultracode",
+        thread_id: "thread-123",
+        thread_locator_status: "captured",
+        local_only: true,
+        captured_at: "2026-07-22T00:00:00Z",
+      },
+      recovery_handoff: {
+        state: "ready_for_review",
+        summary: "Ready.",
+        blocker: null,
+        next_action: "Review the diff.",
+        updated_at: "2026-07-22T00:00:00Z",
+      },
     }),
   ).toEqual([]);
 });
