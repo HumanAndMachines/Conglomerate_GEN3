@@ -8,6 +8,7 @@
     "doctor": "bun src/doctor.mjs",
     "doctor:task": "bun src/task-doctor.mjs",
     "doctor:json": "bun src/doctor.mjs --json",
+    "update": "bun src/update-cli.mjs",
     "dev": "bun src/server.mjs",
     "discover": "bun src/discover-apps.mjs --allow-missing-organizations",
     "launch": "bun src/server.mjs --open",

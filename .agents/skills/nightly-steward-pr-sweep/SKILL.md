@@ -92,6 +92,10 @@ Do not write the active-only count into that field.
 Re-run the complete open-PR inventory before final reporting so late PRs are not missed.
 
 **Draft rule:** never mutate GitHub draft PRs. List them as `draft_untouched`.
+A draft PR with no commit, comment or state activity for more than 48 hours is
+additionally surfaced in the report narrative as a stale draft needing
+attention (decision 0103) — still without any mutation; the follow-up belongs
+to the PR author's Principál, not to the sweep.
 
 ## 3. Exact-head review gate
 

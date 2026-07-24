@@ -1,14 +1,19 @@
 # Ruční MCP integrace pro Codex
 
-Tento runbook je volitelná alternativa k ChatGPT pluginům a ke sdílenému
-integračnímu brokeru, například Composiu. Popisuje, jak Kolega na své mašině
-přidá MCP server přímo do Codexu a drží přihlašovací artefakty lokálně. Přímý
-lokální STDIO server ani vzdálený HTTP MCP server Docker nepotřebují.
+Tento runbook je Codex-specifická část standardu
+[external-app-integrations.md](external-app-integrations.md): napojení na
+externí aplikace se dělá lokálně přidaným MCP serverem místo ChatGPT
+pluginů/konektorů a místo sdíleného cloudového integračního brokeru.
+Popisuje, jak Kolega na své mašině přidá MCP server přímo do Codexu a drží
+přihlašovací artefakty lokálně. Přímý lokální STDIO server ani vzdálený
+HTTP MCP server Docker nepotřebují.
 
 Codex CLI, desktop aplikace a IDE extension používají stejnou lokální
-konfiguraci. ChatGPT na webu tuto konfiguraci nečte; pro web a telefon je
-potřeba zvlášť spravovaný plugin/connector. Aktuální syntaxe a podporované
-volby jsou v [oficiálním Codex MCP manuálu](https://learn.chatgpt.com/docs/extend/mcp).
+konfiguraci. ChatGPT na webu ani v mobilu tuto konfiguraci nečte a pro org
+napojení tam žádná podporovaná cesta neexistuje — cloudové pluginy/konektory
+jsou standardem zakázané a org integrace zůstává vědomě per-machine.
+Aktuální syntaxe a podporované volby jsou v
+[oficiálním Codex MCP manuálu](https://learn.chatgpt.com/docs/extend/mcp).
 
 ## Volba integračního tvaru
 
@@ -16,7 +21,7 @@ volby jsou v [oficiálním Codex MCP manuálu](https://learn.chatgpt.com/docs/ex
 | --- | --- | --- | --- |
 | Jedna mašina, lokální proces a lokální OAuth cache | STDIO MCP | Na dané mašině | Ne |
 | Poskytovatel provozuje svůj MCP endpoint | Streamable HTTP + OAuth | Lokální OAuth úložiště Codexu; token se používá vůči poskytovateli | Ne |
-| Stejné napojení ve webovém nebo mobilním ChatGPT | ChatGPT plugin/connector | Podle workspace a poskytovatele | Neřeší tento runbook |
+| Stejné napojení ve webovém nebo mobilním ChatGPT | Nepodporováno — cloudový plugin/connector je pro org napojení zakázaný; pracuj na mašině s per-machine napojením | — | — |
 
 Lokální uložení omezuje cloudového prostředníka, ale neodstraňuje důvěru v MCP
 server, poskytovatele služby ani model. MCP nástroj může číst data, která mu
@@ -134,8 +139,8 @@ Pro onboarding call použij tento pořádek:
 
 ### Přechod ze sdíleného integračního brokeru
 
-Přechod z Composia nebo jiného brokeru nedělej pouhým smazáním jeho konfigurace
-v Codexu. Bezpečný cutover je po jednotlivých integracích:
+Přechod ze sdíleného integračního brokeru nedělej pouhým smazáním jeho
+konfigurace v Codexu. Bezpečný cutover je po jednotlivých integracích:
 
 1. inventarizuj poskytovatele, použitý Organization účet, schválené scopes a
    workflow, které na integraci spoléhají; tokeny nekopíruj;
@@ -147,8 +152,9 @@ v Codexu. Bezpečný cutover je po jednotlivých integracích:
 5. otevři nový Codex task a potvrď, že je aktivní jen zamýšlený server.
 
 Lokální MCP konfigurace funguje jen na dané mašině. Codex desktop, CLI a IDE ji
-na téže mašině sdílejí, ale ChatGPT web ani telefon ji nepřevezmou. To je
-vědomý trade-off za per-machine custody, ne chyba instalace.
+na téže mašině sdílejí, ale ChatGPT web ani telefon ji nepřevezmou a žádná
+podporovaná org cesta tam neexistuje. To je vědomý trade-off za per-machine
+custody, ne chyba instalace.
 
 ## Příklad A: oficiální vzdálený ClickUp MCP
 
@@ -259,5 +265,6 @@ token na straně poskytovatele nemusí zneplatnit.
 - **Nástroj má příliš mnoho možností:** použij `enabled_tools`, read-only mód
   serveru a `default_tools_approval_mode = "prompt"`.
 - **Integrace je potřeba na telefonu:** lokální Codex MCP konfigurace se do
-  ChatGPT web/mobile nepřenáší. Jde o jiné trust rozhodnutí; použij samostatný
-  workspace connector nebo poskytovatelem spravovaný endpoint.
+  ChatGPT web/mobile nepřenáší a podporovaná org cesta tam neexistuje —
+  cloudový workspace connector je zakázaný. Úkol vyžadující org integraci
+  proveď na mašině s per-machine napojením.

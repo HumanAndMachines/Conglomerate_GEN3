@@ -613,6 +613,68 @@ button.update-pill:disabled {
   color: var(--text-muted);
 }
 
+/* Globální update banner (CAC-0083): dostupná nová verze Conglomerate nesmí
+   být přehlédnutelná — full-width pás uvnitř sticky topbaru, viditelný
+   v každém scope i na úzké obrazovce (žádné schovávání do overflow menu). */
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  padding: 10px 16px;
+  background: color-mix(in srgb, var(--c-warn) 16%, var(--surface));
+  border-bottom: 1px solid color-mix(in srgb, var(--c-warn) 40%, var(--line));
+  color: color-mix(in srgb, var(--c-warn) 72%, #78350f);
+}
+
+.update-banner-text {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.update-banner-action {
+  min-height: 34px;
+  padding: 4px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--c-warn);
+  color: #78350f;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.update-banner-action:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.update-banner-action:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* Během stahování banner ukazuje točící se spinner místo šipky; kolega vidí,
+   že aktualizace běží, a po dokončení se stránka sama reloadne. */
+.update-banner-spinner {
+  display: none;
+}
+
+.update-banner.is-updating .update-banner-icon {
+  display: none;
+}
+
+.update-banner.is-updating .update-banner-spinner {
+  display: block;
+  animation: update-spin 0.9s linear infinite;
+}
+
+@keyframes update-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 [data-theme="dark"] .status-ok {
   color: #6ee7b7;
 }
