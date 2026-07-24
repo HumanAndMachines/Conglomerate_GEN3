@@ -69,11 +69,18 @@ změna Conglomerate, ale kandidát na plugin nebo obsah Organizace.
 
 ## Review a merge
 
-Otevřený PR je Draft — je vidět, dá se editovat a dá se zavřít. Merge dělá
-výhradně Organization Steward nebo Organization Admin; přímý push na `main`
-nemá nikdo kromě Admina. PRs prochází nočním Steward review (Nightly Steward
-PR Sweep). Otevření PR nezakládá nárok na merge — nekvalitní nebo scope-cizí
-PR Steward zavře s vysvětlením.
+Otevřený PR je Draft — je vidět, dá se editovat a dá se zavřít. Během aktivní
+práce je PR GitHub Draft; v handoffu ho agent přepíná na Ready for review
+(decision 0103 v HumanAndMachines/docs/decisions/). Merge se řídí živými
+GitHub právy, ne textovým labelem role: chráněnou `main` merguje Organization
+Steward nebo Organization Admin (včetně vlastního PR, decision 0095);
+nechráněnou `main` mladého repozitáře smí publikovat i Builder, dokud ji
+Admin vědomě nezamkne (progresivní zamykání). Worker Agent merguje jen na
+explicitní pokyn svého Principála platný v aktuálním threadu. Přímý push na
+`main` tohoto repa nemá nikdo kromě Admina. PRs prochází nočním Steward
+review (Nightly Steward PR Sweep); GitHub Draft PR bez aktivity delší než
+48 hodin sweep hlásí jako needs_attention. Otevření PR nezakládá nárok na
+merge — nekvalitní nebo scope-cizí PR Steward zavře s vysvětlením.
 
 ## Jak se změna dostane k lidem
 

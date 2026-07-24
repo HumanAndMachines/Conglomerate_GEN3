@@ -64,8 +64,10 @@ které máš rozepsané níž:
   Kolega pravomoce mají a drafty schvalují — mezi lidským a AI Kolegou není
   rozdíl v chování.
 - **GitHub je jediná autorita přístupů.** Členství, Teamy, repo granty a branch
-  rules určují, co kdo smí; nevzniká druhý vymyšlený ACL. Builder tvoří PR,
-  Steward nebo Admin merguje do `main`; Steward je běžná provozní lane, ne
+  rules určují, co kdo smí; nevzniká druhý vymyšlený ACL. Builder tvoří PR;
+  chráněnou `main` merguje Steward nebo Admin, nechráněnou `main` mladého
+  modulu smí Builder publikovat sám, dokud ji Admin vědomě nezamkne
+  (progresivní zamykání, decision 0103). Steward je běžná provozní lane, ne
   povinný bottleneck pro Admina.
 - **Vlastní mašina, vlastní Personalspace.** Každý Kolega i Buddy má vlastní
   mašinu s plnými lokálními právy a vlastní **privátní Personalspace**, který
@@ -127,14 +129,30 @@ Organizace nebo modulu. Všechny tyhle úpravy děláš jako PR ze svého
 worktree, aby se dostaly ke Stewardovi, který navržené změny mergne, nebo
 zahodí. Poznatek, který zůstane jen v chatu, se ztratí.
 
-**Co smíš bez ptaní:** tvořit worktrees a otevírat plnohodnotné pull
-requesty (ne GitHub „draft PR" — normální PR). Otevřený PR je pořád Draft
-v našem smyslu: je vidět, dá se editovat a dá se zavřít; publikací se stává
-až merge, a ten patří Principálovi.
+**Co smíš bez ptaní:** tvořit worktrees, průběžně commitovat a pushovat
+rozdělanou práci do PR branche a otevírat pull requesty. PR otevři hned po
+prvním pushi jako GitHub Draft PR a v handoffu ho přepni na Ready for
+review; rozdělaná práce nikdy nezůstává jen lokálně na mašině. Otevřený PR
+je pořád Draft v našem smyslu: je vidět, dá se editovat a dá se zavřít;
+publikací se stává až merge, a ten patří Principálovi (decision 0103).
+
+**Handoff je průvodcovský.** Kolega nemusí rozumět Gitu ani GitHubu. Na
+konci práce agent jako první věc závěrečné zprávy předloží standardizovaný
+handoff: odkaz na připravený PR, lidské shrnutí změn, výsledek ověření,
+odkaz na aplikaci běžící z worktree ke kontrole (App agent ji rovnou
+otevře) — a standardizovanou otázku „Mám změny Publikovat?". Před otázkou
+agent zjistí živá GitHub práva svého Principála (branch protection, povolené
+merge metody, checks) a řídí se jimi, ne textovým labelem role: když
+Principál merge smí a v threadu řekne „Publikuj", agent PR mergne metodou
+povolenou repozitářem, stáhne `main` do primárního checkoutu a uklidí
+worktree; když GitHub merge blokuje, agent přepne PR na Ready, vyžádá
+review Stewarda a řekne Principálovi, kdo teď rozhoduje. Bez zelené PR
+zůstává otevřený a nic se neděje (decision 0103).
 
 **Push bez PR není hotový handoff.** Když agent pushne branch se změnou v
-Conglomerate rootu, hned otevře plnohodnotný PR proti správné base branchi,
-pokud Principál výslovně neřekl, že PR otevřít nemá. Samotná remote branch se
+Conglomerate rootu, hned otevře PR proti správné base branchi (během aktivní
+práce jako GitHub Draft PR, v handoffu přepnutý na Ready for review), pokud
+Principál výslovně neřekl, že PR otevřít nemá. Samotná remote branch se
 snadno ztratí a není dostatečný předávací artefakt pro Stewarda ani dalšího
 agenta.
 
@@ -370,6 +388,27 @@ Před handoffem uveď:
   repa; obecné „push/PR hotovo" nestačí;
 - kam je zapsaný případný blocker nebo next action (`ISSUES.open.json`,
   Organization Mission Control, TODO ledger apod.).
+
+Závěrečná zpráva pracovního chatu, ve kterém vznikl PR, začíná
+standardizovaným handoff blokem (decision 0103
+v HumanAndMachines/docs/decisions/):
+
+```
+## Handoff
+Připravil jsem ti pull request: <URL> (base: <branch>, HEAD: <sha>)
+Co obsahuje: <1–3 lidské věty>
+Ověřeno: <checks/testy a výsledek>
+Zkontroluj si to v aplikaci: <URL běžící z worktree, pokud existuje>
+Lokálně nezůstává nic mimo PR.
+
+Mám změny Publikovat?
+```
+
+Po explicitním „Publikuj" v threadu agent PR mergne metodou, kterou
+repozitář povoluje (default rebase), stáhne `main` do primárního checkoutu
+(`bun run doctor:task`, `git pull --ff-only`) a uklidí worktree podle
+cleanup guardů. Když GitHub merge blokuje, přepne PR na Ready for review,
+vyžádá review Stewarda a řekne Principálovi, kdo rozhoduje.
 
 Před handoffem po změně root configu, Launchpadu, Guide nebo mountpointů spusť:
 
