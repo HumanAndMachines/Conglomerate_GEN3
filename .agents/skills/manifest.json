@@ -1,5 +1,6 @@
 {
   "schema_version": "conglomerate.skills.v0",
+  "claude_compatibility": "tracked-derived-mirror",
   "policy": {
     "principle": "Opakovatelné postupy pro Buddy a AI kolegy v Launchpad rootu patří do .agents/skills.",
     "directory": ".agents/skills",
@@ -43,6 +44,18 @@
         "exact-head-review",
         "mission-control-steward-reporting",
         "nightly-operations"
+      ],
+      "required": true
+    },
+    {
+      "slug": "worktree-development-discipline",
+      "path": ".agents/skills/worktree-development-discipline/SKILL.md",
+      "applies_to": [
+        "worktree-create",
+        "worktree-inventory",
+        "worktree-handoff",
+        "worktree-cleanup",
+        "pr-preflight"
       ],
       "required": true
     }

@@ -1,7 +1,13 @@
-import { lstat, readFile, realpath } from "node:fs/promises";
+import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 
-export const AGENT_SKILLS_ENTRYPOINT_SCHEMA = "companiesascode.agent_skills_entrypoint.v1";
+// Decision 0104: .claude/skills je Git-tracked byte-for-byte mirror kanonického
+// .agents/skills (žádné symlinky/junctiony — na Windows nejsou spolehlivé).
+// Tento check běží i nad cizími checkouty (Organization mounty), proto je
+// fail (blocked) vyhrazen jen stavům, které nejde bezpečně opravit lokální
+// repair lane; legacy symlink model a drift jsou repair_needed (warn).
+export const AGENT_SKILLS_ENTRYPOINT_SCHEMA = "companiesascode.agent_skills_entrypoint.v2";
+export const CLAUDE_SKILLS_MATERIALIZATION = "tracked-derived-mirror";
 export const AGENT_CAPABILITY_MODES = Object.freeze({
   CODEX_ONLY: "codex-only",
   CLAUDE_COMPATIBLE: "claude-compatible",
@@ -18,6 +24,7 @@ function state({ status, code, message }) {
     code,
     canonical_path: canonicalRelativePath,
     compatibility_path: compatibilityRelativePath,
+    materialization: CLAUDE_SKILLS_MATERIALIZATION,
     message,
   };
 }
@@ -45,6 +52,82 @@ async function lstatOrNull(path) {
   }
 }
 
+// Aktivní skilly čte z manifestu (slug + path kontrakt). Cizí checkout nemusí
+// manifest mít nebo nést starší tvar — pak je autoritou adresářový sken
+// kanonického katalogu; read-only doctor kvůli tomu nesmí failovat.
+async function readActiveSkillSlugs(root) {
+  const canonicalRoot = join(root, canonicalRelativePath);
+  try {
+    const manifest = JSON.parse(
+      await readFile(join(canonicalRoot, "manifest.json"), "utf8"),
+    );
+    const slugs = (manifest.skills ?? [])
+      .map((skill) => skill?.slug)
+      .filter((slug) => typeof slug === "string" && slug.length > 0);
+    if (slugs.length > 0) return [...new Set(slugs)].sort();
+  } catch {
+    // Manifest chybí nebo nejde přečíst → fallback na adresářový sken.
+  }
+  const slugs = [];
+  for (const entry of await readdir(canonicalRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+    const skillStat = await lstatOrNull(join(canonicalRoot, entry.name, "SKILL.md"));
+    if (skillStat?.isFile()) slugs.push(entry.name);
+  }
+  return slugs.sort();
+}
+
+async function mirrorDrift(root, slugs) {
+  const unsafe = [];
+  const drift = [];
+  const mirrorRoot = join(root, compatibilityRelativePath);
+  const expectedSlugs = new Set(slugs);
+
+  for (const entry of await readdir(mirrorRoot, { withFileTypes: true })) {
+    const entryPath = join(mirrorRoot, entry.name);
+    if (entry.isSymbolicLink()) {
+      unsafe.push(`${compatibilityRelativePath}/${entry.name} je symlink; mirror musí být obyčejné soubory.`);
+      continue;
+    }
+    if (!entry.isDirectory()) {
+      drift.push(`${compatibilityRelativePath}/${entry.name} nepatří do mirroru.`);
+      continue;
+    }
+    if (!expectedSlugs.has(entry.name)) {
+      drift.push(`${compatibilityRelativePath}/${entry.name} není aktivní skill.`);
+      continue;
+    }
+    for (const child of await readdir(entryPath, { withFileTypes: true })) {
+      if (child.isSymbolicLink()) {
+        unsafe.push(
+          `${compatibilityRelativePath}/${entry.name}/${child.name} je symlink; mirror musí být obyčejné soubory.`,
+        );
+      } else if (!child.isFile() || child.name !== "SKILL.md") {
+        drift.push(`${compatibilityRelativePath}/${entry.name}/${child.name} nepatří do mirroru.`);
+      }
+    }
+  }
+
+  for (const slug of slugs) {
+    const mirrorFile = join(mirrorRoot, slug, "SKILL.md");
+    const mirrorStat = await lstatOrNull(mirrorFile);
+    if (!mirrorStat) {
+      drift.push(`${compatibilityRelativePath}/${slug}/SKILL.md chybí.`);
+      continue;
+    }
+    if (!mirrorStat.isFile() || mirrorStat.isSymbolicLink()) continue;
+    const [canonicalBytes, mirrorBytes] = await Promise.all([
+      readFile(join(root, canonicalRelativePath, slug, "SKILL.md")),
+      readFile(mirrorFile),
+    ]);
+    if (!canonicalBytes.equals(mirrorBytes)) {
+      drift.push(`${compatibilityRelativePath}/${slug}/SKILL.md není byte-for-byte shodný s kanonickým katalogem.`);
+    }
+  }
+
+  return { unsafe, drift };
+}
+
 export async function inspectAgentSkillsEntrypoint(organizationRoot, {
   platform = process.platform,
   agentCapabilityMode = AGENT_CAPABILITY_MODES.CLAUDE_COMPATIBLE,
@@ -67,7 +150,7 @@ export async function inspectAgentSkillsEntrypoint(organizationRoot, {
     return state({
       status: "not_applicable",
       code: "contract_not_adopted",
-      message: "Organizace ještě nedeklaruje sdílený agent-skills entrypoint.",
+      message: "Repozitář ještě nedeklaruje sdílený agent-skills entrypoint.",
     });
   }
 
@@ -87,7 +170,7 @@ export async function inspectAgentSkillsEntrypoint(organizationRoot, {
     return state({
       status: "blocked",
       code: "canonical_path_escape",
-      message: `${canonicalRelativePath} se dostává mimo root Organizace.`,
+      message: `${canonicalRelativePath} se dostává mimo root repozitáře.`,
     });
   }
 
@@ -99,7 +182,7 @@ export async function inspectAgentSkillsEntrypoint(organizationRoot, {
     return state({
       status: "blocked",
       code: "compatibility_parent_not_directory",
-      message: ".claude musí být skutečný adresář uvnitř rootu Organizace.",
+      message: ".claude musí být skutečný adresář uvnitř rootu repozitáře.",
     });
   }
   if (compatibilityParentStat) {
@@ -108,7 +191,7 @@ export async function inspectAgentSkillsEntrypoint(organizationRoot, {
       return state({
         status: "blocked",
         code: "compatibility_parent_escape",
-        message: ".claude se dostává mimo root Organizace.",
+        message: ".claude se dostává mimo root repozitáře.",
       });
     }
   }
@@ -118,13 +201,13 @@ export async function inspectAgentSkillsEntrypoint(organizationRoot, {
       return state({
         status: "ok",
         code: "codex_entrypoint_ready",
-        message: `${canonicalRelativePath} je připravené pro Codex; ${compatibilityRelativePath} je na Windows volitelná Claude kompatibilita.`,
+        message: `${canonicalRelativePath} je připravené pro Codex; ${compatibilityRelativePath} mirror je na Windows volitelná Claude kompatibilita.`,
       });
     }
     return state({
       status: "repair_needed",
-      code: "entrypoint_missing",
-      message: `${compatibilityRelativePath} chybí; spusť explicitní Organization Repair.`,
+      code: "mirror_missing",
+      message: `${compatibilityRelativePath} mirror chybí; spusť bun run repair:agent-skills a mirror commitni.`,
     });
   }
 
@@ -136,9 +219,9 @@ export async function inspectAgentSkillsEntrypoint(organizationRoot, {
         comparablePath(canonicalRealPath, platform)
       ) {
         return state({
-          status: "ok",
-          code: "entrypoint_ready",
-          message: `${compatibilityRelativePath} odkazuje na ${canonicalRelativePath}.`,
+          status: "repair_needed",
+          code: "mirror_legacy_link",
+          message: `${compatibilityRelativePath} je legacy symlink/junction; repair lane ho nahradí trackovaným mirrorem (decision 0104).`,
         });
       }
     } catch (error) {
@@ -147,7 +230,7 @@ export async function inspectAgentSkillsEntrypoint(organizationRoot, {
     return state({
       status: "repair_needed",
       code: "entrypoint_wrong_link",
-      message: `${compatibilityRelativePath} nemíří na ${canonicalRelativePath}.`,
+      message: `${compatibilityRelativePath} je symlink mimo kanonický katalog; repair lane ho nahradí trackovaným mirrorem.`,
     });
   }
 
@@ -165,8 +248,8 @@ export async function inspectAgentSkillsEntrypoint(organizationRoot, {
       }
       return state({
         status: "repair_needed",
-        code: "entrypoint_legacy_placeholder",
-        message: `${compatibilityRelativePath} je textový placeholder z Windows checkoutu.`,
+        code: "mirror_legacy_placeholder",
+        message: `${compatibilityRelativePath} je textový placeholder z Windows checkoutu; repair lane ho nahradí mirrorem.`,
       });
     }
     return state({
@@ -176,46 +259,70 @@ export async function inspectAgentSkillsEntrypoint(organizationRoot, {
     });
   }
 
+  if (!compatibilityStat.isDirectory()) {
+    return state({
+      status: "blocked",
+      code: "entrypoint_unknown_type",
+      message: `${compatibilityRelativePath} má nepodporovaný filesystem typ.`,
+    });
+  }
+
+  const slugs = await readActiveSkillSlugs(root);
+  const { unsafe, drift } = await mirrorDrift(root, slugs);
+  if (unsafe.length > 0) {
+    return state({
+      status: "blocked",
+      code: "mirror_unsafe_content",
+      message: unsafe.join(" "),
+    });
+  }
+  if (drift.length > 0) {
+    return state({
+      status: "repair_needed",
+      code: "mirror_drift",
+      message: `${compatibilityRelativePath} není byte-for-byte mirror: ${drift.join(" ")}`,
+    });
+  }
   return state({
-    status: "blocked",
-    code: compatibilityStat.isDirectory()
-      ? "entrypoint_duplicate_directory"
-      : "entrypoint_unknown_type",
-    message: compatibilityStat.isDirectory()
-      ? `${compatibilityRelativePath} je samostatný adresář a druhý source of truth.`
-      : `${compatibilityRelativePath} má nepodporovaný filesystem typ.`,
+    status: "ok",
+    code: "mirror_ready",
+    message: `${compatibilityRelativePath} je byte-for-byte mirror aktivních skillů z ${canonicalRelativePath}.`,
   });
 }
 
 export async function agentSkillsEntrypointsDoctorCheck({
   companiesRoot,
   mounts = [],
+  includeRoot = true,
   platform = process.platform,
   agentCapabilityMode = AGENT_CAPABILITY_MODES.CLAUDE_COMPATIBLE,
 }) {
+  const targets = [
+    // Conglomerate root má vlastní skills katalog a mirror (decision 0104).
+    ...(includeRoot ? [{ path: ".", label: "root" }] : []),
+    ...mounts.filter((mount) => mount?.path && mount.status !== "planned"),
+  ];
   const inspected = await Promise.all(
-    mounts
-      .filter((mount) => mount?.path && mount.status !== "planned")
-      .map(async (mount) => {
-        try {
-          return {
-            mount,
-            state: await inspectAgentSkillsEntrypoint(join(companiesRoot, mount.path), {
-              platform,
-              agentCapabilityMode,
-            }),
-          };
-        } catch (error) {
-          return {
-            mount,
-            state: state({
-              status: "blocked",
-              code: "inspection_failed",
-              message: `Filesystem kontrola selhala: ${error.message}`,
-            }),
-          };
-        }
-      }),
+    targets.map(async (mount) => {
+      try {
+        return {
+          mount,
+          state: await inspectAgentSkillsEntrypoint(join(companiesRoot, mount.path), {
+            platform,
+            agentCapabilityMode,
+          }),
+        };
+      } catch (error) {
+        return {
+          mount,
+          state: state({
+            status: "blocked",
+            code: "inspection_failed",
+            message: `Filesystem kontrola selhala: ${error.message}`,
+          }),
+        };
+      }
+    }),
   );
   const applicable = inspected.filter((item) => item.state.status !== "not_applicable");
   const blocked = applicable.filter((item) => item.state.status === "blocked");
@@ -237,13 +344,18 @@ export async function agentSkillsEntrypointsDoctorCheck({
       status === "fail"
         ? `${blocked.length} agent-skills entrypointů je blokovaných.`
         : status === "warn"
-          ? `${repairNeeded.length} agent-skills entrypointů potřebuje explicitní Repair.`
+          ? `${repairNeeded.length} agent-skills entrypointů čeká na repair lane (tracked mirror, decision 0104).`
           : status === "ok"
-            ? `${applicable.length} agent-skills entrypointů míří na kanonickou knihovnu.`
-            : "Žádná připojená Organizace ještě agent-skills entrypoint nedeklaruje.",
-    paths: ["organizations/*/.agents/skills", "organizations/*/.claude/skills"],
+            ? `${applicable.length} agent-skills entrypointů drží tracked byte-for-byte mirror.`
+            : "Žádný checkout ještě agent-skills entrypoint nedeklaruje.",
+    paths: [
+      ".agents/skills",
+      ".claude/skills",
+      "organizations/*/.agents/skills",
+      "organizations/*/.claude/skills",
+    ],
     links: [],
     details: applicable.map(({ mount, state: entrypointState }) =>
-      `${mount.path}: ${entrypointState.status}/${entrypointState.code} — ${entrypointState.message}`),
+      `${mount.label ?? mount.path}: ${entrypointState.status}/${entrypointState.code} — ${entrypointState.message}`),
   };
 }
