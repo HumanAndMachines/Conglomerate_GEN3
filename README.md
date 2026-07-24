@@ -127,9 +127,13 @@ patří do `templates/`, ne jako submodule pod `organizations/`.
 
 - `.agents/skills/` — sdílené postupy pro Buddy a AI kolegy v Launchpad rootu.
 - `manual/desktop-execution-agent-collaboration.md` — baseline pro spolupráci s Claude/Codex Desktop App: Desktop agent dělá maximum práce, Buddy drží QA gate a reviewer routing.
-- `manual/codex-manual-mcp-integrations.md` — volitelný per-machine runbook pro
-  ruční MCP napojení Codexu a řízený přechod ze sdíleného integračního brokeru;
-  přímé STDIO a vzdálené HTTP integrace Docker nepotřebují.
+- `manual/external-app-integrations.md` — závazný standard napojení na externí
+  aplikace: lokálně kurátorované MCP servery a CLI na každé mašině místo
+  cloudových konektorů a sdílených brokerů; per-provider runbooky v
+  `manual/integrations/`.
+- `manual/codex-manual-mcp-integrations.md` — Codex-specifický per-machine
+  runbook pro ruční MCP napojení a řízený přechod ze sdíleného integračního
+  brokeru; přímé STDIO a vzdálené HTTP integrace Docker nepotřebují.
 
 ## Spuštění a validace
 
