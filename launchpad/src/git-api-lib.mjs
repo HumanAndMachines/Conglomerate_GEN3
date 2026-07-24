@@ -3,6 +3,7 @@ import { mapWithConcurrency } from "./git-lib.mjs";
 import { buildMissionControlPlanIndex } from "./mission-control-plan-lib.mjs";
 import {
   GIT_REMOTE_REFRESH_CONCURRENCY,
+  abortRepoRebase,
   pullRepoFastForward,
   pullRepoWithAutostash,
   readGitRepoStatus,
@@ -12,10 +13,11 @@ import {
 import { buildWorktreeIndex } from "./worktree-lib.mjs";
 
 export class GitApiError extends Error {
-  constructor(message, { status = 500, code = "git_api_error" } = {}) {
+  constructor(message, { status = 500, code = "git_api_error", metadata = null } = {}) {
     super(message);
     this.status = status;
     this.code = code;
+    this.metadata = metadata;
   }
 }
 
@@ -101,7 +103,11 @@ export async function buildRepoPullResponse({ companiesRoot, repoKey, statusServ
   assertBuilderPullScope(repo);
   const result = await pullRepoFastForward(repo);
   if (!result.ok) {
-    throw new GitApiError(result.message, { status: 409, code: result.code });
+    throw new GitApiError(result.message, {
+      status: 409,
+      code: result.code,
+      metadata: pullRecoveryMetadata(repoKey, result),
+    });
   }
   statusService?.markRemoteChecked(repo);
   return {
@@ -125,7 +131,11 @@ export async function buildRepoAutostashPullResponse({ companiesRoot, repoKey, s
   const result = await pullRepoWithAutostash(repo);
   if (result.pulled) statusService?.markRemoteChecked(repo);
   if (!result.ok) {
-    throw new GitApiError(result.message, { status: 409, code: result.code });
+    throw new GitApiError(result.message, {
+      status: 409,
+      code: result.code,
+      metadata: pullRecoveryMetadata(repoKey, result),
+    });
   }
   statusService?.markRemoteChecked(repo);
   return {
@@ -140,6 +150,45 @@ export async function buildRepoAutostashPullResponse({ companiesRoot, repoKey, s
     after: result.after,
     stdout: result.stdout,
     stderr: result.stderr,
+  };
+}
+
+export async function buildRepoRebaseAbortResponse({ companiesRoot, repoKey, statusService = null } = {}) {
+  const inventory = await buildGitInventory({ companiesRoot });
+  const repo = inventory.repos.find((item) => item.key === repoKey);
+  if (!repo) throw new GitApiError(`Repo ${repoKey} nebylo nalezeno.`, { status: 404, code: "repo_not_found" });
+  assertBuilderPullScope(repo);
+  const result = await abortRepoRebase(repo);
+  statusService?.invalidate(repo);
+  if (!result.ok) {
+    throw new GitApiError(result.message, {
+      status: 409,
+      code: result.code,
+      metadata: pullRecoveryMetadata(repoKey, result),
+    });
+  }
+  return {
+    schema_version: "companiesascode.launchpad.git_rebase_abort.v1",
+    generated_at: new Date().toISOString(),
+    repo_key: repoKey,
+    action: "rebase_abort",
+    aborted: true,
+    before: result.before,
+    after: result.after,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
+}
+
+function pullRecoveryMetadata(repoKey, result) {
+  const status = result?.after ?? result?.before ?? null;
+  const canAbortRebase = status?.operation?.kind === "rebase";
+  return {
+    repo_key: repoKey,
+    recovery: {
+      operation: canAbortRebase ? "rebase" : null,
+      can_abort_rebase: canAbortRebase,
+    },
   };
 }
 
@@ -164,7 +213,7 @@ export async function buildPullAllResponse({ companiesRoot, statusService = null
       }
 
       const preflight = await readGitRepoStatus(repo, { refresh: true });
-      if (!["repo_missing", "git_unavailable", "check_failed"].includes(preflight.status)) {
+      if (!["repo_missing", "git_unavailable", "check_failed", "rebase_in_progress"].includes(preflight.status)) {
         statusService?.markRemoteChecked(repo);
       }
       if (preflight.status === "up_to_date") {
@@ -245,6 +294,7 @@ function builderPullScopeAllowed(repo) {
 }
 
 function pullAllSkipMessage(status) {
+  if (status.status === "rebase_in_progress") return "Repo má rozpracovaný rebase; abortni ho nebo předej screenshot Agentovi.";
   if (status.status === "wrong_branch") return "Repo není na očekávané branchi.";
   if (status.status === "push_required") return "Repo má lokální commity k odeslání.";
   if (status.status === "diverged") return "Lokální a vzdálená branch divergovaly.";
@@ -263,6 +313,7 @@ function compactPullStatus(status) {
     branch: status.branch,
     expected_branch: status.expected_branch,
     head: status.head,
+    operation: status.operation ?? null,
     counts: status.counts,
   };
 }
@@ -284,6 +335,7 @@ export function compactGitSummaryForApp(repo) {
     title: repo.title,
     message: repo.message,
     recommendedAction: repo.recommended_action,
+    operation: repo.operation ?? null,
     incomingCommitCount: repo.counts.incoming,
     outgoingCommitCount: repo.counts.outgoing,
     changedFiles: repo.counts.changed_files,
@@ -343,6 +395,7 @@ function publicRepo({ repo, status, worktrees }) {
     head: status.head,
     remote: repo.remote,
     upstream: status.upstream,
+    operation: status.operation ?? null,
     counts: status.counts,
     status: status.status,
     severity: status.severity,

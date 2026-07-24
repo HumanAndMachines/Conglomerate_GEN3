@@ -13,6 +13,7 @@ import {
   buildRepoAutostashPullResponse,
   buildRepoChangesResponse,
   buildRepoPullResponse,
+  buildRepoRebaseAbortResponse,
   buildRepoResponse,
   buildWorktreesResponse,
 } from "./git-api-lib.mjs";
@@ -302,7 +303,7 @@ function apiErrorResponse(error) {
     return jsonResponse({ error: error.code, message: error.message, details: error.details ?? [] }, error.status);
   }
   if (error instanceof GitApiError) {
-    return jsonResponse({ error: error.code, message: error.message }, error.status);
+    return jsonResponse({ error: error.code, message: error.message, ...(error.metadata ?? {}) }, error.status);
   }
   return jsonResponse({ error: "launchpad_error", message: error.message }, 500);
 }
@@ -513,6 +514,8 @@ function gitApiRoute(pathname) {
   if (changesMatch) return { kind: "repo_changes", repoKey: decodeURIComponent(changesMatch[1]) };
   const autostashPullMatch = pathname.match(/^\/api\/git\/repos\/([^/]+)\/pull-autostash$/);
   if (autostashPullMatch) return { kind: "repo_autostash_pull", repoKey: decodeURIComponent(autostashPullMatch[1]) };
+  const rebaseAbortMatch = pathname.match(/^\/api\/git\/repos\/([^/]+)\/rebase-abort$/);
+  if (rebaseAbortMatch) return { kind: "repo_rebase_abort", repoKey: decodeURIComponent(rebaseAbortMatch[1]) };
   const pullMatch = pathname.match(/^\/api\/git\/repos\/([^/]+)\/pull$/);
   if (pullMatch) return { kind: "repo_pull", repoKey: decodeURIComponent(pullMatch[1]) };
   const repoMatch = pathname.match(/^\/api\/git\/repos\/([^/]+)$/);
@@ -557,6 +560,11 @@ async function handleGitApiRoute(request, url, route) {
       if (request.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
       return jsonResponse(await gitStatusService.withRemoteRefreshPaused(() =>
         buildRepoAutostashPullResponse({ companiesRoot, repoKey: route.repoKey, statusService: gitStatusService })));
+    }
+    if (route.kind === "repo_rebase_abort") {
+      if (request.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
+      return jsonResponse(await gitStatusService.withRemoteRefreshPaused(() =>
+        buildRepoRebaseAbortResponse({ companiesRoot, repoKey: route.repoKey, statusService: gitStatusService })));
     }
     if (route.kind === "pull_all") {
       if (request.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);

@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { cp, mkdir, rm, symlink, writeFile } from "fs/promises";
 import { createServer } from "net";
 import { join } from "path";
-import { createLaunchpadGitFixture, createPackageApp, initGitRepo, runGit, writeJson } from "./git-fixture-helpers.test.mjs";
+import { createLaunchpadGitFixture, createPackageApp, initGitRepo, runGit, startConflictingRebase, writeJson } from "./git-fixture-helpers.test.mjs";
 import { platformTestTimeout } from "./test-platform-setup.mjs";
 
 const tempRoots = [];
@@ -93,6 +93,33 @@ test("identity endpoint is local-only and a foreign root cannot reuse the port",
   );
   expect(await otherRootLauncher.exited).not.toBe(0);
   expect(await new Response(otherRootLauncher.stderr).text()).toContain("EADDRINUSE");
+});
+
+test("Launchpad server exposes a guarded rebase abort only for a live module rebase", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const dealsRepo = join(root, "organizations", "BetaCo_GEN3", "workspace", "deals");
+  await initGitRepo(dealsRepo);
+  await startConflictingRebase(dealsRepo);
+  const { port } = await startLaunchpadServer(root);
+
+  const before = await getJson(port, "/api/git/repos/BetaCo%3A%3Adeals");
+  expect(before.repo.status).toBe("rebase_in_progress");
+  expect(before.repo.operation).toMatchObject({ kind: "rebase", can_abort_rebase: true });
+
+  const blockedPull = await postJson(port, "/api/git/repos/BetaCo%3A%3Adeals/pull", {}, 409);
+  expect(blockedPull.error).toBe("pull_not_safe");
+  expect(blockedPull.recovery).toEqual({ operation: "rebase", can_abort_rebase: true });
+
+  const aborted = await postJson(port, "/api/git/repos/BetaCo%3A%3Adeals/rebase-abort", {});
+  expect(aborted.schema_version).toBe("companiesascode.launchpad.git_rebase_abort.v1");
+  expect(aborted.aborted).toBe(true);
+  expect(aborted.before.status).toBe("rebase_in_progress");
+  expect(aborted.after.status).toBe("up_to_date");
+
+  const repeated = await postJson(port, "/api/git/repos/BetaCo%3A%3Adeals/rebase-abort", {}, 409);
+  expect(repeated.error).toBe("rebase_not_in_progress");
+  expect(repeated.recovery.can_abort_rebase).toBe(false);
 });
 
 test("PORT environment configuration is implicit and falls forward to a free port", async () => {
@@ -234,6 +261,7 @@ test("mutating APIs reject cross-origin and DNS-rebinding requests before routin
     "/api/git/pull-all",
     "/api/git/repos/BetaCo%3A%3Adeals/pull",
     "/api/git/repos/BetaCo%3A%3Adeals/pull-autostash",
+    "/api/git/repos/BetaCo%3A%3Adeals/rebase-abort",
     "/api/git/repos/BetaCo%3A%3Adeals/worktrees/create",
     "/api/git/repos/BetaCo%3A%3Adeals/worktrees/review-fix/publish",
     "/api/apps/deals-v1/health",

@@ -2,8 +2,8 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { createGitStatusService, pullRepoWithAutostash, readGitRepoStatus } from "./git-status-lib.mjs";
-import { initGitRepo, normalizeLineEndings, runGit } from "./git-fixture-helpers.test.mjs";
+import { abortRepoRebase, createGitStatusService, pullRepoWithAutostash, readGitRepoStatus } from "./git-status-lib.mjs";
+import { initGitRepo, normalizeLineEndings, runGit, startConflictingRebase } from "./git-fixture-helpers.test.mjs";
 
 const tempRoots = [];
 
@@ -65,6 +65,30 @@ test("repo status reports missing checkout without running Git in the parent fol
 
   expect(status.status).toBe("repo_missing");
   expect(status.severity).toBe("fail");
+});
+
+test("repo status exposes a conflicting rebase and guarded abort restores the original branch", async () => {
+  const root = await mkdtemp(join(tmpdir(), "launchpad-status-rebase-"));
+  tempRoots.push(root);
+  await initGitRepo(root);
+  await startConflictingRebase(root);
+
+  const repo = { key: "Fixture::root", absolute_path: root, expected_branch: "main" };
+  const blocked = await readGitRepoStatus(repo);
+  expect(blocked.status).toBe("rebase_in_progress");
+  expect(blocked.severity).toBe("fail");
+  expect(blocked.operation).toMatchObject({ kind: "rebase", can_abort_rebase: true });
+
+  const aborted = await abortRepoRebase(repo);
+  expect(aborted.ok).toBe(true);
+  expect(aborted.before.status).toBe("rebase_in_progress");
+  expect(aborted.after.status).toBe("up_to_date");
+  expect(aborted.after.branch).toBe("main");
+  expect(normalizeLineEndings(await readFile(join(root, "README.md"), "utf8"))).toBe("# local draft\n");
+
+  const repeated = await abortRepoRebase(repo);
+  expect(repeated.ok).toBe(false);
+  expect(repeated.code).toBe("rebase_not_in_progress");
 });
 
 test("shared status service deduplicates remote refreshes and respects the freshness window", async () => {
