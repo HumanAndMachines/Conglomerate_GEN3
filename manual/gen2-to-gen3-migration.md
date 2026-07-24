@@ -91,7 +91,7 @@ Kanonický cílový tvar je:
   organizations/
     <Org>_GEN3/                  # samostatné, gitignored nested repo
       .agents/skills/            # kanonická skill knihovna
-      .claude/skills -> ../.agents/skills
+      .claude/skills/            # tracked byte-for-byte mirror (decision 0104)
       company.gen3.json
       modules.manifest.json      # jediný module-slot manifest
       company/
@@ -551,14 +551,17 @@ Organization pravidla.
 
 ### Gate 4C — skills flip
 
-GEN3 kanonická knihovna je `.agents/skills/`; `.claude/skills` je kompatibilní
-symlink na ni, ne druhá kopie a ne opačný směr.
+GEN3 kanonická knihovna je `.agents/skills/`; `.claude/skills` je **Git-tracked
+odvozený byte-for-byte mirror** (`<slug>/SKILL.md` aktivních skillů z manifestu,
+žádné symlinky ani junctiony — decision 0104). Mirror není druhý source of
+truth: edituje se výhradně kanonická knihovna a mirror regeneruje
+`bun run repair:agent-skills`; paritu hlídá `bun run doctor:agent-skills`.
 
 Na Windows Codex-only stroji, kde se Claude nepoužívá, je autoritou přímo
-`.agents/skills/`. Chybějící `.claude/skills` nebo textový placeholder
-materializovaný Gitem není blocker; samostatný adresář `.claude/skills/` je
-nadále zakázaný jako divergentní druhý source of truth. Unix a stroje, které
-Claude kompatibilitu používají, zachovávají symlink kontrakt.
+`.agents/skills/` a chybějící mirror není blocker. Legacy symlink/junction
+nebo textový placeholder z období symlink modelu hlásí doctor jako
+`repair_needed`; repair lane je nahradí trackovaným mirrorem (cíl linku
+zůstává nedotčený).
 
 GEN2 s reverzním layoutem má `.agents/skills` jako **existující symlink** →
 `../.claude/skills`; ten je nutné nejdřív odstranit. `git rm` symlinku smaže i

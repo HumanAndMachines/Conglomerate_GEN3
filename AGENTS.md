@@ -240,7 +240,10 @@ neinteraktivní běhy bez přímého App chatu s Kolegou.
 2. **Urči scope.** Root vs konkrétní `organizations/<org>/` vs
    `personalspace/`. Pokud je úkol o firmě, klientovi, modulu, Mission Control
    plánu nebo productionspace repu, pokračuj v Organization checkoutu a jeho
-   vlastním `AGENTS.md`, ne podle root pravidel.
+   vlastním `AGENTS.md`, ne podle root pravidel. Pokud je úkol o personalspace
+   Principála, pokračuj podle vlastního `AGENTS.md` personalspace repa
+   (`personalspace/<owner>_GEN3/AGENTS.md`, vzor PersonalspaceTemplate_GEN3);
+   root pro personalspace drží jen privátní hranici a mount pravidla.
 3. **Ověř Git stav a čerstvý main (task-start update rutina).** Před založením
    nebo převzetím jakéhokoli tasku spusť v primárním Conglomerate checkoutu
    `bun run doctor:task`. Tato explicitní Doctor lane provede bounded
@@ -314,7 +317,11 @@ Root upravuj jen když se mění:
 - Worktree create/inventura/předávka/cleanup — consumer skill
   `.agents/skills/worktree-development-discipline/SKILL.md`; autorita
   HumanAndMachines decision 0049 a shaping manual `manual/worktree-management.md`
-- Základní agentní skill balíček: `.agents/skills/`
+- Základní agentní skill balíček: `.agents/skills/` (registry
+  `manifest.json`); `.claude/skills` je Git-tracked byte-for-byte mirror
+  aktivních skillů (decision 0104 v HumanAndMachines/docs/decisions/) —
+  paritu hlídá `bun run doctor:agent-skills`, regeneruje
+  `bun run repair:agent-skills`
 - Sdílený Launchpad: `launchpad/`
 - Sdílený Guide: `guide/`
 - Organizace: lokální gitignored nested repos v `organizations/<org>/`; root repo trackuje jen `organizations/README.md`

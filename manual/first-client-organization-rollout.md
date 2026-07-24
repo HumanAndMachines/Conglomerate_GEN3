@@ -341,14 +341,16 @@ Organization manifest gate:
 | `design-system` | aktivní root slot z template, nebo neobjednaný `planned_slot` bez `git` |
 | `infra` | aktivní restricted root slot, `space: "root"`, `git.url` + `git.branch`; u local-first bez provider repa smí být dočasně lokální repo bez remote se zapsaným InfraTemplate adoption issue |
 
-Agentní entrypoint gate: `.agents/skills/` je Git-tracked source of truth,
-zatímco `.claude/skills` je jen lokální gitignored symlink/junction pro Claude
-Code kompatibilitu. `bun run doctor:agent-skills` smí v čerstvém checkoutu
-vrátit `repair` bez selhání; explicitní `bun run repair:agent-skills` může
-failnout zavřeně a vyžádat ruční materializaci. V takovém případě ověř
-`git check-ignore -v .claude/skills`, vytvoř lokální entrypoint mimo Git a
-znovu spusť `bun run doctor:agent-skills`. Nezakládej kvůli tomu template PR,
-který by trackoval `.claude/skills`.
+Agentní entrypoint gate: `.agents/skills/` je kanonický Git-tracked source of
+truth a `.claude/skills` je **Git-tracked odvozený byte-for-byte mirror**
+(`<slug>/SKILL.md` aktivních skillů z manifestu, žádné symlinky ani junctiony —
+decision 0104). `bun run doctor:agent-skills` je read-only parity check;
+čerstvý checkout z template stavu má mirror rovnou v Gitu a hlásí `ok`. Legacy
+symlink/junction/placeholder nebo drift hlásí `repair`; `bun run
+repair:agent-skills` mirror deterministicky zregeneruje a změnu commitni ve
+stejném diffu jako kanonickou úpravu. Repair failuje zavřeně jen na neznámém
+obsahu (`mirror_unknown_content`) — ten porovnej s kanonickým katalogem a
+odstraň ručně; nikdy nesmí být `.claude/skills` v `.gitignore`.
 
 Mission Control data repo zakládej jako samostatný Git checkout na větvi `v3`.
 Při použití skeletonu z `mission-control/templates/organization-data` ponech
