@@ -49,18 +49,34 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
    zopakuj validace a gate; přepsanou branch pushni pouze příkazem s exact
    `--force-with-lease`, který gate vypíše. Po pushi ověř na GitHubu PR base
    `main`, exact head, mergeability a checks.
-8. Po prvním pushi branch hned otevři plnohodnotný PR proti správné base branchi,
-   pokud Principál výslovně neřekl, že PR otevřít nemáš. Remote branch bez PR
+8. Commituj a pushuj do PR branche průběžně — po každém uzavřeném pracovním
+   kroku, nejpozději před každou odpovědí Principálovi, která ohlašuje stav
+   práce. Po prvním pushi branch hned otevři PR proti správné base branchi
+   jako GitHub Draft PR, pokud Principál výslovně neřekl, že PR otevřít
+   nemáš; v handoffu ho přepni na Ready for review. Remote branch bez PR
    není dokončený handoff: snadno zapadne, Steward ji nemusí vidět a další
-   agent ji nemusí převzít.
-9. Před handoffem aktualizuj sidecar a znovu spusť audit i
+   agent ji nemusí převzít. Rozdělaná práce, která existuje jen lokálně, je
+   porušení disciplíny (decision 0103).
+9. Handoff veď průvodcovsky (decision 0103): závěrečná zpráva začíná
+   standardizovaným handoff blokem (PR URL, base, exact HEAD, lidské
+   shrnutí, ověření, odkaz na aplikaci běžící z worktree) a končí
+   standardizovanou otázkou „Mám změny Publikovat?". Před otázkou zjisti
+   živá GitHub práva Principála (branch protection, povolené merge metody,
+   checks) a řiď se jimi, ne textovým labelem role. Po explicitním
+   „Publikuj" v threadu PR mergni metodou, kterou repozitář povoluje
+   (default rebase), v primárním checkoutu stáhni main (`bun run
+   doctor:task`, `git pull --ff-only`) a pokračuj cleanup krokem. Když
+   GitHub merge blokuje, přepni PR na Ready, vyžádej review Stewarda a
+   předej Principálovi, kdo rozhoduje. Bez zelené PR zůstává otevřený a nic
+   se neděje.
+10. Před handoffem aktualizuj sidecar a znovu spusť audit i
    `bun run worktrees:check`. Check je nutný, ale ne dostačující. Worktree
    odstraň jen
    když je clean včetně untracked souborů, nemá local-only commit, exact HEAD je
    na remote, PR je merged nebo explicitně abandoned se snapshotem, runtime ho
    nepoužívá a neexistuje aktivní writer. Pak použij owner repo
    `git worktree remove <path>` a `git worktree prune`; sidecar smaž až potom.
-10. Plošné `rm -rf`, `--force`, `git branch -D` a automatické mazání podle stáří
+11. Plošné `rm -rf`, `--force`, `git branch -D` a automatické mazání podle stáří
    nejsou běžný cleanup. Nesplněný guard se předává konkrétně.
 
 ## Ověření
@@ -78,6 +94,7 @@ bun run check
 bun run doctor
 ```
 
-Handoff obsahuje primary stav, worktree cestu/branch/plán/sidecar, přesnou PR
-URL, target base branch, exact pushed HEAD, provedené ověření a výsledek
-cleanupu nebo konkrétní důvod ponechání.
+Handoff začíná standardizovaným blokem podle decision 0103 (PR URL, base,
+exact HEAD, lidské shrnutí, ověření, otázka „Mám změny Publikovat?")
+a obsahuje primary stav, worktree cestu/branch/plán/sidecar, provedené
+ověření a výsledek cleanupu nebo konkrétní důvod ponechání.
