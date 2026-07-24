@@ -104,7 +104,7 @@ export async function taskPreflightGitCheck(companiesRoot, { gitRunner = runGit 
   if (behind > 0) {
     return failure(
       `Primární main je ${behind} commitů za origin/main.`,
-      [...evidence, "Spusť git pull --ff-only a potom bun run doctor:task znovu."],
+      [...evidence, "Spusť bun run update (guarded ff-only update lane) a potom bun run doctor:task znovu."],
     );
   }
 

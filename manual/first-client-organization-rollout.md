@@ -30,6 +30,7 @@ Vyplň před tím, než vytvoříš nebo mountneš klientský checkout:
 | Počáteční baseline | Mission Control app + data, Knowledgebase, Design System a Infra; ostatní workspace moduly až podle business potřeby, ne big-bang rollout |
 | Design System scope | `active`, pokud je vytvoření objednané; jinak manifestový `planned_slot` bez repa a bez vymyšlených brandových dat |
 | Template baseline | Organization z `TemplatesRozjedeme-ai/OrganizationTemplate_GEN3`; Mission Control, Knowledgebase a Design System z vlastních `TemplatesRozjedeme-ai/*Template` upstreamů |
+| Klientské podklady | Hledej ve schválené delivery/sales knowledgebase dodavatele a souvisejících deal/quote/proposal záznamech; vendor-specific cesty patří do AGENTS.md dané dodavatelské Organizace, ne do sdíleného runbooku. Do nové Organizace přenášej jen relevantní, netajný delivery kontext, ne raw interní reasoning ani secrets |
 | Shared Guide | bere se ze sdíleného `HumanAndMachines/Conglomerate_GEN3/guide`, nekopíruje se ani neforkuje do klientské Organizace |
 | Productionspace | co je release/produkční systém a nesmí být běžný workspace modul |
 
@@ -149,7 +150,11 @@ První reálný GEN3 klient začíná s:
    vytvoření Design Systemu.
 4. **Infra** — restricted Organization-owned repo jako aktivní root nested
    checkout `infra/`; manifest slot používá `space: "root"` a kanonické
-   `git.url` / `git.branch`.
+   `git.url` / `git.branch`. Pokud klient vzniká local-first a
+   `InfraTemplate_GEN3` ještě není dostupný jako přijatý template upstream,
+   založ minimální lokální `infra/` repo bez remote: README, no-secrets
+   hranice, budoucí template provenance/adoption issue a žádné cloud/DNS/IaC
+   side effecty. Nepředstírej template fork, dokud upstream reálně neexistuje.
 5. **Guide** — shared z `HumanAndMachines/Conglomerate_GEN3/guide`; nekopíruj ani neforkuj Guide do klientské Organizace. Pokud klient vzniká migrací z GEN2 a má vlastní top-level `guide/`, obecný Guide z Organization repozitáře smaž — nahrazuje ho shared root Guide. Organization-specific onboarding přesuň do `manual/`, knowledgebase nebo role docs.
 
 Tento baseline není big-bang workspace rollout: v `workspace/` se na začátku
@@ -270,7 +275,10 @@ Launchpad nesmí držet app porty jedné Organizace v rootu. Každá aplikace de
 
 Kontrolní pravidla:
 
-- `company` je čistá Organization identity, ne `workspace`, ne filesystem slug s `_GEN3`.
+- `company` je přesná čistá Organization identity / `company.slug`, ne
+  `workspace`, ne display název s diakritikou a ne filesystem slug s `_GEN3`.
+  Display jméno patří do copy/UI polí; `companyascode.app.company` musí projít
+  stejným strojovým patternem jako Organization slug.
 - `module` je modul/app surface identita; příslušnost k Teamům patří do `company.gen3.json` / `modules.manifest.json`, ne do app manifestu.
 - Slot se stavem `planned` / `planned_slot` před skutečným založením repozitáře
   nemá `git`, `repo` ani `repository` URL. Deklarovaná URL znamená, že checkout
@@ -281,10 +289,17 @@ Kontrolní pravidla:
   proces nebo služba modulu — například klientské Mission Control API — smí
   mít vlastní app-owned port ve své konfiguraci nebo env; tento API port se
   nekopíruje do Launchpad app manifestu a nemusí se rovnat UI portu.
-- Porty jsou unikátní napříč lokálním rootem. Pro prvního klienta začínej v klientském bloku okolo `5500+` a ověř kolize přes Launchpad `/api/apps`.
+- App surface drží stabilní port ve svém manifestu. Moduly jedné Organizace
+  musí mít porty unikátní. Různé Organizace smějí deklarovat stejný port;
+  v jednom lokálním rootu pak současně běží poslední otevřená z nich.
+  Cross-Organization overlap ověř přes Launchpad `/api/apps` a Doctor.
 - Launchpad `/api/apps` ověří manifestové app porty. Modul s dalším interním
   API portem odpovídá i za jeho collision/readiness kontrolu; root kvůli němu
   nezavádí druhý port registry.
+- Po přejmenování package nebo změně `companyascode` metadat spusť
+  `bun install`/Repair v app cwd a zkontroluj lockfile diff. Bun 1.3 může
+  ponechat původní workspace name v `bun.lock`; ruční lockfile diff je pak
+  validní součást opravy, ne důvod měnit template architekturu.
 - Productionspace systémy nesmí získat hosted/public exposure jen tím, že existuje manifest. Sdílený Launchpad defaultně `productionspace/` app package discovery neprochází.
 
 ### 4. Discovery + support-loop gate
@@ -304,7 +319,7 @@ Povinný výsledek pro klientský handoff:
 | Git root | čistý root checkout, žádné Organization submoduly |
 | Mounts | Organization mountpoint je Git checkout |
 | Discovery | klientská Organization je objevená; nezaložený modul je `planned_slot` bez repo URL, zatímco `missing_access` má vždy vlastní next action |
-| Runtime | žádné `invalid_manifest`, port collision nebo dependency warning bez next action |
+| Runtime | žádné `invalid_manifest`, intra-Organization duplicitní porty, živý foreign/unknown port conflict nebo dependency warning bez next action; deklarovaný cross-Organization overlap má známé vlastníky |
 | Support loop | Doctor/Launchpad hlášky jsou `ok` nebo explicitně akceptované planned/stopped stavy |
 
 Template gate pro první instalaci:
@@ -324,7 +339,25 @@ Organization manifest gate:
 | `mission-control/db` | aktivní root slot, `space: "root"`, `git.url` + `git.branch: "v3"` |
 | `workspace/knowledgebase` | první workspace modul ve default Teamu `workspace` |
 | `design-system` | aktivní root slot z template, nebo neobjednaný `planned_slot` bez `git` |
-| `infra` | aktivní restricted root slot, `space: "root"`, `git.url` + `git.branch` |
+| `infra` | aktivní restricted root slot, `space: "root"`, `git.url` + `git.branch`; u local-first bez provider repa smí být dočasně lokální repo bez remote se zapsaným InfraTemplate adoption issue |
+
+Agentní entrypoint gate: `.agents/skills/` je Git-tracked source of truth,
+zatímco `.claude/skills` je jen lokální gitignored symlink/junction pro Claude
+Code kompatibilitu. `bun run doctor:agent-skills` smí v čerstvém checkoutu
+vrátit `repair` bez selhání; explicitní `bun run repair:agent-skills` může
+failnout zavřeně a vyžádat ruční materializaci. V takovém případě ověř
+`git check-ignore -v .claude/skills`, vytvoř lokální entrypoint mimo Git a
+znovu spusť `bun run doctor:agent-skills`. Nezakládej kvůli tomu template PR,
+který by trackoval `.claude/skills`.
+
+Mission Control data repo zakládej jako samostatný Git checkout na větvi `v3`.
+Při použití skeletonu z `mission-control/templates/organization-data` ponech
+`repository-db.yaml#schema.name` jako `mission-control-data`, nastav klientský
+`plan_prefix`, odstraň template DEV/RM fixture soubory s cizím prefixem a
+přenes počáteční klientské `TODO.tasks.json`, `DONE.tasks.json` a
+`ISSUES.open.json` do `data/mission-control/`. Root ledgery pak deklaruj jen
+jako mirrors. Validaci dat pusť až po prvním commitu, protože audit kontrola
+počítá s existující Git historií.
 
 Pokud Doctor hlásí warning, nejdřív ho zařaď podle boundary:
 
@@ -335,6 +368,13 @@ Pokud Doctor hlásí warning, nejdřív ho zařaď podle boundary:
 | nested module repo | app manifest, runtime konstanta, package deps | module repo commit/PR |
 | Organization registry | `company.gen3.json`, `modules.manifest.json` | Organization root PR |
 | shared root | Launchpad/Doctor/Guide obecný bug | `HumanAndMachines/Conglomerate_GEN3` PR |
+
+U lokálního rootu s více Organizacemi může globální Doctor nebo root task
+checker selhat kvůli jiným mountům, template fixture datům nebo mirror
+duplicitám mimo právě seedovanou Organizaci. Pro klientský handoff vždy odděl
+klientský nález od sdíleného tooling gapu: klientský nález oprav v nested repo
+nebo root manifestu, sdílený false-positive zapiš do sdíleného backlogu a
+nepoužívej ho jako záminku k velkému refactoru bootstrapu.
 
 ### 5. Install/Repair smoke
 

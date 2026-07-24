@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   buildPortOwnershipIndex,
-  findPortCollisions,
-  suggestNextFreePort,
+  findPortOverlaps,
 } from "./port-ownership-lib.mjs";
 
 function owner(packagePath, port, overrides = {}) {
@@ -18,13 +17,7 @@ function owner(packagePath, port, overrides = {}) {
   };
 }
 
-test("suggestNextFreePort starts after the colliding port and wraps within schema range", () => {
-  expect(suggestNextFreePort([1024, 5392, 5393], { afterPort: 5392 })).toBe(5394);
-  expect(suggestNextFreePort([65535, 1024], { afterPort: 65535 })).toBe(1025);
-  expect(suggestNextFreePort([1024, 1025], { afterPort: 1024, minPort: 1024, maxPort: 1025 })).toBeNull();
-});
-
-test("findPortCollisions returns owner-aware diagnostics and deterministic suggestion", () => {
+test("findPortOverlaps returns deterministic owner-aware diagnostics without remapping", () => {
   const owners = [
     owner("organizations/ExampleOrgA_GEN3/mission-control/app/v2/package.json", 5392, {
       app_id: "example-org-a-mission-control-v2",
@@ -41,15 +34,13 @@ test("findPortCollisions returns owner-aware diagnostics and deterministic sugge
   ];
 
   const index = buildPortOwnershipIndex(owners);
-  const collisions = findPortCollisions(index);
+  const overlaps = findPortOverlaps(index);
 
   expect(index.used_ports).toEqual([5392, 5393]);
-  expect(collisions).toHaveLength(1);
-  expect(collisions[0]).toMatchObject({
-    port: 5392,
-    suggested_free_port: 5394,
-  });
-  expect(collisions[0].owners.map((entry) => entry.package_path)).toEqual([
+  expect(overlaps).toHaveLength(1);
+  expect(overlaps[0]).toMatchObject({ port: 5392 });
+  expect(overlaps[0]).not.toHaveProperty("suggested_free_port");
+  expect(overlaps[0].owners.map((entry) => entry.package_path)).toEqual([
     "organizations/ExampleOrgA_GEN3/mission-control/app/v2/package.json",
     "organizations/ExampleOrgC_GEN3/mission-control/app/v3/package.json",
   ]);

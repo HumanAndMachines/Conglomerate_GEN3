@@ -64,8 +64,11 @@ které máš rozepsané níž:
   Kolega pravomoce mají a drafty schvalují — mezi lidským a AI Kolegou není
   rozdíl v chování.
 - **GitHub je jediná autorita přístupů.** Členství, Teamy, repo granty a branch
-  rules určují, co kdo smí; nevzniká druhý vymyšlený ACL. Builder tvoří PR,
-  Steward merguje do `main`.
+  rules určují, co kdo smí; nevzniká druhý vymyšlený ACL. Builder tvoří PR;
+  chráněnou `main` merguje Steward nebo Admin, nechráněnou `main` mladého
+  modulu smí Builder publikovat sám, dokud ji Admin vědomě nezamkne
+  (progresivní zamykání, decision 0103). Steward je běžná provozní lane, ne
+  povinný bottleneck pro Admina.
 - **Vlastní mašina, vlastní Personalspace.** Každý Kolega i Buddy má vlastní
   mašinu s plnými lokálními právy a vlastní **privátní Personalspace**, který
   nikdo cizí — Steward, Admin ani operator — nečte.
@@ -126,14 +129,32 @@ Organizace nebo modulu. Všechny tyhle úpravy děláš jako PR ze svého
 worktree, aby se dostaly ke Stewardovi, který navržené změny mergne, nebo
 zahodí. Poznatek, který zůstane jen v chatu, se ztratí.
 
-**Co smíš bez ptaní:** tvořit worktrees a otevírat plnohodnotné pull
-requesty (ne GitHub „draft PR" — normální PR). Otevřený PR je pořád Draft
-v našem smyslu: je vidět, dá se editovat a dá se zavřít; publikací se stává
-až merge, a ten patří Principálovi.
+**Co smíš bez ptaní:** tvořit worktrees, průběžně commitovat a pushovat
+rozdělanou práci do PR branche a otevírat pull requesty. PR otevři hned po
+prvním pushi jako GitHub Draft PR a v handoffu ho přepni na Ready for
+review; rozdělaná práce nikdy nezůstává jen lokálně na mašině. Otevřený PR
+je pořád Draft v našem smyslu: je vidět, dá se editovat a dá se zavřít;
+publikací se stává až merge, a ten patří Principálovi (decision 0103).
+
+**Handoff je průvodcovský.** Kolega nemusí rozumět Gitu ani GitHubu. Na
+konci práce agent jako první věc závěrečné zprávy předloží standardizovaný
+handoff: odkaz na připravený PR, lidské shrnutí změn, výsledek ověření,
+odkaz na aplikaci běžící z worktree ke kontrole (App agent ji rovnou
+otevře) — a standardizovanou otázku „Mám změny Publikovat?". Před otázkou
+agent zjistí živá GitHub práva svého Principála (branch protection, povolené
+merge metody, checks) a řídí se jimi, ne textovým labelem role: když
+Principál merge smí a v threadu řekne „Publikuj", agent PR mergne metodou
+povolenou repozitářem, stáhne `main` do primárního checkoutu a uklidí
+worktree. Když GitHub merge Principálovi nedovoluje, agent to řekne rovnou
+v handoffu a „Publikuj" pak znamená předání: agent přepne PR na Ready,
+vyžádá review Stewarda (reviewer request + @zmínka v komentáři PR) a řekne
+Principálovi, kdo teď rozhoduje; merge neobchází, GitHub ho fyzicky
+blokuje. Bez zelené PR zůstává otevřený a nic se neděje (decision 0103).
 
 **Push bez PR není hotový handoff.** Když agent pushne branch se změnou v
-Conglomerate rootu, hned otevře plnohodnotný PR proti správné base branchi,
-pokud Principál výslovně neřekl, že PR otevřít nemá. Samotná remote branch se
+Conglomerate rootu, hned otevře PR proti správné base branchi (během aktivní
+práce jako GitHub Draft PR, v handoffu přepnutý na Ready for review), pokud
+Principál výslovně neřekl, že PR otevřít nemá. Samotná remote branch se
 snadno ztratí a není dostatečný předávací artefakt pro Stewarda ani dalšího
 agenta.
 
@@ -220,15 +241,23 @@ neinteraktivní běhy bez přímého App chatu s Kolegou.
    `personalspace/`. Pokud je úkol o firmě, klientovi, modulu, Mission Control
    plánu nebo productionspace repu, pokračuj v Organization checkoutu a jeho
    vlastním `AGENTS.md`, ne podle root pravidel.
-3. **Ověř Git stav a čerstvý main.** Před založením nebo převzetím jakéhokoli
-   tasku spusť v primárním Conglomerate checkoutu `bun run doctor:task`. Tato
-   explicitní Doctor lane provede bounded `git fetch origin main --prune` a
-   fail-closed porovná čistý `main` s `origin/main`. Je-li clean main pouze
-   pozadu, spusť `git pull --ff-only` a Doctor zopakuj. Dirty, ahead, diverged,
-   wrong-branch nebo neověřitelný stav se automaticky nestashuje ani
-   nerebasuje: zachovej práci v plan-owned worktree a primary oprav bez ztráty
-   historie. `git pull --rebase --autostash` proto není defaultní agentní
-   preflight. Root repo nesmí omylem trackovat cizí Organization historii,
+3. **Ověř Git stav a čerstvý main (task-start update rutina).** Před založením
+   nebo převzetím jakéhokoli tasku spusť v primárním Conglomerate checkoutu
+   `bun run doctor:task`. Tato explicitní Doctor lane provede bounded
+   `git fetch origin main --prune` a fail-closed porovná čistý `main`
+   s `origin/main`. Je-li clean main pouze pozadu, spusť guarded update lane
+   `bun run update` (ff-only, dirty-safe; Doctor sám nikdy nemutuje) a Doctor
+   zopakuj. Rutina platí i pro agenta startujícího v Organization checkoutu:
+   kolega, který pouští agenty jen v `organizations/<org>/`, dostává updaty
+   sdíleného rootu (Launchpad, Guide, skilly) právě touhle rutinou — z
+   Conglomerate rootu spusť `bun run update --org <slug>`, což ff-only
+   aktualizuje root i org mount (org root repo + workspace moduly;
+   productionspace zůstává read-only), a teprve potom pokračuj podle org
+   `AGENTS.md`. Dirty, ahead, diverged, wrong-branch nebo neověřitelný stav
+   lane nikdy nepřepisuje: zachovej práci v plan-owned worktree a primary
+   oprav bez ztráty historie. `git pull --rebase --autostash` proto není
+   defaultní agentní preflight a `--preserve` (autostash) je jen explicitní
+   volba. Root repo nesmí omylem trackovat cizí Organization historii,
    submodule pointer ani lokální private/runtime data. Stejný Git preflight
    proveď pro každý nested checkout, kterého se task dotkne, podle jeho policy.
 4. **Drž worktree disciplínu bez malých výjimek.** Primární root checkout
@@ -290,6 +319,11 @@ Root upravuj jen když se mění:
 - Sdílený Guide: `guide/`
 - Organizace: lokální gitignored nested repos v `organizations/<org>/`; root repo trackuje jen `organizations/README.md`
 - Privátní osobní kontext: `personalspace/` — gitignored, mimo GitHub organizace
+- Napojení na externí aplikace (MCP/CLI) — standard
+  `manual/external-app-integrations.md`, per-provider runbooky
+  `manual/integrations/`, skill
+  `.agents/skills/external-app-integrations/SKILL.md`; Codex specifika
+  `manual/codex-manual-mcp-integrations.md`
 - Lokální secret custody standard: `manual/security/local-secret-custody.md`;
   root/operator secrets patří do gitignored `personalspace/<owner>_GEN3/secrets/...`,
   organization/AI-colleague secrets do organization-local `private/secrets/...`.
@@ -345,6 +379,28 @@ pointery a metadata-only ověření.
 
 Povolené jsou obecné patterny, anonymizované šablony a poučení převedené do obecné podoby.
 
+## Napojení na externí aplikace
+
+Napojení na externí aplikace (Gmail, Slack, Jira, Canva…) se dělá primárně
+lokálně kurátorovaným MCP serverem nebo CLI nástrojem na dané mašině. Nové
+napojení agent nikdy nezřizuje přes ChatGPT/claude.ai konektor ani sdílený
+cloudový broker; konektor, který už je nainstalovaný, se používat smí —
+cílový stav je ale MCP/CLI z katalogu, a když MCP cesta chybí, agent
+konektor sám neinstaluje (browser fallback + issue).
+Identita a subscription harnessu se smí sdílet napříč mašinami Principála;
+přístupy k externím aplikacím ne: každá mašina drží vlastní přihlášení pro
+svou Organizaci a je samostatně revokovatelný přístup. Definice schválených
+integrací drží tracked katalog v repu Organizace (`INTEGRATIONS.md`,
+`.mcp.json`, `.codex/config.toml` — jen jména env proměnných, nikdy
+hodnoty); osobní integrace patří do personalspace scope a user-level
+configu harnessu. Výběr: oficiální MCP → oficiální CLI → reviewnutý pinned
+OSS → browser fallback; scraping/cookie-session servery nikdy. Manuál a
+runbooky jsou živý komunitní standard: zaseknutí Kolegy při instalaci nebo
+zastaralý postup řeš opravným PR na `HumanAndMachines/Conglomerate_GEN3`
+(minimálně issue v root `ISSUES.open.json`), ne jen poznámkou v chatu.
+Postup drží skill `.agents/skills/external-app-integrations/SKILL.md`,
+standard `manual/external-app-integrations.md`.
+
 ## Launchpad pravidlo
 
 Launchpad je aktuálně **builder-first** root surface (decision 0047
@@ -356,7 +412,7 @@ read-only. Admin Organizace (Organization Admin), vstup Uživatelů Organizace
 konfigurace patří do Conglomerate Dashboardu GEN3; Launchpad je pro Buildery
 Organizace a nemá být běžný admin panel.
 
-Shared Launchpad nesmí držet hardcodovaný port map jedné organizace. Aplikace deklaruje svůj port ve vlastním `package.json` manifestu. Productionspace repozitáře nespouštěj ani nereleasuj z rootu, pokud konkrétní Organizace nemá explicitní policy.
+Shared Launchpad nesmí držet hardcodovaný port map jedné organizace. Aplikace deklaruje svůj stabilní port ve vlastním `package.json` manifestu a app surfaces uvnitř jedné Organizace musí mít porty unikátní. Stejný port smí deklarovat app surfaces různých Organizací; současně na něm běží nejvýše jedna a poslední uživatelské `Otevřít` vyhraje. Launchpad před přepnutím pozitivně ověří známou aplikaci jiné Organizace; cizí nebo neověřitelný listener bez takové vazby nikdy automaticky neukončuje. Productionspace repozitáře nespouštěj ani nereleasuj z rootu, pokud konkrétní Organizace nemá explicitní policy.
 
 ## Handoff / closeout
 
@@ -369,6 +425,29 @@ Před handoffem uveď:
   repa; obecné „push/PR hotovo" nestačí;
 - kam je zapsaný případný blocker nebo next action (`ISSUES.open.json`,
   Organization Mission Control, TODO ledger apod.).
+
+Závěrečná zpráva pracovního chatu, ve kterém vznikl PR, začíná
+standardizovaným handoff blokem (decision 0103
+v HumanAndMachines/docs/decisions/):
+
+```
+## Handoff
+Připravil jsem ti pull request: <URL> (base: <branch>, HEAD: <sha>)
+Co obsahuje: <1–3 lidské věty>
+Ověřeno: <checks/testy a výsledek>
+Zkontroluj si to v aplikaci: <URL běžící z worktree, pokud existuje>
+Lokálně nezůstává nic mimo PR.
+
+Mám změny Publikovat?
+```
+
+Po explicitním „Publikuj" v threadu agent PR mergne metodou, kterou
+repozitář povoluje (default rebase), stáhne `main` do primárního checkoutu
+(`bun run doctor:task`, `git pull --ff-only`) a uklidí worktree podle
+cleanup guardů. Když GitHub merge Principálovi nedovoluje, agent to řekne
+rovnou v handoffu; „Publikuj" pak znamená předání — PR na Ready for
+review, review request + @zmínka Stewardovi a informace Principálovi, kdo
+rozhoduje.
 
 Před handoffem po změně root configu, Launchpadu, Guide nebo mountpointů spusť:
 

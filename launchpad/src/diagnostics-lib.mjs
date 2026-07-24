@@ -179,6 +179,7 @@ export async function buildLaunchpadAppsResponse({
       invalid_app_count: invalidApps.length,
       organization_count: companies.length,
       company_count: companies.length,
+      port_overlap_count: discovery.port_overlaps?.length ?? 0,
       template_mount_count: templateMounts.length,
       template_app_count: templateApps.length,
       failure_count: discovery.failures.length,
@@ -190,6 +191,7 @@ export async function buildLaunchpadAppsResponse({
     template_mounts: templateMounts,
     template_apps: templateApps,
     apps: appsWithGit,
+    port_overlaps: discovery.port_overlaps ?? [],
     failures: discovery.failures,
     warnings: [...(discovery.warnings ?? []), ...gitContext.warnings],
   };
@@ -585,6 +587,7 @@ export function buildDoctorReportFromAppsResponse(appsResponse, { environmentChe
   const checks = [
     ...environmentChecks,
     discoveryCheck(appsResponse),
+    portOverlapCheck(appsResponse),
     workspaceDeclarationCheck(appsResponse),
     ...runtimeChecks(appsResponse),
     // Additivní checks (např. personalspace, CAC-0048) — nikdy nemění org
@@ -1625,6 +1628,30 @@ function discoveryCheck(appsResponse) {
     paths: ["launchpad.gen3.json", "launchpad", "organizations"],
     links: [],
     details: [...appsResponse.failures, ...(appsResponse.warnings ?? []), ...templateDetails],
+  };
+}
+
+// Cross-Organization overlap není chyba konfigurace: app-owned port je
+// stabilní součást app surface a mezi Organizacemi se smí opakovat. Intra-org
+// duplicitu už discovery failne. Doctor cross-org vlastníky vypíše jako
+// informační evidence; neznámý živý listener dál failuje v runtime checku.
+function portOverlapCheck(appsResponse) {
+  const overlaps = appsResponse.port_overlaps ?? [];
+  const details = overlaps.map(({ port, owners = [] }) => {
+    const labels = owners.map((owner) => `${owner.app_id} (${owner.package_path})`).join(", ");
+    return `port ${port}: ${labels}`;
+  });
+  return {
+    id: "launchpad.port_ownership",
+    status: "ok",
+    severity: "runtime",
+    title: "App-owned porty",
+    message: overlaps.length === 0
+      ? "Deklarované app-owned porty nemají cross-Organization překryv."
+      : `${formatCount(overlaps.length, "cross-Organization sdílený port", "cross-Organization sdílené porty", "cross-Organization sdílených portů")}; poslední otevřená aplikace na každém portu vyhraje.`,
+    paths: ["organizations"],
+    links: [],
+    details,
   };
 }
 

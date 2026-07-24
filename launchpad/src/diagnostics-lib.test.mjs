@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { tmpdir } from "os";
 import { join } from "path";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "fs/promises";
-import { buildEnvironmentChecks, buildLaunchpadAppsResponse, buildLaunchpadDoctorReport, runtimeAppStatus, updateChannelCheck } from "./diagnostics-lib.mjs";
+import { buildDoctorReportFromAppsResponse, buildEnvironmentChecks, buildLaunchpadAppsResponse, buildLaunchpadDoctorReport, runtimeAppStatus, updateChannelCheck } from "./diagnostics-lib.mjs";
 import { createLaunchpadGitFixture, initGitRepo, runGit } from "./git-fixture-helpers.test.mjs";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
 
@@ -64,6 +64,32 @@ test("Doctor drží foreign-port jako hard failure i při dependency warningu", 
     dependencies: { state: "stale_lockfile" },
     runtime: { owner: "unknown-port", status: "unhealthy" },
   })).toBe("fail");
+});
+
+test("Doctor reportuje deklarovaný port overlap owner-aware bez konfiguračního failure", () => {
+  const report = buildDoctorReportFromAppsResponse({
+    launchpad_root: { display_name: "Test root" },
+    root: "/tmp/test-root",
+    failures: [],
+    warnings: [],
+    apps: [],
+    organizations: [],
+    port_overlaps: [{
+      port: 5392,
+      owners: [
+        { app_id: "alpha-app", package_path: "organizations/Alpha/workspace/app/package.json" },
+        { app_id: "beta-app", package_path: "organizations/Beta/workspace/app/package.json" },
+      ],
+    }],
+  });
+  const check = report.checks.find((item) => item.id === "launchpad.port_ownership");
+
+  expect(check?.status).toBe("ok");
+  expect(check?.message).toContain("1 cross-Organization sdílený port");
+  expect(check?.message).toContain("poslední otevřená aplikace");
+  expect(check?.details).toEqual([
+    "port 5392: alpha-app (organizations/Alpha/workspace/app/package.json), beta-app (organizations/Beta/workspace/app/package.json)",
+  ]);
 });
 
 test("doctor report obsahuje platform, git a gitignore checks", async () => {

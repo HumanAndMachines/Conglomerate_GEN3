@@ -156,9 +156,11 @@ Nevalidní `companyascode.app` manifest izoluje jen dotčenou appku (decision
 0043): appka je viditelná ve stavu `invalid_manifest`, runtime akce jsou pro ni
 zamčené a zbytek rootu běží. Duplicitní app id je také scoped: druhý manifest
 (deterministicky podle cesty) se izoluje jako `invalid_manifest`, první platí.
-Bezpečnostní invarianty (port kolize, plugin read-only violation, únik plugin
-cesty mimo Organizaci) zůstávají hard failure pro registry i auto-discovered
-Organizace (decision 0042 bezpečnostní parita).
+Bezpečnostní invarianty (živý cizí/neověřitelný listener, plugin read-only
+violation, únik plugin cesty mimo Organizaci) zůstávají hard failure pro
+registry i auto-discovered Organizace (decision 0042 bezpečnostní parita).
+Deklarovaný překryv mezi různými Organizacemi chyba není. Duplicita uvnitř
+jedné Organizace je hard failure, protože její moduly musí mít unikátní porty.
 
 Aplikace deklaruje vlastní port ve svém `package.json`:
 
@@ -195,12 +197,16 @@ V multi-company rootu platí:
   používat lowercase kebab tvar.
 - doporučený tvar ID je
   `<lowercase-company-slug>-<module-or-app>-<version>`.
-- port namespace je společný pro celý Launchpad GEN3 root.
-- port collision je fail-closed invariant: runtime nikdy tiše nepřepne aplikaci
-  na jiný port. Discovery ale staví computed port ownership index a u duplicate
-  portu vypíše vlastníky plus deterministic `suggested_free_port` pro následný
-  manifest edit / PR. Algoritmus hledá první volný port v rozsahu schématu
-  `1024..65535`, od kolidujícího portu + 1 nahoru a potom jednou wrapne.
+- app surfaces jedné Organizace musí mít unikátní porty; duplicita je hard
+  discovery failure s oběma package cestami.
+- app surfaces různých Organizací smějí deklarovat stejný stabilní port.
+  Současně na něm může běžet jen jedna aplikace.
+- discovery vrací computed owner-aware `port_overlaps` pouze pro různé
+  Organizace; Doctor překryv ukáže informačně a nic nepřemapuje.
+- živý konflikt je fail-closed invariant: runtime nikdy tiše nepřepne aplikaci
+  na jiný port. Je-li listener pozitivně ověřená známá Launchpad appka jiné
+  Organizace, poslední uživatelské `Otevřít` ji zastaví a převezme port pro
+  zvolenou appku. Listener bez známé ověřené vazby zůstane blokující.
 - shared root nesmí držet hardcoded mapu portů konkrétních Organizací. Budoucí
   rezervace pro nemountnuté/planned appky musí být owner-declared metadata, ne
   centrální root tabulka.
@@ -318,7 +324,8 @@ uvnitř konkrétní Organization se přeskočí a reportuje jako warning, aby je
 stale modul neshodil celý Launchpad. `check` dál selže, pokud chybí Launchpad
 GEN3 root struktura, registry Organization mountpoint, povinné Organization
 soubory, plugin deklarace poruší read-only bezpečnost, nebo dvě validní
-aplikace používají stejný port.
+aplikace uvnitř jedné Organizace používají stejný port. Shoda portu mezi
+různými Organizacemi je informační překryv, ne chyba discovery.
 
 V template repozitáři `check` toleruje chybějící ukázkové organizace. V
 reálném Launchpad GEN3 root používej `check:strict`, aby chybějící organization
@@ -373,6 +380,8 @@ Web shell v1 je pracovní dashboard nad discovery a runtime daty. Poskytuje:
 - `/health` pro health samotného Launchpadu
 - `/api/apps/:id/health` pro runtime status konkrétní aplikace
 - `/api/apps/:id/start` pro spuštění manifestem povoleného `dev_script`
+- `/api/apps/:id/switch` pro potvrzené zastavení jiné známé aplikace na stejném
+  portu a spuštění cílové aplikace
 - `/api/apps/:id/install` pro lokální app-scoped dependency install v app package
   cwd
 - `/api/apps/:id/repair` pro stejný app-scoped install mechanismus v repair
@@ -387,6 +396,14 @@ Explicitní mismatch je `foreign-port`; neověřitelný CWD je `unknown-port`.
 Ani jeden stav Launchpad nepřevezme, nenabídne mu Stop/Restart a automaticky
 jej neukončí. Tím se například legacy GEN2 proces na stejném portu nemůže
 vydávat za GEN3 aplikaci ani na OS s omezeným CWD lookupem.
+
+Výjimkou není „kill cizího procesu“, ale bezpečný switch mezi dvěma známými
+appkami různých Organizací. Cílová appka musí mít main runtime a stejný
+deklarovaný port; nahrazovaná appka musí být `current-instance` nebo
+`adopted-port`. Uživatelské `Otevřít` cíle je explicitní intent: backend znovu
+ověří PID i CWD živého listeneru proti nahrazované appce, teprve potom ji
+zastaví a spustí cíl. Samostatný `/switch` endpoint navíc vyžaduje `confirmed`.
+Pokud se evidence mezitím změní, switch selže bez signálu.
 
 Web shell nemění konfiguraci a nezapisuje business data. Runtime stav drží
 mimo Git v `launchpad/runtime/` a `launchpad/logs/`. Výjimka k riziku side
@@ -467,6 +484,9 @@ jasný mechanismus:
   guardem. Nikdy nepoužije `taskkill` jen podle obsazeného portu; neověřený
   nebo cizí listener zůstává nedotčený.
 - `Restart` je `Stop` + `Start` nad app-owned portem.
+- `Otevřít` je u cross-Organization overlapu bezpečný `Stop` známé pozitivně
+  ověřené appky se stejným portem + `Start` cíle; poslední otevřený modul
+  vyhraje. Listener bez známé vazby se neukončí.
 - `Logs` čte lokální log mimo Git.
 - `Stáhnout novější verzi` provede pouze fresh-remote-verified
   `git pull --ff-only` na čistém expected-branch checkoutu.

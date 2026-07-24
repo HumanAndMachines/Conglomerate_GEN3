@@ -116,6 +116,16 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(js).toContain("planned_slot");
   expect(js).toContain('["current-instance", "adopted-port"].includes(app.runtime?.owner)');
   expect(js).toContain('return ["foreign-port", "unknown-port"].includes(app.runtime?.owner)');
+  expect(js).toContain("function runningSharedPortPeer");
+  expect(js).toContain("runtimeHostsShareListener(candidate.host, app.host)");
+  expect(js).toContain('host === "localhost" ? "127.0.0.1" : host');
+  expect(js).toContain('actionLabel: "Otevřít a převzít port"');
+  expect(js).toContain('candidate.company !== app.company');
+  expect(js).toContain("function switchRuntimeApp");
+  expect(js).toContain("replace_app_id: peer.id");
+  expect(js).toContain("confirmed: true");
+  expect(server).toContain("health|install|repair|start|switch|open|stop|restart|logs");
+  expect(server).toContain("runtimeManager.switchApp(route.appId, runtimeOptions)");
   expect(js).toContain('title: app.runtime?.owner === "foreign-port" ? "Cizí checkout na portu" : "Checkout procesu nelze ověřit"');
   expect(js).toContain('actionLabel: "Zobrazit detail"');
   expect(js).toContain('label: app.runtime?.owner === "foreign-port" ? "Cizí checkout na portu" : "Checkout procesu nelze ověřit"');
@@ -947,6 +957,61 @@ test("Organization workspace má kompaktní uvítání s dynamickým názvem fir
   expect(css).toContain("margin-top: 1.5rem");
   expect(css).toContain("font-size: 1.3rem");
   expect(css).toContain("font-weight: 720");
+});
+
+test("CAC-0083: dostupný root update je nepřehlédnutelný — banner ve všech scope, počet commitů, průběžný refresh", async () => {
+  const [html, js, css] = await Promise.all([
+    readFile(join(publicRoot, "index.html"), "utf8"),
+    readFile(join(publicRoot, "app.js"), "utf8"),
+    readFile(join(publicRoot, "styles.css"), "utf8"),
+  ]);
+
+  // Banner žije uvnitř sticky topbar headeru, ne v overflow menu — je vidět
+  // v každém scope i na úzké obrazovce.
+  expect(html).toContain('id="updateBanner"');
+  expect(html.indexOf('id="updateBanner"')).toBeLessThan(html.indexOf("</header>"));
+  expect(html.indexOf('id="topbarOverflow"')).toBeLessThan(html.indexOf('id="updateBanner"'));
+  expect(html).toContain('id="updateBannerText"');
+  expect(html).toContain('id="updateBannerAction"');
+
+  // Banner se ukazuje jen pro akční stavy a nese počet commitů; akce vede na
+  // stejný guarded runRootUpdate jako pill.
+  expect(js).toContain("function renderUpdateBanner");
+  expect(js).toContain('status.state === "update_available"');
+  expect(js).toContain('(status.state === "dirty_worktree" && status.can_update_with_autostash)');
+  expect(js).toContain("function formatCommitCountCz");
+  expect(js).toContain("formatCommitCountCz(status.counts?.behind)");
+  expect(js).toContain('elements.updateBannerAction?.addEventListener("click", () => runRootUpdate())');
+
+  // Update status se neobnovuje jen jednou při startu: quiet poll ho drží
+  // čerstvý nejvýš UPDATE_STATUS_REFRESH_INTERVAL_MS starý.
+  expect(js).toContain("const UPDATE_STATUS_REFRESH_INTERVAL_MS = 5 * 60_000");
+  expect(js).toContain("Date.now() - lastUpdateStatusAt >= UPDATE_STATUS_REFRESH_INTERVAL_MS");
+
+  expect(css).toContain(".update-banner");
+  expect(css).toContain(".update-banner-action");
+});
+
+test("CAC-0083: update je hladký — spinner během stahování a automatický reload po dokončení", async () => {
+  const [html, js, css] = await Promise.all([
+    readFile(join(publicRoot, "index.html"), "utf8"),
+    readFile(join(publicRoot, "app.js"), "utf8"),
+    readFile(join(publicRoot, "styles.css"), "utf8"),
+  ]);
+
+  // Během aktualizace banner ukazuje spinner a stavový text; akce je disabled.
+  expect(html).toContain('class="update-banner-spinner"');
+  expect(html).toContain('class="update-banner-icon"');
+  expect(js).toContain('banner.classList.toggle("is-updating", Boolean(state.updatePending))');
+  expect(js).toContain("Stahuju novou verzi… Stránka se po dokončení sama znovu načte.");
+  expect(css).toContain(".update-banner.is-updating .update-banner-spinner");
+  expect(css).toContain("@keyframes update-spin");
+
+  // Po úspěšném stažení se stránka sama reloadne, aby kolega nezůstal ve
+  // staré verzi UI; spinner běží až do reloadu (pending se neresetuje).
+  expect(js).toContain("window.setTimeout(() => window.location.reload(), 1_200)");
+  expect(js).toContain("Načítám novou verzi…");
+  expect(js).toContain("if (!reloading) {");
 });
 
 test("app icon constants initialize before the first data load render", async () => {

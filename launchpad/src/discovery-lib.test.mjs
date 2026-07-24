@@ -490,7 +490,7 @@ test("discovery izoluje nevalidní app manifest jako invalid_apps záznam (decis
   expect(invalid_apps[0].manifest_issues.length).toBeGreaterThan(0);
 });
 
-test("port kolize je hard failure i pro auto-discovered Organizaci (decisions 0042/0043)", async () => {
+test("deklarovaný port overlap zachová obě auto-discovered Organizace", async () => {
   const root = await createGenerationMountFixture();
   await writeGenerationOrg({
     root,
@@ -498,7 +498,7 @@ test("port kolize je hard failure i pro auto-discovered Organizaci (decisions 00
     company: "OmegaCo",
     appDir: "mission-control/app/v3",
     appId: "omegaco-mission-control-v3",
-    port: 5392, // koliduje s BetaCo mission-control v2 z registry
+    port: 5392, // stejný stabilní port jako BetaCo mission-control v2 z registry
   });
   await writeGenerationOrg({
     root,
@@ -506,20 +506,51 @@ test("port kolize je hard failure i pro auto-discovered Organizaci (decisions 00
     company: "Zeta",
     appDir: "mission-control/app/v1",
     appId: "zeta-mission-control-v1",
-    port: 5393, // next-free suggestion musí přeskočit i později objevené manifest porty
+    port: 5393,
   });
 
-  const { failures, organizations } = await discoverLaunchpadApps(root);
+  const { apps, failures, organizations, port_overlaps: portOverlaps } = await discoverLaunchpadApps(root);
 
+  expect(failures).toEqual([]);
   expect(
     organizations.some(
       (organization) => organization.slug === "OmegaCo" && organization.discovery_source === "filesystem",
     ),
   ).toBe(true);
-  const portFailure = failures.find((failure) => failure.includes("port 5392 koliduje"));
-  expect(portFailure).toContain("mission-control/app/v3/package.json");
-  expect(portFailure).toContain("mission-control/app/v2/package.json");
-  expect(portFailure).toContain("suggested_free_port=5394");
+  expect(apps.map((app) => app.id)).toContain("omegaco-mission-control-v3");
+  const overlap = portOverlaps.find((item) => item.port === 5392);
+  expect(overlap?.owners.map((owner) => owner.app_id).sort()).toEqual([
+    "betaco-mission-control-v2",
+    "omegaco-mission-control-v3",
+  ]);
+  expect(overlap?.owners.map((owner) => owner.package_path)).toContain(
+    "organizations/OmegaCo_GEN3/mission-control/app/v3/package.json",
+  );
+  expect(portOverlaps.some((item) => item.port === 5393)).toBe(false);
+  expect(apps.find((app) => app.id === "omegaco-mission-control-v3")?.shared_port_owners).toHaveLength(2);
+});
+
+test("port musí být unikátní mezi app surfaces uvnitř jedné Organizace", async () => {
+  const root = await createGenerationMountFixture();
+  await writeGenerationOrg({
+    root,
+    path: "organizations/BetaCo_GEN3",
+    company: "BetaCo",
+    appDir: "warehouse/app/v1",
+    appId: "betaco-warehouse-v1",
+    port: 5392,
+  });
+
+  const { apps, failures, port_overlaps: portOverlaps } = await discoverLaunchpadApps(root);
+
+  expect(failures.some((failure) =>
+    failure.includes("port 5392")
+    && failure.includes("Organization BetaCo")
+    && failure.includes("unikátní porty")
+  )).toBe(true);
+  expect(apps.some((app) => app.id === "betaco-mission-control-v2")).toBe(true);
+  expect(apps.some((app) => app.id === "betaco-warehouse-v1")).toBe(false);
+  expect(portOverlaps.some((overlap) => overlap.port === 5392)).toBe(false);
 });
 
 test("duplicitní app id izoluje druhý manifest, první zůstává platný (decision 0043)", async () => {
@@ -735,7 +766,7 @@ test("mount bez markeru zůstává běžná Organizace i s jménem OrganizationT
   expect(template_mounts).toEqual([]);
 });
 
-test("vadný template app manifest je izolovaný warning, ne root failure", async () => {
+test("template app manifest s duplicitním portem uvnitř Organizace je izolovaný warning", async () => {
   const root = await createGenerationMountFixture();
   await writeGenerationOrg({
     root,
@@ -746,7 +777,7 @@ test("vadný template app manifest je izolovaný warning, ne root failure", asyn
     port: 5297,
     organizationKind: "template",
   });
-  // Druhá template appka koliduje portem s první — v izolované template mapě je to warning, ne hard failure.
+  // Druhá template appka stejné Organizace porušuje intra-org unikátnost.
   await writeGenerationOrg({
     root,
     path: "organizations/OrganizationTemplate_GEN3",
@@ -759,12 +790,14 @@ test("vadný template app manifest je izolovaný warning, ne root failure", asyn
 
   const { apps, template_apps, failures, warnings } = await discoverLaunchpadApps(root);
 
-  // Template kolize NIKDY neshodí runtime reálných firem.
+  // Template chyba nikdy neshodí runtime reálných firem, ale druhý manifest
+  // je nevalidní stejně jako v budoucím Organization forku.
   expect(failures).toEqual([]);
   expect(apps.length).toBeGreaterThan(0);
-  expect(warnings.some((warning) => warning.includes("template port") && warning.includes("template app manifest"))).toBe(true);
-  const invalidTemplate = template_apps.find((app) => app.manifest_state === "invalid_manifest");
-  expect(invalidTemplate).toBeDefined();
+  expect(warnings.some((warning) => warning.includes("template port 5297"))).toBe(true);
+  expect(template_apps.filter((app) => app.port === 5297)).toHaveLength(2);
+  expect(template_apps.filter((app) => app.manifest_state === "template")).toHaveLength(1);
+  expect(template_apps.filter((app) => app.manifest_state === "invalid_manifest")).toHaveLength(1);
 });
 
 test("template mount s placeholder slugem se objeví, slug se bere z adresáře mountu", async () => {

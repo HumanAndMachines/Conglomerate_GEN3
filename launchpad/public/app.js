@@ -112,6 +112,9 @@ const ORGANIZATION_THEME_TOKENS = new Set([
 const OPEN_STARTING_WAIT_MS = 120_000;
 const OPEN_STARTING_POLL_MS = 1_500;
 const ACTIVE_POLL_INTERVAL_MS = 15_000;
+// Root update status dělá git fetch (síť); v quiet pollu se obnovuje nejvýš
+// jednou za tenhle interval, aby update indikace nezastarala na dobu session.
+const UPDATE_STATUS_REFRESH_INTERVAL_MS = 5 * 60_000;
 const mobilePanelQuery = window.matchMedia("(max-width: 900px)");
 const mobileTopbarQuery = window.matchMedia("(max-width: 900px)");
 const APP_ICON_STYLES = {
@@ -213,6 +216,9 @@ const elements = {
   personalPrivacyBadge: document.querySelector("#personalPrivacyBadge"),
   doctorStatus: document.querySelector("#doctorStatus"),
   updateButton: document.querySelector("#updateButton"),
+  updateBanner: document.querySelector("#updateBanner"),
+  updateBannerText: document.querySelector("#updateBannerText"),
+  updateBannerAction: document.querySelector("#updateBannerAction"),
   reloadButton: document.querySelector("#reloadButton"),
   pullAllButton: document.querySelector("#pullAllButton"),
   themeToggle: document.querySelector("#themeToggle"),
@@ -265,6 +271,7 @@ elements.reloadButton.addEventListener("click", () => {
 });
 elements.pullAllButton?.addEventListener("click", () => pullAllRepositories());
 elements.updateButton?.addEventListener("click", () => runRootUpdate());
+elements.updateBannerAction?.addEventListener("click", () => runRootUpdate());
 elements.heroCta.addEventListener("click", () => runHeroAction());
 elements.doctorStatus.addEventListener("click", () => {
   closeMobileOverflow();
@@ -604,6 +611,11 @@ function scheduleQuietPoll({ immediate = false } = {}) {
     if (!pollingWindowIsActive()) return;
     try {
       await loadData({ quiet: true });
+      // Update indikace nesmí zůstat na stavu z načtení stránky: jednou za
+      // UPDATE_STATUS_REFRESH_INTERVAL_MS ji quiet poll obnoví včetně fetche.
+      if (Date.now() - lastUpdateStatusAt >= UPDATE_STATUS_REFRESH_INTERVAL_MS) {
+        loadUpdateStatus();
+      }
     } finally {
       scheduleQuietPoll();
     }
@@ -2559,6 +2571,29 @@ function isUntrustedPortOwner(app) {
   return ["foreign-port", "unknown-port"].includes(app.runtime?.owner);
 }
 
+function runningSharedPortPeer(app) {
+  if (app.runtime?.owner !== "foreign-port" || selectedRuntimeSourceForApp(app).type !== "main") return null;
+  const targetPid = app.runtime?.pid;
+  if (!Number.isInteger(targetPid)) return null;
+  const declaredOwners = new Set((app.shared_port_owners ?? []).map((owner) => owner.app_id));
+  return state.apps.find((candidate) =>
+    candidate.id !== app.id
+    && candidate.company !== app.company
+    && candidate.port === app.port
+    && runtimeHostsShareListener(candidate.host, app.host)
+    && (declaredOwners.size === 0 || declaredOwners.has(candidate.id))
+    && ["current-instance", "adopted-port"].includes(candidate.runtime?.owner)
+  ) ?? null;
+}
+
+// Manifest povoluje dvě ekvivalentní loopback identity. Pro ownership je
+// localhost a 127.0.0.1 tentýž lokální listener endpoint, i když URL zůstává
+// přesně podle manifestu.
+function runtimeHostsShareListener(left, right) {
+  const normalize = (host) => host === "localhost" ? "127.0.0.1" : host;
+  return normalize(left) === normalize(right);
+}
+
 function cardWarningModel(app, gitRepo) {
   if (isProductionspace(app)) return null;
   const dependencyState = app.dependencies?.state;
@@ -2568,6 +2603,8 @@ function cardWarningModel(app, gitRepo) {
     || recovery?.canAbortRebase,
   );
 
+  // Rozpracovaný nebo selhaný pull/rebase je nejvyšší priorita: pokračovat v
+  // runtime akci přes cizí port by skryl nutný bezpečný recovery krok.
   if (gitRepo?.status === "rebase_in_progress" || recovery) {
     return {
       tone: "danger",
@@ -2583,6 +2620,16 @@ function cardWarningModel(app, gitRepo) {
         ? () => abortGitRebase({ git: gitRepo, label: appBaseTitle(app), pendingKey: `${app.id}:git-rebase-abort` })
         : null,
       pending: `${app.id}:git-rebase-abort`,
+    };
+  }
+
+  const sharedPortPeer = runningSharedPortPeer(app);
+  if (sharedPortPeer) {
+    return {
+      tone: "warn",
+      title: `Port používá ${appBaseTitle(sharedPortPeer)}`,
+      actionLabel: "Otevřít a převzít port",
+      run: () => openAppChain(app),
     };
   }
 
@@ -2752,6 +2799,13 @@ function cardHasMenu(app, others) {
 // detailu/logů. Čistá zastavená dlaždice nevrací nic (žádné ⋯).
 function cardMenuActions(app) {
   const actions = [];
+  const sharedPortPeer = runningSharedPortPeer(app);
+  if (sharedPortPeer) {
+    actions.push({
+      label: `Otevřít místo ${appBaseTitle(sharedPortPeer)}`,
+      run: () => openAppChain(app),
+    });
+  }
   if (canStop(app)) {
     actions.push({ label: "Zastavit", run: () => runRuntimeAction(app, "stop"), pending: `${app.id}:stop` });
   }
@@ -3175,7 +3229,13 @@ function chip(label, toneClass, withDot = false) {
 
 function primaryActionNode(app, nextAction) {
   let node;
-  if (nextAction.type === "folder") {
+  if (nextAction.type === "open_chain") {
+    node = cardActionButton(
+      nextAction.label,
+      () => openAppChain(app),
+      state.openingApps.has(app.id),
+    );
+  } else if (nextAction.type === "folder") {
     node = cardActionButton(
       nextAction.label,
       () => openWorkspaceModuleFolder(app),
@@ -3216,11 +3276,15 @@ function cardActionButton(label, onClick, disabled) {
 
 function primaryNextAction(app) {
   const dependencyState = app.dependencies?.state;
-  if (app.kind === "workspace-module" && app.can_open_folder) {
-    return { type: "folder", label: "Otevřít složku" };
-  }
   if (isProductionspace(app) || app.is_readonly_system) {
     return { type: "disabled", label: "Jen pro čtení" };
+  }
+  const sharedPortPeer = runningSharedPortPeer(app);
+  if (sharedPortPeer) {
+    return { type: "open_chain", label: "Otevřít a převzít port", peer: sharedPortPeer };
+  }
+  if (app.kind === "workspace-module" && app.can_open_folder) {
+    return { type: "folder", label: "Otevřít složku" };
   }
   if (isUntrustedPortOwner(app)) {
     return {
@@ -3359,14 +3423,29 @@ function actionButtons(app) {
   wrapper.className = "action-buttons";
   // Appka s nevalidním manifestem nemá URL — odkaz se nenabízí.
   if (app.url) wrapper.append(openLink(app.url));
+  const sharedPortPeer = runningSharedPortPeer(app);
   wrapper.append(
     runtimeButton(app, installAction(app), installLabel(app), !canInstall(app)),
     runtimeButton(app, "start", "Spustit", !canStart(app)),
+    switchRuntimeButton(app, sharedPortPeer),
     runtimeButton(app, "stop", "Zastavit", !canStop(app)),
     runtimeButton(app, "restart", "Restart", !canRestart(app)),
     logsButton(app),
   );
   return wrapper;
+}
+
+function switchRuntimeButton(app, peer) {
+  const button = document.createElement("button");
+  button.className = "small-button";
+  button.type = "button";
+  button.textContent = "Přepnout";
+  button.disabled = !peer || state.pendingAction === `${app.id}:switch`;
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (peer) void switchRuntimeApp(app, peer);
+  });
+  return button;
 }
 
 function runtimeButton(app, action, label, disabled) {
@@ -3975,16 +4054,58 @@ async function abortGitRebase({ git, label, pendingKey = `git-rebase-abort:${git
 }
 
 // Update lane Conglomerate rootu (decision 0059, draft 0080) — oddělená od
-// per-repo org pullů; pill v top baru ukazuje kanál, verzi a akční stav.
+// per-repo org pullů; pill v top baru ukazuje kanál, verzi a akční stav a
+// globální banner dělá dostupný update nepřehlédnutelný ve všech scope.
+let lastUpdateStatusAt = 0;
+
 async function loadUpdateStatus() {
+  lastUpdateStatusAt = Date.now();
   const payload = await fetchJsonSafe("/api/update/status");
   state.updateStatus = payload && !payload.error ? payload : null;
   renderUpdatePill();
 }
 
+function formatCommitCountCz(value) {
+  const number = Number(value ?? 0);
+  if (number === 1) return "1 commit";
+  if (number >= 2 && number <= 4) return `${number} commity`;
+  return `${number} commitů`;
+}
+
+// Banner se ukazuje jen pro akční stavy: kolega má jedním klikem stáhnout
+// novou verzi. Neakční poruchy (diverged, fetch_failed…) zůstávají v pillu
+// a Doctor panelu, aby banner nekřičel bez proveditelné akce.
+function renderUpdateBanner() {
+  const banner = elements.updateBanner;
+  if (!banner) return;
+  const status = state.updateStatus;
+  const behind = status?.counts?.behind ?? 0;
+  const actionable = status && (
+    status.state === "update_available"
+    || (status.state === "dirty_worktree" && status.can_update_with_autostash)
+  );
+  if (!actionable) {
+    banner.hidden = true;
+    return;
+  }
+  const preserve = status.state === "dirty_worktree";
+  elements.updateBannerText.textContent = state.updatePending
+    ? "Stahuju novou verzi… Stránka se po dokončení sama znovu načte."
+    : preserve
+      ? `Nová verze Conglomerate je k dispozici (${formatCommitCountCz(behind)}). Lokální změny se při aktualizaci bezpečně zachovají.`
+      : `Nová verze Conglomerate je k dispozici — ${formatCommitCountCz(behind)} ke stažení.`;
+  elements.updateBannerAction.textContent = state.updatePending
+    ? "Aktualizuju…"
+    : preserve ? "Aktualizovat (zachovat změny)" : "Aktualizovat";
+  elements.updateBannerAction.disabled = Boolean(state.updatePending);
+  banner.classList.toggle("is-updating", Boolean(state.updatePending));
+  banner.hidden = false;
+}
+
 function renderUpdatePill() {
   const button = elements.updateButton;
   if (!button) return;
+  renderUpdateBanner();
   const status = state.updateStatus;
   if (!status) {
     button.hidden = true;
@@ -4004,7 +4125,7 @@ function renderUpdatePill() {
       pill("ok", `Aktuální · ${channel} · ${version}`);
       break;
     case "update_available":
-      pill("warn", `Aktualizovat · ${channel}`);
+      pill("warn", `Aktualizovat · ${channel} · ${formatCommitCountCz(status.counts?.behind)}`);
       break;
     case "dirty_worktree":
       pill("warn", status.can_update_with_autostash ? "Aktualizovat (zachovat změny)" : `Lokální změny · ${channel}`);
@@ -4037,6 +4158,7 @@ async function runRootUpdate() {
   }
   state.updatePending = true;
   renderUpdatePill();
+  let reloading = false;
   try {
     const payload = await fetchJson("/api/update", {
       method: "POST",
@@ -4044,7 +4166,12 @@ async function runRootUpdate() {
       body: JSON.stringify({ mode }),
     });
     if (payload.ok && payload.updated) {
-      toast(`Aktualizace hotová: ${payload.from_commit?.slice(0, 7)} → ${payload.to_commit?.slice(0, 7)}. Restartuj Launchpad, aby načetl novou verzi.`, "success", 12_000);
+      // Hladký update (CAC-0083): stránka se po stažení sama reloadne, aby
+      // kolega nikdy nezůstal viset ve staré verzi UI. Spinner běží až do
+      // reloadu. Restart server procesu zůstává na launcheru/binárce (0059).
+      reloading = true;
+      toast(`Aktualizace hotová: ${payload.from_commit?.slice(0, 7)} → ${payload.to_commit?.slice(0, 7)}. Načítám novou verzi…`, "success", 8_000);
+      window.setTimeout(() => window.location.reload(), 1_200);
     } else if (payload.ok) {
       toast(payload.message ?? "Root je aktuální.", "success", 8_000);
     } else {
@@ -4054,9 +4181,11 @@ async function runRootUpdate() {
   } catch (error) {
     toast(`Aktualizace selhala: ${error.message}`, "error", 12_000);
   } finally {
-    state.updatePending = false;
-    renderUpdatePill();
-    loadUpdateStatus();
+    if (!reloading) {
+      state.updatePending = false;
+      renderUpdatePill();
+      loadUpdateStatus();
+    }
   }
 }
 
@@ -4303,6 +4432,9 @@ function nextActionReason(app, nextAction) {
       return app.runtime?.message || "Launchpad nedokázal bezpečně ověřit proces na portu. Vyřeš instanci mimo Launchpad.";
     }
     return `Akce není dostupná: ${humanDependencyLabel(app.dependencies?.state)}. Vyřeš to přes Doktora nebo sync.`;
+  }
+  if (nextAction.type === "open_chain") {
+    return `Port ${app.port} teď bezpečně vlastní ${appBaseTitle(nextAction.peer)} z jiné Organizace. Otevřením ji Launchpad zastaví a spustí tuto aplikaci; poslední otevřený modul vyhraje.`;
   }
   if (nextAction.type === "open") return "Aplikace běží — otevře se v novém panelu, nic se nespouští.";
   if (nextAction.type === "folder") return "Otevře lokální checkout ve správci souborů; nic v něm nemění.";
@@ -4702,6 +4834,44 @@ async function runRuntimeAction(app, action) {
     };
     toast(`${app.title}: ${error.message}`, "fail", 6000);
     render();
+  } finally {
+    state.pendingAction = null;
+    render();
+  }
+}
+
+async function switchRuntimeApp(app, peer) {
+  if (!peer || state.pendingAction === `${app.id}:switch`) return;
+  const confirmed = window.confirm(
+    `Port ${app.port} teď používá ${appBaseTitle(peer)}. Zastavit ji a spustit ${appBaseTitle(app)}?`,
+  );
+  if (!confirmed) return;
+
+  state.pendingAction = `${app.id}:switch`;
+  state.actionMessage = null;
+  render();
+  try {
+    await fetchJson(`/api/apps/${encodeURIComponent(app.id)}/switch`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        source: sourcePayloadForApp(app),
+        replace_app_id: peer.id,
+        confirmed: true,
+      }),
+    });
+    state.actionMessage = {
+      type: "ok",
+      message: `${appBaseTitle(peer)} zastavena; ${appBaseTitle(app)} se spouští.`,
+    };
+    toast(`${appBaseTitle(app)}: přepnutí dokončeno.`, "ok");
+    await loadData({ quiet: true });
+  } catch (error) {
+    state.actionMessage = {
+      type: "fail",
+      message: `${appBaseTitle(app)}: ${error.message}`,
+    };
+    toast(`${appBaseTitle(app)}: ${error.message}`, "fail", 6000);
   } finally {
     state.pendingAction = null;
     render();

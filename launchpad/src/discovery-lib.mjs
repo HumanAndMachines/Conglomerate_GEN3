@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, realpathSync } from "fs";
 import { readdir, readFile } from "fs/promises";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "path";
-import { buildPortOwner, formatPortCollisionFailure } from "./port-ownership-lib.mjs";
+import { buildPortOwner, buildPortOwnershipIndex } from "./port-ownership-lib.mjs";
 
 const ignoredDirs = new Set([
   ".git",
@@ -332,16 +332,6 @@ async function walkPackageJson(root, current, output, company) {
       });
     }
   }
-}
-
-async function collectDeclaredAppPorts({ companiesRoot, packageEntries }) {
-  const ports = new Set();
-  for (const { packagePath } of packageEntries) {
-    const packageJson = await readJson(join(companiesRoot, packagePath));
-    const port = packageJson.companyascode?.app?.port;
-    if (Number.isInteger(port)) ports.add(port);
-  }
-  return ports;
 }
 
 function validateStringPattern({ value, pattern, key, packagePath, failures }) {
@@ -838,8 +828,10 @@ async function walkMountPackages({
 
 // Decision 0043: nevalidní app manifest izoluje jen dotčenou appku. Discovery ji
 // vrací jako scoped invalid_apps záznam + warning, ne jako root failure —
-// bezpečnostní invarianty (port/id kolize, plugin read-only violation) zůstávají
-// hard failures níže.
+// bezpečnostní invarianty (plugin read-only violation, mount boundary) zůstávají
+// hard failures níže. App id kolize izoluje dotčený manifest; port musí být
+// unikátní uvnitř jedné Organizace, zatímco cross-Organization overlap je
+// povolená owner-aware runtime informace (founder 2026-07-22 refinement).
 function invalidAppRecord({ app, packagePath, company, issues }) {
   const id = typeof app.id === "string" && app.id.trim() !== "" ? app.id : `invalid-manifest:${packagePath}`;
   return {
@@ -1138,8 +1130,8 @@ export async function discoverLaunchpadApps(
   const sortedPackageEntries = packageEntries.sort((a, b) => a.packagePath.localeCompare(b.packagePath));
   const apps = [];
   const invalidApps = [];
-  const ports = new Map();
-  const usedPorts = await collectDeclaredAppPorts({ companiesRoot, packageEntries: sortedPackageEntries });
+  const portOwners = [];
+  const organizationPortOwners = new Map();
   const appIds = new Map();
   for (const { packagePath, company } of sortedPackageEntries) {
     const absolutePackagePath = join(companiesRoot, packagePath);
@@ -1220,14 +1212,17 @@ export async function discoverLaunchpadApps(
       appIds.set(app.id, packagePath);
     }
     if (Number.isInteger(app.port)) {
-      const portOwner = buildPortOwner({ app, packagePath, company });
-      const existing = ports.get(app.port);
+      const owner = buildPortOwner({ app, packagePath, company });
+      const organizationPortKey = `${company.path}\u0000${app.port}`;
+      const existing = organizationPortOwners.get(organizationPortKey);
       if (existing) {
-        // Port kolize je bezpečnostní invariant (decision 0043) — vždy hard failure.
-        failures.push(formatPortCollisionFailure({ owner: portOwner, existingOwner: existing, usedPorts }));
+        failures.push(
+          `${packagePath}: port ${app.port} už v Organization ${company.slug} vlastní ${existing.package_path}; app surfaces jedné Organizace musí mít unikátní porty`,
+        );
         continue;
       }
-      ports.set(app.port, portOwner);
+      organizationPortOwners.set(organizationPortKey, owner);
+      portOwners.push(owner);
     }
 
     // Warning-first builder metadata (CAC-0044): valid appka se špatným
@@ -1263,6 +1258,16 @@ export async function discoverLaunchpadApps(
     });
   }
 
+  // Founder refinement 2026-07-22: dvě app surfaces různých Organizací
+  // smějí deklarovat stejný stabilní port. Uvnitř jedné Organizace je port
+  // unikátní (hard failure výše). Cross-Organization index je read-only
+  // evidence pro Doctor/UI a nikdy nevede k tichému přemapování.
+  const portOverlaps = buildPortOwnershipIndex(portOwners).overlaps;
+  const overlapByPort = new Map(portOverlaps.map((overlap) => [overlap.port, overlap.owners]));
+  for (const app of apps) {
+    app.shared_port_owners = overlapByPort.get(app.port) ?? [];
+  }
+
   const templateApps = await collectTemplateApps({
     companiesRoot,
     templatePackageEntries,
@@ -1277,6 +1282,7 @@ export async function discoverLaunchpadApps(
     organizations,
     template_mounts: templateMounts,
     module_templates: moduleTemplates,
+    port_overlaps: portOverlaps,
     // Internal per-machine evidence for downstream readiness classification.
     // buildLaunchpadAppsResponse does not expose this object through /api/apps.
     local_config: localConfig,
@@ -1285,17 +1291,17 @@ export async function discoverLaunchpadApps(
   };
 }
 
-// Template mount se validuje (schema manifestu + interní port/id kolize), ale
+// Template mount se validuje (schema manifestu + interní id/port kolize), ale
 // nikdy nevrací spustitelné aplikace. Balíčky jdou do template_apps s příznakem
-// organization_kind=template a manifest_state; port/id kolize jsou izolované ve
+// organization_kind=template a manifest_state; id/port kolize jsou izolované ve
 // vlastních mapách, takže vadný template NIKDY nezhavaruje runtime reálné firmy
 // (žádný zápis do global failures). Runtime pole (dev_script, health, plugin)
 // se úmyslně nevrací — template appka se nespouští.
 async function collectTemplateApps({ companiesRoot, templatePackageEntries, appSchema, warnings }) {
   const sorted = [...templatePackageEntries].sort((a, b) => a.packagePath.localeCompare(b.packagePath));
   const templateApps = [];
-  const templatePorts = new Map();
   const templateAppIds = new Map();
+  const templatePorts = new Map();
   for (const { packagePath, company } of sorted) {
     let packageJson;
     try {
@@ -1338,18 +1344,19 @@ async function collectTemplateApps({ companiesRoot, templatePackageEntries, appS
     // firmy. Template app manifesty legitimně nesou generický placeholder company
     // (např. "organization-template"), který se přepíše až při forku do reálné
     // Organizace — vynucovat rovnost proti odvozenému slugu nemá smysl. Interní
-    // konzistenci template (schema, port/id kolize) hlídáme dál.
+    // konzistenci template (schema a app id/port kolize uvnitř jednoho
+    // template mountu) hlídáme dál.
     if (typeof app.id === "string" && app.id.trim() !== "") {
       const existing = templateAppIds.get(app.id);
       if (existing) manifestIssues.push(`${packagePath}: template app id ${app.id} koliduje s ${existing}`);
       else templateAppIds.set(app.id, packagePath);
     }
     if (Number.isInteger(app.port)) {
-      const existing = templatePorts.get(app.port);
+      const key = `${company.path}\u0000${app.port}`;
+      const existing = templatePorts.get(key);
       if (existing) manifestIssues.push(`${packagePath}: template port ${app.port} koliduje s ${existing}`);
-      else templatePorts.set(app.port, packagePath);
+      else templatePorts.set(key, packagePath);
     }
-
     if (manifestIssues.length > 0) {
       warnings.push(...manifestIssues.map((issue) => `${issue} (template app manifest)`));
     }
