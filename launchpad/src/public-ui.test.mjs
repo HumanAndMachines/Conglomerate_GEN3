@@ -953,6 +953,39 @@ test("Organization workspace má kompaktní uvítání s dynamickým názvem fir
   expect(css).toContain("font-weight: 720");
 });
 
+test("CAC-0083: dostupný root update je nepřehlédnutelný — banner ve všech scope, počet commitů, průběžný refresh", async () => {
+  const [html, js, css] = await Promise.all([
+    readFile(join(publicRoot, "index.html"), "utf8"),
+    readFile(join(publicRoot, "app.js"), "utf8"),
+    readFile(join(publicRoot, "styles.css"), "utf8"),
+  ]);
+
+  // Banner žije uvnitř sticky topbar headeru, ne v overflow menu — je vidět
+  // v každém scope i na úzké obrazovce.
+  expect(html).toContain('id="updateBanner"');
+  expect(html.indexOf('id="updateBanner"')).toBeLessThan(html.indexOf("</header>"));
+  expect(html.indexOf('id="topbarOverflow"')).toBeLessThan(html.indexOf('id="updateBanner"'));
+  expect(html).toContain('id="updateBannerText"');
+  expect(html).toContain('id="updateBannerAction"');
+
+  // Banner se ukazuje jen pro akční stavy a nese počet commitů; akce vede na
+  // stejný guarded runRootUpdate jako pill.
+  expect(js).toContain("function renderUpdateBanner");
+  expect(js).toContain('status.state === "update_available"');
+  expect(js).toContain('(status.state === "dirty_worktree" && status.can_update_with_autostash)');
+  expect(js).toContain("function formatCommitCountCz");
+  expect(js).toContain("formatCommitCountCz(status.counts?.behind)");
+  expect(js).toContain('elements.updateBannerAction?.addEventListener("click", () => runRootUpdate())');
+
+  // Update status se neobnovuje jen jednou při startu: quiet poll ho drží
+  // čerstvý nejvýš UPDATE_STATUS_REFRESH_INTERVAL_MS starý.
+  expect(js).toContain("const UPDATE_STATUS_REFRESH_INTERVAL_MS = 5 * 60_000");
+  expect(js).toContain("Date.now() - lastUpdateStatusAt >= UPDATE_STATUS_REFRESH_INTERVAL_MS");
+
+  expect(css).toContain(".update-banner");
+  expect(css).toContain(".update-banner-action");
+});
+
 test("app icon constants initialize before the first data load render", async () => {
   const js = await readFile(join(publicRoot, "app.js"), "utf8");
 

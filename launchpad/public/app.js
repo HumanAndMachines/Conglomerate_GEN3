@@ -111,6 +111,9 @@ const ORGANIZATION_THEME_TOKENS = new Set([
 const OPEN_STARTING_WAIT_MS = 120_000;
 const OPEN_STARTING_POLL_MS = 1_500;
 const ACTIVE_POLL_INTERVAL_MS = 15_000;
+// Root update status dělá git fetch (síť); v quiet pollu se obnovuje nejvýš
+// jednou za tenhle interval, aby update indikace nezastarala na dobu session.
+const UPDATE_STATUS_REFRESH_INTERVAL_MS = 5 * 60_000;
 const mobilePanelQuery = window.matchMedia("(max-width: 900px)");
 const mobileTopbarQuery = window.matchMedia("(max-width: 900px)");
 const APP_ICON_STYLES = {
@@ -212,6 +215,9 @@ const elements = {
   personalPrivacyBadge: document.querySelector("#personalPrivacyBadge"),
   doctorStatus: document.querySelector("#doctorStatus"),
   updateButton: document.querySelector("#updateButton"),
+  updateBanner: document.querySelector("#updateBanner"),
+  updateBannerText: document.querySelector("#updateBannerText"),
+  updateBannerAction: document.querySelector("#updateBannerAction"),
   reloadButton: document.querySelector("#reloadButton"),
   pullAllButton: document.querySelector("#pullAllButton"),
   themeToggle: document.querySelector("#themeToggle"),
@@ -264,6 +270,7 @@ elements.reloadButton.addEventListener("click", () => {
 });
 elements.pullAllButton?.addEventListener("click", () => pullAllRepositories());
 elements.updateButton?.addEventListener("click", () => runRootUpdate());
+elements.updateBannerAction?.addEventListener("click", () => runRootUpdate());
 elements.heroCta.addEventListener("click", () => runHeroAction());
 elements.doctorStatus.addEventListener("click", () => {
   closeMobileOverflow();
@@ -603,6 +610,11 @@ function scheduleQuietPoll({ immediate = false } = {}) {
     if (!pollingWindowIsActive()) return;
     try {
       await loadData({ quiet: true });
+      // Update indikace nesmí zůstat na stavu z načtení stránky: jednou za
+      // UPDATE_STATUS_REFRESH_INTERVAL_MS ji quiet poll obnoví včetně fetche.
+      if (Date.now() - lastUpdateStatusAt >= UPDATE_STATUS_REFRESH_INTERVAL_MS) {
+        loadUpdateStatus();
+      }
     } finally {
       scheduleQuietPoll();
     }
@@ -3968,16 +3980,55 @@ async function pullGitRepository({ git, label, autostash = false, pendingKey = `
 }
 
 // Update lane Conglomerate rootu (decision 0059, draft 0080) — oddělená od
-// per-repo org pullů; pill v top baru ukazuje kanál, verzi a akční stav.
+// per-repo org pullů; pill v top baru ukazuje kanál, verzi a akční stav a
+// globální banner dělá dostupný update nepřehlédnutelný ve všech scope.
+let lastUpdateStatusAt = 0;
+
 async function loadUpdateStatus() {
+  lastUpdateStatusAt = Date.now();
   const payload = await fetchJsonSafe("/api/update/status");
   state.updateStatus = payload && !payload.error ? payload : null;
   renderUpdatePill();
 }
 
+function formatCommitCountCz(value) {
+  const number = Number(value ?? 0);
+  if (number === 1) return "1 commit";
+  if (number >= 2 && number <= 4) return `${number} commity`;
+  return `${number} commitů`;
+}
+
+// Banner se ukazuje jen pro akční stavy: kolega má jedním klikem stáhnout
+// novou verzi. Neakční poruchy (diverged, fetch_failed…) zůstávají v pillu
+// a Doctor panelu, aby banner nekřičel bez proveditelné akce.
+function renderUpdateBanner() {
+  const banner = elements.updateBanner;
+  if (!banner) return;
+  const status = state.updateStatus;
+  const behind = status?.counts?.behind ?? 0;
+  const actionable = status && (
+    status.state === "update_available"
+    || (status.state === "dirty_worktree" && status.can_update_with_autostash)
+  );
+  if (!actionable) {
+    banner.hidden = true;
+    return;
+  }
+  const preserve = status.state === "dirty_worktree";
+  elements.updateBannerText.textContent = preserve
+    ? `Nová verze Conglomerate je k dispozici (${formatCommitCountCz(behind)}). Lokální změny se při aktualizaci bezpečně zachovají.`
+    : `Nová verze Conglomerate je k dispozici — ${formatCommitCountCz(behind)} ke stažení.`;
+  elements.updateBannerAction.textContent = state.updatePending
+    ? "Aktualizuju…"
+    : preserve ? "Aktualizovat (zachovat změny)" : "Aktualizovat";
+  elements.updateBannerAction.disabled = Boolean(state.updatePending);
+  banner.hidden = false;
+}
+
 function renderUpdatePill() {
   const button = elements.updateButton;
   if (!button) return;
+  renderUpdateBanner();
   const status = state.updateStatus;
   if (!status) {
     button.hidden = true;
@@ -3997,7 +4048,7 @@ function renderUpdatePill() {
       pill("ok", `Aktuální · ${channel} · ${version}`);
       break;
     case "update_available":
-      pill("warn", `Aktualizovat · ${channel}`);
+      pill("warn", `Aktualizovat · ${channel} · ${formatCommitCountCz(status.counts?.behind)}`);
       break;
     case "dirty_worktree":
       pill("warn", status.can_update_with_autostash ? "Aktualizovat (zachovat změny)" : `Lokální změny · ${channel}`);
