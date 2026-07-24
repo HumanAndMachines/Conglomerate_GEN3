@@ -986,6 +986,28 @@ test("CAC-0083: dostupný root update je nepřehlédnutelný — banner ve všec
   expect(css).toContain(".update-banner-action");
 });
 
+test("CAC-0083: update je hladký — spinner během stahování a automatický reload po dokončení", async () => {
+  const [html, js, css] = await Promise.all([
+    readFile(join(publicRoot, "index.html"), "utf8"),
+    readFile(join(publicRoot, "app.js"), "utf8"),
+    readFile(join(publicRoot, "styles.css"), "utf8"),
+  ]);
+
+  // Během aktualizace banner ukazuje spinner a stavový text; akce je disabled.
+  expect(html).toContain('class="update-banner-spinner"');
+  expect(html).toContain('class="update-banner-icon"');
+  expect(js).toContain('banner.classList.toggle("is-updating", Boolean(state.updatePending))');
+  expect(js).toContain("Stahuju novou verzi… Stránka se po dokončení sama znovu načte.");
+  expect(css).toContain(".update-banner.is-updating .update-banner-spinner");
+  expect(css).toContain("@keyframes update-spin");
+
+  // Po úspěšném stažení se stránka sama reloadne, aby kolega nezůstal ve
+  // staré verzi UI; spinner běží až do reloadu (pending se neresetuje).
+  expect(js).toContain("window.setTimeout(() => window.location.reload(), 1_200)");
+  expect(js).toContain("Načítám novou verzi…");
+  expect(js).toContain("if (!reloading) {");
+});
+
 test("app icon constants initialize before the first data load render", async () => {
   const js = await readFile(join(publicRoot, "app.js"), "utf8");
 

@@ -655,6 +655,26 @@ button.update-pill:disabled {
   cursor: progress;
 }
 
+/* Během stahování banner ukazuje točící se spinner místo šipky; kolega vidí,
+   že aktualizace běží, a po dokončení se stránka sama reloadne. */
+.update-banner-spinner {
+  display: none;
+}
+
+.update-banner.is-updating .update-banner-icon {
+  display: none;
+}
+
+.update-banner.is-updating .update-banner-spinner {
+  display: block;
+  animation: update-spin 0.9s linear infinite;
+}
+
+@keyframes update-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 [data-theme="dark"] .status-ok {
   color: #6ee7b7;
 }

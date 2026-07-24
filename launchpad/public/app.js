@@ -4015,13 +4015,16 @@ function renderUpdateBanner() {
     return;
   }
   const preserve = status.state === "dirty_worktree";
-  elements.updateBannerText.textContent = preserve
-    ? `Nová verze Conglomerate je k dispozici (${formatCommitCountCz(behind)}). Lokální změny se při aktualizaci bezpečně zachovají.`
-    : `Nová verze Conglomerate je k dispozici — ${formatCommitCountCz(behind)} ke stažení.`;
+  elements.updateBannerText.textContent = state.updatePending
+    ? "Stahuju novou verzi… Stránka se po dokončení sama znovu načte."
+    : preserve
+      ? `Nová verze Conglomerate je k dispozici (${formatCommitCountCz(behind)}). Lokální změny se při aktualizaci bezpečně zachovají.`
+      : `Nová verze Conglomerate je k dispozici — ${formatCommitCountCz(behind)} ke stažení.`;
   elements.updateBannerAction.textContent = state.updatePending
     ? "Aktualizuju…"
     : preserve ? "Aktualizovat (zachovat změny)" : "Aktualizovat";
   elements.updateBannerAction.disabled = Boolean(state.updatePending);
+  banner.classList.toggle("is-updating", Boolean(state.updatePending));
   banner.hidden = false;
 }
 
@@ -4081,6 +4084,7 @@ async function runRootUpdate() {
   }
   state.updatePending = true;
   renderUpdatePill();
+  let reloading = false;
   try {
     const payload = await fetchJson("/api/update", {
       method: "POST",
@@ -4088,7 +4092,12 @@ async function runRootUpdate() {
       body: JSON.stringify({ mode }),
     });
     if (payload.ok && payload.updated) {
-      toast(`Aktualizace hotová: ${payload.from_commit?.slice(0, 7)} → ${payload.to_commit?.slice(0, 7)}. Restartuj Launchpad, aby načetl novou verzi.`, "success", 12_000);
+      // Hladký update (CAC-0083): stránka se po stažení sama reloadne, aby
+      // kolega nikdy nezůstal viset ve staré verzi UI. Spinner běží až do
+      // reloadu. Restart server procesu zůstává na launcheru/binárce (0059).
+      reloading = true;
+      toast(`Aktualizace hotová: ${payload.from_commit?.slice(0, 7)} → ${payload.to_commit?.slice(0, 7)}. Načítám novou verzi…`, "success", 8_000);
+      window.setTimeout(() => window.location.reload(), 1_200);
     } else if (payload.ok) {
       toast(payload.message ?? "Root je aktuální.", "success", 8_000);
     } else {
@@ -4098,9 +4107,11 @@ async function runRootUpdate() {
   } catch (error) {
     toast(`Aktualizace selhala: ${error.message}`, "error", 12_000);
   } finally {
-    state.updatePending = false;
-    renderUpdatePill();
-    loadUpdateStatus();
+    if (!reloading) {
+      state.updatePending = false;
+      renderUpdatePill();
+      loadUpdateStatus();
+    }
   }
 }
 

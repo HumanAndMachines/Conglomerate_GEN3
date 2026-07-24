@@ -264,6 +264,11 @@ function rootCheckOutcome(status) {
   };
 }
 
+// Stavy „není co stáhnout": stable kanál bez release tagu a lokální verze
+// před cílem kanálu nejsou chyby rutiny — root je tak aktuální, jak kanál
+// dovoluje. Blokující zůstávají dirty/diverged/wrong-branch/fetch_failed.
+const BENIGN_ROOT_STATES = new Set(["up_to_date", "no_release_tag", "ahead_of_channel_target"]);
+
 function rootUpdateOutcome(result) {
   return {
     mode: "update",
@@ -271,7 +276,7 @@ function rootUpdateOutcome(result) {
     channel: result.channel,
     message: result.message,
     updated: Boolean(result.updated),
-    ok: Boolean(result.ok),
+    ok: Boolean(result.ok) || BENIGN_ROOT_STATES.has(result.state),
     code: result.code ?? null,
     from_commit: result.from_commit ?? null,
     to_commit: result.to_commit ?? null,

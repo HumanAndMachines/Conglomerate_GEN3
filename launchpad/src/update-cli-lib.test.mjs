@@ -109,6 +109,41 @@ describe("scope guards", () => {
 });
 
 describe("runUpdateLane", () => {
+  test("no_release_tag a ahead_of_channel_target jsou benigní, ne blokace rutiny", async () => {
+    const { deps } = laneDeps();
+    deps.performRoot = async () => ({
+      ok: false,
+      updated: false,
+      state: "no_release_tag",
+      channel: "stable",
+      message: "Stable kanál zatím nemá žádný release tag.",
+      code: "update_not_safe",
+    });
+    const result = await runUpdateLane({
+      rootPath: "/x",
+      options: { orgs: [], allOrgs: false, check: false, preserve: false },
+      deps,
+    });
+    expect(result.root.ok).toBe(true);
+    expect(result.ok).toBe(true);
+
+    deps.performRoot = async () => ({
+      ok: false,
+      updated: false,
+      state: "dirty_worktree",
+      channel: "stable",
+      message: "Tracked soubory obsahují lokální změny.",
+      code: "explicit_preserve_required",
+    });
+    const dirty = await runUpdateLane({
+      rootPath: "/x",
+      options: { orgs: [], allOrgs: false, check: false, preserve: false },
+      deps,
+    });
+    expect(dirty.root.ok).toBe(false);
+    expect(dirty.ok).toBe(false);
+  });
+
   test("root-only update runs ff_only by default and reports ok", async () => {
     const { deps, calls } = laneDeps({ rootState: "update_available" });
     const result = await runUpdateLane({
