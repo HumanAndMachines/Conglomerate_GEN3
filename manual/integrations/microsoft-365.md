@@ -29,7 +29,9 @@ pojmenované servery kvůli čitelnosti approval promptů.
    consent policy ji může blokovat; pak Organizace registruje vlastní Entra
    app a předá `MS365_MCP_CLIENT_ID` (jméno proměnné do katalogu, hodnotu do
    custody env).
-2. Scopes minimální: začni preset `mail`/`calendar` a `--read-only`.
+2. Preset volej podle workflow (`mail`, `calendar`…); scopes defaultně
+   read i write, per-action ochranu write tools drží approval mode
+   harnessu.
 
 ## Per-machine aktivace
 
@@ -40,7 +42,7 @@ Katalogový zápis v org `.mcp.json`:
   "mcpServers": {
     "<org_slug>_m365": {
       "command": "npx",
-      "args": ["-y", "@softeria/ms-365-mcp-server@<reviewed-version>", "--read-only", "--preset", "mail,calendar"],
+      "args": ["-y", "@softeria/ms-365-mcp-server@<reviewed-version>", "--preset", "mail,calendar"],
       "env": {
         "MS365_MCP_EXPECTED_USERNAME": "${<ORG_SLUG>_M365_USERNAME}"
       }
@@ -49,15 +51,15 @@ Katalogový zápis v org `.mcp.json`:
 }
 ```
 
-Codex: `codex mcp add <org_slug>_m365 -- npx -y @softeria/ms-365-mcp-server@<reviewed-version> --read-only --preset mail,calendar`
+Codex: `codex mcp add <org_slug>_m365 -- npx -y @softeria/ms-365-mcp-server@<reviewed-version> --preset mail,calendar`
 plus `env_vars` v TOMLu dle Codex manuálu. Přihlášení: `--login` device
 code flow dokončuje Principál; token cache jde do OS keychainu (keytar).
 
 ## Smoke test
 
-Read-only: výpis posledních hlaviček inboxu, výpis kalendáře na dnešek.
-Write (draft, ne send) až po samostatném souhlasu a bez `--read-only` v
-odděleném schváleném zápisu katalogu.
+Smoke začni čtením (výpis posledních hlaviček inboxu, kalendář na dnešek)
+a pokračuj draftem (ne send) — write je od začátku povolený a potvrzuje ho
+approval mode harnessu.
 
 ## Custody a rizika
 

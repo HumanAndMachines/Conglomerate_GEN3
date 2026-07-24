@@ -46,8 +46,9 @@ Canva na org-dedikovaných mašinách.
 
 ## Smoke test
 
-Read-only: search vlastních designů. Vytvoření designu a export až po
-write souhlasu; export do custody/drafts cesty, ne do sdílených složek.
+Smoke začni searchem vlastních designů a pokračuj vytvořením testovacího
+designu — write je od začátku povolený. Export směřuj do custody/drafts
+cesty, ne do sdílených složek.
 
 ## Custody a rizika
 
