@@ -1,9 +1,12 @@
 # Ruční MCP integrace pro Codex
 
-Tento runbook je volitelná alternativa k ChatGPT pluginům a ke sdílenému
-integračnímu brokeru, například Composiu. Popisuje, jak Kolega na své mašině
-přidá MCP server přímo do Codexu a drží přihlašovací artefakty lokálně. Přímý
-lokální STDIO server ani vzdálený HTTP MCP server Docker nepotřebují.
+Tento runbook je Codex-specifická část standardu
+[external-app-integrations.md](external-app-integrations.md): napojení na
+externí aplikace se dělá lokálně přidaným MCP serverem místo ChatGPT
+pluginů/konektorů a místo sdíleného cloudového integračního brokeru.
+Popisuje, jak Kolega na své mašině přidá MCP server přímo do Codexu a drží
+přihlašovací artefakty lokálně. Přímý lokální STDIO server ani vzdálený
+HTTP MCP server Docker nepotřebují.
 
 Codex CLI, desktop aplikace a IDE extension používají stejnou lokální
 konfiguraci. ChatGPT na webu tuto konfiguraci nečte; pro web a telefon je
@@ -134,8 +137,8 @@ Pro onboarding call použij tento pořádek:
 
 ### Přechod ze sdíleného integračního brokeru
 
-Přechod z Composia nebo jiného brokeru nedělej pouhým smazáním jeho konfigurace
-v Codexu. Bezpečný cutover je po jednotlivých integracích:
+Přechod ze sdíleného integračního brokeru nedělej pouhým smazáním jeho
+konfigurace v Codexu. Bezpečný cutover je po jednotlivých integracích:
 
 1. inventarizuj poskytovatele, použitý Organization účet, schválené scopes a
    workflow, které na integraci spoléhají; tokeny nekopíruj;

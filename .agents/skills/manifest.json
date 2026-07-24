@@ -23,6 +23,18 @@
       "required": true
     },
     {
+      "slug": "external-app-integrations",
+      "path": ".agents/skills/external-app-integrations/SKILL.md",
+      "applies_to": [
+        "external-app-connections",
+        "mcp-servers",
+        "cli-integrations",
+        "oauth-custody",
+        "organization-integration-catalog"
+      ],
+      "required": true
+    },
+    {
       "slug": "nightly-steward-pr-sweep",
       "path": ".agents/skills/nightly-steward-pr-sweep/SKILL.md",
       "applies_to": [

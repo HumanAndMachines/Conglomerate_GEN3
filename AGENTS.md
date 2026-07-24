@@ -291,6 +291,11 @@ Root upravuj jen když se mění:
 - Sdílený Guide: `guide/`
 - Organizace: lokální gitignored nested repos v `organizations/<org>/`; root repo trackuje jen `organizations/README.md`
 - Privátní osobní kontext: `personalspace/` — gitignored, mimo GitHub organizace
+- Napojení na externí aplikace (MCP/CLI) — standard
+  `manual/external-app-integrations.md`, per-provider runbooky
+  `manual/integrations/`, skill
+  `.agents/skills/external-app-integrations/SKILL.md`; Codex specifika
+  `manual/codex-manual-mcp-integrations.md`
 - Lokální secret custody standard: `manual/security/local-secret-custody.md`;
   root/operator secrets patří do gitignored `personalspace/<owner>_GEN3/secrets/...`,
   organization/AI-colleague secrets do organization-local `private/secrets/...`.
@@ -345,6 +350,22 @@ Skutečné secret soubory drž jen v lokálních ignored custody cestách podle
 pointery a metadata-only ověření.
 
 Povolené jsou obecné patterny, anonymizované šablony a poučení převedené do obecné podoby.
+
+## Napojení na externí aplikace
+
+Napojení na externí aplikace (Gmail, Slack, Jira, Canva…) se dělá výhradně
+lokálně kurátorovaným MCP serverem nebo CLI nástrojem na dané mašině —
+nikdy ChatGPT/claude.ai konektorem ani sdíleným cloudovým brokerem.
+Identita a subscription harnessu se smí sdílet napříč mašinami Principála;
+přístupy k externím aplikacím ne: každá mašina drží vlastní přihlášení pro
+svou Organizaci a je samostatně revokovatelný přístup. Definice schválených
+integrací drží tracked katalog v repu Organizace (`INTEGRATIONS.md`,
+`.mcp.json`, `.codex/config.toml` — jen jména env proměnných, nikdy
+hodnoty); osobní integrace patří do personalspace scope a user-level
+configu harnessu. Výběr: oficiální MCP → oficiální CLI → reviewnutý pinned
+OSS → browser fallback; scraping/cookie-session servery nikdy. Postup drží
+skill `.agents/skills/external-app-integrations/SKILL.md`, standard
+`manual/external-app-integrations.md`.
 
 ## Launchpad pravidlo
 
