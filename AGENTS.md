@@ -221,15 +221,23 @@ neinteraktivní běhy bez přímého App chatu s Kolegou.
    `personalspace/`. Pokud je úkol o firmě, klientovi, modulu, Mission Control
    plánu nebo productionspace repu, pokračuj v Organization checkoutu a jeho
    vlastním `AGENTS.md`, ne podle root pravidel.
-3. **Ověř Git stav a čerstvý main.** Před založením nebo převzetím jakéhokoli
-   tasku spusť v primárním Conglomerate checkoutu `bun run doctor:task`. Tato
-   explicitní Doctor lane provede bounded `git fetch origin main --prune` a
-   fail-closed porovná čistý `main` s `origin/main`. Je-li clean main pouze
-   pozadu, spusť `git pull --ff-only` a Doctor zopakuj. Dirty, ahead, diverged,
-   wrong-branch nebo neověřitelný stav se automaticky nestashuje ani
-   nerebasuje: zachovej práci v plan-owned worktree a primary oprav bez ztráty
-   historie. `git pull --rebase --autostash` proto není defaultní agentní
-   preflight. Root repo nesmí omylem trackovat cizí Organization historii,
+3. **Ověř Git stav a čerstvý main (task-start update rutina).** Před založením
+   nebo převzetím jakéhokoli tasku spusť v primárním Conglomerate checkoutu
+   `bun run doctor:task`. Tato explicitní Doctor lane provede bounded
+   `git fetch origin main --prune` a fail-closed porovná čistý `main`
+   s `origin/main`. Je-li clean main pouze pozadu, spusť guarded update lane
+   `bun run update` (ff-only, dirty-safe; Doctor sám nikdy nemutuje) a Doctor
+   zopakuj. Rutina platí i pro agenta startujícího v Organization checkoutu:
+   kolega, který pouští agenty jen v `organizations/<org>/`, dostává updaty
+   sdíleného rootu (Launchpad, Guide, skilly) právě touhle rutinou — z
+   Conglomerate rootu spusť `bun run update --org <slug>`, což ff-only
+   aktualizuje root i org mount (org root repo + workspace moduly;
+   productionspace zůstává read-only), a teprve potom pokračuj podle org
+   `AGENTS.md`. Dirty, ahead, diverged, wrong-branch nebo neověřitelný stav
+   lane nikdy nepřepisuje: zachovej práci v plan-owned worktree a primary
+   oprav bez ztráty historie. `git pull --rebase --autostash` proto není
+   defaultní agentní preflight a `--preserve` (autostash) je jen explicitní
+   volba. Root repo nesmí omylem trackovat cizí Organization historii,
    submodule pointer ani lokální private/runtime data. Stejný Git preflight
    proveď pro každý nested checkout, kterého se task dotkne, podle jeho policy.
 4. **Drž worktree disciplínu bez malých výjimek.** Primární root checkout

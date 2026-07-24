@@ -1,14 +1,14 @@
 import { expect, test } from "bun:test";
 import { taskPreflightGitCheck } from "./task-preflight-lib.mjs";
 
-test("task preflight fail-closed doporučí ff-only pull, když je main pozadu", async () => {
+test("task preflight fail-closed doporučí guarded update lane, když je main pozadu", async () => {
   const check = await taskPreflightGitCheck("/workspace", {
     gitRunner: fixtureGit({ relation: "0 3" }),
   });
 
   expect(check.status).toBe("fail");
   expect(check.message).toContain("3 commitů za origin/main");
-  expect(check.details.join("\n")).toContain("git pull --ff-only");
+  expect(check.details.join("\n")).toContain("bun run update");
 });
 
 test("task preflight nepovolí dirty main ani automatický autostash", async () => {

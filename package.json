@@ -7,6 +7,7 @@
     "doctor": "bun run --cwd launchpad doctor",
     "doctor:task": "bun run --cwd launchpad doctor:task",
     "doctor:json": "bun run --cwd launchpad doctor:json",
+    "update": "bun run --cwd launchpad update",
     "launchpad": "bun run --cwd launchpad launch",
     "launchpad:dev": "bun run --cwd launchpad dev",
     "personalspace:create": "bun scripts/create-personalspace.mjs",
