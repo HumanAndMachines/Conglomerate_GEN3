@@ -84,6 +84,35 @@ test("drift mirroru: repair regeneruje obsah a odstraní neaktivní mirror skill
   expect(mirror).toBe("# example-skill\n");
 });
 
+test("extra soubor v aktivním skill adresáři: repair failuje zavřeně a soubor přežije", async () => {
+  const root = await rootFixture("active-extra");
+  await mkdir(join(root, ".claude", "skills", "example-skill"), { recursive: true });
+  await writeFile(join(root, ".claude", "skills", "example-skill", "SKILL.md"), "# example-skill\n");
+  await writeFile(join(root, ".claude", "skills", "example-skill", "notes.md"), "lokální poznámky\n");
+
+  const result = await repairAgentSkillsMirror(root);
+  expect(result.status).toBe("blocked");
+  expect(result.code).toBe("mirror_unknown_content");
+  const survived = await readFile(join(root, ".claude", "skills", "example-skill", "notes.md"), "utf8");
+  expect(survived).toBe("lokální poznámky\n");
+
+  await rm(join(root, ".claude", "skills", "example-skill", "notes.md"));
+  const after = await repairAgentSkillsMirror(root);
+  expect(after.status).toBe("ok");
+});
+
+test("stray soubor přímo v mirroru: repair failuje zavřeně a soubor přežije", async () => {
+  const root = await rootFixture("stray-file");
+  await mkdir(join(root, ".claude", "skills"), { recursive: true });
+  await writeFile(join(root, ".claude", "skills", "README.txt"), "stray\n");
+
+  const result = await repairAgentSkillsMirror(root);
+  expect(result.status).toBe("blocked");
+  expect(result.code).toBe("mirror_unknown_content");
+  const survived = await readFile(join(root, ".claude", "skills", "README.txt"), "utf8");
+  expect(survived).toBe("stray\n");
+});
+
 test("neznámý obsah mirroru: repair failuje zavřeně a nic nemaže", async () => {
   const root = await rootFixture("unknown");
   await mkdir(join(root, ".claude", "skills", "scratch"), { recursive: true });

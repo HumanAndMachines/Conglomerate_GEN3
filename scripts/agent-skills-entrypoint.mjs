@@ -213,13 +213,26 @@ export async function repairAgentSkillsMirror(root = defaultRoot, options = {}) 
 
   for (const entry of await readdir(compatibilityPath, { withFileTypes: true })) {
     const entryPath = join(compatibilityPath, entry.name);
-    if (entry.isSymbolicLink() || !entry.isDirectory()) continue;
-    if (expectedSlugs.has(entry.name)) continue;
+    if (entry.isSymbolicLink()) continue;
+    if (!entry.isDirectory()) {
+      // Stray soubor přímo v mirroru: inspect ho hlásí jako drift, ale mazat
+      // neznámý obsah Repair nesmí — bez tohohle gate by parita nikdy nesešla.
+      return publicState({
+        status: "blocked",
+        code: "mirror_unknown_content",
+        problems: [
+          `${CLAUDE_SKILLS_PATH}/${entry.name} nepatří do mirroru; Repair ho nesmaže, porovnej a odstraň ručně.`,
+        ],
+        message: "Claude skills mirror nelze bezpečně regenerovat automaticky.",
+      });
+    }
     const children = await readdir(entryPath, { withFileTypes: true });
     const onlyMirrorShape = children.every(
       (child) => child.isFile() && !child.isSymbolicLink() && child.name === "SKILL.md",
     );
     if (!onlyMirrorShape) {
+      // Platí i pro aktivní skill adresář: extra obsah vedle SKILL.md by jinak
+      // přežil repair a drift by se nikdy nesrovnal (Greptile nález na PR #45).
       return publicState({
         status: "blocked",
         code: "mirror_unknown_content",
@@ -229,6 +242,7 @@ export async function repairAgentSkillsMirror(root = defaultRoot, options = {}) 
         message: "Claude skills mirror nelze bezpečně regenerovat automaticky.",
       });
     }
+    if (expectedSlugs.has(entry.name)) continue;
     await rm(entryPath, { recursive: true, force: false });
   }
 
