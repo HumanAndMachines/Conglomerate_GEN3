@@ -57,26 +57,35 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
    není dokončený handoff: snadno zapadne, Steward ji nemusí vidět a další
    agent ji nemusí převzít. Rozdělaná práce, která existuje jen lokálně, je
    porušení disciplíny (decision 0103).
-9. Handoff veď průvodcovsky (decision 0103): závěrečná zpráva začíná
+9. Před handoffem aktualizuj sidecar a znovu spusť audit i
+   `bun run worktrees:check`. Check je nutný, ale ne dostačující — teprve po
+   něm pokládej otázku na Publikaci.
+10. Handoff veď průvodcovsky (decision 0103): závěrečná zpráva začíná
    standardizovaným handoff blokem (PR URL, base, exact HEAD, lidské
    shrnutí, ověření, odkaz na aplikaci běžící z worktree) a končí
    standardizovanou otázkou „Mám změny Publikovat?". Před otázkou zjisti
-   živá GitHub práva Principála (branch protection, povolené merge metody,
-   checks) a řiď se jimi, ne textovým labelem role. Po explicitním
-   „Publikuj" v threadu PR mergni metodou, kterou repozitář povoluje
-   (default rebase), v primárním checkoutu stáhni main (`bun run
-   doctor:task`, `git pull --ff-only`) a pokračuj cleanup krokem. Když
-   GitHub merge blokuje, přepni PR na Ready, vyžádej review Stewarda a
-   předej Principálovi, kdo rozhoduje. Bez zelené PR zůstává otevřený a nic
-   se neděje.
-10. Před handoffem aktualizuj sidecar a znovu spusť audit i
-   `bun run worktrees:check`. Check je nutný, ale ne dostačující. Worktree
-   odstraň jen
-   když je clean včetně untracked souborů, nemá local-only commit, exact HEAD je
-   na remote, PR je merged nebo explicitně abandoned se snapshotem, runtime ho
-   nepoužívá a neexistuje aktivní writer. Pak použij owner repo
-   `git worktree remove <path>` a `git worktree prune`; sidecar smaž až potom.
-11. Plošné `rm -rf`, `--force`, `git branch -D` a automatické mazání podle stáří
+   živá GitHub práva Principála a řiď se jimi, ne textovým labelem role —
+   např. `gh api repos/<owner>/<repo> --jq .permissions`,
+   `gh api repos/<owner>/<repo>/branches/<base>/protection`,
+   `gh repo view <owner>/<repo> --json
+   rebaseMergeAllowed,squashMergeAllowed,mergeCommitAllowed`,
+   `gh pr view <číslo> --json mergeable,mergeStateStatus,reviewDecision`.
+   Po explicitním „Publikuj" v threadu PR mergni metodou, kterou repozitář
+   povoluje (při více povolených je default rebase, pokud Organizace ve svém
+   `AGENTS.md` nedeklaruje jinak), v primárním checkoutu stáhni main
+   (`bun run doctor:task`, `git pull --ff-only`) a pokračuj krokem 11. Když
+   GitHub merge Principálovi nedovoluje, řekni to rovnou v handoffu;
+   „Publikuj" pak znamená předání: přepni PR na Ready, vyžádej review
+   Stewarda (`gh pr edit --add-reviewer <steward>` + @zmínka v komentáři
+   PR) a předej Principálovi, kdo rozhoduje. Merge neobcházej ani na
+   opakovanou žádost — GitHub ho fyzicky blokuje. Bez zelené PR zůstává
+   otevřený a nic se neděje.
+11. Worktree odstraň jen když je clean včetně untracked souborů, nemá
+   local-only commit, exact HEAD je na remote, PR je merged nebo explicitně
+   abandoned se snapshotem, runtime ho nepoužívá a neexistuje aktivní writer.
+   Pak použij owner repo `git worktree remove <path>` a `git worktree prune`;
+   sidecar smaž až potom.
+12. Plošné `rm -rf`, `--force`, `git branch -D` a automatické mazání podle stáří
    nejsou běžný cleanup. Nesplněný guard se předává konkrétně.
 
 ## Ověření

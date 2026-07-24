@@ -145,9 +145,11 @@ agent zjistí živá GitHub práva svého Principála (branch protection, povole
 merge metody, checks) a řídí se jimi, ne textovým labelem role: když
 Principál merge smí a v threadu řekne „Publikuj", agent PR mergne metodou
 povolenou repozitářem, stáhne `main` do primárního checkoutu a uklidí
-worktree; když GitHub merge blokuje, agent přepne PR na Ready, vyžádá
-review Stewarda a řekne Principálovi, kdo teď rozhoduje. Bez zelené PR
-zůstává otevřený a nic se neděje (decision 0103).
+worktree. Když GitHub merge Principálovi nedovoluje, agent to řekne rovnou
+v handoffu a „Publikuj" pak znamená předání: agent přepne PR na Ready,
+vyžádá review Stewarda (reviewer request + @zmínka v komentáři PR) a řekne
+Principálovi, kdo teď rozhoduje; merge neobchází, GitHub ho fyzicky
+blokuje. Bez zelené PR zůstává otevřený a nic se neděje (decision 0103).
 
 **Push bez PR není hotový handoff.** Když agent pushne branch se změnou v
 Conglomerate rootu, hned otevře PR proti správné base branchi (během aktivní
@@ -415,8 +417,10 @@ Mám změny Publikovat?
 Po explicitním „Publikuj" v threadu agent PR mergne metodou, kterou
 repozitář povoluje (default rebase), stáhne `main` do primárního checkoutu
 (`bun run doctor:task`, `git pull --ff-only`) a uklidí worktree podle
-cleanup guardů. Když GitHub merge blokuje, přepne PR na Ready for review,
-vyžádá review Stewarda a řekne Principálovi, kdo rozhoduje.
+cleanup guardů. Když GitHub merge Principálovi nedovoluje, agent to řekne
+rovnou v handoffu; „Publikuj" pak znamená předání — PR na Ready for
+review, review request + @zmínka Stewardovi a informace Principálovi, kdo
+rozhoduje.
 
 Před handoffem po změně root configu, Launchpadu, Guide nebo mountpointů spusť:
 
