@@ -171,6 +171,30 @@ nepoužívají; personalspace izolace má přednost.
 Stav ekosystému v runboocích odpovídá ověření k 2026-07-24; před instalací
 zkontroluj aktuální dokumentaci poskytovatele.
 
+## Živý standard: zpětná vazba z instalací je povinná
+
+Externí aplikace a jejich MCP/CLI ekosystém se mění rychleji, než je kdokoli
+schopen průběžně přetestovávat. Tenhle manuál i runbooky jsou **komunitní
+standard HumanAndMachine** a žijí z reálných instalací — nikdo je centrálně
+denně neověřuje. Proto pro každého agenta platí:
+
+1. Když se Kolega během napojování na čemkoli zasekne, nebo narazíš na
+   chybu manuálu, zastaralý endpoint, změněnou verzi/scope či jiné chování
+   poskytovatele, **nenech to jen v chatu**.
+2. Znáš-li řešení nebo aktualizaci, oprav runbook/manuál a pošli PR na
+   `HumanAndMachines/Conglomerate_GEN3` (platí worktree disciplína). Do PR
+   popiš, co se stalo, na čem se Kolega zasekl, jak se to projevovalo a jak
+   je oprava ověřená — metadata-only, žádné secrets, tokeny ani screenshoty
+   s citlivým obsahem.
+3. Neznáš-li řešení, zapiš aspoň issue do root `ISSUES.open.json` (také PR)
+   s popisem zaseknutí a případným workaroundem.
+4. Org-specifika (jiné admin kroky, plán, licence) patří do `INTEGRATIONS.md`
+   katalogu dané Organizace; do root runbooků jde jen generalizované a
+   anonymizované poučení — nikdy org data.
+
+Oprava poslaná upstream se dostane ke všem uživatelům HumanAndMachine;
+poznatek zamčený v jedné mašině nebo jednom chatu je ztracený.
+
 ## Odebrání, rotace, incident a closeout
 
 Platí postup z [codex-manual-mcp-integrations.md](codex-manual-mcp-integrations.md)

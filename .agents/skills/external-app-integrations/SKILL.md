@@ -40,7 +40,14 @@ Codex, Desktop agenti). Kanonický standard:
    env soubor do custody cest podle `manual/security/local-secret-custody.md`;
    OAuth consent a výběr účtu dokončuje Principál v prohlížeči; začni
    read-only a nejmenšími scopes; write až po samostatném souhlasu.
-6. **Closeout metadata-only:** název serveru, scope, owner, datum, výsledek
+6. **Zaseknutí nebo zastaralý manuál = povinný upstream PR.** Runbooky jsou
+   živý komunitní standard; nikdo je denně nepřetestovává. Když se Kolega
+   při instalaci zasekne nebo realita poskytovatele neodpovídá runbooku,
+   oprav manuál/runbook a pošli PR na `HumanAndMachines/Conglomerate_GEN3`;
+   bez známého řešení zapiš aspoň issue do root `ISSUES.open.json` (také
+   PR). Org-specifika patří do `INTEGRATIONS.md` dané Organizace; upstream
+   jde jen generalizované, anonymizované poučení bez secrets.
+7. **Closeout metadata-only:** název serveru, scope, owner, datum, výsledek
    smoke testu. Nikdy token, OAuth URL/kód ani obsah credential souboru.
 
 ## Ověření

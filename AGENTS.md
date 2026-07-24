@@ -363,9 +363,12 @@ integrací drží tracked katalog v repu Organizace (`INTEGRATIONS.md`,
 `.mcp.json`, `.codex/config.toml` — jen jména env proměnných, nikdy
 hodnoty); osobní integrace patří do personalspace scope a user-level
 configu harnessu. Výběr: oficiální MCP → oficiální CLI → reviewnutý pinned
-OSS → browser fallback; scraping/cookie-session servery nikdy. Postup drží
-skill `.agents/skills/external-app-integrations/SKILL.md`, standard
-`manual/external-app-integrations.md`.
+OSS → browser fallback; scraping/cookie-session servery nikdy. Manuál a
+runbooky jsou živý komunitní standard: zaseknutí Kolegy při instalaci nebo
+zastaralý postup řeš opravným PR na `HumanAndMachines/Conglomerate_GEN3`
+(minimálně issue v root `ISSUES.open.json`), ne jen poznámkou v chatu.
+Postup drží skill `.agents/skills/external-app-integrations/SKILL.md`,
+standard `manual/external-app-integrations.md`.
 
 ## Launchpad pravidlo
 
