@@ -15,8 +15,9 @@ definovaným MCP serverem nebo CLI nástrojem na konkrétní mašině**.
 - **Nikdy** přes ChatGPT pluginy/konektory ani claude.ai konektory. Ty jsou
   vázané na cloudový účet a sdílejí se přes všechny mašiny přihlášené tím
   účtem — přesný opak per-machine custody.
-- **Nikdy** přes sdílený cloudový integrační broker (Composio-like služba,
-  Zapier/Pipedream remote MCP apod.), kde tokeny drží třetí strana.
+- **Nikdy** přes sdílený cloudový integrační broker — tedy jakoukoli službu
+  nebo hostovaný agregátorový MCP, kde OAuth granty a tokeny drží třetí
+  strana místo dané mašiny.
 - Vzdálený MCP endpoint provozovaný **přímo poskytovatelem služby**
   (například Slack, Atlassian, Canva, Google) je v pořádku — pokud je
   definovaný v lokálním configu harnessu na dané mašině a OAuth grant vzniká

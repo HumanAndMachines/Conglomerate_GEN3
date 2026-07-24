@@ -16,11 +16,14 @@ plnohodnotná compliant integrace neexistuje.
 ## Závazná policy
 
 1. **Do katalogu Organizace patří jen post-only integrace přes oficiální
-   API** (OAuth 2.0, scope `w_member_social`): publikace příspěvku,
-   komentář, reakce. Vlastní LinkedIn app Organizace, tokeny v custody.
-   Minimal OSS příklad: [souravdasbiswas/linkedin-mcp-server](https://github.com/souravdasbiswas/linkedin-mcp-server)
-   (MIT, oficiální API only) — před nasazením reviewnout a pinnout, nebo
-   napsat vlastní tenký wrapper.
+   API** (OAuth 2.0, scope `w_member_social`, tedy „Share on LinkedIn"):
+   výhradně vytvoření příspěvku jménem člena. Komentáře, reakce ani žádné
+   další operace do org výbavy nepatří, i když je nějaký server nabízí —
+   přes `enabled_tools` povol jen vytvoření příspěvku. Vlastní LinkedIn app
+   Organizace, tokeny v custody. Minimal OSS příklad:
+   [souravdasbiswas/linkedin-mcp-server](https://github.com/souravdasbiswas/linkedin-mcp-server)
+   (MIT, oficiální API only) — před nasazením reviewnout, pinnout a omezit
+   na post tools, nebo napsat vlastní tenký wrapper.
 2. **Čtení LinkedInu dělá agent výhradně browser fallbackem** (vestavěný
    browser povrch harnessu) **pod přímým dohledem Principála**, v běžné
    přihlášené session Principála. Session/cookies se nikdy nepředávají
@@ -46,9 +49,12 @@ dokončuje Principál.
 
 ## Smoke test
 
-Přečtení vlastního profilu (`openid profile`) a **draft** příspěvku bez
-publikace. Skutečná publikace jen na explicitní pokyn Principála v daném
-threadu.
+Žádné API čtení — čtení LinkedInu patří výhradně do browser fallbacku.
+Jednorázové zjištění member URN při OAuth consentu (userinfo) je aktivační
+krok napojení, ne čtecí workflow; URN se uloží do custody a dál se
+nedotazuje. Smoke je metadata-only: ověř, že token platí, a připrav draft
+payload příspěvku **bez odeslání**. Skutečná publikace jen na explicitní
+pokyn Principála v daném threadu, poprvé na testovacím obsahu.
 
 ## Custody a rizika
 

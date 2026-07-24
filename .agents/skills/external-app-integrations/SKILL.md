@@ -16,8 +16,8 @@ Codex, Desktop agenti). Kanonický standard:
 ## Postup
 
 1. **Nikdy nevol cloudový konektor.** ChatGPT pluginy/konektory, claude.ai
-   konektory a sdílené brokery (Composio-like) jsou zakázané pro org
-   napojení — jsou vázané na cloudový účet, ne na mašinu. Chtěný stav:
+   konektory a sdílené cloudové brokery jsou zakázané pro org napojení —
+   jsou vázané na cloudový účet nebo třetí stranu, ne na mašinu. Chtěný stav:
    každá mašina má vlastní, samostatně revokovatelná napojení pro svou
    Organizaci; identita a subscription harnessu se sdílet smí, přístupy k
    externím aplikacím ne.
