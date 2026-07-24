@@ -8,50 +8,6 @@
   },
   "issues": [
     {
-      "id": "issue-2026-07-24-001",
-      "title": "Zavést lokální MCP/CLI integrace jako default a dopropagovat je do šablon a Organizací",
-      "status": "implementation_ready_for_review",
-      "severity": "medium",
-      "owner": "root integrations agent",
-      "created_at": "2026-07-24",
-      "updated_at": "2026-07-24",
-      "tags": [
-        "integrations",
-        "mcp",
-        "cli",
-        "security",
-        "custody",
-        "agent-behavior"
-      ],
-      "question": "Jak zajistit, aby napojování Organizací na externí aplikace probíhalo výhradně přes lokálně kurátorované MCP servery/CLI per mašina, a ne přes cloudové konektory ChatGPT/claude.ai nebo sdílený broker?",
-      "impact": "Bez závazného pravidla agenti při požadavku „napoj aplikaci X\" sahají po cloudových konektorech vázaných na sdílený účet, čímž se přihlášení externích aplikací roznese přes všechny mašiny Principála a rozbije model „jedna mašina = jedna Organizace = samostatně revokovatelný přístup\".",
-      "decision": "Founder 2026-07-24 (chat s Claude Code): (1) org napojení výhradně lokální MCP/CLI, nikdy cloud konektory ani sdílený broker; remote MCP endpoint poskytovatele je povolen jen s konfigurací v lokálním configu harnessu; (2) definice integrací žijí jako tracked katalog v repu Organizace (INTEGRATIONS.md + .mcp.json + .codex/config.toml, bez secret hodnot), secrets per custody standard; (3) žebříček výběru: oficiální MCP → oficiální CLI → reviewnutý pinned OSS → browser fallback, scraping/cookie servery zakázané; (4) LinkedIn: do katalogu jen post-only přes oficiální API, čtení jen browser fallbackem pod dohledem Principála; (5) jméno dosavadního komerčního brokeru z dokumentace odstranit ve prospěch obecného zákazu sdíleného brokeru; (6) manuál a runbooky jsou živý komunitní standard — když se Kolega při instalaci zasekne nebo runbook neodpovídá realitě poskytovatele, agent má povinnost poslat opravný PR na Conglomerate root (minimálně issue), aby se řešení dostalo ke všem uživatelům HumanAndMachine; founder nebude průběžně přetestovávat; (7) upřesnění 2026-07-24: jde o preferenci a zákaz zřizování, ne zákaz použití — už nainstalovaný ChatGPT/claude.ai konektor smí agent normálně používat (dočasný stav do řízeného cutoveru); když MCP/CLI cesta chybí, agent nový konektor automaticky neinstaluje (browser fallback + issue), zřízení konektoru je vědomé rozhodnutí Principála. Zákaz sdílených brokerů třetích stran platí beze změny.",
-      "implementation": "Mission Control plán CAC-0082 (draft v mission-control/db, publish čeká na Stewarda). Root PR přidává manual/external-app-integrations.md, manual/integrations/ runbooky (Google Workspace, Microsoft 365, Slack, Atlassian, LinkedIn, Canva), skill .agents/skills/external-app-integrations/, sekci v AGENTS.md a odstranění broker/connector doporučení z codex-manual-mcp-integrations.md. Navazují PR do OrganizationTemplate_GEN3 (tracked katalog šablony) a PersonalspaceTemplate_GEN3 (osobní scope).",
-      "verification": [
-        "bun run check",
-        "bun run doctor"
-      ],
-      "next_action": "Steward review root PR + template PRs; po merge přesunout do ISSUES.resolved.json. Follow-up: navrhnout HumanAndMachines decision record pro kanonizaci pravidla, adopce katalogu v reálných Organizacích (Spectoda první) a org-side admin kroky (Slack app approval, Atlassian allowlist, Canva AI Connector).",
-      "links": [
-        {
-          "label": "Kanonický standard",
-          "path": "manual/external-app-integrations.md"
-        },
-        {
-          "label": "Skill pro agenty",
-          "path": ".agents/skills/external-app-integrations/SKILL.md"
-        },
-        {
-          "label": "Codex runbook",
-          "path": "manual/codex-manual-mcp-integrations.md"
-        },
-        {
-          "label": "Mission Control plán CAC-0082",
-          "path": "../HumanAndMachines/mission-control/db/data/mission-control/plans/2026/07/CAC-0082-external-app-integrations.yaml"
-        }
-      ]
-    },
-    {
       "id": "issue-2026-07-20-001",
       "title": "Dodefinovat Launchpad převzetí app-owned portu místo fallback portů",
       "status": "implementation_ready_for_review",
