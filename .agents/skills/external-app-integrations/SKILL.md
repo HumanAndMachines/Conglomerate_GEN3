@@ -41,8 +41,9 @@ Codex, Desktop agenti). Kanonický standard:
    Connector, GCP OAuth client) vypiš do PR jako checklist.
 5. **Aktivace per mašina:** jména `<org_slug>_<provider>`; secret hodnoty a
    env soubor do custody cest podle `manual/security/local-secret-custody.md`;
-   OAuth consent a výběr účtu dokončuje Principál v prohlížeči; začni
-   read-only a nejmenšími scopes; write až po samostatném souhlasu.
+   OAuth consent a výběr účtu dokončuje Principál v prohlížeči; scopes
+   uděluj defaultně read i write, per-action ochranu write operací drží
+   approval mode harnessu (LinkedIn zůstává post-only výjimka).
 6. **Zaseknutí nebo zastaralý manuál = povinný upstream PR.** Runbooky jsou
    živý komunitní standard; nikdo je denně nepřetestovává. Když se Kolega
    při instalaci zasekne nebo realita poskytovatele neodpovídá runbooku,
@@ -55,8 +56,8 @@ Codex, Desktop agenti). Kanonický standard:
 
 ## Ověření
 
-- Server je vidět (`codex mcp list` / `/mcp` v Claude Code) a read-only
-  smoke prošel na známém záznamu správného org účtu.
+- Server je vidět (`codex mcp list` / `/mcp` v Claude Code) a smoke prošel:
+  čtení známého záznamu správného org účtu, zápis na testovacím záznamu.
 - Katalog Organizace obsahuje integraci včetně env jmen a admin kroků;
   žádný secret v Gitu (`git grep` na jméno env souboru a provider).
 - Env soubor a token cache mají módy `0600`/`0700` v custody cestě.
