@@ -381,9 +381,12 @@ Povolené jsou obecné patterny, anonymizované šablony a poučení převedené
 
 ## Napojení na externí aplikace
 
-Napojení na externí aplikace (Gmail, Slack, Jira, Canva…) se dělá výhradně
-lokálně kurátorovaným MCP serverem nebo CLI nástrojem na dané mašině —
-nikdy ChatGPT/claude.ai konektorem ani sdíleným cloudovým brokerem.
+Napojení na externí aplikace (Gmail, Slack, Jira, Canva…) se dělá primárně
+lokálně kurátorovaným MCP serverem nebo CLI nástrojem na dané mašině. Nové
+napojení agent nikdy nezřizuje přes ChatGPT/claude.ai konektor ani sdílený
+cloudový broker; konektor, který už je nainstalovaný, se používat smí —
+cílový stav je ale MCP/CLI z katalogu, a když MCP cesta chybí, agent
+konektor sám neinstaluje (browser fallback + issue).
 Identita a subscription harnessu se smí sdílet napříč mašinami Principála;
 přístupy k externím aplikacím ne: každá mašina drží vlastní přihlášení pro
 svou Organizaci a je samostatně revokovatelný přístup. Definice schválených

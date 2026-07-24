@@ -15,12 +15,15 @@ Codex, Desktop agenti). Kanonický standard:
 
 ## Postup
 
-1. **Nikdy nevol cloudový konektor.** ChatGPT pluginy/konektory, claude.ai
-   konektory a sdílené cloudové brokery jsou zakázané pro org napojení —
-   jsou vázané na cloudový účet nebo třetí stranu, ne na mašinu. Chtěný stav:
-   každá mašina má vlastní, samostatně revokovatelná napojení pro svou
-   Organizaci; identita a subscription harnessu se sdílet smí, přístupy k
-   externím aplikacím ne.
+1. **Preferuj MCP/CLI; nový konektor nikdy neinstaluj.** ChatGPT/claude.ai
+   konektory jsou vázané na cloudový účet, ne na mašinu; sdílené cloudové
+   brokery třetích stran jsou zakázané vždy. Konektor, který už je
+   nainstalovaný, klidně použij k práci — nové ale nezřizuj: když MCP/CLI
+   cesta chybí, použij browser fallback a chybějící MCP zapiš jako issue/PR
+   živého standardu (krok 6); zřízení nového konektoru je rozhodnutí
+   Principála, ne automatický fallback agenta. Chtěný stav: každá mašina má
+   vlastní, samostatně revokovatelná napojení pro svou Organizaci; identita
+   a subscription harnessu se sdílet smí, přístupy k externím aplikacím ne.
 2. **Urči scope.** Organizace → pokračuj katalogem té Organizace
    (`INTEGRATIONS.md`, `.mcp.json`, `.codex/config.toml` v jejím repu).
    Osobní → personalspace scope a user-level config; do org katalogu
