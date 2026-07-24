@@ -18,9 +18,10 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
    Neměň v něm trackovaný obsah, nezakládej v něm feature branch a drž ho na
    `main`, pokud tomu nebrání už existující zachovaná práce. Před převzetím
    každého tasku v něm spusť `bun run doctor:task`. Freshness lane provede
-   bounded fetch `origin/main`; clean-behind main aktualizuj `git pull
-   --ff-only` a gate zopakuj. Dirty/ahead/diverged/wrong-branch stav zachovej a
-   oprav přes worktree — automatický `pull --rebase --autostash` není default.
+   bounded fetch `origin/main`; clean-behind main aktualizuj guarded lane
+   `bun run update` (ff-only) a gate zopakuj. Dirty/ahead/diverged/wrong-branch
+   stav zachovej a oprav přes worktree — automatický `pull --rebase
+   --autostash` není default a `--preserve` je jen explicitní volba.
 2. Než něco vytvoříš, spusť `bun run worktrees:status`. Audit čte Git registry,
    takže ukáže i linked worktrees mimo root. Je to informativní inventura;
    `bun run worktrees:check` je fail-closed kontrola umístění, metadat a Git
