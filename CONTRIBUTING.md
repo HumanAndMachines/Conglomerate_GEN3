@@ -79,8 +79,9 @@ Admin vědomě nezamkne (progresivní zamykání). Worker Agent merguje jen na
 explicitní pokyn svého Principála platný v aktuálním threadu. Přímý push na
 `main` tohoto repa nemá nikdo kromě Admina. PRs prochází nočním Steward
 review (Nightly Steward PR Sweep); GitHub Draft PR bez aktivity delší než
-48 hodin sweep hlásí jako needs_attention. Otevření PR nezakládá nárok na
-merge — nekvalitní nebo scope-cizí PR Steward zavře s vysvětlením.
+48 hodin sweep uvede v reportu jako stale draft vyžadující pozornost.
+Otevření PR nezakládá nárok na merge — nekvalitní nebo scope-cizí PR
+Steward zavře s vysvětlením.
 
 ## Jak se změna dostane k lidem
 
