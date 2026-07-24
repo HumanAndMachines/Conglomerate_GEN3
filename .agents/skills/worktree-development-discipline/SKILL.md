@@ -43,13 +43,20 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
    `.pr-worktrees`, legacy `.worktrees/<code>` ani uvnitř jiného repa.
 6. Pokud primary není na `main` nebo je dirty, nic nezahazuj. Zachovej cizí
    práci a nový worktree založ z ověřeného `origin/main`.
-7. Před každým pushem PR branche spusť v edit worktree `bun run
+7. Ještě před otevřením nebo předáním PR napiš rozhodnutelný popis: motivaci a
+   relevantní souvislosti, cílový stav a přínos merge, skutečný rozsah včetně
+   vědomě vynechaných částí, ověření a zbývající rizika, blokery či navazující
+   kroky. Steward nesmí být nucen odvozovat „proč" jen z diffu. Popis po změně
+   scope, rebase nebo zásadním review nálezu srovnej se skutečným HEADem a
+   Mission Control plánem; samotný seznam souborů, commitů nebo testů není
+   dokončený handoff.
+8. Před každým pushem PR branche spusť v edit worktree `bun run
    pr:preflight`. Gate fetchne `origin/main`, vyžaduje clean commit a čerstvý
    main jako předka HEAD. Pokud neprojde, udělej `git rebase origin/main`,
    zopakuj validace a gate; přepsanou branch pushni pouze příkazem s exact
    `--force-with-lease`, který gate vypíše. Po pushi ověř na GitHubu PR base
    `main`, exact head, mergeability a checks.
-8. Commituj a pushuj do PR branche průběžně — po každém uzavřeném pracovním
+9. Commituj a pushuj do PR branche průběžně — po každém uzavřeném pracovním
    kroku, nejpozději před každou odpovědí Principálovi, která ohlašuje stav
    práce. Po prvním pushi branch hned otevři PR proti správné base branchi
    jako GitHub Draft PR, pokud Principál výslovně neřekl, že PR otevřít
@@ -57,10 +64,10 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
    není dokončený handoff: snadno zapadne, Steward ji nemusí vidět a další
    agent ji nemusí převzít. Rozdělaná práce, která existuje jen lokálně, je
    porušení disciplíny (decision 0103).
-9. Před handoffem aktualizuj sidecar a znovu spusť audit i
+10. Před handoffem aktualizuj sidecar a znovu spusť audit i
    `bun run worktrees:check`. Check je nutný, ale ne dostačující — teprve po
    něm pokládej otázku na Publikaci.
-10. Handoff veď průvodcovsky (decision 0103): závěrečná zpráva začíná
+11. Handoff veď průvodcovsky (decision 0103): závěrečná zpráva začíná
    standardizovaným handoff blokem (PR URL, base, exact HEAD, lidské
    shrnutí, ověření, odkaz na aplikaci běžící z worktree) a končí
    standardizovanou otázkou „Mám změny Publikovat?". Před otázkou zjisti
@@ -73,19 +80,19 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
    Po explicitním „Publikuj" v threadu PR mergni metodou, kterou repozitář
    povoluje (při více povolených je default rebase, pokud Organizace ve svém
    `AGENTS.md` nedeklaruje jinak), v primárním checkoutu stáhni main
-   (`bun run doctor:task`, `git pull --ff-only`) a pokračuj krokem 11. Když
+   (`bun run doctor:task`, `git pull --ff-only`) a pokračuj krokem 12. Když
    GitHub merge Principálovi nedovoluje, řekni to rovnou v handoffu;
    „Publikuj" pak znamená předání: přepni PR na Ready, vyžádej review
    Stewarda (`gh pr edit --add-reviewer <steward>` + @zmínka v komentáři
    PR) a předej Principálovi, kdo rozhoduje. Merge neobcházej ani na
    opakovanou žádost — GitHub ho fyzicky blokuje. Bez zelené PR zůstává
    otevřený a nic se neděje.
-11. Worktree odstraň jen když je clean včetně untracked souborů, nemá
+12. Worktree odstraň jen když je clean včetně untracked souborů, nemá
    local-only commit, exact HEAD je na remote, PR je merged nebo explicitně
    abandoned se snapshotem, runtime ho nepoužívá a neexistuje aktivní writer.
    Pak použij owner repo `git worktree remove <path>` a `git worktree prune`;
    sidecar smaž až potom.
-12. Plošné `rm -rf`, `--force`, `git branch -D` a automatické mazání podle stáří
+13. Plošné `rm -rf`, `--force`, `git branch -D` a automatické mazání podle stáří
    nejsou běžný cleanup. Nesplněný guard se předává konkrétně.
 
 ## Ověření

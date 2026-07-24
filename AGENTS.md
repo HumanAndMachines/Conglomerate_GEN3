@@ -151,6 +151,16 @@ vyžádá review Stewarda (reviewer request + @zmínka v komentáři PR) a řekn
 Principálovi, kdo teď rozhoduje; merge neobchází, GitHub ho fyzicky
 blokuje. Bez zelené PR zůstává otevřený a nic se neděje (decision 0103).
 
+**Popis PR předává Stewardovi kontext k rozhodnutí.** Agent nesmí nechat
+Stewarda odvozovat důvod změny pouze z diffu, názvů commitů nebo seznamu
+souborů. Každý plnohodnotný popis PR proto pravdivě a srozumitelně popíše,
+proč PR vznikl (motivaci, problém a relevantní souvislosti), jaký cílový
+stav nebo přínos má merge přinést, co se mění a případně záměrně nemění, jak
+byla změna ověřena a jaká zůstávají rizika, blokery nebo follow-upy. Popis se
+po změně scope, rebase nebo zásadním review nálezu aktualizuje, aby při merge
+rozhodnutí odpovídal skutečnému HEADu. Technický seznam změn bez vysvětlení
+„proč" a cíle není hotový handoff.
+
 **Push bez PR není hotový handoff.** Když agent pushne branch se změnou v
 Conglomerate rootu, hned otevře PR proti správné base branchi (během aktivní
 práce jako GitHub Draft PR, v handoffu přepnutý na Ready for review), pokud
