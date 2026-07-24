@@ -105,11 +105,16 @@ Definice z katalogu se na mašině stává funkční až lokální aktivací:
 2. OAuth consent dokončuje **Principál v prohlížeči na té mašině** — agent
    připraví konfiguraci a diagnostiku, ale výběr účtu a souhlas je lidský
    krok (viz Human-action boundary v custody standardu).
-3. Token cache zůstává lokální (keyring harnessu, případně custody cesta
+3. Scopes uděluj defaultně **read i write** pro služby, které workflow
+   Organizace potřebuje; per-action ochranu write operací drží approval
+   mode harnessu (`writes`, případně přísnější `prompt`). Read-only start
+   je volitelné zpřísnění pro mimořádně citlivé zdroje, ne default.
+   LinkedIn zůstává post-only výjimka dle svého runbooku.
+4. Token cache zůstává lokální (keyring harnessu, případně custody cesta
    serveru). Tool-runtime cesty (`~/.google_workspace_mcp/…`,
    `~/.gmail-mcp/…`) nejsou custody source; runbook musí umět cache z
    custody obnovit a bezpečně rotovat.
-4. Mezi mašinami se nikdy nepřenáší token cache, client secrety ani celé
+5. Mezi mašinami se nikdy nepřenáší token cache, client secrety ani celé
    uživatelské configy harnessu. Každá mašina = vlastní OAuth grant,
    revokovatelný u poskytovatele samostatně.
 

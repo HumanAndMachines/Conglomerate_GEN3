@@ -37,8 +37,11 @@ Principál přijímá.
 2. Ověř publishera, zdrojový repozitář, licenci, release/tag nebo přesný commit
    a seznam závislostí. Komunitní MCP není „oficiální integrace“ jen proto, že
    obsluhuje známou službu. Pro trvalý runtime nepoužívej neukotvené `latest`.
-3. Začni read-only a nejmenší sadou služeb/tools. Rozšiř scopes až po
-   funkčním smoke testu a vědomém souhlasu Principála.
+3. Scopes uděluj defaultně read i write pro služby, které workflow
+   potřebuje; per-action ochranu write tools drží
+   `default_tools_approval_mode = "writes"` (nebo přísnější `prompt`).
+   Read-only start je volitelné zpřísnění pro mimořádně citlivé zdroje,
+   ne default.
 4. Secret hodnoty, OAuth kódy, tokeny ani obsah client JSONu neposílej chatem a
    necommituj. Řiď se [lokálním secret custody standardem](security/local-secret-custody.md):
    root/operator secrets patří do
@@ -131,9 +134,9 @@ Pro onboarding call použij tento pořádek:
    `default_tools_approval_mode = "writes"` nebo přísnější `prompt`.
 3. Přidej právě jeden server, přihlas správný Organization účet a ověř
    `codex mcp list` a `codex mcp get <server_name>`.
-4. Restartuj Codex nebo otevři nový task, zkontroluj `/mcp` a proveď známý
-   read-only dotaz. Zápis testuj až samostatně, na neprodukčním záznamu a po
-   výslovném souhlasu Principála.
+4. Restartuj Codex nebo otevři nový task, zkontroluj `/mcp`, proveď známý
+   čtecí dotaz a potom ověř zápis na neprodukčním záznamu (potvrzený
+   approval modem).
 5. Teprve po úspěšném smoke testu přidej další službu. Do closeoutu zapiš jen
    název serveru, účel, ownera, scope, datum a výsledek.
 
@@ -170,7 +173,8 @@ codex mcp get example_org_clickup
 
 OAuth souhlas dokončuje člověk v prohlížeči. Zkontroluj správný ClickUp
 Workspace a oprávnění účtu; agent může dělat pouze operace, které tento účet
-smí. První smoke má být čtení známého tasku nebo seznamu, ne zápis.
+smí. Smoke začni čtením známého tasku a pokračuj zápisem na testovacím
+záznamu — write je od začátku povolený, potvrzuje ho approval mode.
 
 Pro explicitní approval policy lze server upravit v `~/.codex/config.toml`:
 
@@ -200,16 +204,16 @@ není potřeba.
 2. Server spouštěj z lokálního izolovaného prostředí a ukotvi ho na reviewovanou
    verzi. Aktuální upstream používá příkaz `workspace-mcp` a podporuje `uvx`;
    před nasazením nahraď `<reviewed-version>` konkrétní ověřenou verzí.
-3. Začni například službami Gmail, Calendar, Drive a Sheets v read-only režimu.
-   Cesty lze dodat přes lokální environment; jejich hodnoty necommituj do
-   sdíleného repozitáře.
+3. Zapni služby, které Organizace používá (například Gmail, Calendar, Drive
+   a Sheets), s read i write přístupem. Cesty lze dodat přes lokální
+   environment; jejich hodnoty necommituj do sdíleného repozitáře.
 
 Příklad osobního `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.example_org_google_workspace]
 command = "/ABSOLUTNI/LOKALNI/CESTA/bin/uvx"
-args = ["--from", "workspace-mcp==<reviewed-version>", "workspace-mcp", "--single-user", "--read-only", "--tool-tier", "core"]
+args = ["--from", "workspace-mcp==<reviewed-version>", "workspace-mcp", "--single-user", "--tool-tier", "core"]
 env_vars = ["GOOGLE_CLIENT_SECRET_PATH", "GOOGLE_MCP_CREDENTIALS_DIR"]
 default_tools_approval_mode = "writes"
 startup_timeout_sec = 30
@@ -228,8 +232,9 @@ Tyto ukázkové cesty nahraď skutečnými absolutními cestami. Launcher se sec
 hodnotami musí zůstat mimo Git a mít lokální custody oprávnění. Nepřebírej
 vývojové nastavení `OAUTHLIB_INSECURE_TRANSPORT=1` do běžného provozu.
 
-První browser consent dokonči ručně a pak v `/mcp` ověř pouze read-only nástroje.
-Write scope povol až samostatnou vědomou změnou konfigurace a novým consentem.
+První browser consent dokonči ručně a pak v `/mcp` ověř nástroje nejdřív
+čtecím dotazem; write tools jsou od začátku povolené a per-action je
+potvrzuje approval mode.
 
 ## Odebrání, rotace a incident
 

@@ -54,9 +54,9 @@ hodnoty v custody env souboru.
 
 ## Smoke test
 
-Read-only: přečtení známého Jira issue a známé Confluence stránky přes
-`search_atlassian`. Vytváření/úpravy až po write souhlasu na testovacím
-projektu/space.
+Smoke začni čtením známého Jira issue a Confluence stránky přes
+`search_atlassian` a pokračuj zápisem na testovacím projektu/space — write
+je od začátku povolený, per-action ho potvrzuje approval mode.
 
 ## Custody a rizika
 

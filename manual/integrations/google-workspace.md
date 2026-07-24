@@ -34,8 +34,9 @@ agregátory (broker drží tokeny — zakázáno standardem).
 2. Vytvoř OAuth client (Desktop pro lokální STDIO/CLI, Web pro remote MCP
    dle dokumentace); client JSON ulož do custody cesty Organizace, nikdy do
    repa.
-3. Scopes začínají read-only (`gmail.readonly`, `drive.readonly`…); write
-   scopes až po smoke testu a souhlasu Principála.
+3. Scopes uděluj defaultně read i write pro používané služby
+   (`gmail.modify`/`gmail.send`, `drive`, `spreadsheets`… dle workflow);
+   per-action ochranu write tools drží approval mode harnessu.
 
 ## Per-machine aktivace
 
@@ -46,7 +47,7 @@ Katalogový zápis v org `.mcp.json` (Claude Code), OSS varianta:
   "mcpServers": {
     "<org_slug>_google_workspace": {
       "command": "uvx",
-      "args": ["--from", "workspace-mcp==<reviewed-version>", "workspace-mcp", "--single-user", "--read-only", "--tool-tier", "core"],
+      "args": ["--from", "workspace-mcp==<reviewed-version>", "workspace-mcp", "--single-user", "--tool-tier", "core"],
       "env": {
         "GOOGLE_CLIENT_SECRET_PATH": "${<ORG_SLUG>_GOOGLE_CLIENT_SECRET_PATH}",
         "GOOGLE_MCP_CREDENTIALS_DIR": "${<ORG_SLUG>_GOOGLE_MCP_CREDENTIALS_DIR}"
@@ -66,15 +67,16 @@ CLI aktivace: `gog auth credentials <cesta-k-client-json>` +
 
 ## Smoke test
 
-Read-only: výpis Gmail labelů, `search_drive_files` na známý soubor, čtení
-známé Sheet range. Teprve po odsouhlasení write scope zkusit draft (ne
-odeslání) na neprodukčním obsahu.
+Smoke začni čtením (výpis Gmail labelů, `search_drive_files` na známý
+soubor, čtení známé Sheet range) a pokračuj zápisem na neprodukčním obsahu
+(draft e-mailu, testovací buňka) — write je od začátku povolený.
 
 ## Custody a rizika
 
 - Token cache OSS serveru (`~/.google_workspace_mcp/credentials/`) je
   plaintext — drž módy `0600`, cache je runtime, ne custody source.
 - Write tools (send mail, create file) jsou exfiltrační kanál při prompt
-  injection — nech je vypnuté, dokud je workflow nepotřebuje.
+  injection — per-action je potvrzuje approval mode harnessu; u citlivých
+  workflow zúžíš sadu přes `enabled_tools`.
 - Odebrání/rotace: revoke grantu v Google Account / GCP, smazání lokální
   cache, viz kanonický postup v hlavním manuálu.
