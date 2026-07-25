@@ -134,3 +134,53 @@ test("gitignored .claude/skills porušuje Git kontrakt mirroru", async () => {
   expect(result.code).toBe("entrypoint_contract_invalid");
   expect(result.problems.join(" ")).toContain(".gitignore");
 });
+
+test("slug s traversal cestou v manifestu je blocked manifest_invalid", async () => {
+  const root = await rootFixture("traversal");
+  await writeFile(
+    join(root, ".agents", "skills", "manifest.json"),
+    JSON.stringify({
+      schema_version: "conglomerate.skills.v0",
+      claude_compatibility: "tracked-derived-mirror",
+      skills: [{ slug: "../../evil", path: ".agents/skills/../../evil/SKILL.md" }],
+    }),
+  );
+
+  const state = await checkAgentSkillsMirror(root);
+  expect(state.status).toBe("blocked");
+  expect(state.code).toBe("manifest_invalid");
+});
+
+test("symlink v kanonickém katalogu: repair failuje zavřeně a nic nekopíruje", async () => {
+  const root = await rootFixture("canonical-symlink");
+  const outside = await mkdtemp(join(tmpdir(), "canonical-outside-"));
+  tempRoots.push(outside);
+  await writeFile(join(outside, "secret.md"), "tajný obsah\n");
+  await rm(join(root, ".agents", "skills", "example-skill", "SKILL.md"));
+  await symlink(join(outside, "secret.md"), join(root, ".agents", "skills", "example-skill", "SKILL.md"));
+
+  const state = await repairAgentSkillsMirror(root);
+  expect(state.status).toBe("blocked");
+  expect(state.code).toBe("canonical_unsafe_content");
+});
+
+test("mirror mimo Git index je repair_needed a repair ho stage-uje", async () => {
+  const root = await rootFixture("untracked");
+  const first = await repairAgentSkillsMirror(root);
+  expect(first.status).toBe("ok");
+
+  const rmCached = Bun.spawnSync({
+    cmd: ["git", "rm", "--cached", "--quiet", ".claude/skills/example-skill/SKILL.md"],
+    cwd: root,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  expect(rmCached.exitCode).toBe(0);
+
+  const before = await checkAgentSkillsMirror(root);
+  expect(before.status).toBe("repair_needed");
+  expect(before.code).toBe("mirror_untracked");
+
+  const after = await repairAgentSkillsMirror(root);
+  expect(after.status).toBe("ok");
+});

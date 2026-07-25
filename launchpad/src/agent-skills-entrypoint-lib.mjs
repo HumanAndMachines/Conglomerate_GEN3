@@ -63,7 +63,9 @@ async function readActiveSkillSlugs(root) {
     );
     const slugs = (manifest.skills ?? [])
       .map((skill) => skill?.slug)
-      .filter((slug) => typeof slug === "string" && slug.length > 0);
+      // Slug tvoří filesystem cesty; mimo kebab-case (tečky, lomítka, "..")
+      // hrozí traversal — read-only doctor takové položky ignoruje.
+      .filter((slug) => typeof slug === "string" && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug));
     if (slugs.length > 0) return [...new Set(slugs)].sort();
   } catch {
     // Manifest chybí nebo nejde přečíst → fallback na adresářový sken.
