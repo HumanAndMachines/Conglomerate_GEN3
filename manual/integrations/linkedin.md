@@ -49,7 +49,8 @@ dokončuje Principál.
 
 ## Smoke test
 
-Žádné API čtení — čtení LinkedInu patří výhradně do browser fallbacku.
+Žádné API čtení a žádná publikace ve smoke — čtení LinkedInu patří
+výhradně do browser fallbacku.
 Jednorázové zjištění member URN při OAuth consentu (userinfo) je aktivační
 krok napojení, ne čtecí workflow; URN se uloží do custody a dál se
 nedotazuje. Smoke je metadata-only: ověř, že token platí, a připrav draft

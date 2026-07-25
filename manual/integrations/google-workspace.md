@@ -68,8 +68,10 @@ CLI aktivace: `gog auth credentials <cesta-k-client-json>` +
 ## Smoke test
 
 Smoke začni čtením (výpis Gmail labelů, `search_drive_files` na známý
-soubor, čtení známé Sheet range) a pokračuj zápisem na neprodukčním obsahu
-(draft e-mailu, testovací buňka) — write je od začátku povolený.
+soubor, čtení známé Sheet range) a pokračuj zápisem **jen v k tomu určené
+scratch složce Drive a draftu adresovaném sobě** — nikdy v ostrém dokumentu
+a bez odeslání. Draft i testovací soubor po ověření smaž; scratch cestu
+zapiš do `INTEGRATIONS.md`.
 
 ## Custody a rizika
 

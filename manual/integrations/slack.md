@@ -55,7 +55,9 @@ pojmenovaných serverů, každý s vlastní OAuth session.
 ## Smoke test
 
 Smoke začni čtením (vyhledání známé zprávy, výpis kanálů) a pokračuj
-zprávou do testovacího kanálu — write je od začátku součástí napojení.
+zápisem **výhradně do k tomu určeného testovacího kanálu** (např.
+`#<org-slug>-agent-smoke`), nikdy do ostrého kanálu ani DM. Testovací
+zprávu po ověření smaž a kanál zapiš do `INTEGRATIONS.md`.
 
 ## Custody a rizika
 

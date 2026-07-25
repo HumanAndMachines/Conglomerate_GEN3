@@ -55,8 +55,9 @@ hodnoty v custody env souboru.
 ## Smoke test
 
 Smoke začni čtením známého Jira issue a Confluence stránky přes
-`search_atlassian` a pokračuj zápisem na testovacím projektu/space — write
-je od začátku povolený, per-action ho potvrzuje approval mode.
+`search_atlassian` a pokračuj zápisem **jen v sandbox projektu/space**
+určeném pro agentní smoke, nikdy v ostrém projektu. Vytvořené issue/stránku
+po ověření smaž nebo zavři a sandbox zapiš do `INTEGRATIONS.md`.
 
 ## Custody a rizika
 

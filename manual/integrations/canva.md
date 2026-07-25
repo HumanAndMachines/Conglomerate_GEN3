@@ -46,9 +46,10 @@ Canva na org-dedikovaných mašinách.
 
 ## Smoke test
 
-Smoke začni searchem vlastních designů a pokračuj vytvořením testovacího
-designu — write je od začátku povolený. Export směřuj do custody/drafts
-cesty, ne do sdílených složek.
+Smoke začni searchem vlastních designů a pokračuj vytvořením **testovacího
+designu ve scratch složce** — nikdy nepřepisuj týmový asset. Design po
+ověření smaž; export směřuj do custody/drafts cesty, ne do sdílených
+složek.
 
 ## Custody a rizika
 

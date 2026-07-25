@@ -47,9 +47,13 @@ Codex, Desktop agenti). Kanonický standard:
    být vratné a editovatelné Principálem — draft zprávy místo odeslání,
    nový soubor místo přepisu ostrého, testovací kanál místo ostrého.
    Nevratný krok (odeslat, zveřejnit, smazat, přepsat ostrý obsah, změnit
-   oprávnění) udělej jen na explicitní pokyn Principála v daném threadu;
-   approval mode harnessu je pojistka nad tímhle pravidlem, ne náhrada.
-   Tabulka Draft/Publikace per služba je v
+   oprávnění) udělej jen na explicitní pokyn Principála v daném threadu.
+   Mechanický gate se liší podle cesty (Codex approval mode, Claude Code
+   permission pravidla per `mcp__<server>__<tool>`, u CLI jen shell
+   permissions — MCP approval mode se na CLI nevztahuje) a udělený OAuth
+   grant je schopnost celé mašiny, ne jen agenta; procesní pravidlo je
+   proto hlavní hranice, ne pojistka. Tabulky Draft/Publikace, gate per
+   cesta a pravidlo vratného smoke cíle jsou v
    `manual/external-app-integrations.md`.
 7. **Zaseknutí nebo zastaralý manuál = povinný upstream PR.** Runbooky jsou
    živý komunitní standard; nikdo je denně nepřetestovává. Když se Kolega
@@ -64,8 +68,12 @@ Codex, Desktop agenti). Kanonický standard:
 ## Ověření
 
 - Server je vidět (`codex mcp list` / `/mcp` v Claude Code) a smoke prošel:
-  čtení známého záznamu správného org účtu, zápis na testovacím záznamu
-  vratnou formou (draft/testovací cíl), bez nevratné publikace.
+  čtení známého záznamu správného org účtu, zápis na **jednorázovém cíli**
+  (testovací kanál, scratch složka, draft sobě) vratnou formou, bez
+  nevratné publikace; artefakt po ověření uklizený.
+- Write gate je nastavený podle cesty a zapsaný v `INTEGRATIONS.md`: v
+  Claude Code write nástroje v `ask`/`deny` (nikdy plošné allow serveru),
+  v Codexu `writes`/`prompt`, u CLI allowlist jen čtecích příkazů.
 - Katalog Organizace obsahuje integraci včetně env jmen a admin kroků;
   žádný secret v Gitu (`git grep` na jméno env souboru a provider).
 - Env soubor a token cache mají módy `0600`/`0700` v custody cestě.

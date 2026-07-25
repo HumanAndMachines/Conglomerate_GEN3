@@ -58,8 +58,9 @@ code flow dokončuje Principál; token cache jde do OS keychainu (keytar).
 ## Smoke test
 
 Smoke začni čtením (výpis posledních hlaviček inboxu, kalendář na dnešek)
-a pokračuj draftem (ne send) — write je od začátku povolený a potvrzuje ho
-approval mode harnessu.
+a pokračuj **draftem zprávy adresované sobě, bez odeslání**, případně
+událostí v testovacím kalendáři. Draft i testovací událost po ověření
+smaž.
 
 ## Custody a rizika
 
