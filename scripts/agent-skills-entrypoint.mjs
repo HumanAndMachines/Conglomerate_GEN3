@@ -29,14 +29,25 @@ const IGNORED_MIRROR_ENTRIES = new Set([".DS_Store", "Thumbs.db", "desktop.ini"]
 
 const scriptPath = fileURLToPath(import.meta.url);
 const defaultRoot = resolve(dirname(scriptPath), "..");
+// Známé instalační prefixy Gitu. Discovery zůstává bez PATH lookupu (obrana
+// proti podvrženému `git` v PATH), ale musí pokrýt i instalace bez admin práv:
+// Git for Windows se u korporátního uživatele bez administrátora instaluje do
+// %LOCALAPPDATA%\Programs\Git (cílová persona decision 0059), na macOS bývá
+// vedle systémového shimu Homebrew.
 const TRUSTED_GIT_EXECUTABLES = {
-  darwin: ["/usr/bin/git"],
-  linux: ["/usr/bin/git", "/bin/git"],
+  darwin: ["/usr/bin/git", "/opt/homebrew/bin/git", "/usr/local/bin/git"],
+  linux: ["/usr/bin/git", "/bin/git", "/usr/local/bin/git"],
   win32: [
     "C:\\Program Files\\Git\\cmd\\git.exe",
     "C:\\Program Files\\Git\\bin\\git.exe",
     "C:\\Program Files (x86)\\Git\\cmd\\git.exe",
     "C:\\Program Files (x86)\\Git\\bin\\git.exe",
+    ...(typeof process.env.LOCALAPPDATA === "string" && isAbsolute(process.env.LOCALAPPDATA)
+      ? [
+        join(process.env.LOCALAPPDATA, "Programs", "Git", "cmd", "git.exe"),
+        join(process.env.LOCALAPPDATA, "Programs", "Git", "bin", "git.exe"),
+      ]
+      : []),
   ],
 };
 
