@@ -36,6 +36,8 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(html).not.toContain('id="appCount"');
   expect(html).not.toContain('id="companyCount"');
   expect(html).not.toContain('id="failureCount"');
+  expect(html).toContain("family=Inter:wght@400..800");
+  expect(html).not.toContain("family=Manrope");
 
   // Přepínač v headeru drží právě jeden scope: Osobní nebo jednu Organizaci.
   expect(js).toContain("function renderSpaceSwitcher");
@@ -142,6 +144,8 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(css).toContain("var(--launchpad-body-background)");
   expect(css).toContain("color-mix(in srgb, var(--bg) 96%, #000)");
   expect(css).toContain("var(--font-heading, var(--font-body))");
+  expect(css).toContain('--font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;');
+  expect(css).not.toContain('"Manrope"');
   expect(css).toContain("--on-accent: #fff;");
   const primaryButtonBlock = css.slice(css.indexOf(".btn-primary {"), css.indexOf("}", css.indexOf(".btn-primary {")) + 1);
   expect(primaryButtonBlock).toContain("color: var(--on-accent);");

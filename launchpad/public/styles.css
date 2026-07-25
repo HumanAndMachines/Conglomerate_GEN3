@@ -1,7 +1,7 @@
 /* =========================================================
    Launchpad GEN3 — local operator shell
    Visual language adapted from the GEN2 Launchpad:
-   indigo accent (#6058E9), Manrope, restrained workstation
+   indigo accent (#6058E9), Inter, restrained workstation
    surfaces, light + dark via [data-theme]. Behaviour, policy
    and discovery contracts are unchanged — this is skin + IA.
    ========================================================= */
@@ -79,7 +79,7 @@
   --scroll-offset: calc(var(--topbar-h) + 0.75rem);
 
   /* Fonts */
-  --font-body: "Manrope", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-heading: var(--font-body);
   --font-mono: "JetBrains Mono", "SF Mono", "Menlo", "Consolas", monospace;
   --launchpad-body-background: color-mix(in srgb, var(--bg) 96%, #000);
@@ -162,8 +162,8 @@ body {
   color: var(--text);
   font-family: var(--font-body);
   font-size: 15px;
-  /* GEN2 body weight — Manrope sits a touch heavier than 500 for the
-     workstation feel. */
+  /* Inter se načítá jako variabilní font, takže může zachovat jemně výraznější
+     workstation řez mezi běžnými hodnotami 500 a 600. */
   font-weight: 520;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
