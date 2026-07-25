@@ -82,6 +82,15 @@
   --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-heading: var(--font-body);
   --font-mono: "JetBrains Mono", "SF Mono", "Menlo", "Consolas", monospace;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.8125rem;
+  --font-size-label: 0.875rem;
+  --font-size-body: 0.9375rem;
+  --font-size-heading: 1.375rem;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
   --launchpad-body-background: color-mix(in srgb, var(--bg) 96%, #000);
 
   color-scheme: light;
@@ -161,10 +170,10 @@ body {
   background: var(--launchpad-body-background);
   color: var(--text);
   font-family: var(--font-body);
-  font-size: 15px;
-  /* Inter se načítá jako variabilní font, takže může zachovat jemně výraznější
-     workstation řez mezi běžnými hodnotami 500 a 600. */
-  font-weight: 520;
+  font-size: var(--font-size-body);
+  /* Klidný regular řez drží delší text lehký; hierarchii vytvářejí explicitní
+     medium a semibold role místo plošně těžkého rozhraní. */
+  font-weight: var(--font-weight-regular);
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -180,6 +189,13 @@ h2,
 h3,
 h4 {
   font-family: var(--font-heading, var(--font-body));
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.015em;
+}
+
+strong,
+b {
+  font-weight: var(--font-weight-semibold);
 }
 
 a {
@@ -302,8 +318,8 @@ input:focus-visible,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.88rem;
-  font-weight: 800;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
 }
 
 .space-switcher-chevron {
@@ -329,8 +345,8 @@ input:focus-visible,
   border-radius: 7px;
   background: var(--bg-subtle);
   color: var(--text-muted);
-  font-size: 0.7rem;
-  font-weight: 900;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
 }
 
 .space-logo-personal {
@@ -404,8 +420,8 @@ input:focus-visible,
   border-radius: 50%;
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 0.74rem;
-  font-weight: 850;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
 }
 
 .space-profile-photo img {
@@ -432,8 +448,8 @@ input:focus-visible,
 .space-profile-name {
   display: block;
   color: inherit;
-  font-size: 0.9rem;
-  font-weight: 800;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   text-decoration: none;
 }
 
@@ -446,7 +462,7 @@ input:focus-visible,
 
 .space-profile-email {
   color: var(--text-muted);
-  font-size: 0.74rem;
+  font-size: var(--font-size-xs);
 }
 
 .space-profile-settings {
@@ -457,8 +473,8 @@ input:focus-visible,
   padding: 0.35rem 0.48rem;
   border-radius: var(--r-md);
   color: var(--text);
-  font-size: 0.84rem;
-  font-weight: 700;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   text-decoration: none;
 }
 
@@ -511,8 +527,8 @@ input:focus-visible,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.84rem;
-  font-weight: 750;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
 }
 
 .topbar-actions {
@@ -541,8 +557,8 @@ input:focus-visible,
   border-radius: 999px;
   color: var(--text-subtle);
   background: var(--bg-subtle);
-  font-size: 0.68rem;
-  font-weight: 800;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.04em;
 }
 
@@ -556,8 +572,8 @@ input:focus-visible,
   border-radius: var(--r-pill);
   background: color-mix(in srgb, var(--c-success) 10%, var(--surface));
   color: color-mix(in srgb, var(--c-success) 70%, #064e3b);
-  font-size: 0.76rem;
-  font-weight: 800;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
   white-space: nowrap;
 }
 
@@ -570,8 +586,8 @@ input:focus-visible,
   border: 1px solid var(--line);
   background: var(--bg-subtle);
   color: var(--text-muted);
-  font-size: 0.78rem;
-  font-weight: 650;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
   white-space: nowrap;
 }
 
@@ -630,7 +646,7 @@ button.update-pill:disabled {
 
 .update-banner-text {
   font-size: 0.92rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-medium);
 }
 
 .update-banner-action {
@@ -641,8 +657,8 @@ button.update-pill:disabled {
   background: var(--c-warn);
   color: #78350f;
   font: inherit;
-  font-size: 0.88rem;
-  font-weight: 700;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   cursor: pointer;
 }
 
@@ -733,8 +749,8 @@ button.update-pill:disabled {
   gap: 0.5rem;
   padding: 0.55rem 0.95rem;
   border-radius: var(--r-pill);
-  font-weight: 700;
-  font-size: 0.875rem;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-label);
   white-space: nowrap;
   transition: transform var(--t-fast) var(--ease), background var(--t-fast) var(--ease),
     color var(--t-fast) var(--ease),
@@ -748,7 +764,7 @@ button.update-pill:disabled {
 
 .btn-sm {
   padding: 0.4rem 0.8rem;
-  font-size: 0.8rem;
+  font-size: var(--font-size-sm);
 }
 
 .btn-primary {
@@ -849,8 +865,8 @@ button.update-pill:disabled {
 
 .hero-title {
   margin: 0;
-  font-size: 0.9rem;
-  font-weight: 750;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   line-height: 1.35;
   letter-spacing: -0.01em;
 }
@@ -864,7 +880,7 @@ button.update-pill:disabled {
 
 .hero .btn-sm {
   padding: 0.28rem 0.65rem;
-  font-size: 0.72rem;
+  font-size: var(--font-size-xs);
 }
 
 .hero.hero-ok .btn-secondary {
@@ -922,8 +938,8 @@ button.update-pill:disabled {
   border-radius: var(--r-pill);
   background: var(--c-warn);
   color: #fff;
-  font-size: 0.58rem;
-  font-weight: 850;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
   line-height: 1;
 }
 
@@ -987,7 +1003,7 @@ button.update-pill:disabled {
 }
 
 .organization-git-card > strong {
-  font-size: 0.84rem;
+  font-size: var(--font-size-label);
 }
 
 .organization-git-card p,
@@ -995,7 +1011,7 @@ button.update-pill:disabled {
 .bulk-pull-summary p {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.75rem;
+  font-size: var(--font-size-xs);
   line-height: 1.4;
 }
 
@@ -1008,12 +1024,12 @@ button.update-pill:disabled {
 .bulk-pull-summary {
   padding-top: 0.55rem;
   border-top: 1px solid var(--line);
-  font-size: 0.76rem;
+  font-size: var(--font-size-sm);
 }
 
 .bulk-pull-summary summary {
   cursor: pointer;
-  font-weight: 750;
+  font-weight: var(--font-weight-semibold);
 }
 
 .bulk-pull-summary ul {
@@ -1024,7 +1040,7 @@ button.update-pill:disabled {
 
 .recent-changes-sidebar .rail-eyebrow {
   color: var(--text);
-  font-size: 0.88rem;
+  font-size: var(--font-size-label);
   letter-spacing: 0;
   text-transform: none;
 }
@@ -1052,8 +1068,8 @@ button.update-pill:disabled {
   align-items: center;
   gap: 0.35rem;
   color: var(--text-subtle);
-  font-size: 0.68rem;
-  font-weight: 800;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -1077,7 +1093,7 @@ button.update-pill:disabled {
   margin: 0;
   color: var(--text);
   font-size: 1.3rem;
-  font-weight: 720;
+  font-weight: var(--font-weight-semibold);
   line-height: 1.25;
   letter-spacing: -0.02em;
 }
@@ -1085,8 +1101,8 @@ button.update-pill:disabled {
 .workspace-welcome-copy {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.8rem;
-  font-weight: 400;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
   line-height: 1.45;
 }
 
@@ -1125,7 +1141,7 @@ button.update-pill:disabled {
   outline: 0;
   background: transparent;
   color: var(--text);
-  font-size: 0.88rem;
+  font-size: var(--font-size-label);
 }
 
 .search-field input::placeholder {
@@ -1154,8 +1170,8 @@ button.update-pill:disabled {
   padding: 0.4rem 0.7rem;
   border-radius: var(--r-pill);
   color: var(--text-muted);
-  font-size: 0.8rem;
-  font-weight: 650;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
   white-space: nowrap;
 }
 
@@ -1174,8 +1190,8 @@ button.update-pill:disabled {
   border-radius: var(--r-pill);
   background: var(--surface);
   color: var(--text-muted);
-  font-size: 0.78rem;
-  font-weight: 650;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
   white-space: nowrap;
 }
 
@@ -1241,8 +1257,8 @@ button.update-pill:disabled {
   cursor: pointer;
   padding: 0.6rem 0.85rem;
   color: var(--text);
-  font-size: 0.84rem;
-  font-weight: 650;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
   list-style: none;
 }
 
@@ -1276,8 +1292,8 @@ button.update-pill:disabled {
   align-items: center;
   gap: 0.3rem;
   color: var(--text-subtle);
-  font-size: 0.74rem;
-  font-weight: 700;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
 }
 
 .problems-summary-hint::before {
@@ -1300,7 +1316,7 @@ button.update-pill:disabled {
   padding: 0.7rem 0.9rem;
   border-top: 1px solid var(--line);
   color: var(--text);
-  font-size: 0.84rem;
+  font-size: var(--font-size-label);
 }
 
 .problems-list > .problem-item:first-child {
@@ -1309,7 +1325,7 @@ button.update-pill:disabled {
 
 .problem-item strong {
   display: block;
-  font-weight: 800;
+  font-weight: var(--font-weight-semibold);
 }
 
 .problem-meta {
@@ -1319,7 +1335,7 @@ button.update-pill:disabled {
   padding-left: 1.1rem;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 0.74rem;
+  font-size: var(--font-size-xs);
 }
 
 .action-panel {
@@ -1327,8 +1343,8 @@ button.update-pill:disabled {
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--surface);
-  font-size: 0.85rem;
-  font-weight: 700;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
 }
 
 .action-ok {
@@ -1385,8 +1401,8 @@ button.update-pill:disabled {
   border-radius: var(--r-pill);
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 0.66rem;
-  font-weight: 800;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -1402,7 +1418,7 @@ button.update-pill:disabled {
 .app-section-title {
   margin: 0;
   font-size: 1.02rem;
-  font-weight: 900;
+  font-weight: var(--font-weight-bold);
 }
 
 /* GEN2 app-group-count: round count pill next to the section title. */
@@ -1416,22 +1432,22 @@ button.update-pill:disabled {
   border-radius: var(--r-pill);
   background: var(--bg-subtle);
   color: var(--text-muted);
-  font-size: 0.7rem;
-  font-weight: 800;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
 }
 
 .app-section-meta {
   min-width: 0;
   color: var(--text-muted);
-  font-size: 0.82rem;
-  font-weight: 600;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
   white-space: normal;
 }
 
 .app-section-note {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: var(--font-size-sm);
   line-height: 1.45;
 }
 
@@ -1480,7 +1496,6 @@ button.update-pill:disabled {
 .app-section-personalspace .app-section-eyebrow::before {
   content: "🔒";
   margin-right: 0.3rem;
-  font-size: 0.85em;
 }
 
 .personalspace-body,
@@ -1502,8 +1517,8 @@ button.update-pill:disabled {
 }
 
 .personalspace-space-subhead strong {
-  font-size: 0.9rem;
-  font-weight: 800;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
 }
 
 /* ---------- Right-panel drawer (Nejčastější / detail) ----------
@@ -1707,7 +1722,7 @@ button.update-pill:disabled {
 .app-card-title {
   margin: 0;
   font-size: 1rem;
-  font-weight: 760;
+  font-weight: var(--font-weight-semibold);
   line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1725,8 +1740,8 @@ button.update-pill:disabled {
   border-radius: var(--r-pill);
   background: color-mix(in srgb, var(--accent) 9%, var(--bg-muted));
   color: var(--text-muted);
-  font-size: 0.62rem;
-  font-weight: 760;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   line-height: 1.15;
   text-transform: lowercase;
   white-space: nowrap;
@@ -1807,7 +1822,7 @@ button.update-pill:disabled {
   margin: 0 0 0.15rem;
   padding: 0 0.15rem;
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: var(--font-size-xs);
   line-height: 1.35;
 }
 
@@ -1822,8 +1837,8 @@ button.update-pill:disabled {
   border-radius: var(--r-sm);
   background: transparent;
   color: var(--text);
-  font-size: 0.82rem;
-  font-weight: 650;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
   transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
 }
@@ -1867,8 +1882,8 @@ button.update-pill:disabled {
 }
 
 .app-version-option-info strong {
-  font-size: 0.82rem;
-  font-weight: 800;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1876,7 +1891,7 @@ button.update-pill:disabled {
 
 .app-version-option-info small {
   color: var(--text-subtle);
-  font-size: 0.72rem;
+  font-size: var(--font-size-xs);
 }
 
 .app-version-option-actions {
@@ -1890,7 +1905,7 @@ button.update-pill:disabled {
   flex: 0 0 auto;
   min-height: 28px;
   padding: 0 0.6rem;
-  font-size: 0.74rem;
+  font-size: var(--font-size-xs);
 }
 
 .app-version-option-actions .ghost-action {
@@ -1900,8 +1915,8 @@ button.update-pill:disabled {
 .app-card-sub {
   margin: 0.05rem 0 0;
   color: var(--text-subtle);
-  font-size: 0.74rem;
-  font-weight: 400;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1912,8 +1927,8 @@ button.update-pill:disabled {
 .app-card-org {
   margin: 0 0 0.2rem;
   color: var(--text-subtle);
-  font-size: 0.68rem;
-  font-weight: 700;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.02em;
   text-transform: uppercase;
   overflow: hidden;
@@ -1937,8 +1952,8 @@ button.update-pill:disabled {
   gap: 0.4rem;
   padding: 0.25rem 0.65rem;
   border-radius: var(--r-pill);
-  font-size: 0.74rem;
-  font-weight: 700;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.005em;
   white-space: nowrap;
 }
@@ -1998,7 +2013,7 @@ button.update-pill:disabled {
   gap: 0.4rem;
   color: var(--text-subtle);
   font-family: var(--font-mono);
-  font-size: 0.74rem;
+  font-size: var(--font-size-xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2026,8 +2041,8 @@ button.update-pill:disabled {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--text-muted);
-  font-size: 0.76rem;
-  font-weight: 700;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
   transition: all var(--t-fast) var(--ease);
 }
 
@@ -2081,8 +2096,8 @@ a.primary-action:hover {
   cursor: pointer;
   padding: 0.65rem 0.85rem;
   color: var(--text-subtle);
-  font-size: 0.74rem;
-  font-weight: 800;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   list-style: none;
@@ -2120,7 +2135,7 @@ td {
   border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: top;
-  font-size: 0.8rem;
+  font-size: var(--font-size-sm);
 }
 
 th {
@@ -2129,8 +2144,8 @@ th {
   z-index: 1;
   background: var(--bg-subtle);
   color: var(--text-subtle);
-  font-size: 0.7rem;
-  font-weight: 800;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
 }
 
@@ -2146,14 +2161,14 @@ tbody tr.selected {
 .app-title {
   display: block;
   color: var(--text);
-  font-weight: 800;
+  font-weight: var(--font-weight-semibold);
 }
 
 .app-subtitle,
 .path-text,
 .tag-list {
   color: var(--text-muted);
-  font-size: 0.74rem;
+  font-size: var(--font-size-xs);
 }
 
 .path-text {
@@ -2173,7 +2188,7 @@ tbody tr.selected {
   border-radius: var(--r-pill);
   border: 1px solid var(--line);
   background: var(--bg-muted);
-  font-size: 0.7rem;
+  font-size: var(--font-size-xs);
 }
 
 .open-link {
@@ -2186,8 +2201,8 @@ tbody tr.selected {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--accent);
-  font-weight: 700;
-  font-size: 0.76rem;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
   text-decoration: none;
 }
 
@@ -2212,8 +2227,8 @@ tbody tr.selected {
   background: var(--surface);
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 0.74rem;
-  font-weight: 700;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
 }
 
 .small-button:disabled {
@@ -2238,8 +2253,8 @@ tbody tr.selected {
   border: 1px solid var(--line);
   background: var(--bg-subtle);
   color: var(--text-muted);
-  font-size: 0.72rem;
-  font-weight: 800;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
 }
 
 .runtime-healthy {
@@ -2273,7 +2288,7 @@ tbody tr.selected {
   place-items: center;
   min-height: 180px;
   color: var(--text-subtle);
-  font-size: 0.9rem;
+  font-size: var(--font-size-label);
 }
 
 .detail-block {
@@ -2295,7 +2310,7 @@ tbody tr.selected {
 .detail-header h2 {
   margin: 0;
   font-size: 1.1rem;
-  font-weight: 800;
+  font-weight: var(--font-weight-semibold);
   line-height: 1.2;
 }
 
@@ -2315,8 +2330,8 @@ tbody tr.selected {
 .detail-section-title {
   margin: 0;
   color: var(--text-subtle);
-  font-size: 0.68rem;
-  font-weight: 800;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -2331,13 +2346,13 @@ tbody tr.selected {
 .detail-summary > p {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.86rem;
+  font-size: var(--font-size-label);
   line-height: 1.45;
 }
 
 .detail-summary .detail-summary-change {
   color: var(--text);
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
 }
 
 .detail-summary-actions {
@@ -2370,7 +2385,7 @@ tbody tr.selected {
 .detail-next p {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: var(--font-size-sm);
   line-height: 1.45;
 }
 
@@ -2387,8 +2402,8 @@ tbody tr.selected {
 
 .detail-list dt {
   color: var(--text-subtle);
-  font-size: 0.68rem;
-  font-weight: 800;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -2396,12 +2411,12 @@ tbody tr.selected {
 .detail-list dd {
   margin: 0;
   overflow-wrap: anywhere;
-  font-size: 0.82rem;
+  font-size: var(--font-size-sm);
 }
 
 .detail-list dd.is-mono {
   font-family: var(--font-mono);
-  font-size: 0.76rem;
+  font-size: var(--font-size-sm);
   color: var(--text-muted);
 }
 
@@ -2433,13 +2448,13 @@ tbody tr.selected {
 }
 
 .worktree-item strong {
-  font-size: 0.86rem;
+  font-size: var(--font-size-label);
 }
 
 .worktree-meta,
 .worktree-message {
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: var(--font-size-sm);
   overflow-wrap: anywhere;
 }
 
@@ -2479,8 +2494,8 @@ tbody tr.selected {
   border-radius: 999px;
   background: var(--bg-muted);
   color: var(--text-subtle);
-  font-size: 0.64rem;
-  font-weight: 900;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
   letter-spacing: 0.06em;
 }
 
@@ -2502,7 +2517,7 @@ tbody tr.selected {
 
 .runtime-source-text small {
   color: var(--text-muted);
-  font-size: 0.76rem;
+  font-size: var(--font-size-sm);
 }
 
 .worktree-builder-actions {
@@ -2525,7 +2540,7 @@ tbody tr.selected {
 }
 
 .git-change-list strong {
-  font-size: 0.82rem;
+  font-size: var(--font-size-sm);
 }
 
 .git-change-list ul {
@@ -2542,13 +2557,13 @@ tbody tr.selected {
   justify-content: space-between;
   gap: 0.6rem;
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: var(--font-size-sm);
 }
 
 .git-change-list code {
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 0.74rem;
+  font-size: var(--font-size-xs);
   overflow-wrap: anywhere;
 }
 
@@ -2556,7 +2571,7 @@ tbody tr.selected {
   flex: 0 0 auto;
   color: var(--text-subtle);
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: var(--font-size-xs);
 }
 
 .builder-action-card {
@@ -2570,13 +2585,13 @@ tbody tr.selected {
 
 .builder-action-card strong {
   color: var(--text);
-  font-size: 0.86rem;
+  font-size: var(--font-size-label);
 }
 
 .builder-action-card p {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: var(--font-size-sm);
   line-height: 1.45;
 }
 
@@ -2592,13 +2607,13 @@ tbody tr.selected {
 .plugin-block h3 {
   margin: 0;
   font-size: 0.92rem;
-  font-weight: 800;
+  font-weight: var(--font-weight-semibold);
 }
 
 .plugin-block p {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: var(--font-size-sm);
   line-height: 1.45;
 }
 
@@ -2617,14 +2632,14 @@ tbody tr.selected {
 
 .plugin-links a {
   color: var(--accent);
-  font-weight: 700;
-  font-size: 0.82rem;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
 }
 
 .detail-note {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: var(--font-size-sm);
   line-height: 1.45;
 }
 
@@ -2640,8 +2655,8 @@ tbody tr.selected {
   cursor: pointer;
   padding: 0.65rem 0.85rem;
   color: var(--text-subtle);
-  font-size: 0.74rem;
-  font-weight: 800;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   list-style: none;
@@ -2681,7 +2696,7 @@ tbody tr.selected {
   border-radius: var(--r-sm);
   color: #d7dcea;
   font-family: var(--font-mono);
-  font-size: 0.76rem;
+  font-size: var(--font-size-sm);
   line-height: 1.5;
   white-space: pre-wrap;
   overflow: auto;
@@ -2698,8 +2713,8 @@ tbody tr.selected {
   cursor: pointer;
   padding: 0.6rem 0.8rem;
   color: var(--text-subtle);
-  font-size: 0.72rem;
-  font-weight: 800;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   list-style: none;
@@ -2729,7 +2744,7 @@ tbody tr.selected {
   background: var(--surface-console);
   color: #d7dcea;
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: var(--font-size-xs);
   line-height: 1.5;
   max-height: 320px;
   overflow: auto;
@@ -2752,8 +2767,8 @@ tbody tr.selected {
   border: 1px solid var(--line-strong);
   background: var(--surface);
   color: var(--text);
-  font-size: 0.84rem;
-  font-weight: 700;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   animation: toast-in 0.22s var(--ease);
 }
 
@@ -2868,8 +2883,8 @@ tbody tr.selected {
 
   .topbar-overflow-menu .icon-btn::after {
     content: attr(data-overflow-label);
-    font-size: 0.78rem;
-    font-weight: 750;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
   }
 
   .layout {
@@ -3006,8 +3021,8 @@ tbody tr.selected {
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-size: 0.78rem;
-  font-weight: 400;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
   line-height: 1.42;
 }
 
@@ -3100,8 +3115,8 @@ tbody tr.selected {
 
 .card-warning-title {
   display: block;
-  font-size: 0.82rem;
-  font-weight: 800;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
   line-height: 1.25;
   color: var(--text);
   overflow-wrap: anywhere;
@@ -3134,8 +3149,8 @@ tbody tr.selected {
   background: var(--bg-muted);
   color: var(--text-muted);
   font: inherit;
-  font-size: 0.64rem;
-  font-weight: 700;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   line-height: 1.5;
@@ -3179,7 +3194,7 @@ button.runtime-stage.is-available:hover {
   border: 1px dashed var(--line-strong);
   border-radius: var(--r-sm);
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: var(--font-size-sm);
   font-style: italic;
 }
 .loading-dots::after {
@@ -3222,12 +3237,12 @@ button.runtime-stage.is-available:hover {
   flex: 1 1 auto;
 }
 .app-version-option-text strong {
-  font-size: 0.84rem;
-  font-weight: 850;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-bold);
 }
 .app-version-option-text small {
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: var(--font-size-xs);
 }
 .app-version-option-cue {
   flex: 0 0 auto;
@@ -3252,12 +3267,12 @@ button.runtime-stage.is-available:hover {
 .rail-copy {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: var(--font-size-sm);
   line-height: 1.4;
 }
 .rail-copy-hint {
   color: var(--text-subtle);
-  font-size: 0.76rem;
+  font-size: var(--font-size-sm);
 }
 
 .recent-modules,
@@ -3313,8 +3328,8 @@ button.runtime-stage.is-available:hover {
 }
 .recent-module-name,
 .quick-app-text strong {
-  font-size: 0.86rem;
-  font-weight: 700;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3322,13 +3337,13 @@ button.runtime-stage.is-available:hover {
 .recent-module-meta,
 .quick-app-text small {
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: var(--font-size-xs);
 }
 .quick-app-action {
   flex: 0 0 auto;
   color: var(--accent);
-  font-size: 0.74rem;
-  font-weight: 700;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
 }
 
 /* ---------- Modal Poslední změny detail ---------- */
@@ -3364,7 +3379,7 @@ button.runtime-stage.is-available:hover {
 .recent-module-modal-sub {
   margin: 0.2rem 0 0;
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: var(--font-size-sm);
 }
 .recent-module-commits {
   display: grid;
@@ -3387,11 +3402,11 @@ button.runtime-stage.is-available:hover {
   cursor: pointer;
 }
 .module-commit-toggle strong {
-  font-size: 0.88rem;
+  font-size: var(--font-size-label);
 }
 .module-commit-toggle span {
   color: var(--text-muted);
-  font-size: 0.74rem;
+  font-size: var(--font-size-xs);
 }
 .module-commit-detail {
   display: grid;
@@ -3401,13 +3416,13 @@ button.runtime-stage.is-available:hover {
 }
 .module-commit-description {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: var(--font-size-sm);
   color: var(--text-muted);
   white-space: pre-wrap;
 }
 .module-commit-full-hash {
   font-family: var(--font-mono, monospace);
-  font-size: 0.72rem;
+  font-size: var(--font-size-xs);
   color: var(--text-subtle);
   word-break: break-all;
 }
@@ -3420,13 +3435,13 @@ button.runtime-stage.is-available:hover {
 .personalspace-empty {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: var(--font-size-sm);
   line-height: 1.4;
 }
 
 .personalspace-space-mount {
   color: var(--text-subtle);
-  font-size: 0.7rem;
+  font-size: var(--font-size-xs);
   font-family: var(--font-mono);
   overflow-wrap: anywhere;
 }
@@ -3436,14 +3451,14 @@ button.runtime-stage.is-available:hover {
   border-radius: var(--r-sm);
   background: var(--c-danger-bg);
   color: var(--c-danger);
-  font-size: 0.74rem;
+  font-size: var(--font-size-xs);
   line-height: 1.4;
 }
 
 .personalspace-apps-empty {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.76rem;
+  font-size: var(--font-size-sm);
   line-height: 1.4;
 }
 .personalspace-app {
@@ -3517,8 +3532,8 @@ button.runtime-stage.is-available:hover {
 }
 .personalspace-app-title {
   margin: 0;
-  font-size: 0.82rem;
-  font-weight: 800;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
   line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3527,7 +3542,7 @@ button.runtime-stage.is-available:hover {
 .personalspace-app-desc {
   margin: 0.15rem 0 0;
   color: var(--text-subtle);
-  font-size: 0.72rem;
+  font-size: var(--font-size-xs);
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -3537,8 +3552,8 @@ button.runtime-stage.is-available:hover {
   align-items: center;
   padding: 0.1rem 0.45rem;
   border-radius: var(--r-pill);
-  font-size: 0.64rem;
-  font-weight: 800;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -3576,8 +3591,8 @@ button.runtime-stage.is-available:hover {
   align-items: center;
   padding: 0.18rem 0.5rem;
   border-radius: var(--r-pill);
-  font-size: 0.68rem;
-  font-weight: 700;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   border: 1px dashed var(--line-strong);
   color: var(--text-muted);
   font-family: var(--font-mono);
@@ -3599,8 +3614,8 @@ button.runtime-stage.is-available:hover {
   align-items: center;
   gap: 0.35rem;
   color: var(--text-subtle);
-  font-size: 0.68rem;
-  font-weight: 800;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -3614,7 +3629,7 @@ button.runtime-stage.is-available:hover {
 .personalspace-gbrain-missing {
   margin: 0;
   color: var(--text-subtle);
-  font-size: 0.7rem;
+  font-size: var(--font-size-xs);
   line-height: 1.4;
 }
 .personalspace-gbrain-path {
@@ -3645,19 +3660,19 @@ button.runtime-stage.is-available:hover {
   border-radius: var(--r-sm);
   background: var(--surface);
   color: var(--text);
-  font-size: 0.78rem;
+  font-size: var(--font-size-sm);
 }
 .personalspace-gbrain-error {
   margin: 0;
   color: var(--c-danger);
-  font-size: 0.74rem;
+  font-size: var(--font-size-xs);
 }
 .personalspace-gbrain-loading,
 .personalspace-gbrain-count,
 .personalspace-gbrain-note-empty {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.74rem;
+  font-size: var(--font-size-xs);
 }
 .personalspace-gbrain-columns {
   display: grid;
@@ -3681,8 +3696,8 @@ button.runtime-stage.is-available:hover {
 }
 .personalspace-gbrain-tree summary {
   cursor: pointer;
-  font-size: 0.76rem;
-  font-weight: 700;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
   padding: 0.15rem 0;
 }
 .personalspace-gbrain-file {
@@ -3694,7 +3709,7 @@ button.runtime-stage.is-available:hover {
   border-radius: var(--r-sm);
   background: transparent;
   color: var(--text);
-  font-size: 0.76rem;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   overflow-wrap: anywhere;
 }
@@ -3704,7 +3719,7 @@ button.runtime-stage.is-available:hover {
 .personalspace-gbrain-file.is-active {
   background: var(--accent-soft);
   color: var(--accent);
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
 }
 .personalspace-gbrain-results-head {
   display: flex;
@@ -3712,8 +3727,8 @@ button.runtime-stage.is-available:hover {
   justify-content: space-between;
   gap: 0.5rem;
   margin-bottom: 0.35rem;
-  font-size: 0.76rem;
-  font-weight: 700;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
 }
 .personalspace-gbrain-result {
   margin-bottom: 0.5rem;
@@ -3721,7 +3736,7 @@ button.runtime-stage.is-available:hover {
 .personalspace-gbrain-snippet {
   margin: 0.1rem 0 0 0.4rem;
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: var(--font-size-xs);
   font-family: var(--font-mono);
   overflow-wrap: anywhere;
 }
@@ -3734,15 +3749,15 @@ button.runtime-stage.is-available:hover {
   background: var(--surface);
 }
 .personalspace-gbrain-note-title {
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   color: var(--text-subtle);
   font-family: var(--font-mono);
   margin-bottom: 0.4rem;
   overflow-wrap: anywhere;
 }
 .personalspace-gbrain-note-body {
-  font-size: 0.8rem;
+  font-size: var(--font-size-sm);
   line-height: 1.5;
 }
 .personalspace-gbrain-note-body h1,
@@ -3754,12 +3769,12 @@ button.runtime-stage.is-available:hover {
 }
 .personalspace-gbrain-note-body h1 { font-size: 1.05rem; }
 .personalspace-gbrain-note-body h2 { font-size: 0.98rem; }
-.personalspace-gbrain-note-body h3 { font-size: 0.9rem; }
+.personalspace-gbrain-note-body h3 { font-size: var(--font-size-label); }
 .personalspace-gbrain-note-body p { margin: 0.35rem 0; }
 .personalspace-gbrain-note-body ul { margin: 0.35rem 0; padding-left: 1.1rem; }
 .personalspace-gbrain-note-body code {
   font-family: var(--font-mono);
-  font-size: 0.86em;
+  font-size: var(--font-size-xs);
   background: var(--bg-subtle);
   padding: 0.05rem 0.3rem;
   border-radius: 4px;
@@ -3811,6 +3826,11 @@ button.runtime-stage.is-available:hover {
   padding: clamp(1.5rem, 4vw, 3rem);
   border-radius: var(--r-lg);
   text-align: center;
+}
+
+.personalspace-friendly-empty h2 {
+  font-size: clamp(1.25rem, 2.25vw, var(--font-size-heading));
+  line-height: 1.25;
 }
 
 .personalspace-friendly-empty h2,
@@ -3889,8 +3909,8 @@ button.runtime-stage.is-available:hover {
 
 .buddy-eyebrow {
   color: color-mix(in srgb, var(--accent) 74%, #8c3b1f);
-  font-size: 0.74rem;
-  font-weight: 800;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -3908,8 +3928,8 @@ button.runtime-stage.is-available:hover {
   align-items: center;
   width: fit-content;
   border-radius: var(--r-pill);
-  font-size: 0.74rem;
-  font-weight: 800;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
 }
 
 .buddy-status {
@@ -3968,7 +3988,7 @@ button.runtime-stage.is-available:hover {
 
 .buddy-application-copy span {
   color: var(--text-subtle);
-  font-size: 0.72rem;
+  font-size: var(--font-size-xs);
 }
 
 .buddy-application-copy strong {
@@ -4025,14 +4045,14 @@ button.runtime-stage.is-available:hover {
 }
 
 .buddy-routine h3 {
-  font-size: 0.88rem;
+  font-size: var(--font-size-label);
   line-height: 1.35;
 }
 
 .buddy-routine p {
   margin-top: 0.2rem;
   color: var(--text-subtle);
-  font-size: 0.74rem;
+  font-size: var(--font-size-xs);
   line-height: 1.4;
 }
 
@@ -4041,8 +4061,8 @@ button.runtime-stage.is-available:hover {
   border-radius: var(--r-pill);
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 0.68rem;
-  font-weight: 800;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   white-space: nowrap;
 }
 
@@ -4067,7 +4087,7 @@ button.runtime-stage.is-available:hover {
 .personalspace-apps-empty p {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: var(--font-size-sm);
   line-height: 1.5;
 }
 
@@ -4091,8 +4111,8 @@ button.runtime-stage.is-available:hover {
   width: fit-content;
   padding: 0.85rem 0;
   cursor: pointer;
-  font-size: 0.76rem;
-  font-weight: 700;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
 }
 
 .personalspace-technical-inner {

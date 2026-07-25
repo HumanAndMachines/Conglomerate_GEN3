@@ -162,6 +162,23 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(css).toContain(".app-card");
 });
 
+test("Inter typografie používá lehčí systémovou hierarchii a čitelné minimum", async () => {
+  const css = await readFile(join(publicRoot, "styles.css"), "utf8");
+
+  expect(css).toContain("--font-size-xs: 0.75rem;");
+  expect(css).toContain("--font-size-sm: 0.8125rem;");
+  expect(css).toContain("--font-size-label: 0.875rem;");
+  expect(css).toContain("--font-size-body: 0.9375rem;");
+  expect(css).toContain("--font-size-heading: 1.375rem;");
+  expect(css).toContain("--font-weight-regular: 400;");
+  expect(css).toContain("--font-weight-medium: 500;");
+  expect(css).toContain("--font-weight-semibold: 600;");
+  expect(css).toContain("--font-weight-bold: 700;");
+  expect(css).not.toMatch(/(^|\n)\s*font-weight:\s*(?:[89]\d{2}|7[1-9]\d);/);
+  expect(css).not.toMatch(/(^|\n)\s*font-size:\s*0\.(?:[0-6]\d|7[0-4])rem;/);
+  expect(css).not.toMatch(/font-size:\s*0\.\d+em;/);
+});
+
 test("Organization theme klient přijme stejné neprůhledné on-accent barvy jako server", async () => {
   const js = await readFile(join(publicRoot, "app.js"), "utf8");
   const safeOrganizationThemeValue = extractClientThemeValidator(js);
@@ -923,7 +940,7 @@ test("Launchpad používá jednotný kompaktní modulový grid bez stínů", asy
   expect(css).toContain("min-height: 148px");
   expect(css).toContain("width: 2.6rem");
   expect(css).toContain("border: 1px solid transparent");
-  expect(css).toContain("font-weight: 400");
+  expect(css).toContain("font-weight: var(--font-weight-regular)");
   expect(css).toContain("outline: 3px solid var(--accent-soft)");
   expect(css).toContain("color-mix(in srgb, var(--accent) 58%, var(--line))");
   expect(css).toContain(".app-card.selected:focus-visible");
@@ -954,7 +971,7 @@ test("Organization workspace má kompaktní uvítání s dynamickým názvem fir
   expect(css).toContain(".workspace-welcome-title");
   expect(css).toContain("margin-top: 1.5rem");
   expect(css).toContain("font-size: 1.3rem");
-  expect(css).toContain("font-weight: 720");
+  expect(css).toContain("font-weight: var(--font-weight-semibold)");
 });
 
 test("CAC-0083: dostupný root update je nepřehlédnutelný — banner ve všech scope, počet commitů, průběžný refresh", async () => {
