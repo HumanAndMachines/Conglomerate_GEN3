@@ -1,10 +1,13 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { isAbsolute } from "node:path";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   checkAgentSkillsMirror,
   repairAgentSkillsMirror,
+  trustedGitCandidates,
+  trustedGitExecutable,
 } from "./agent-skills-entrypoint.mjs";
 
 const tempRoots = [];
@@ -222,4 +225,28 @@ test("Git kontrakt: toplevel guard nezaměňuje index nadřazeného repozitáře
   expect(state.status).toBe("blocked");
   expect(state.code).toBe("entrypoint_contract_invalid");
   expect(state.problems.join(" ")).toContain("nadřazeného repozitáře");
+});
+
+test("Windows per-user instalace Gitu je mezi trusted kandidáty", async () => {
+  const withLocalAppData = trustedGitCandidates("win32", {
+    LOCALAPPDATA: "C:\\Users\\kolega\\AppData\\Local",
+  });
+  expect(withLocalAppData).toContain("C:\\Program Files\\Git\\cmd\\git.exe");
+  expect(withLocalAppData.some((path) => path.includes("AppData\\Local") && path.endsWith("git.exe")))
+    .toBe(true);
+
+  // Relativní nebo chybějící LOCALAPPDATA nesmí vytvořit relativního kandidáta.
+  expect(trustedGitCandidates("win32", { LOCALAPPDATA: "relativni\\cesta" }))
+    .toEqual(trustedGitCandidates("win32", {}));
+  expect(trustedGitCandidates("darwin", {})).toContain("/opt/homebrew/bin/git");
+  expect(trustedGitCandidates("linux", {})).toContain("/usr/local/bin/git");
+});
+
+test("resolution kandidátů najde na hostitelské platformě skutečný git", () => {
+  // Běží v CI na Windows i Linuxu, takže pokrývá realpath+stat větev
+  // discovery přesně tam, kde ji používá povinný doctor:agent-skills.
+  const resolved = trustedGitExecutable();
+  expect(typeof resolved).toBe("string");
+  expect(isAbsolute(resolved)).toBe(true);
+  expect(trustedGitCandidates().length).toBeGreaterThan(0);
 });

@@ -78,8 +78,11 @@ async function readActiveSkillSlugs(root) {
   const slugs = [];
   for (const entry of await readdir(canonicalRoot, { withFileTypes: true })) {
     if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+    // Stačí, že SKILL.md existuje v jakékoli podobě — jestli je to obyčejný
+    // soubor, rozhoduje až drift scan, aby symlink skončil zavřeně místo aby
+    // slug tiše vypadl ze seznamu aktivních skillů.
     const skillStat = await lstatOrNull(join(canonicalRoot, entry.name, "SKILL.md"));
-    if (skillStat?.isFile()) slugs.push(entry.name);
+    if (skillStat) slugs.push(entry.name);
   }
   return slugs.sort();
 }
@@ -118,6 +121,24 @@ async function mirrorDrift(root, slugs) {
   }
 
   for (const slug of slugs) {
+    const canonicalDirectory = join(root, canonicalRelativePath, slug);
+    const canonicalFile = join(canonicalDirectory, "SKILL.md");
+    // Symlink na kanonické straně nesmí projít jako "shodné bajty": mirror by
+    // tak nesl obsah zvenčí katalogu. Doctor to musí hlásit stejně zavřeně
+    // jako repair lane, jinak si obě lane protiřečí.
+    const [canonicalDirStat, canonicalStat] = await Promise.all([
+      lstatOrNull(canonicalDirectory),
+      lstatOrNull(canonicalFile),
+    ]);
+    if (
+      !canonicalDirStat?.isDirectory() || canonicalDirStat.isSymbolicLink() ||
+      !canonicalStat?.isFile() || canonicalStat.isSymbolicLink()
+    ) {
+      unsafe.push(
+        `${canonicalRelativePath}/${slug} musí být skutečný adresář s obyčejným SKILL.md (žádné symlinky).`,
+      );
+      continue;
+    }
     const mirrorFile = join(mirrorRoot, slug, "SKILL.md");
     const mirrorStat = await lstatOrNull(mirrorFile);
     if (!mirrorStat) {
@@ -126,7 +147,7 @@ async function mirrorDrift(root, slugs) {
     }
     if (!mirrorStat.isFile() || mirrorStat.isSymbolicLink()) continue;
     const [canonicalBytes, mirrorBytes] = await Promise.all([
-      readFile(join(root, canonicalRelativePath, slug, "SKILL.md")),
+      readFile(canonicalFile),
       readFile(mirrorFile),
     ]);
     if (!canonicalBytes.equals(mirrorBytes)) {

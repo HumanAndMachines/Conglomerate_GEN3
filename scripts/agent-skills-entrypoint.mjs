@@ -13,7 +13,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { realpathSync, statSync } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve, win32 as pathWin32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   AGENT_SKILLS_ENTRYPOINT_SCHEMA,
@@ -29,16 +29,36 @@ const IGNORED_MIRROR_ENTRIES = new Set([".DS_Store", "Thumbs.db", "desktop.ini"]
 
 const scriptPath = fileURLToPath(import.meta.url);
 const defaultRoot = resolve(dirname(scriptPath), "..");
-const TRUSTED_GIT_EXECUTABLES = {
-  darwin: ["/usr/bin/git"],
-  linux: ["/usr/bin/git", "/bin/git"],
-  win32: [
+// Známé instalační prefixy Gitu. Discovery zůstává bez PATH lookupu (obrana
+// proti podvrženému `git` v PATH), ale musí pokrýt i instalace bez admin práv:
+// Git for Windows se u korporátního uživatele bez administrátora instaluje do
+// %LOCALAPPDATA%\Programs\Git (cílová persona decision 0059), na macOS bývá
+// vedle systémového shimu Homebrew.
+export function trustedGitCandidates(platform = process.platform, env = process.env) {
+  if (platform === "darwin") {
+    return ["/usr/bin/git", "/opt/homebrew/bin/git", "/usr/local/bin/git"];
+  }
+  if (platform === "linux") {
+    return ["/usr/bin/git", "/bin/git", "/usr/local/bin/git"];
+  }
+  if (platform !== "win32") return [];
+  const localAppData = env.LOCALAPPDATA;
+  // Windows cesty se skládají výhradně přes path.win32 — isAbsolute i join
+  // z node:path mají sémantiku hostitelské platformy, takže by tahle větev
+  // na macOS/Linuxu (a v testech) tiše vypadla.
+  return [
     "C:\\Program Files\\Git\\cmd\\git.exe",
     "C:\\Program Files\\Git\\bin\\git.exe",
     "C:\\Program Files (x86)\\Git\\cmd\\git.exe",
     "C:\\Program Files (x86)\\Git\\bin\\git.exe",
-  ],
-};
+    ...(typeof localAppData === "string" && pathWin32.isAbsolute(localAppData)
+      ? [
+        pathWin32.join(localAppData, "Programs", "Git", "cmd", "git.exe"),
+        pathWin32.join(localAppData, "Programs", "Git", "bin", "git.exe"),
+      ]
+      : []),
+  ];
+}
 
 function sanitizedGitEnvironment() {
   const environment = {};
@@ -55,8 +75,8 @@ function sanitizedGitEnvironment() {
   return environment;
 }
 
-function trustedGitExecutable(platform = process.platform) {
-  for (const candidate of TRUSTED_GIT_EXECUTABLES[platform] ?? []) {
+export function trustedGitExecutable(platform = process.platform) {
+  for (const candidate of trustedGitCandidates(platform)) {
     try {
       const canonicalPath = realpathSync.native(candidate);
       if (isAbsolute(canonicalPath) && statSync(canonicalPath).isFile()) {

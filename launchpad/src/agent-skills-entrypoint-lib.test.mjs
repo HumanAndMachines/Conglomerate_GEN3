@@ -263,3 +263,26 @@ test("gitignored OS junk v mirroru nehlásí sdílený doctor jako drift", async
   expect(check.status).toBe("ok");
   expect(check.details[0]).toContain("ok/mirror_ready");
 });
+
+test("symlink kanonického SKILL.md hlásí sdílený doctor zavřeně, ne mirror_ready", async () => {
+  const { companiesRoot, organizationRoot } = await organizationFixture("canonical-symlink");
+  const outside = await mkdtemp(join(tmpdir(), "agent-skills-canonical-outside-"));
+  tempRoots.push(outside);
+  await writeFile(join(outside, "secret.md"), "# example-skill\n");
+  await mkdir(join(organizationRoot, ".agents", "skills", "example-skill"), { recursive: true });
+  await symlink(
+    join(outside, "secret.md"),
+    join(organizationRoot, ".agents", "skills", "example-skill", "SKILL.md"),
+  );
+  // Mirror nese shodné bajty — dřív to doctor prohlásil za mirror_ready.
+  await writeMirror(organizationRoot, "example-skill");
+
+  const check = await agentSkillsEntrypointsDoctorCheck({
+    companiesRoot,
+    includeRoot: false,
+    mounts: [{ path: "organizations/Example_GEN3", status: "mounted" }],
+  });
+
+  expect(check.status).toBe("fail");
+  expect(check.details[0]).toContain("blocked/mirror_unsafe_content");
+});
