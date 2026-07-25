@@ -75,7 +75,7 @@ function sanitizedGitEnvironment() {
   return environment;
 }
 
-function trustedGitExecutable(platform = process.platform) {
+export function trustedGitExecutable(platform = process.platform) {
   for (const candidate of trustedGitCandidates(platform)) {
     try {
       const canonicalPath = realpathSync.native(candidate);

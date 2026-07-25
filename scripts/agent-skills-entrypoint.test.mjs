@@ -1,11 +1,13 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { isAbsolute } from "node:path";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   checkAgentSkillsMirror,
   repairAgentSkillsMirror,
   trustedGitCandidates,
+  trustedGitExecutable,
 } from "./agent-skills-entrypoint.mjs";
 
 const tempRoots = [];
@@ -238,4 +240,13 @@ test("Windows per-user instalace Gitu je mezi trusted kandidáty", async () => {
     .toEqual(trustedGitCandidates("win32", {}));
   expect(trustedGitCandidates("darwin", {})).toContain("/opt/homebrew/bin/git");
   expect(trustedGitCandidates("linux", {})).toContain("/usr/local/bin/git");
+});
+
+test("resolution kandidátů najde na hostitelské platformě skutečný git", () => {
+  // Běží v CI na Windows i Linuxu, takže pokrývá realpath+stat větev
+  // discovery přesně tam, kde ji používá povinný doctor:agent-skills.
+  const resolved = trustedGitExecutable();
+  expect(typeof resolved).toBe("string");
+  expect(isAbsolute(resolved)).toBe(true);
+  expect(trustedGitCandidates().length).toBeGreaterThan(0);
 });
