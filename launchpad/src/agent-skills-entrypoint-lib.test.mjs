@@ -246,3 +246,20 @@ test("Doctor kontroluje i root checkout Conglomerate (includeRoot default)", asy
   expect(check.status).toBe("ok");
   expect(check.details[0]).toContain("root: ok/mirror_ready");
 });
+
+test("gitignored OS junk v mirroru nehlásí sdílený doctor jako drift", async () => {
+  const { companiesRoot, organizationRoot } = await organizationFixture("os-junk");
+  await writeSkill(organizationRoot, "example-skill");
+  await writeMirror(organizationRoot, "example-skill");
+  await writeFile(join(organizationRoot, ".claude", "skills", ".DS_Store"), "junk");
+  await writeFile(join(organizationRoot, ".claude", "skills", "example-skill", ".DS_Store"), "junk");
+
+  const check = await agentSkillsEntrypointsDoctorCheck({
+    companiesRoot,
+    includeRoot: false,
+    mounts: [{ path: "organizations/Example_GEN3", status: "mounted" }],
+  });
+
+  expect(check.status).toBe("ok");
+  expect(check.details[0]).toContain("ok/mirror_ready");
+});

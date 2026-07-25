@@ -23,6 +23,9 @@ import {
 
 export const CANONICAL_SKILLS_PATH = ".agents/skills";
 export const CLAUDE_SKILLS_PATH = ".claude/skills";
+// Gitignored OS junk z Finderu/Exploreru; v Git-tracked mirroru neexistuje,
+// takže ho Repair ani nepočítá mezi neznámý obsah (viz lib komentář).
+const IGNORED_MIRROR_ENTRIES = new Set([".DS_Store", "Thumbs.db", "desktop.ini"]);
 
 const scriptPath = fileURLToPath(import.meta.url);
 const defaultRoot = resolve(dirname(scriptPath), "..");
@@ -84,6 +87,11 @@ function output(result) {
   return new TextDecoder().decode(result.stdout).trim();
 }
 
+function comparablePath(path, platform = process.platform) {
+  const normalized = resolve(path).replaceAll("\\", "/").replace(/\/+$/, "");
+  return platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
 function publicState({ status, code, problems = [], message }) {
   return {
     schema_version: AGENT_SKILLS_ENTRYPOINT_SCHEMA,
@@ -111,10 +119,17 @@ export async function readActiveSkillSlugs(root = defaultRoot) {
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   const slugs = [];
   for (const skill of manifest.skills ?? []) {
-    const expectedPath = `${CANONICAL_SKILLS_PATH}/${skill.slug}/SKILL.md`;
-    if (typeof skill.slug !== "string" || skill.path !== expectedPath) {
+    if (typeof skill.slug !== "string" || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(skill.slug)) {
+      // Slug je součást filesystem cest mirroru; cokoliv mimo kebab-case
+      // (tečky, lomítka, "..") by dovolilo traversal mimo kanonický katalog.
       throw new Error(
-        `Manifest skill ${skill.slug ?? "<bez slugu>"} musí mít path ${expectedPath}.`,
+        `Manifest skill ${typeof skill.slug === "string" ? skill.slug : "<bez slugu>"} musí mít kebab-case slug bez cest.`,
+      );
+    }
+    const expectedPath = `${CANONICAL_SKILLS_PATH}/${skill.slug}/SKILL.md`;
+    if (skill.path !== expectedPath) {
+      throw new Error(
+        `Manifest skill ${skill.slug} musí mít path ${expectedPath}.`,
       );
     }
     slugs.push(skill.slug);
@@ -133,6 +148,20 @@ export function validateGitContract(root, expectedPaths) {
   const topLevel = git(root, ["rev-parse", "--show-toplevel"]);
   if (topLevel.exitCode !== 0) {
     problems.push("Agent-skills mirror lze spravovat jen uvnitř Git checkoutu.");
+    return problems;
+  }
+  try {
+    // Bez téhle vazby by check i repair pracovaly s indexem nadřazeného
+    // repozitáře, kdyby root nebyl vlastní Git checkout.
+    if (
+      comparablePath(realpathSync.native(output(topLevel))) !==
+      comparablePath(realpathSync.native(root))
+    ) {
+      problems.push("Agent-skills mirror nesmí převzít Git index nadřazeného repozitáře.");
+      return problems;
+    }
+  } catch {
+    problems.push("Nelze bezpečně svázat agent-skills mirror s Git rootem repozitáře.");
     return problems;
   }
 
@@ -181,6 +210,23 @@ export async function checkAgentSkillsMirror(root = defaultRoot, options = {}) {
       message: "Claude skills mirror porušuje Git kontrakt.",
     });
   }
+  if (inspection.status === "ok") {
+    // Obsahová parita nestačí: mirror soubor mimo Git index by tiše chyběl
+    // v commitu i čerstvém checkoutu, i když doctor vidí shodné bajty.
+    const tracked = git(repoRoot, ["ls-files", "--cached", "--", CLAUDE_SKILLS_PATH]);
+    if (tracked.exitCode === 0) {
+      const trackedSet = new Set(output(tracked).split("\n").filter(Boolean));
+      const untracked = expectedMirrorPaths(slugs).filter((path) => !trackedSet.has(path));
+      if (untracked.length > 0) {
+        return publicState({
+          status: "repair_needed",
+          code: "mirror_untracked",
+          problems: untracked.map((path) => `${path} není v Git indexu.`),
+          message: `${CLAUDE_SKILLS_PATH} mirror není celý v Git indexu; spusť bun run repair:agent-skills a commitni.`,
+        });
+      }
+    }
+  }
   return inspection;
 }
 
@@ -213,6 +259,7 @@ export async function repairAgentSkillsMirror(root = defaultRoot, options = {}) 
 
   for (const entry of await readdir(compatibilityPath, { withFileTypes: true })) {
     const entryPath = join(compatibilityPath, entry.name);
+    if (IGNORED_MIRROR_ENTRIES.has(entry.name)) continue;
     if (entry.isSymbolicLink()) continue;
     if (!entry.isDirectory()) {
       // Stray soubor přímo v mirroru: inspect ho hlásí jako drift, ale mazat
@@ -228,7 +275,9 @@ export async function repairAgentSkillsMirror(root = defaultRoot, options = {}) 
     }
     const children = await readdir(entryPath, { withFileTypes: true });
     const onlyMirrorShape = children.every(
-      (child) => child.isFile() && !child.isSymbolicLink() && child.name === "SKILL.md",
+      (child) =>
+        IGNORED_MIRROR_ENTRIES.has(child.name) ||
+        (child.isFile() && !child.isSymbolicLink() && child.name === "SKILL.md"),
     );
     if (!onlyMirrorShape) {
       // Platí i pro aktivní skill adresář: extra obsah vedle SKILL.md by jinak
@@ -247,7 +296,28 @@ export async function repairAgentSkillsMirror(root = defaultRoot, options = {}) 
   }
 
   for (const slug of slugs) {
-    const canonicalFile = join(repoRoot, CANONICAL_SKILLS_PATH, slug, "SKILL.md");
+    const canonicalDirectory = join(repoRoot, CANONICAL_SKILLS_PATH, slug);
+    const canonicalFile = join(canonicalDirectory, "SKILL.md");
+    // Symlink na kanonické straně by protáhl do trackovaného mirroru bajty
+    // zvenčí katalogu (disclosure) — kopíruje se jen obyčejný soubor
+    // v obyčejném adresáři.
+    const [canonicalDirStat, canonicalStat] = await Promise.all([
+      lstatOrNull(canonicalDirectory),
+      lstatOrNull(canonicalFile),
+    ]);
+    if (
+      !canonicalDirStat?.isDirectory() || canonicalDirStat.isSymbolicLink() ||
+      !canonicalStat?.isFile() || canonicalStat.isSymbolicLink()
+    ) {
+      return publicState({
+        status: "blocked",
+        code: "canonical_unsafe_content",
+        problems: [
+          `${CANONICAL_SKILLS_PATH}/${slug} musí být skutečný adresář s obyčejným SKILL.md (žádné symlinky).`,
+        ],
+        message: "Kanonický katalog obsahuje nebezpečný obsah; oprav ho ručně.",
+      });
+    }
     const mirrorDirectory = join(compatibilityPath, slug);
     const mirrorFile = join(mirrorDirectory, "SKILL.md");
     await mkdir(mirrorDirectory, { recursive: true });
@@ -261,6 +331,16 @@ export async function repairAgentSkillsMirror(root = defaultRoot, options = {}) 
       });
     }
     await writeFile(mirrorFile, await readFile(canonicalFile));
+  }
+
+  const staged = git(repoRoot, ["add", "-A", "--", CLAUDE_SKILLS_PATH]);
+  if (staged.exitCode !== 0) {
+    return publicState({
+      status: "blocked",
+      code: "mirror_stage_failed",
+      problems: [`git add pro ${CLAUDE_SKILLS_PATH} selhal.`],
+      message: "Mirror se nepodařilo přidat do Git indexu.",
+    });
   }
 
   return checkAgentSkillsMirror(repoRoot, options);

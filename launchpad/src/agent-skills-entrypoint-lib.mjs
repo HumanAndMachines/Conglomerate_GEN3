@@ -16,6 +16,11 @@ const canonicalRelativePath = ".agents/skills";
 const compatibilityRelativePath = ".claude/skills";
 const producerRelativePath = "scripts/agent-skills-entrypoint.mjs";
 const legacyPlaceholder = "../.agents/skills";
+// OS junk, které vytváří Finder/Explorer a které je v každém GEN3 repu
+// gitignored. Do Git-tracked mirroru se nikdy nedostane, takže ho nesmí
+// hlásit jako drift — jinak stačí otevřít .claude/skills ve Finderu a
+// bun run check zůstane trvale červený bez automatického remedy.
+const ignoredMirrorEntries = new Set([".DS_Store", "Thumbs.db", "desktop.ini"]);
 
 function state({ status, code, message }) {
   return {
@@ -63,7 +68,9 @@ async function readActiveSkillSlugs(root) {
     );
     const slugs = (manifest.skills ?? [])
       .map((skill) => skill?.slug)
-      .filter((slug) => typeof slug === "string" && slug.length > 0);
+      // Slug tvoří filesystem cesty; mimo kebab-case (tečky, lomítka, "..")
+      // hrozí traversal — read-only doctor takové položky ignoruje.
+      .filter((slug) => typeof slug === "string" && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug));
     if (slugs.length > 0) return [...new Set(slugs)].sort();
   } catch {
     // Manifest chybí nebo nejde přečíst → fallback na adresářový sken.
@@ -85,6 +92,7 @@ async function mirrorDrift(root, slugs) {
 
   for (const entry of await readdir(mirrorRoot, { withFileTypes: true })) {
     const entryPath = join(mirrorRoot, entry.name);
+    if (ignoredMirrorEntries.has(entry.name)) continue;
     if (entry.isSymbolicLink()) {
       unsafe.push(`${compatibilityRelativePath}/${entry.name} je symlink; mirror musí být obyčejné soubory.`);
       continue;
@@ -98,6 +106,7 @@ async function mirrorDrift(root, slugs) {
       continue;
     }
     for (const child of await readdir(entryPath, { withFileTypes: true })) {
+      if (ignoredMirrorEntries.has(child.name)) continue;
       if (child.isSymbolicLink()) {
         unsafe.push(
           `${compatibilityRelativePath}/${entry.name}/${child.name} je symlink; mirror musí být obyčejné soubory.`,
