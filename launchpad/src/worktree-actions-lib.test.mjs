@@ -509,3 +509,67 @@ async function setupDealsRepoWithPlan({
   );
   return { root, orgRoot, dealsRepo, remotePath };
 }
+
+test("publish preserves a captured conversation origin when the request carries none", async () => {
+  const { root, orgRoot } = await setupDealsRepoWithPlan();
+  const created = await createWorktreeFromPlan({
+    companiesRoot: root,
+    repoKey: "BetaCo::deals",
+    planPath: "mission-control/plans/2026/07/CAC-0042-deals-publish.yaml",
+    branch: "CAC-0042-deals-publish",
+    createdBy: "test-agent",
+    environment: { CLAUDE_SESSION_ID: "session-abc123" },
+  });
+  const sidecarPath = join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish.worktree.json");
+  const captured = JSON.parse(await readFile(sidecarPath, "utf8")).conversation_origin;
+  expect(captured).toMatchObject({
+    thread_id: "session-abc123",
+    thread_locator_status: "captured",
+  });
+
+  await writeFile(join(root, created.worktree.path, "draft.md"), "publish me\n");
+  // Launchpad UI publish: žádný conversationOrigin v requestu a serverové
+  // prostředí bez thread ID — původní recovery stopa musí přežít.
+  await publishWorktreeDraft({
+    companiesRoot: root,
+    repoKey: "BetaCo::deals",
+    slug: "CAC-0042-deals-publish",
+    commitMessage: "feat: publish deals draft",
+    publisher: "launchpad-builder",
+    environment: {},
+  });
+
+  const sidecar = JSON.parse(await readFile(sidecarPath, "utf8"));
+  expect(sidecar.conversation_origin).toEqual(captured);
+});
+
+test("publish records a fresh conversation origin when the publisher has one", async () => {
+  const { root, orgRoot } = await setupDealsRepoWithPlan();
+  const created = await createWorktreeFromPlan({
+    companiesRoot: root,
+    repoKey: "BetaCo::deals",
+    planPath: "mission-control/plans/2026/07/CAC-0042-deals-publish.yaml",
+    branch: "CAC-0042-deals-publish",
+    createdBy: "test-agent",
+    environment: { CLAUDE_SESSION_ID: "session-abc123" },
+  });
+  await writeFile(join(root, created.worktree.path, "draft.md"), "publish me\n");
+
+  await publishWorktreeDraft({
+    companiesRoot: root,
+    repoKey: "BetaCo::deals",
+    slug: "CAC-0042-deals-publish",
+    commitMessage: "feat: publish deals draft",
+    publisher: "codex-agent",
+    environment: { CODEX_THREAD_ID: "thread-xyz789" },
+  });
+
+  const sidecar = JSON.parse(
+    await readFile(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish.worktree.json"), "utf8"),
+  );
+  expect(sidecar.conversation_origin).toMatchObject({
+    surface: "codex",
+    thread_id: "thread-xyz789",
+    thread_locator_status: "captured",
+  });
+});

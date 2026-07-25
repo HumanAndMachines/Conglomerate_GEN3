@@ -205,7 +205,11 @@ export async function publishWorktreeDraft({
     last_published_commit: sha,
     pr_url: null,
     status: "active",
-    conversation_origin: resolvedConversationOrigin,
+    conversation_origin: await preserveCapturedOrigin({
+      sidecarPath: absoluteSidecarPath,
+      resolved: resolvedConversationOrigin,
+      explicit: conversationOrigin !== null,
+    }),
     recovery_handoff: {
       state: "ready_for_pr",
       summary: `Draft byl commitnutý a branch pushnutá na ${sha}.`,
@@ -394,6 +398,24 @@ const RECOVERY_STATES = new Set([
   "ready_for_review",
   "completed",
 ]);
+
+// Publish běží i z Launchpad UI, kde request žádný conversationOrigin nenese
+// a serverové prostředí nemusí mít thread ID. Takový běh nesmí přepsat dřív
+// zachycený thread — sidecar je jediná recovery stopa k původní konverzaci.
+async function preserveCapturedOrigin({ sidecarPath, resolved, explicit }) {
+  if (explicit || resolved.thread_locator_status === "captured") return resolved;
+  try {
+    const current = JSON.parse(await readFile(sidecarPath, "utf8"));
+    const existing = current?.conversation_origin;
+    if (existing && typeof existing === "object" && existing.thread_locator_status === "captured") {
+      return existing;
+    }
+  } catch {
+    // Nečitelný nebo chybějící sidecar řeší až updateSidecar; publish se kvůli
+    // provenance metadatům nezastaví.
+  }
+  return resolved;
+}
 
 function resolveConversationOrigin({ provided, createdBy, environment, capturedAt }) {
   if (provided !== null && (typeof provided !== "object" || Array.isArray(provided))) {
