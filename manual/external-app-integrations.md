@@ -106,10 +106,12 @@ Definice z katalogu se na mašině stává funkční až lokální aktivací:
    připraví konfiguraci a diagnostiku, ale výběr účtu a souhlas je lidský
    krok (viz Human-action boundary v custody standardu).
 3. Scopes uděluj defaultně **read i write** pro služby, které workflow
-   Organizace potřebuje; per-action ochranu write operací drží approval
-   mode harnessu (`writes`, případně přísnější `prompt`). Read-only start
-   je volitelné zpřísnění pro mimořádně citlivé zdroje, ne default.
-   LinkedIn zůstává post-only výjimka dle svého runbooku.
+   Organizace potřebuje. Read-only start je volitelné zpřísnění pro
+   mimořádně citlivé zdroje, ne default; LinkedIn zůstává post-only výjimka
+   dle svého runbooku. Ochranu drží stejný kontrakt jako u kódu: **write
+   agenta je Draft, ne Publikace** (viz „Draft a Publikace ve write
+   operacích" níže), a navíc per-action approval mode harnessu (`writes`,
+   případně přísnější `prompt`).
 4. Token cache zůstává lokální (keyring harnessu, případně custody cesta
    serveru). Tool-runtime cesty (`~/.google_workspace_mcp/…`,
    `~/.gmail-mcp/…`) nejsou custody source; runbook musí umět cache z
@@ -152,6 +154,31 @@ Agent CLI volá přes shell dané mašiny; přihlášení (`gh auth login`,
 credentials drží CLI ve vlastním lokálním úložišti, funguje ve všech
 harnessech se shellem. Nevýhoda: bez typovaných tool schémat — pro
 harness bez shellu použij MCP variantu.
+
+## Draft a Publikace ve write operacích
+
+Write přístup není povolení publikovat. Platí stejný kontrakt jako u kódu
+(root `AGENTS.md`, decisions 0090 a 0103): **co agent v externí aplikaci
+vytvoří, je Draft — revertovatelný a editovatelný Principálem. Publikaci
+dělá Principál, nebo agent, ale jen na jeho explicitní pokyn v daném
+threadu.** Právě proto je write scope defaultní: proces, ne zúžený scope,
+drží hranici.
+
+Prakticky to znamená volit vratnou formu výstupu a nechat nevratný krok
+Principálovi:
+
+| Služba | Draft (agent smí sám) | Publikace (jen na explicitní pokyn) |
+| --- | --- | --- |
+| Gmail / Outlook | vytvořit draft zprávy, štítky, uspořádání | odeslat, smazat, hromadné operace |
+| Slack | připravit znění, zapsat do testovacího kanálu | poslat do ostrého kanálu, DM, oznámení |
+| Jira / Confluence | draft issue nebo stránky, komentář k review | přechod stavu, publikace stránky, mazání |
+| Drive / Docs / Sheets | nový soubor nebo kopie k revizi, návrh úprav | přepis ostrého dokumentu, sdílení ven, mazání |
+| Canva | nový design, export do drafts cesty | sdílení/zveřejnění, přepis týmového assetu |
+| LinkedIn | draft příspěvku | publikace příspěvku |
+
+Nevratné operace (odeslání, zveřejnění, mazání, přepis ostrého obsahu,
+změna oprávnění) potvrzuje Principál per akci; approval mode harnessu je
+mechanická pojistka nad tímhle procesním pravidlem, ne náhrada za něj.
 
 ## Org-side admin kroky
 

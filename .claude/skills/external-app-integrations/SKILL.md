@@ -42,22 +42,30 @@ Codex, Desktop agenti). Kanonický standard:
 5. **Aktivace per mašina:** jména `<org_slug>_<provider>`; secret hodnoty a
    env soubor do custody cest podle `manual/security/local-secret-custody.md`;
    OAuth consent a výběr účtu dokončuje Principál v prohlížeči; scopes
-   uděluj defaultně read i write, per-action ochranu write operací drží
-   approval mode harnessu (LinkedIn zůstává post-only výjimka).
-6. **Zaseknutí nebo zastaralý manuál = povinný upstream PR.** Runbooky jsou
+   uděluj defaultně read i write (LinkedIn zůstává post-only výjimka).
+6. **Write je Draft, ne Publikace.** Co v externí aplikaci vytvoříš, musí
+   být vratné a editovatelné Principálem — draft zprávy místo odeslání,
+   nový soubor místo přepisu ostrého, testovací kanál místo ostrého.
+   Nevratný krok (odeslat, zveřejnit, smazat, přepsat ostrý obsah, změnit
+   oprávnění) udělej jen na explicitní pokyn Principála v daném threadu;
+   approval mode harnessu je pojistka nad tímhle pravidlem, ne náhrada.
+   Tabulka Draft/Publikace per služba je v
+   `manual/external-app-integrations.md`.
+7. **Zaseknutí nebo zastaralý manuál = povinný upstream PR.** Runbooky jsou
    živý komunitní standard; nikdo je denně nepřetestovává. Když se Kolega
    při instalaci zasekne nebo realita poskytovatele neodpovídá runbooku,
    oprav manuál/runbook a pošli PR na `HumanAndMachines/Conglomerate_GEN3`;
    bez známého řešení zapiš aspoň issue do root `ISSUES.open.json` (také
    PR). Org-specifika patří do `INTEGRATIONS.md` dané Organizace; upstream
    jde jen generalizované, anonymizované poučení bez secrets.
-7. **Closeout metadata-only:** název serveru, scope, owner, datum, výsledek
+8. **Closeout metadata-only:** název serveru, scope, owner, datum, výsledek
    smoke testu. Nikdy token, OAuth URL/kód ani obsah credential souboru.
 
 ## Ověření
 
 - Server je vidět (`codex mcp list` / `/mcp` v Claude Code) a smoke prošel:
-  čtení známého záznamu správného org účtu, zápis na testovacím záznamu.
+  čtení známého záznamu správného org účtu, zápis na testovacím záznamu
+  vratnou formou (draft/testovací cíl), bez nevratné publikace.
 - Katalog Organizace obsahuje integraci včetně env jmen a admin kroků;
   žádný secret v Gitu (`git grep` na jméno env souboru a provider).
 - Env soubor a token cache mají módy `0600`/`0700` v custody cestě.
