@@ -35,9 +35,15 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
    `companiesascode.worktree.v1` s kanonickými identity/path poli, přesným
    HumanAndMachines plánem, branchí/base, `created_at`, `created_by` a stavem.
    Pro bezpečný provoz nový agent doplní také `last_touched`, PR URL, purpose
-   a cleanup pravidlo; u staršího schema-valid sidecaru jsou jejich absence
-   advisory, ne falešná nevalidita. Owner se čte z plánu, sidecar není druhá
-   autorita.
+   a cleanup pravidlo. Nově vytvořený nebo adoptovaný sidecar navíc obsahuje
+   `conversation_origin` (`surface`, `agent_label`, opaque `thread_id` nebo
+   výslovný locator status, `captured_at`, `local_only: true`) a
+   `recovery_handoff` (stav, stručné netajné summary, blocker, next action,
+   `updated_at`). Stabilní ID poskytované agentním povrchem, například
+   `CODEX_THREAD_ID`, zachyť automaticky. U staršího schema-valid sidecaru jsou
+   absence těchto polí advisory, ne falešná nevalidita. Owner se čte z plánu,
+   sidecar není druhá autorita. Neukládej raw transcript, chain-of-thought,
+   secrets ani absolutní transcript path.
 5. Nevytvářej nové worktrees v `/tmp`, vedle repa, v
    `~/.hermes/worktrees`, `.claude/worktrees`, `.codex-tmp`,
    `.pr-worktrees`, legacy `.worktrees/<code>` ani uvnitř jiného repa.
@@ -64,10 +70,16 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
    není dokončený handoff: snadno zapadne, Steward ji nemusí vidět a další
    agent ji nemusí převzít. Rozdělaná práce, která existuje jen lokálně, je
    porušení disciplíny (decision 0103).
-10. Před handoffem aktualizuj sidecar a znovu spusť audit i
+10. Při pauze, blockeru, předání a před koncem agentního běhu aktualizuj
+   `last_touched`, conversation origin aktuálního writer ownera a recovery
+   handoff. Morning/night/cleanup agent smí přes lokální thread dohledat
+   kontext, ale před commitem, pushem, PR rozhodnutím nebo cleanupem ověří Git
+   status/diff, remote, PR/checks, runtime a Mission Control. Nedostupný thread
+   není důkaz opuštění práce.
+11. Před handoffem aktualizuj sidecar a znovu spusť audit i
    `bun run worktrees:check`. Check je nutný, ale ne dostačující — teprve po
    něm pokládej otázku na Publikaci.
-11. Handoff veď průvodcovsky (decision 0103): závěrečná zpráva začíná
+12. Handoff veď průvodcovsky (decision 0103): závěrečná zpráva začíná
    standardizovaným handoff blokem (PR URL, base, exact HEAD, lidské
    shrnutí, ověření, odkaz na aplikaci běžící z worktree) a končí
    standardizovanou otázkou „Mám změny Publikovat?". Před otázkou zjisti
@@ -87,12 +99,12 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
    PR) a předej Principálovi, kdo rozhoduje. Merge neobcházej ani na
    opakovanou žádost — GitHub ho fyzicky blokuje. Bez zelené PR zůstává
    otevřený a nic se neděje.
-12. Worktree odstraň jen když je clean včetně untracked souborů, nemá
+13. Worktree odstraň jen když je clean včetně untracked souborů, nemá
    local-only commit, exact HEAD je na remote, PR je merged nebo explicitně
    abandoned se snapshotem, runtime ho nepoužívá a neexistuje aktivní writer.
    Pak použij owner repo `git worktree remove <path>` a `git worktree prune`;
    sidecar smaž až potom.
-13. Plošné `rm -rf`, `--force`, `git branch -D` a automatické mazání podle stáří
+14. Plošné `rm -rf`, `--force`, `git branch -D` a automatické mazání podle stáří
    nejsou běžný cleanup. Nesplněný guard se předává konkrétně.
 
 ## Ověření
@@ -106,6 +118,7 @@ bun run doctor:task
 bun run pr:preflight
 git status --short --branch
 git -C <worktree> status --short --branch
+jq '{conversation_origin, recovery_handoff}' <sidecar.worktree.json>
 bun run check
 bun run doctor
 ```

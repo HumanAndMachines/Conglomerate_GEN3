@@ -92,6 +92,8 @@ export async function auditRepository(startPath = process.cwd(), options = {}) {
       sidecar_valid: sidecarPath ? sidecar.valid : null,
       sidecar_error: sidecarPath && !sidecar.valid ? sidecar.error : null,
       sidecar_advisories: sidecar.advisories ?? [],
+      conversation_origin: sidecar.conversationOrigin ?? null,
+      recovery_handoff: sidecar.recoveryHandoff ?? null,
       plan_path: sidecar.planPath,
       dirty,
       status_error: status.ok ? null : status.timedOut ? "git timeout" : status.stderr.trim(),
@@ -467,7 +469,22 @@ async function validateSidecar(
       return { valid: false, error: `${field} must be a non-empty string`, planPath };
     }
   }
-  const advisories = ["last_touched", "pr_url", "purpose", "cleanup_rule"]
+  const conversationError = validateConversationOrigin(data.conversation_origin);
+  if (conversationError) {
+    return { valid: false, error: conversationError, planPath };
+  }
+  const recoveryError = validateRecoveryHandoff(data.recovery_handoff);
+  if (recoveryError) {
+    return { valid: false, error: recoveryError, planPath };
+  }
+  const advisories = [
+    "last_touched",
+    "pr_url",
+    "purpose",
+    "cleanup_rule",
+    "conversation_origin",
+    "recovery_handoff",
+  ]
     .filter((field) => !Object.hasOwn(data, field))
     .map((field) => `recommended operational field is missing: ${field}`);
   const authorityAvailable = await pathExists(authorityRoot);
@@ -539,7 +556,72 @@ async function validateSidecar(
       advisories,
     };
   }
-  return { valid: true, error: null, planPath, advisories };
+  return {
+    valid: true,
+    error: null,
+    planPath,
+    advisories,
+    conversationOrigin: data.conversation_origin ?? null,
+    recoveryHandoff: data.recovery_handoff ?? null,
+  };
+}
+
+function validateConversationOrigin(value) {
+  if (value === undefined) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return "conversation_origin must be an object";
+  }
+  if (typeof value.surface !== "string" || !/^[a-z0-9][a-z0-9._-]*$/.test(value.surface)) {
+    return "conversation_origin.surface is not canonical";
+  }
+  if (typeof value.agent_label !== "string" || value.agent_label.trim() === "") {
+    return "conversation_origin.agent_label is missing";
+  }
+  if (!["captured", "unavailable", "not_applicable"].includes(value.thread_locator_status)) {
+    return "conversation_origin.thread_locator_status is not canonical";
+  }
+  if (value.thread_locator_status === "captured") {
+    if (typeof value.thread_id !== "string" || value.thread_id.trim() === "") {
+      return "captured conversation_origin requires thread_id";
+    }
+  } else if (value.thread_id !== null) {
+    return "non-captured conversation_origin must use null thread_id";
+  }
+  if (value.local_only !== true) return "conversation_origin.local_only must be true";
+  if (!Number.isFinite(Date.parse(value.captured_at))) {
+    return "conversation_origin.captured_at is not a date";
+  }
+  return null;
+}
+
+function validateRecoveryHandoff(value) {
+  if (value === undefined) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return "recovery_handoff must be an object";
+  }
+  const states = new Set([
+    "in_progress",
+    "blocked",
+    "paused",
+    "ready_to_commit",
+    "ready_to_push",
+    "ready_for_pr",
+    "ready_for_review",
+    "completed",
+  ]);
+  if (!states.has(value.state)) return "recovery_handoff.state is not canonical";
+  for (const field of ["summary", "next_action"]) {
+    if (typeof value[field] !== "string" || value[field].trim() === "") {
+      return `recovery_handoff.${field} is missing`;
+    }
+  }
+  if (value.blocker !== null && (typeof value.blocker !== "string" || value.blocker.trim() === "")) {
+    return "recovery_handoff.blocker must be a non-empty string or null";
+  }
+  if (!Number.isFinite(Date.parse(value.updated_at))) {
+    return "recovery_handoff.updated_at is not a date";
+  }
+  return null;
 }
 
 async function resolveRepositoryIdentity(primaryRoot) {
@@ -1171,6 +1253,10 @@ export function formatHuman(report) {
       worktree.upstream ? `upstream:${worktree.upstream}` : worktree.branch ? "no-upstream" : null,
       (worktree.ahead ?? 0) > 0 ? `ahead:${worktree.ahead}` : null,
       (worktree.behind ?? 0) > 0 ? `behind:${worktree.behind}` : null,
+      worktree.conversation_origin
+        ? `thread:${worktree.conversation_origin.surface}:${shortThreadId(worktree.conversation_origin)}`
+        : "thread:unknown",
+      worktree.recovery_handoff ? `handoff:${worktree.recovery_handoff.state}` : "handoff:missing",
       worktree.disk_bytes !== null
         ? `${formatBytes(worktree.disk_bytes)}${worktree.disk_scan_complete ? "" : "+"}`
         : null,
@@ -1200,6 +1286,14 @@ export function formatHuman(report) {
     for (const violation of report.violations) lines.push(`  - ${violation}`);
   }
   return lines.join("\n");
+}
+
+function shortThreadId(origin) {
+  if (!origin || origin.thread_locator_status !== "captured" || !origin.thread_id) {
+    return origin?.thread_locator_status ?? "unavailable";
+  }
+  const id = origin.thread_id;
+  return id.length <= 16 ? id : `${id.slice(0, 8)}…${id.slice(-6)}`;
 }
 
 async function main() {

@@ -269,9 +269,9 @@ test("fails worktrees:check when the HumanAndMachines authority is unavailable",
   expect(canonicalWorktree(report)).toMatchObject({
     sidecar_valid: false,
     sidecar_error: expect.stringContaining("authority checkout is unavailable"),
-    sidecar_advisories: [
+    sidecar_advisories: expect.arrayContaining([
       expect.stringContaining("plan ownership was not verified"),
-    ],
+    ]),
   });
 
   const result = Bun.spawnSync([
