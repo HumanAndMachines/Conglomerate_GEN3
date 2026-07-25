@@ -454,6 +454,13 @@ pauze, blockeru, předání a před koncem běhu; stručné summary a next actio
 umožnit převzetí i bez dostupné historie. Legacy v1 sidecar bez těchto polí je
 migration advisory, ne invalid nebo cleanup autorizace.
 
+Zachycený `conversation_origin` přepisuje jen vědomé předání: writer ho pošle
+v requestu explicitně. Ambientní prostředí (například Launchpad server, který
+zdědil `CODEX_THREAD_ID` z jiné session) origin nikdy nepřebíjí — jinak by
+publikace tiše nahradila recovery stopu worktree identitou serveru. Prázdný
+sidecar se z ambientního locatoru naplnit smí; už zachycenou provenance
+přepíše pouze explicitní zápis.
+
 Create transakce navíc používá lokální journal. Sidecar se označí jako active
 až po úspěšném root + member vytvoření a validaci. Při pádu Doctor pokračuje z
 journalu nebo provede reverse-order rollback; nesmí zanechat neviditelný child

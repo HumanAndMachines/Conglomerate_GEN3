@@ -399,11 +399,15 @@ const RECOVERY_STATES = new Set([
   "completed",
 ]);
 
-// Publish běží i z Launchpad UI, kde request žádný conversationOrigin nenese
-// a serverové prostředí nemusí mít thread ID. Takový běh nesmí přepsat dřív
-// zachycený thread — sidecar je jediná recovery stopa k původní konverzaci.
+// Publish běží i z Launchpad UI, kde request žádný conversationOrigin nenese.
+// Ambientní prostředí serveru pak není spolehlivý signál identity: server může
+// běžet dlouho a mít zděděné HUMANANDMACHINE_THREAD_ID/CODEX_THREAD_ID/
+// CLAUDE_SESSION_ID z úplně jiné session. Implicitní env proto nikdy nepřebije
+// už zachycenou provenance — sidecar je jediná recovery stopa k původní
+// konverzaci. Předání ownershipu na nový thread je vědomý krok a musí přijít
+// jako explicitní conversationOrigin v requestu.
 async function preserveCapturedOrigin({ sidecarPath, resolved, explicit }) {
-  if (explicit || resolved.thread_locator_status === "captured") return resolved;
+  if (explicit) return resolved;
   try {
     const current = JSON.parse(await readFile(sidecarPath, "utf8"));
     const existing = current?.conversation_origin;
