@@ -36,7 +36,18 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(html).not.toContain('id="appCount"');
   expect(html).not.toContain('id="companyCount"');
   expect(html).not.toContain('id="failureCount"');
-  expect(html).toContain("family=Inter:wght@400..800");
+  const googleFontUrls = [
+    ...html
+      .replaceAll("&amp;", "&")
+      .matchAll(/https:\/\/fonts\.googleapis\.com\/css2\?[^"'()\s]+/g),
+  ].map((match) => match[0]);
+  expect(googleFontUrls.length).toBeGreaterThan(0);
+  const interFamilies = googleFontUrls.flatMap((fontUrl) =>
+    new URL(fontUrl).searchParams
+      .getAll("family")
+      .filter((family) => family === "Inter" || family.startsWith("Inter:")),
+  );
+  expect(interFamilies).toEqual(["Inter:wght@400;500;600;700"]);
   expect(html).not.toContain("family=Manrope");
 
   // Přepínač v headeru drží právě jeden scope: Osobní nebo jednu Organizaci.
