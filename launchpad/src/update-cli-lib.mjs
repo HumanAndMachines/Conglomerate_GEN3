@@ -1,4 +1,5 @@
 import { basename } from "path";
+import { builderPullScopeAllowed } from "./git-api-lib.mjs";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
 import {
   pullRepoFastForward,
@@ -71,12 +72,9 @@ export function parseUpdateCliArgs(argv) {
   return { ok: true, options };
 }
 
-// Stejná hranice jako Launchpad builder pull scope (git-api-lib):
-// productionspace zůstává read-only, root sloty se neaktualizují odsud.
-export function updateLanePullAllowed(repo) {
-  return repo.repo_kind === "organization_root"
-    || (repo.repo_kind === "module" && repo.workspace !== "productionspace");
-}
+// Stejná hranice jako Launchpad builder pull scope — jediná autorita je
+// builderPullScopeAllowed v git-api-lib; alias tu drží čitelné jméno lane.
+export const updateLanePullAllowed = builderPullScopeAllowed;
 
 export function matchOrganizationSelector(repo, selector) {
   const wanted = String(selector).toLowerCase();
@@ -167,7 +165,7 @@ async function updateOrganizationRepo({ repo, options, readRepoStatus, pullFastF
     return {
       ...identity,
       outcome: "policy_skipped",
-      message: "Productionspace zůstává podle Organization policy read-only.",
+      message: "Productionspace zůstává podle Organization policy read-only; z update lane se nestahuje.",
     };
   }
 

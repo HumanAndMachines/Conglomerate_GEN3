@@ -206,6 +206,29 @@ test("pull response refuses productionspace repos even when a fast-forward pull 
   }
 });
 
+test("pull response allows org root-space slots (CAC-0083): mission-control-like repa jdou stáhnout ff-only", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const infraRepo = join(root, "organizations", "OmegaCo_GEN3", "infra");
+  const remotePath = join(root, "remotes", "infra.git");
+  await initGitRepo(infraRepo, { remotePath });
+  const contributor = join(root, "tmp", "infra-contributor");
+  await mkdir(join(root, "tmp"), { recursive: true });
+  runGit(["clone", remotePath, contributor], root);
+  runGit(["checkout", "-B", "main", "origin/main"], contributor);
+  runGit(["config", "user.email", "fixture@example.com"], contributor);
+  runGit(["config", "user.name", "Fixture"], contributor);
+  await writeFile(join(contributor, "remote-infra.md"), "remote root-slot change\n");
+  runGit(["add", "remote-infra.md"], contributor);
+  runGit(["commit", "-m", "remote root-slot change"], contributor);
+  runGit(["push", "origin", "main"], contributor);
+
+  const payload = await buildRepoPullResponse({ companiesRoot: root, repoKey: "OmegaCo::infra" });
+  expect(payload.pulled).toBe(true);
+  expect(payload.action).toBe("pull_ff_only");
+  expect(runGit(["log", "-1", "--format=%s"], infraRepo)).toBe("remote root-slot change");
+});
+
 test("pull all updates Organization roots and workspace modules, using autostash where safe", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);

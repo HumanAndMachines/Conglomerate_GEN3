@@ -810,6 +810,15 @@ function canAutostashPull(git) {
     && Number(git.counts?.outgoing) === 0;
 }
 
+// Zrcadlí serverový builderPullScopeAllowed (git-api-lib): UI nesmí nabídnout
+// Stáhnout tam, kde API pull odmítne — Organization root, org root-space
+// sloty a workspace moduly ano; productionspace je z Launchpadu read-only.
+function builderPullScopeAllowedForRepo(git) {
+  return git?.repo_kind === "organization_root"
+    || git?.repo_kind === "root_repo"
+    || (git?.repo_kind === "module" && git?.workspace !== "productionspace");
+}
+
 // Anotuje každou appku booleanem git_attention podle git read modelu, ať toggle
 // kontroly (isAttentionState v app-state.js) může git stavy zahrnout, aniž
 // by app-state znal git model. Graceful: bez git modelu je vždy false.
@@ -2634,7 +2643,7 @@ function cardWarningModel(app, gitRepo) {
     };
   }
 
-  if (canAutostashPull(gitRepo)) {
+  if (builderPullScopeAllowedForRepo(gitRepo) && canAutostashPull(gitRepo)) {
     const incoming = Number(gitRepo.counts?.incoming) || 0;
     return {
       tone: "warn",
@@ -2646,7 +2655,7 @@ function cardWarningModel(app, gitRepo) {
   }
 
   // Novější verze na mainu: bezpečný fast-forward pull (guarded na serveru).
-  if (gitRepo && gitRepo.status === "pull_available") {
+  if (gitRepo && builderPullScopeAllowedForRepo(gitRepo) && gitRepo.status === "pull_available") {
     const incoming = Number(gitRepo.counts?.incoming) || 0;
     return {
       tone: "warn",
@@ -3596,7 +3605,7 @@ function detailSummaryModel(app, git) {
     };
   }
 
-  if (git?.status === "pull_available") {
+  if (git?.status === "pull_available" && builderPullScopeAllowedForRepo(git)) {
     return {
       tone: "warn",
       title: `Nová verze - ${newCommitCountLabel(incoming)}`,
@@ -3605,7 +3614,7 @@ function detailSummaryModel(app, git) {
     };
   }
 
-  if (canAutostashPull(git)) {
+  if (builderPullScopeAllowedForRepo(git) && canAutostashPull(git)) {
     return {
       tone: "warn",
       title: `Nová verze - ${newCommitCountLabel(incoming)}`,
@@ -3887,14 +3896,14 @@ function renderGitBuilderActions(app) {
   changesCard.append(builderActionButton("Ukázat změny", () => showRepoChanges(app, git)));
   actions.append(changesCard);
 
-  if (git.status === "pull_available") {
+  if (git.status === "pull_available" && builderPullScopeAllowedForRepo(git)) {
     const pullCard = builderActionCard(
       "Stáhnout novější verzi",
       "Bezpečný fast-forward pull je dostupný jen pro čistý main checkout bez lokálních draftů.",
     );
     pullCard.append(builderActionButton("Stáhnout novější verzi", () => pullLatestRepoVersion(app, git)));
     actions.append(pullCard);
-  } else if (canAutostashPull(git)) {
+  } else if (builderPullScopeAllowedForRepo(git) && canAutostashPull(git)) {
     const pullCard = builderActionCard(
       "Stáhnout a zachovat změny",
       "Launchpad odloží tracked i untracked změny, stáhne pouze fast-forward a změny znovu obnoví. Konflikt zůstane viditelný a stash se nesmaže.",

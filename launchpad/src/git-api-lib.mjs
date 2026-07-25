@@ -234,13 +234,19 @@ export async function buildPullAllResponse({ companiesRoot, statusService = null
 function assertBuilderPullScope(repo) {
   if (builderPullScopeAllowed(repo)) return;
   throw new GitApiError(
-    "Stáhnout novější verzi z Launchpadu je povolené pro Organization root a workspace moduly; productionspace zůstává read-only.",
+    "Stáhnout novější verzi z Launchpadu je povolené pro Organization root, org root-space sloty a workspace moduly; productionspace zůstává read-only.",
     { status: 403, code: "pull_scope_forbidden" },
   );
 }
 
-function builderPullScopeAllowed(repo) {
+// Jediná autorita builder pull scope — UI kind guard i CLI update lane ji
+// zrcadlí. Org root-space sloty (`space: "root"`, např. mission-control a
+// jeho repository-db child) jsou doctor-managed pinned checkouty a ff-only
+// inbound pull je pro ně bezpečný a žádoucí (runtime freshness);
+// productionspace zůstává z Launchpadu read-only.
+export function builderPullScopeAllowed(repo) {
   return repo.repo_kind === "organization_root"
+    || repo.repo_kind === "root_repo"
     || (repo.repo_kind === "module" && repo.workspace !== "productionspace");
 }
 
