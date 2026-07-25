@@ -35,6 +35,15 @@ const productionRepo = {
   repo_kind: "module",
   repo_path: "organizations/Spectoda_GEN3/productionspace/firmware",
 };
+const rootSlotRepo = {
+  key: "spectoda::mission-control",
+  organization: "spectoda",
+  organization_path: "organizations/Spectoda_GEN3",
+  workspace: null,
+  module: "mission-control",
+  repo_kind: "root_repo",
+  repo_path: "organizations/Spectoda_GEN3/mission-control",
+};
 
 function laneDeps({ rootState = "up_to_date", repoStatuses = {}, pulls = {} } = {}) {
   const calls = { performRoot: [], pullFastForward: [], pullWithAutostash: [] };
@@ -61,7 +70,7 @@ function laneDeps({ rootState = "up_to_date", repoStatuses = {}, pulls = {} } = 
           to_commit: "bbbbbbb2222",
         };
       },
-      buildInventory: async () => ({ repos: [orgRootRepo, moduleRepo, productionRepo] }),
+      buildInventory: async () => ({ repos: [orgRootRepo, moduleRepo, productionRepo, rootSlotRepo] }),
       readRepoStatus: async (repo) => repoStatuses[repo.key] ?? { status: "up_to_date", counts: {} },
       pullFastForward: async (repo) => {
         calls.pullFastForward.push(repo.key);
@@ -94,9 +103,10 @@ describe("parseUpdateCliArgs", () => {
 });
 
 describe("scope guards", () => {
-  test("productionspace is never pull-eligible; org root and workspace module are", () => {
+  test("productionspace is never pull-eligible; org root, root-space slot and workspace module are", () => {
     expect(updateLanePullAllowed(orgRootRepo)).toBe(true);
     expect(updateLanePullAllowed(moduleRepo)).toBe(true);
+    expect(updateLanePullAllowed(rootSlotRepo)).toBe(true);
     expect(updateLanePullAllowed(productionRepo)).toBe(false);
   });
 
@@ -176,11 +186,12 @@ describe("runUpdateLane", () => {
     expect(result.ok).toBe(true);
   });
 
-  test("org update pulls eligible repos, skips productionspace, blocks dirty without --preserve", async () => {
+  test("org update pulls eligible repos including root-space slot, skips productionspace, blocks dirty without --preserve", async () => {
     const { deps, calls } = laneDeps({
       repoStatuses: {
         "spectoda::root": { status: "pull_available", counts: { incoming: 1, outgoing: 0 } },
         "spectoda::deals": { status: "draft_changes", counts: { incoming: 2, outgoing: 0 } },
+        "spectoda::mission-control": { status: "pull_available", counts: { incoming: 1, outgoing: 0 } },
       },
     });
     const result = await runUpdateLane({
@@ -188,11 +199,12 @@ describe("runUpdateLane", () => {
       options: { orgs: ["Spectoda_GEN3"], allOrgs: false, check: false, preserve: false },
       deps,
     });
-    expect(calls.pullFastForward).toEqual(["spectoda::root"]);
+    expect(calls.pullFastForward).toEqual(["spectoda::root", "spectoda::mission-control"]);
     expect(calls.pullWithAutostash).toEqual([]);
     const byKey = Object.fromEntries(result.organizations.map((entry) => [entry.repo_key, entry.outcome]));
     expect(byKey["spectoda::root"]).toBe("pulled");
     expect(byKey["spectoda::deals"]).toBe("blocked_dirty");
+    expect(byKey["spectoda::mission-control"]).toBe("pulled");
     expect(byKey["spectoda::firmware"]).toBe("policy_skipped");
     expect(result.ok).toBe(false);
     expect(result.summary.org_blocked_count).toBe(1);

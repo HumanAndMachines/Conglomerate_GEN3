@@ -1008,6 +1008,23 @@ test("CAC-0083: update je hladký — spinner během stahování a automatický 
   expect(js).toContain("if (!reloading) {");
 });
 
+test("CAC-0083: UI nenabízí Stáhnout mimo builder pull scope a zrcadlí serverovou hranici", async () => {
+  const js = await readFile(join(publicRoot, "app.js"), "utf8");
+
+  // Frontend zrcadlo builderPullScopeAllowed: Organization root, org
+  // root-space sloty a workspace moduly ano; productionspace read-only.
+  expect(js).toContain("function builderPullScopeAllowedForRepo");
+  expect(js).toContain('git?.repo_kind === "root_repo"');
+  expect(js).toContain('(git?.repo_kind === "module" && git?.workspace !== "productionspace")');
+
+  // Každá nabídka Stáhnout na kartě i v builder detailu jde přes kind guard.
+  expect(js).toContain('if (builderPullScopeAllowedForRepo(gitRepo) && canAutostashPull(gitRepo))');
+  expect(js).toContain('if (gitRepo && builderPullScopeAllowedForRepo(gitRepo) && gitRepo.status === "pull_available")');
+  expect(js).toContain('if (git?.status === "pull_available" && builderPullScopeAllowedForRepo(git))');
+  expect(js).toContain('if (builderPullScopeAllowedForRepo(git) && canAutostashPull(git))');
+  expect(js).toContain('if (git.status === "pull_available" && builderPullScopeAllowedForRepo(git))');
+});
+
 test("app icon constants initialize before the first data load render", async () => {
   const js = await readFile(join(publicRoot, "app.js"), "utf8");
 
