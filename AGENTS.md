@@ -113,7 +113,10 @@ za něj uděláš. Explicitní pokyn je potřeba na všechno nevratné a platí
 v rámci chatového threadu — nepřenáší se sám do dalších konverzací.
 U datových aplikací (repository-db, např. Deals v3 nebo Warehouse v3) je
 Draft jen do commitu: tlačítko „Publikovat změny" (commit + push do
-datového repozitáře) už je Publikace dat.
+datového repozitáře) už je Publikace dat. I datová lane se zamyká
+progresivně: v malé Organizaci s nechráněným datovým repem smí Publikaci
+dat provést každý člen vědomého rosteru; přísnější approval nastupuje až
+vědomým zamčením datové větve Adminem (decision 0102).
 
 **Release není Publikace.** Release je vydání označené verze ven mezi lidi
 přes GitHub Release. Smí ho spustit jen GitHub user, který na to má práva —
