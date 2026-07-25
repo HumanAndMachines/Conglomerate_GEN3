@@ -184,3 +184,42 @@ test("mirror mimo Git index je repair_needed a repair ho stage-uje", async () =>
   const after = await repairAgentSkillsMirror(root);
   expect(after.status).toBe("ok");
 });
+
+test("gitignored OS junk (.DS_Store) v mirroru není drift ani blocker", async () => {
+  const root = await rootFixture("os-junk");
+  expect((await repairAgentSkillsMirror(root)).status).toBe("ok");
+
+  await writeFile(join(root, ".claude", "skills", ".DS_Store"), "junk");
+  await writeFile(join(root, ".claude", "skills", "example-skill", ".DS_Store"), "junk");
+
+  const check = await checkAgentSkillsMirror(root);
+  expect(check.status).toBe("ok");
+  expect(check.code).toBe("mirror_ready");
+
+  const repair = await repairAgentSkillsMirror(root);
+  expect(repair.status).toBe("ok");
+  const survived = await readFile(join(root, ".claude", "skills", ".DS_Store"), "utf8");
+  expect(survived).toBe("junk");
+});
+
+test("Git kontrakt: toplevel guard nezaměňuje index nadřazeného repozitáře", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "agent-skills-parent-"));
+  tempRoots.push(parent);
+  git(parent, ["init", "--quiet"]);
+  const nested = join(parent, "nested-root");
+  await mkdir(join(nested, ".agents", "skills", "example-skill"), { recursive: true });
+  await writeFile(join(nested, ".agents", "skills", "example-skill", "SKILL.md"), "# example-skill\n");
+  await writeFile(
+    join(nested, ".agents", "skills", "manifest.json"),
+    JSON.stringify({
+      schema_version: "conglomerate.skills.v0",
+      claude_compatibility: "tracked-derived-mirror",
+      skills: [{ slug: "example-skill", path: ".agents/skills/example-skill/SKILL.md" }],
+    }),
+  );
+
+  const state = await checkAgentSkillsMirror(nested);
+  expect(state.status).toBe("blocked");
+  expect(state.code).toBe("entrypoint_contract_invalid");
+  expect(state.problems.join(" ")).toContain("nadřazeného repozitáře");
+});

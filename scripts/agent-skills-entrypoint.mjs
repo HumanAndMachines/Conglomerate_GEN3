@@ -23,6 +23,9 @@ import {
 
 export const CANONICAL_SKILLS_PATH = ".agents/skills";
 export const CLAUDE_SKILLS_PATH = ".claude/skills";
+// Gitignored OS junk z Finderu/Exploreru; v Git-tracked mirroru neexistuje,
+// takže ho Repair ani nepočítá mezi neznámý obsah (viz lib komentář).
+const IGNORED_MIRROR_ENTRIES = new Set([".DS_Store", "Thumbs.db", "desktop.ini"]);
 
 const scriptPath = fileURLToPath(import.meta.url);
 const defaultRoot = resolve(dirname(scriptPath), "..");
@@ -84,6 +87,11 @@ function output(result) {
   return new TextDecoder().decode(result.stdout).trim();
 }
 
+function comparablePath(path, platform = process.platform) {
+  const normalized = resolve(path).replaceAll("\\", "/").replace(/\/+$/, "");
+  return platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
 function publicState({ status, code, problems = [], message }) {
   return {
     schema_version: AGENT_SKILLS_ENTRYPOINT_SCHEMA,
@@ -140,6 +148,20 @@ export function validateGitContract(root, expectedPaths) {
   const topLevel = git(root, ["rev-parse", "--show-toplevel"]);
   if (topLevel.exitCode !== 0) {
     problems.push("Agent-skills mirror lze spravovat jen uvnitř Git checkoutu.");
+    return problems;
+  }
+  try {
+    // Bez téhle vazby by check i repair pracovaly s indexem nadřazeného
+    // repozitáře, kdyby root nebyl vlastní Git checkout.
+    if (
+      comparablePath(realpathSync.native(output(topLevel))) !==
+      comparablePath(realpathSync.native(root))
+    ) {
+      problems.push("Agent-skills mirror nesmí převzít Git index nadřazeného repozitáře.");
+      return problems;
+    }
+  } catch {
+    problems.push("Nelze bezpečně svázat agent-skills mirror s Git rootem repozitáře.");
     return problems;
   }
 
@@ -237,6 +259,7 @@ export async function repairAgentSkillsMirror(root = defaultRoot, options = {}) 
 
   for (const entry of await readdir(compatibilityPath, { withFileTypes: true })) {
     const entryPath = join(compatibilityPath, entry.name);
+    if (IGNORED_MIRROR_ENTRIES.has(entry.name)) continue;
     if (entry.isSymbolicLink()) continue;
     if (!entry.isDirectory()) {
       // Stray soubor přímo v mirroru: inspect ho hlásí jako drift, ale mazat
@@ -252,7 +275,9 @@ export async function repairAgentSkillsMirror(root = defaultRoot, options = {}) 
     }
     const children = await readdir(entryPath, { withFileTypes: true });
     const onlyMirrorShape = children.every(
-      (child) => child.isFile() && !child.isSymbolicLink() && child.name === "SKILL.md",
+      (child) =>
+        IGNORED_MIRROR_ENTRIES.has(child.name) ||
+        (child.isFile() && !child.isSymbolicLink() && child.name === "SKILL.md"),
     );
     if (!onlyMirrorShape) {
       // Platí i pro aktivní skill adresář: extra obsah vedle SKILL.md by jinak
