@@ -1,5 +1,5 @@
-import { lstat, mkdir, mkdtemp, realpath, rename, rm } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
+import { lstat, mkdir, realpath, rm } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import {
   GIT_LOCAL_TIMEOUT_MS,
   runGit,
@@ -25,8 +25,7 @@ export async function materializeRepoCheckout({
   const {
     run = runGit,
     makeDirectory = mkdir,
-    makeTempDirectory = mkdtemp,
-    move = rename,
+    claimDirectory = mkdir,
     remove = rm,
   } = deps;
 
@@ -50,7 +49,7 @@ export async function materializeRepoCheckout({
   }
 
   const targetParent = dirname(targetPath);
-  let temporaryPath = null;
+  let ownsTarget = false;
   try {
     await makeDirectory(targetParent, { recursive: true });
     const parentBoundary = await inspectCanonicalPathBoundary({
@@ -63,14 +62,23 @@ export async function materializeRepoCheckout({
       return boundaryFailure("Rodič cílového checkoutu vede mimo kanonický root Organizace.");
     }
 
-    temporaryPath = await makeTempDirectory(join(targetParent, `.${basename(targetPath)}.materialize-`));
-    const temporaryBoundary = await inspectCanonicalPathBoundary({
-      rootPath: organizationRoot,
-      rootRealPath: parentBoundary.rootRealPath,
-      targetPath: temporaryPath,
-    });
-    if (!temporaryBoundary.ok) {
-      return boundaryFailure("Dočasný checkout vede mimo kanonický root Organizace.");
+    // mkdir bez recursive je atomický no-clobber claim. Na rozdíl od POSIX
+    // rename nikdy nenahradí prázdný adresář, který mezi kontrolou a zápisem
+    // vytvořil jiný Pull/CLI proces. Uvnitř claimnutého adresáře klonujeme
+    // přímo a při každém neúspěchu uklidíme jen checkout, který vlastníme.
+    try {
+      await claimDirectory(targetPath);
+      ownsTarget = true;
+    } catch (error) {
+      if (error?.code === "EEXIST") {
+        return {
+          ok: false,
+          outcome: "target_exists",
+          code: "materialization_target_appeared",
+          message: "Cílový checkout mezitím vytvořil jiný proces; Launchpad ho ponechal beze změny.",
+        };
+      }
+      throw error;
     }
 
     const clone = await run(
@@ -83,7 +91,7 @@ export async function materializeRepoCheckout({
         "origin",
         "--",
         remote,
-        temporaryPath,
+        targetPath,
       ],
       {
         cwd: organizationRoot,
@@ -101,23 +109,14 @@ export async function materializeRepoCheckout({
     }
 
     const verification = await verifyClonedCheckout({
-      path: temporaryPath,
+      path: targetPath,
       branch,
       remote,
       run,
     });
     if (!verification.ok) return verification;
 
-    if (await lstatOrNull(targetPath)) {
-      return {
-        ok: false,
-        outcome: "target_exists",
-        code: "materialization_target_appeared",
-        message: "Cílový checkout mezitím vytvořil jiný proces; Launchpad ho ponechal beze změny.",
-      };
-    }
-    await move(temporaryPath, targetPath);
-    temporaryPath = null;
+    ownsTarget = false;
 
     return {
       ok: true,
@@ -136,10 +135,10 @@ export async function materializeRepoCheckout({
       message: "Checkout se nepodařilo bezpečně vytvořit; existující data zůstala beze změny.",
     };
   } finally {
-    if (temporaryPath) {
-      // Cesta vznikla výhradně přes mkdtemp uvnitř kanonicky ověřeného parentu.
-      // Nikdy nemažeme manifestovaný target ani uživatelskou cestu.
-      await remove(temporaryPath, { recursive: true, force: true }).catch(() => {});
+    if (ownsTarget) {
+      // Cestu jsme atomicky claimnuli až po kanonické kontrole parentu.
+      // Nikdy nemažeme target, jehož claim skončil EEXIST.
+      await remove(targetPath, { recursive: true, force: true }).catch(() => {});
     }
   }
 }

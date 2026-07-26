@@ -1,6 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { materializeRepoCheckout } from "./git-materialization-lib.mjs";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
@@ -80,10 +80,51 @@ test("treats an inaccessible manifest repository as missing_access and leaves no
     code: "materialization_source_unavailable",
   });
   expect(existsSync(target)).toBe(false);
-  const workspaceEntries = existsSync(join(organizationRoot, "workspace"))
-    ? await readdir(join(organizationRoot, "workspace"))
-    : [];
-  expect(workspaceEntries.some((entry) => entry.includes(".materialize-"))).toBe(false);
+});
+
+test("never replaces a target directory created concurrently after preflight", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
+  await prepareOrganizationRoot(organizationRoot);
+  const target = join(organizationRoot, "workspace", "lazurio");
+  const remote = join(root, "remotes", "lazurio.git");
+  await mkdir(join(root, "sources"), { recursive: true });
+  await initGitRepo(join(root, "sources", "lazurio"), { remotePath: remote });
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "BetaCo",
+    github_org: "BetaCo",
+    module_slots: [
+      {
+        path: "workspace/lazurio",
+        teams: ["lazurio"],
+        git: { url: remote, branch: "main" },
+      },
+    ],
+  });
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  const repo = inventory.repos.find((entry) => entry.key === "BetaCo::lazurio");
+
+  const result = await materializeRepoCheckout({
+    companiesRoot: root,
+    repo,
+    deps: {
+      claimDirectory: async (path) => {
+        await mkdir(path);
+        await writeFile(join(path, "concurrent-owner.txt"), "preserve me\n");
+        return mkdir(path);
+      },
+    },
+  });
+
+  expect(result).toMatchObject({
+    ok: false,
+    outcome: "target_exists",
+    code: "materialization_target_appeared",
+  });
+  expect(await readFile(join(target, "concurrent-owner.txt"), "utf8")).toBe("preserve me\n");
+  expect(existsSync(join(target, ".git"))).toBe(false);
 });
 
 test("refuses a target that does not exactly match the manifest inventory boundary", async () => {
