@@ -80,6 +80,17 @@ export async function materializeRepoCheckout({
       }
       throw error;
     }
+    const claimedBoundary = await inspectCanonicalPathBoundary({
+      rootPath: organizationRoot,
+      rootRealPath: parentBoundary.rootRealPath,
+      targetPath,
+    });
+    if (!claimedBoundary.ok) {
+      // Parent mohl být mezi preflightem a mkdir nahrazený symlinkem. Cizí
+      // cesty se nedotkneme ani cleanupem; především do nich nic neklonujeme.
+      ownsTarget = false;
+      return boundaryFailure("Cílový parent po claimu změnil kanonickou hranici; Launchpad do něj nic nezapsal.");
+    }
 
     const clone = await run(
       [
@@ -115,6 +126,15 @@ export async function materializeRepoCheckout({
       run,
     });
     if (!verification.ok) return verification;
+    const completedBoundary = await inspectCanonicalPathBoundary({
+      rootPath: organizationRoot,
+      rootRealPath: parentBoundary.rootRealPath,
+      targetPath,
+    });
+    if (!completedBoundary.ok) {
+      ownsTarget = false;
+      return boundaryFailure("Cílový checkout během materializace změnil kanonickou hranici; Launchpad ho nepublikoval ani nesmazal.");
+    }
 
     ownsTarget = false;
 
@@ -137,8 +157,16 @@ export async function materializeRepoCheckout({
   } finally {
     if (ownsTarget) {
       // Cestu jsme atomicky claimnuli až po kanonické kontrole parentu.
-      // Nikdy nemažeme target, jehož claim skončil EEXIST.
-      await remove(targetPath, { recursive: true, force: true }).catch(() => {});
+      // Před rekurzivním cleanupem hranici zopakujeme: stale pathname, jehož
+      // parent někdo nahradil symlinkem, nesmí smazat externí data.
+      const cleanupBoundary = await inspectCanonicalPathBoundary({
+        rootPath: organizationRoot,
+        targetPath,
+        allowMissingTarget: true,
+      }).catch(() => null);
+      if (cleanupBoundary?.ok) {
+        await remove(targetPath, { recursive: true, force: true }).catch(() => {});
+      }
     }
   }
 }
