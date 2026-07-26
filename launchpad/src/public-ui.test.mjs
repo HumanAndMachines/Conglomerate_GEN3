@@ -542,6 +542,9 @@ test("Launchpad nabízí Organization root stav, autostash pull a jeden globáln
   expect(js).toContain("`Nová verze - ${incoming} změn`");
   expect(js).toContain('autostash ? "pull-autostash" : "pull"');
   expect(js).toContain("function pullAllRepositories");
+  expect(js).toContain("znovu načte jejich manifesty");
+  expect(js).toContain("summary.materialized_count");
+  expect(js).toContain("summary.missing_access_count");
   expect(js).toContain('fetchJson("/api/git/pull-all", { method: "POST" })');
   expect(css).toContain(".organization-git-card");
   expect(css).toContain(".bulk-pull-summary");
