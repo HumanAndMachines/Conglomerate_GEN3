@@ -26,10 +26,13 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
    takže ukáže i linked worktrees mimo root. Je to informativní inventura;
    `bun run worktrees:check` je fail-closed kontrola umístění, metadat a Git
    zachování. Její PASS není cleanup autorizace.
-3. Použij existující HumanAndMachines Mission Control plán. Worktree cesta je
-   výhradně
-   `<Conglomerate>/.worktrees/root/<canonical-plan-basename>/`; basename je
-   název kanonického plan souboru bez `.yaml`. Branch obsahuje kód plánu.
+3. Použij existující HumanAndMachines Mission Control plán a worktree založ
+   kanonickou lane `bun run worktrees:create -- --plan <KOD-XXXX>` — odvodí
+   basename z kanonického plan souboru, založí branch z čerstvého
+   `origin/main` a vygeneruje schema-validní sidecar. Worktree cesta je
+   výhradně `<Conglomerate>/.worktrees/root/<canonical-plan-basename>/`;
+   basename je název kanonického plan souboru bez `.yaml`. Branch obsahuje
+   kód plánu.
 4. Vedle worktree vytvoř
    `<canonical-plan-basename>.worktree.json` podle
    `companiesascode.worktree.v1` s kanonickými identity/path poli, přesným
@@ -114,6 +117,7 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
 ## Ověření
 
 ```bash
+bun run worktrees:create -- --plan <KOD-XXXX> --dry-run
 bun run worktrees:status
 bun run worktrees:check
 # pouze před taskem z primárního main checkoutu
