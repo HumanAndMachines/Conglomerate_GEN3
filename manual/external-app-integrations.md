@@ -105,11 +105,19 @@ Definice z katalogu se na mašině stává funkční až lokální aktivací:
 2. OAuth consent dokončuje **Principál v prohlížeči na té mašině** — agent
    připraví konfiguraci a diagnostiku, ale výběr účtu a souhlas je lidský
    krok (viz Human-action boundary v custody standardu).
-3. Token cache zůstává lokální (keyring harnessu, případně custody cesta
+3. Scopes uděluj defaultně **read i write** pro služby, které workflow
+   Organizace potřebuje. Read-only start je volitelné zpřísnění pro
+   mimořádně citlivé zdroje, ne default; LinkedIn zůstává post-only výjimka
+   dle svého runbooku. Primární ochranu drží stejný kontrakt jako u kódu:
+   **write agenta je Draft, ne Publikace**. Mechanické gaty se liší podle
+   harnessu a formy integrace — konkrétní nastavení a jejich meze drží
+   sekce „Draft a Publikace ve write operacích" níže; nastav je při
+   aktivaci a ověř je ve smoke testu.
+4. Token cache zůstává lokální (keyring harnessu, případně custody cesta
    serveru). Tool-runtime cesty (`~/.google_workspace_mcp/…`,
    `~/.gmail-mcp/…`) nejsou custody source; runbook musí umět cache z
    custody obnovit a bezpečně rotovat.
-4. Mezi mašinami se nikdy nepřenáší token cache, client secrety ani celé
+5. Mezi mašinami se nikdy nepřenáší token cache, client secrety ani celé
    uživatelské configy harnessu. Každá mašina = vlastní OAuth grant,
    revokovatelný u poskytovatele samostatně.
 
@@ -118,6 +126,16 @@ Definice z katalogu se na mašině stává funkční až lokální aktivací:
 - Katalogové servery Organizace načte Claude Code automaticky z `.mcp.json`
   v rootu org repa, když agent pracuje v checkoutu té Organizace; první
   použití na mašině potvrzuje Principál v approval promptu.
+- **První approval serveru není per-action write gate.** Claude Code
+  rozhoduje per tool přes permission pravidla `mcp__<server>__<tool>`.
+  Write nástroje nikdy neschvaluj plošně („allow celý server"); zapiš je
+  jmenovitě do `ask`, případně `deny`, a čtecí nástroje smíš dát do
+  `allow`. Pravidla patří do settings toho scope, kterému integrace slouží
+  (projektová `.claude/settings.json` Organizace, nebo user settings pro
+  osobní integrace) — kontrakt harnessu ověř v jeho aktuální dokumentaci,
+  názvy nástrojů vyčti z `/mcp`.
+- Nastavení zapiš do `INTEGRATIONS.md` k dané integraci, ať je
+  reprodukovatelné a ověřitelné i na další mašině.
 - Osobní integrace přidávej do user scope
   (`claude mcp add --scope user <name> …`), ne do project scope
   Organizace.
@@ -147,6 +165,84 @@ Agent CLI volá přes shell dané mašiny; přihlášení (`gh auth login`,
 credentials drží CLI ve vlastním lokálním úložišti, funguje ve všech
 harnessech se shellem. Nevýhoda: bez typovaných tool schémat — pro
 harness bez shellu použij MCP variantu.
+
+**Pozor: MCP approval mode se na CLI nevztahuje.** Zápis provedený příkazem
+v shellu není MCP tool call, takže ho `writes`/`prompt` ani permission
+pravidla `mcp__…` nezachytí. Gate má tři úrovně a všechny platí:
+
+1. **Shell permission pravidla harnessu** — write podpříkazy nikdy
+   neallowlistuj plošně (`gog *`, `acli *`, `gh *`). Allowlistuj jen
+   konkrétní čtecí příkazy; ostatní ať procházejí potvrzením.
+2. **Draft forma výstupu** — CLI volej tak, aby výsledek byl vratný
+   (draft místo odeslání, nový soubor místo přepisu, testovací cíl).
+3. **Explicitní pokyn Principála** pro každou nevratnou operaci; u CLI je
+   tohle procesní pravidlo hlavní gate, ne pojistka.
+
+## Draft a Publikace ve write operacích
+
+Write přístup není povolení publikovat. Platí stejný kontrakt jako u kódu
+(root `AGENTS.md`, decisions 0090 a 0103): **co agent v externí aplikaci
+vytvoří, je Draft — revertovatelný a editovatelný Principálem. Publikaci
+dělá Principál, nebo agent, ale jen na jeho explicitní pokyn v daném
+threadu.** Právě proto je write scope defaultní: proces, ne zúžený scope,
+drží hranici.
+
+Prakticky to znamená volit vratnou formu výstupu a nechat nevratný krok
+Principálovi:
+
+| Služba | Draft (agent smí sám) | Publikace (jen na explicitní pokyn) |
+| --- | --- | --- |
+| Gmail / Outlook | vytvořit draft zprávy, štítky, uspořádání | odeslat, smazat, hromadné operace |
+| Slack | připravit znění, zapsat do testovacího kanálu | poslat do ostrého kanálu, DM, oznámení |
+| Jira / Confluence | draft issue nebo stránky, komentář k review | přechod stavu, publikace stránky, mazání |
+| Drive / Docs / Sheets | nový soubor nebo kopie k revizi, návrh úprav | přepis ostrého dokumentu, sdílení ven, mazání |
+| Canva | nový design, export do drafts cesty | sdílení/zveřejnění, přepis týmového assetu |
+| LinkedIn | draft příspěvku | publikace příspěvku |
+
+Nevratné operace (odeslání, zveřejnění, mazání, přepis ostrého obsahu,
+změna oprávnění) potvrzuje Principál per akci.
+
+### Čím je write gate vynucený — a čím ne
+
+Mechanická vrstva se liší podle harnessu a formy integrace. Nepředpokládej
+jednotný „approval mode"; při aktivaci nastav to, co daná cesta skutečně
+nabízí, a zapiš to k integraci do `INTEGRATIONS.md`:
+
+| Cesta | Mechanický gate | Co gate nepokrývá |
+| --- | --- | --- |
+| MCP v Codexu | `default_tools_approval_mode = "writes"` / `"prompt"`, výběr `enabled_tools` | nic mimo MCP tool cally |
+| MCP v Claude Code | permission pravidla per nástroj (`mcp__<server>__<tool>` v `ask`/`deny`), výběr povolených serverů | plošné „allow serveru" gate ruší |
+| CLI přes shell | permission pravidla shellu daného harnessu (allowlist jen čtecích příkazů) | MCP approval mode se **neuplatní** |
+| Browser fallback | přímý dohled Principála u obrazovky | nic automatického |
+
+**Udělený OAuth grant je schopnost mašiny, ne agenta.** Token v lokálním
+úložišti může použít kterýkoli proces, který na něj dosáhne — CLI, Buddy,
+skript, jiný harness. Approval mode proto **není bezpečnostní hranice vůči
+ostatním procesům na mašině**; je to gate uvnitř jednoho harnessu. Skutečné
+hranice udělených scopes jsou: rozsah samotného grantu, custody souborů
+(`0600`/`0700`), rychlá revokace u poskytovatele a procesní pravidlo
+Draft → Publikace, kterým se řídí každý agent i Buddy (Buddy navíc v rámci
+svých mandátů). U scopes, jejichž zneužití by bylo nevratné a drahé
+(mazání, správa oprávnění, admin operace), scope neuděluj vůbec — to je
+jediná spolehlivá ochrana.
+
+### Smoke testy: vratný cíl a úklid
+
+Write smoke nedělej na ostrém obsahu. Použij k tomu určený jednorázový cíl
+— testovací kanál, scratch složku nebo drafts cestu, sandbox projekt/space,
+vlastní draft. Cíl použitý pro smoke zapiš do `INTEGRATIONS.md`, ať ho další
+mašina používá taky a nevzniká nepořádek ani zbytečné notifikace
+v produkčních prostorech Organizace.
+
+**Výjimka pro úklid určeného smoke artefaktu:** když Principál výslovně
+schválil tento jmenovitý smoke cíl, patří do téže schválené operace i úklid
+artefaktu, který agent v tomto konkrétním smoke sám vytvořil (draft, testovací
+zpráva nebo testovací záznam). Agent jej smí po ověření odstranit; nejde o
+samostatnou Publikaci ani o obecné oprávnění mazat. Výjimka se nikdy netýká
+existujícího, ostrého nebo cizího obsahu. Není-li cíl jmenovitě určený v
+`INTEGRATIONS.md`, původ artefaktu není prokazatelný nebo úklid zasahuje mimo
+tento smoke, artefakt ponech a vyžádej si samostatný explicitní pokyn
+Principála.
 
 ## Org-side admin kroky
 
