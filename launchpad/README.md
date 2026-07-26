@@ -76,6 +76,7 @@ handlu a nikdy nepoužije přesměrovanou manifest pathname. Na macOS a Linuxu
 POSIX `mkdir` nemá atomický create-and-directory-handle primitive, proto
 materializátor vrací `materialization_anchor_unavailable` před vytvořením
 targetu; aktivní slot zůstane chybějící a akce to čitelně ohlásí jako failure.
+Bezpečný POSIX návrat sleduje `issue-2026-07-26-001`.
 Rekurzivní failure cleanup se záměrně neprovádí: neočekávané selhání
 po claimu nechá částečný adresář jako viditelný lokální blocker k ruční
 kontrole a nikdy neriskuje smazání cizí cesty.
@@ -510,9 +511,10 @@ jasný mechanismus:
   Organizace. V první fázi stáhne Organization root repa; ve druhé znovu načte
   jejich manifesty, aktualizuje existující Workspace/root sloty a na Windows
   bezpečně naklonuje chybějící aktivní sloty. Na macOS a Linuxu pro chybějící
-  aktivní slot failuje zavřeně s `materialization_anchor_unavailable`, dokud
-  follow-up `issue-2026-07-26-001` nedodá ověřený POSIX mechanismus. GitHub
-  credentials kolegy zůstávají access autoritou; nedostupný checkout se ohlásí
+  aktivní slot failuje zavřeně s `materialization_anchor_unavailable` před
+  vytvořením targetu, dokud follow-up `issue-2026-07-26-001` nedodá ověřený
+  POSIX mechanismus. GitHub credentials kolegy zůstávají access autoritou;
+  nedostupný checkout se ohlásí
   jako `missing_access`, `planned_slot`
   se nematerializuje. Pro bezpečně autostashovatelné drafty použije stejné
   recovery flow a každý blocker izoluje, aby nezastavil ostatní repozitáře.
