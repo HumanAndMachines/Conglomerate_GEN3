@@ -181,6 +181,7 @@ function Invoke-Git {
     $text = (($nativeOutput | ForEach-Object { $_.ToString() }) -join "`n").Trim()
     return [PSCustomObject]@{
         Ok = $exitCode -eq 0
+        ExitCode = $exitCode
         Output = $text
     }
 }
@@ -189,7 +190,7 @@ function Assert-Git {
     param([string[]]$Arguments)
     $result = Invoke-Git -Arguments $Arguments
     if (-not $result.Ok) {
-        throw "git_write_failed"
+        throw "git_write_failed:$($Arguments[0]):$($result.ExitCode)"
     }
 }
 
@@ -330,12 +331,17 @@ try {
     } -ExitCode 0
 }
 catch {
+    $failureDetail = ([string]$_.Exception.Message).Substring(
+        0,
+        [Math]::Min(160, ([string]$_.Exception.Message).Length)
+    )
     if ($claimed) {
         Write-Result -Payload @{
             ok = $false
             outcome = "failed"
             code = "materialization_incomplete"
             message = "The anchored Git checkout failed after claiming the target; the partial directory remains for manual inspection."
+            detail = $failureDetail
         } -ExitCode 30
     }
     Write-Result -Payload @{
@@ -343,6 +349,7 @@ catch {
         outcome = "failed"
         code = "materialization_path_forbidden"
         message = "A no-follow directory anchor could not be acquired; the target was not created."
+        detail = $failureDetail
     } -ExitCode 31
 }
 finally {
