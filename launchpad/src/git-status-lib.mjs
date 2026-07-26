@@ -19,6 +19,7 @@ export const GIT_STATUS_VALUES = [
   "diverged",
   "wrong_branch",
   "rebase_in_progress",
+  "git_am_in_progress",
   "repo_missing",
   "git_unavailable",
   "check_failed",
@@ -274,7 +275,7 @@ export async function readGitRepoStatus(repo, { refresh = false } = {}) {
   const operation = await readGitOperationState(repo);
   base.operation = operation;
 
-  if (refresh && operation?.kind !== "rebase") {
+  if (refresh && !operation) {
     const fetchResult = await refreshGitRepoRemote(repo);
     if (!fetchResult.ok) {
       return withDescriptor(base, "check_failed", {
@@ -354,6 +355,13 @@ export async function readGitOperationState(repo) {
       ? gitPath.stdout
       : resolve(repo.absolute_path, gitPath.stdout);
     if (existsSync(markerPath)) {
+      if (marker === "rebase-apply" && existsSync(resolve(markerPath, "applying"))) {
+        return {
+          kind: "am",
+          backend,
+          can_abort_rebase: false,
+        };
+      }
       return {
         kind: "rebase",
         backend,
@@ -366,7 +374,7 @@ export async function readGitOperationState(repo) {
 
 export async function abortRepoRebase(repo) {
   const before = await readGitRepoStatus(repo);
-  if (before.operation?.kind !== "rebase") {
+  if (before.operation?.kind !== "rebase" || before.operation?.can_abort_rebase !== true) {
     return {
       ok: false,
       code: "rebase_not_in_progress",
@@ -410,18 +418,99 @@ export async function abortRepoRebase(repo) {
 }
 
 export async function refreshGitRepoRemote(repo) {
-  const remotes = await runGit(["remote"], {
+  const source = await verifyPullSourceIdentity(repo);
+  if (!source.ok) return source;
+
+  const fetch = await runGit(
+    [
+      "fetch",
+      "--no-tags",
+      "--prune",
+      "--force",
+      "--",
+      source.fetch_url,
+      `+refs/heads/${source.branch}:${source.tracking_ref}`,
+    ],
+    {
+      cwd: repo.absolute_path,
+      timeoutMs: GIT_FETCH_TIMEOUT_MS,
+      env: safeGitRemoteEnv(),
+    },
+  );
+  if (!fetch.ok) return fetch;
+
+  // Fail closed if origin/upstream changed while the controlled fetch was
+  // running. The fetched bytes still came from the manifest URL, but Launchpad
+  // must not advertise the checkout as safe while its local source identity is
+  // inconsistent.
+  const verified = await verifyPullSourceIdentity(repo);
+  if (!verified.ok || verified.fingerprint !== source.fingerprint) {
+    return {
+      ok: false,
+      code: "pull_source_changed",
+      error: "pull_source_changed",
+    };
+  }
+  return {
+    ...fetch,
+    source: verified,
+  };
+}
+
+async function verifyPullSourceIdentity(repo) {
+  const branch = repo.expected_branch ?? "main";
+  const manifestUrl = typeof repo.repo === "string" ? repo.repo.trim() : "";
+  if (!manifestUrl) {
+    return {
+      ok: false,
+      code: "pull_source_invalid",
+      error: "pull_manifest_remote_missing",
+    };
+  }
+
+  const branchCheck = await runGit(["check-ref-format", "--branch", branch], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
-  if (!remotes.ok || !remotes.stdout) {
-    return { ...remotes, ok: false, error: remotes.error ?? "git_remote_missing" };
+  if (!branchCheck.ok) {
+    return { ok: false, code: "pull_source_invalid", error: "pull_manifest_branch_invalid" };
   }
-  return runGit(["fetch", "--all", "--prune"], {
-    cwd: repo.absolute_path,
-    timeoutMs: GIT_FETCH_TIMEOUT_MS,
-    env: safeGitRemoteEnv(),
-  });
+
+  const [remoteUrls, upstream] = await Promise.all([
+    runGit(["remote", "get-url", "--all", "origin"], {
+      cwd: repo.absolute_path,
+      timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+    }),
+    runGit(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], {
+      cwd: repo.absolute_path,
+      timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+    }),
+  ]);
+  const configuredUrls = remoteUrls.stdout.split("\n").filter(Boolean);
+  const expectedUpstream = `origin/${branch}`;
+  if (
+    !remoteUrls.ok
+    || configuredUrls.length !== 1
+    || normalizeGitRemote(configuredUrls[0]) !== normalizeGitRemote(manifestUrl)
+    || !upstream.ok
+    || upstream.stdout !== expectedUpstream
+  ) {
+    return {
+      ok: false,
+      code: "pull_source_invalid",
+      error: "pull_source_identity_mismatch",
+    };
+  }
+
+  return {
+    ok: true,
+    manifest_url: manifestUrl,
+    fetch_url: configuredUrls[0],
+    branch,
+    upstream: expectedUpstream,
+    tracking_ref: `refs/remotes/origin/${branch}`,
+    fingerprint: `${normalizeGitRemote(manifestUrl)}\0${expectedUpstream}`,
+  };
 }
 
 export async function readRepoChanges(repo) {
@@ -440,13 +529,15 @@ export async function readRepoChanges(repo) {
   };
 }
 
-export async function pullRepoFastForward(repo, { preflight = null } = {}) {
-  if (preflight) return pullFastForwardAfterPreflight(repo, preflight);
+export async function pullRepoFastForward(repo, { beforeMutation = null } = {}) {
   // Cheap local guards come first so a dirty/wrong checkout gets the useful
   // explanation even when its remote is unavailable. A clean candidate must
   // still pass a fresh remote fetch before Launchpad allows the pull.
   const local = await readGitRepoStatus(repo);
-  if (["draft_changes", "wrong_branch", "push_required", "diverged", "rebase_in_progress"].includes(local.status)) {
+  if (
+    ["draft_changes", "wrong_branch", "push_required", "diverged", "rebase_in_progress", "git_am_in_progress"]
+      .includes(local.status)
+  ) {
     return {
       ok: false,
       code: "pull_not_safe",
@@ -454,12 +545,51 @@ export async function pullRepoFastForward(repo, { preflight = null } = {}) {
       before: local,
     };
   }
-  const before = await readGitRepoStatus(repo, { refresh: true });
-  return pullFastForwardAfterPreflight(repo, before);
+  const prepared = await prepareVerifiedPull(repo);
+  if (!prepared.ok) return prepared;
+  if (beforeMutation) await beforeMutation();
+  const verified = await verifyPreparedPull(repo, prepared);
+  if (!verified.ok) return { ...verified, before: prepared.before };
+
+  const merge = await runGit(["merge", "--ff-only", "--", prepared.target_oid], {
+    cwd: repo.absolute_path,
+    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+    env: safeGitRemoteEnv(),
+  });
+  if (!merge.ok) {
+    return {
+      ok: false,
+      code: "pull_failed",
+      message: merge.stderr || merge.error || "Stáhnout novější verzi se nepovedlo.",
+      before: prepared.before,
+    };
+  }
+  const after = await readGitRepoStatus(repo);
+  return {
+    ok: true,
+    before: prepared.before,
+    after,
+    stdout: merge.stdout,
+    stderr: merge.stderr,
+  };
 }
 
-async function pullFastForwardAfterPreflight(repo, before) {
-  if (before.status !== "pull_available") {
+async function prepareVerifiedPull(repo) {
+  const refresh = await refreshGitRepoRemote(repo);
+  if (!refresh.ok) {
+    return {
+      ok: false,
+      code: refresh.code ?? "pull_source_invalid",
+      message: "Zdroj repozitáře neodpovídá manifestu nebo ho nejde bezpečně ověřit. Repo zůstalo beze změny.",
+      before: await readGitRepoStatus(repo),
+    };
+  }
+  const before = await readGitRepoStatus(repo);
+  if (
+    !["pull_available", "draft_changes"].includes(before.status)
+    || before.counts.incoming < 1
+    || before.counts.outgoing > 0
+  ) {
     return {
       ok: false,
       code: "pull_not_safe",
@@ -467,31 +597,90 @@ async function pullFastForwardAfterPreflight(repo, before) {
       before,
     };
   }
-  const pull = await runGit(["pull", "--ff-only"], {
-    cwd: repo.absolute_path,
-    timeoutMs: GIT_FETCH_TIMEOUT_MS,
-    env: safeGitRemoteEnv(),
-  });
-  if (!pull.ok) {
+
+  const [head, target] = await Promise.all([
+    runGit(["rev-parse", "--verify", "HEAD^{commit}"], {
+      cwd: repo.absolute_path,
+      timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+    }),
+    runGit(["rev-parse", "--verify", `${refresh.source.tracking_ref}^{commit}`], {
+      cwd: repo.absolute_path,
+      timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+    }),
+  ]);
+  if (!head.ok || !target.ok || !isGitOid(head.stdout) || !isGitOid(target.stdout)) {
     return {
       ok: false,
-      code: "pull_failed",
-      message: pull.stderr || pull.error || "Stáhnout novější verzi se nepovedlo.",
+      code: "pull_target_invalid",
+      message: "Git nepotvrdil přesný commit ke stažení. Repo zůstalo beze změny.",
       before,
     };
   }
-  const after = await readGitRepoStatus(repo);
+
+  const ancestor = await runGit(["merge-base", "--is-ancestor", head.stdout, target.stdout], {
+    cwd: repo.absolute_path,
+    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+  });
+  if (!ancestor.ok || head.stdout === target.stdout) {
+    return {
+      ok: false,
+      code: "pull_not_safe",
+      message: pullGuardMessage(before),
+      before,
+    };
+  }
+
   return {
     ok: true,
     before,
-    after,
-    stdout: pull.stdout,
-    stderr: pull.stderr,
+    source: refresh.source,
+    head_oid: head.stdout,
+    target_oid: target.stdout,
   };
 }
 
-export async function pullRepoWithAutostash(repo, { preflight = null } = {}) {
-  const before = preflight ?? await readGitRepoStatus(repo, { refresh: true });
+async function verifyPreparedPull(repo, prepared) {
+  const source = await verifyPullSourceIdentity(repo);
+  if (!source.ok || source.fingerprint !== prepared.source.fingerprint) {
+    return {
+      ok: false,
+      code: "pull_source_changed",
+      message: "Zdroj repozitáře se během kontroly změnil. Pull byl bezpečně zablokován.",
+    };
+  }
+  const [head, target] = await Promise.all([
+    runGit(["rev-parse", "--verify", "HEAD^{commit}"], {
+      cwd: repo.absolute_path,
+      timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+    }),
+    runGit(["rev-parse", "--verify", `${prepared.source.tracking_ref}^{commit}`], {
+      cwd: repo.absolute_path,
+      timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+    }),
+  ]);
+  if (head.stdout !== prepared.head_oid || target.stdout !== prepared.target_oid) {
+    return {
+      ok: false,
+      code: "pull_target_changed",
+      message: "Checkout nebo ověřený cílový commit se během kontroly změnil. Pull byl bezpečně zablokován.",
+    };
+  }
+  return { ok: true };
+}
+
+export async function pullRepoWithAutostash(repo, { beforeMutation = null } = {}) {
+  const local = await readGitRepoStatus(repo);
+  if (local.status !== "draft_changes" || !local.upstream) {
+    return {
+      ok: false,
+      code: "autostash_pull_not_safe",
+      message: autostashGuardMessage(local),
+      before: local,
+    };
+  }
+  const prepared = await prepareVerifiedPull(repo);
+  if (!prepared.ok) return prepared;
+  const before = prepared.before;
   if (before.status !== "draft_changes" || before.counts.incoming < 1 || before.counts.outgoing > 0) {
     return {
       ok: false,
@@ -548,12 +737,27 @@ export async function pullRepoWithAutostash(repo, { preflight = null } = {}) {
     };
   }
 
-  const pull = await runGit(["pull", "--ff-only"], {
+  if (beforeMutation) await beforeMutation();
+  const verified = await verifyPreparedPull(repo, prepared);
+  if (!verified.ok) {
+    const restored = await restoreCreatedStash(repo, stashRef.stdout);
+    return {
+      ...verified,
+      before,
+      code: restored.ok ? verified.code : "autostash_restore_failed",
+      message: restored.ok
+        ? `${verified.message} Lokální změny jsou obnovené.`
+        : "Pull byl zablokován, ale lokální změny se nepodařilo automaticky obnovit. Autostash zůstal zachovaný.",
+      stash_preserved: !restored.dropped,
+    };
+  }
+
+  const merge = await runGit(["merge", "--ff-only", "--", prepared.target_oid], {
     cwd: repo.absolute_path,
-    timeoutMs: GIT_FETCH_TIMEOUT_MS,
+    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
     env: safeGitRemoteEnv(),
   });
-  if (!pull.ok) {
+  if (!merge.ok) {
     const restored = await restoreCreatedStash(repo, stashRef.stdout);
     return {
       ok: false,
@@ -587,8 +791,8 @@ export async function pullRepoWithAutostash(repo, { preflight = null } = {}) {
     pulled: true,
     autostash: true,
     stash_preserved: !restored.dropped,
-    stdout: pull.stdout,
-    stderr: pull.stderr,
+    stdout: merge.stdout,
+    stderr: merge.stderr,
   };
 }
 
@@ -629,6 +833,9 @@ function pullGuardMessage(status) {
   if (status.status === "rebase_in_progress") {
     return "Repo má rozpracovaný rebase. Abortni ho, nebo vlož screenshot této chyby agentovi do Codexu.";
   }
+  if (status.status === "git_am_in_progress") {
+    return "Repo má rozpracované aplikování patchů přes git am. Launchpad do něj nezasahuje; vlož screenshot této chyby agentovi do Codexu.";
+  }
   if (status.status === "draft_changes") {
     return "Repo má rozepsaná práce; nejdřív ji zabal do commitu nebo vědomě ukliď.";
   }
@@ -649,6 +856,7 @@ function pullGuardMessage(status) {
 
 export function deriveGitRepoStatus({ branch, expected_branch, counts, operation }) {
   if (operation?.kind === "rebase") return "rebase_in_progress";
+  if (operation?.kind === "am") return "git_am_in_progress";
   if (branch && expected_branch && branch !== expected_branch) return "wrong_branch";
   if (counts.changed_files > 0) return "draft_changes";
   if (counts.incoming > 0 && counts.outgoing > 0) return "diverged";
@@ -697,7 +905,22 @@ function isoTime(value) {
 }
 
 function remoteRefreshEligible(status) {
-  return !["repo_missing", "git_unavailable", "check_failed", "rebase_in_progress"].includes(status?.status);
+  return !["repo_missing", "git_unavailable", "check_failed", "rebase_in_progress", "git_am_in_progress"]
+    .includes(status?.status);
+}
+
+function normalizeGitRemote(remote) {
+  const value = String(remote ?? "").trim().replace(/\/+$/, "");
+  const github = value.match(
+    /^(?:git@github\.com:|ssh:\/\/git@github\.com\/|https?:\/\/github\.com\/)?([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?$/i,
+  );
+  return github
+    ? `github:${github[1].toLowerCase()}/${github[2].toLowerCase()}`
+    : value;
+}
+
+function isGitOid(value) {
+  return /^[0-9a-f]{40,64}$/i.test(value);
 }
 
 function stableJitter(repo, maxMs) {
@@ -750,6 +973,12 @@ const descriptors = {
     title: "Rebase je rozpracovaný",
     message: () => "Git čeká na dokončení nebo abortnutí rozpracovaného rebase.",
     recommended_action: "Abortnout rebase, nebo předat screenshot a stav agentovi do Codexu.",
+  },
+  git_am_in_progress: {
+    severity: "fail",
+    title: "Aplikování patchů je rozpracované",
+    message: () => "Git čeká na dokončení nebo abortnutí rozpracovaného git am.",
+    recommended_action: "Předat screenshot a stav agentovi do Codexu; Launchpad git am automaticky neabortuje.",
   },
   repo_missing: {
     severity: "fail",

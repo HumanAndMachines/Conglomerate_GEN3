@@ -182,7 +182,9 @@ export async function buildRepoRebaseAbortResponse({ companiesRoot, repoKey, sta
 
 function pullRecoveryMetadata(repoKey, result) {
   const status = result?.after ?? result?.before ?? null;
-  const canAbortRebase = status?.operation?.kind === "rebase";
+  const canAbortRebase =
+    status?.operation?.kind === "rebase"
+    && status?.operation?.can_abort_rebase === true;
   return {
     repo_key: repoKey,
     recovery: {
@@ -213,7 +215,10 @@ export async function buildPullAllResponse({ companiesRoot, statusService = null
       }
 
       const preflight = await readGitRepoStatus(repo, { refresh: true });
-      if (!["repo_missing", "git_unavailable", "check_failed", "rebase_in_progress"].includes(preflight.status)) {
+      if (
+        !["repo_missing", "git_unavailable", "check_failed", "rebase_in_progress", "git_am_in_progress"]
+          .includes(preflight.status)
+      ) {
         statusService?.markRemoteChecked(repo);
       }
       if (preflight.status === "up_to_date") {
@@ -301,6 +306,7 @@ export function builderPullScopeAllowed(repo) {
 
 function pullAllSkipMessage(status) {
   if (status.status === "rebase_in_progress") return "Repo má rozpracovaný rebase; abortni ho nebo předej screenshot Agentovi.";
+  if (status.status === "git_am_in_progress") return "Repo má rozpracované git am; předej screenshot Agentovi.";
   if (status.status === "wrong_branch") return "Repo není na očekávané branchi.";
   if (status.status === "push_required") return "Repo má lokální commity k odeslání.";
   if (status.status === "diverged") return "Lokální a vzdálená branch divergovaly.";

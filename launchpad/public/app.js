@@ -1663,16 +1663,21 @@ function renderOrganizationGitStatus() {
   freshness.textContent = `Vzdálená verze: ${gitFreshnessLabel(rootRepo.freshness)}`;
   card.append(title, badges, copy, freshness);
 
-  if (rootRepo.status === "rebase_in_progress" && rootRepo.operation?.can_abort_rebase) {
+  if (["rebase_in_progress", "git_am_in_progress"].includes(rootRepo.status)) {
     const recovery = document.createElement("p");
     recovery.className = "git-recovery-copy";
-    recovery.textContent = "Udělejte screenshot této hlášky a vložte ho agentovi do Codexu, nebo rebase bezpečně abortněte.";
-    const action = builderActionButton(
-      "Abortnout rebase",
-      () => abortGitRebase({ git: rootRepo, label: `${organization} root` }),
-    );
-    action.disabled = state.pendingAction === `git-rebase-abort:${rootRepo.key}`;
-    card.append(recovery, action);
+    recovery.textContent = rootRepo.operation?.can_abort_rebase
+      ? "Udělejte screenshot této hlášky a vložte ho agentovi do Codexu, nebo rebase bezpečně abortněte."
+      : "Udělejte screenshot této hlášky a vložte ho agentovi do Codexu. Launchpad do této Git operace automaticky nezasahuje.";
+    card.append(recovery);
+    if (rootRepo.operation?.can_abort_rebase) {
+      const action = builderActionButton(
+        "Abortnout rebase",
+        () => abortGitRebase({ git: rootRepo, label: `${organization} root` }),
+      );
+      action.disabled = state.pendingAction === `git-rebase-abort:${rootRepo.key}`;
+      card.append(action);
+    }
   } else if (rootRepo.status === "pull_available" || canAutostashPull(rootRepo)) {
     const action = builderActionButton(
       canAutostashPull(rootRepo) ? "Stáhnout a zachovat změny" : "Stáhnout root",
@@ -2613,11 +2618,11 @@ function cardWarningModel(app, gitRepo) {
     || recovery?.canAbortRebase,
   );
 
-  if (gitRepo?.status === "rebase_in_progress" || recovery) {
+  if (["rebase_in_progress", "git_am_in_progress"].includes(gitRepo?.status) || recovery) {
     return {
       tone: "danger",
-      title: gitRepo?.status === "rebase_in_progress"
-        ? "Stahování změn zůstalo rozpracované"
+      title: ["rebase_in_progress", "git_am_in_progress"].includes(gitRepo?.status)
+        ? "Git operace zůstala rozpracovaná"
         : "Stažení změn se nepovedlo",
       message: [
         recovery?.message ?? gitRepo?.message,

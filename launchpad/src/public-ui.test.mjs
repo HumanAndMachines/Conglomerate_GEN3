@@ -490,6 +490,8 @@ test("CAC-0044: git stavy mají lidský text a vstupují do kontrolního togglu"
   // Lidské texty portované 1:1 z GEN2 Kontroly.
   expect(copy).toContain("Někdo mezitím poslal novější verzi. Můžeš ji bezpečně stáhnout.");
   expect(copy).toContain("Tady je rozepsaná práce. Můžeš si zobrazit, co se změnilo.");
+  expect(copy).toContain("git_am_in_progress");
+  expect(copy).toContain("Launchpad do git am automaticky nezasahuje.");
   expect(copy).toContain("export function gitChipModel");
   expect(copy).toContain("export function isGitAttentionStatus");
   // Graceful absence: bez git dat vrací null.

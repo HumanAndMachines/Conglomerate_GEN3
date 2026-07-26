@@ -2,7 +2,15 @@ import { afterAll, expect, test } from "bun:test";
 import { cp, mkdir, rm, symlink, writeFile } from "fs/promises";
 import { createServer } from "net";
 import { join } from "path";
-import { createLaunchpadGitFixture, createPackageApp, initGitRepo, runGit, startConflictingRebase, writeJson } from "./git-fixture-helpers.test.mjs";
+import {
+  createLaunchpadGitFixture,
+  createPackageApp,
+  initGitRepo,
+  runGit,
+  startConflictingGitAm,
+  startConflictingRebase,
+  writeJson,
+} from "./git-fixture-helpers.test.mjs";
 import { platformTestTimeout } from "./test-platform-setup.mjs";
 
 const tempRoots = [];
@@ -120,6 +128,28 @@ test("Launchpad server exposes a guarded rebase abort only for a live module reb
   const repeated = await postJson(port, "/api/git/repos/BetaCo%3A%3Adeals/rebase-abort", {}, 409);
   expect(repeated.error).toBe("rebase_not_in_progress");
   expect(repeated.recovery.can_abort_rebase).toBe(false);
+});
+
+test("Launchpad server reports git am without exposing the rebase-abort action", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const dealsRepo = join(root, "organizations", "BetaCo_GEN3", "workspace", "deals");
+  await initGitRepo(dealsRepo);
+  await startConflictingGitAm(dealsRepo);
+  const { port } = await startLaunchpadServer(root);
+
+  const before = await getJson(port, "/api/git/repos/BetaCo%3A%3Adeals");
+  expect(before.repo.status).toBe("git_am_in_progress");
+  expect(before.repo.operation).toEqual({ kind: "am", backend: "apply", can_abort_rebase: false });
+
+  const blockedPull = await postJson(port, "/api/git/repos/BetaCo%3A%3Adeals/pull", {}, 409);
+  expect(blockedPull.error).toBe("pull_not_safe");
+  expect(blockedPull.recovery).toEqual({ operation: null, can_abort_rebase: false });
+
+  const refusedAbort = await postJson(port, "/api/git/repos/BetaCo%3A%3Adeals/rebase-abort", {}, 409);
+  expect(refusedAbort.error).toBe("rebase_not_in_progress");
+  expect((await getJson(port, "/api/git/repos/BetaCo%3A%3Adeals")).repo.status).toBe("git_am_in_progress");
+  runGit(["am", "--abort"], dealsRepo);
 });
 
 test("PORT environment configuration is implicit and falls forward to a free port", async () => {

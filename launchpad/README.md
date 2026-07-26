@@ -488,8 +488,12 @@ jasný mechanismus:
   ověřené appky se stejným portem + `Start` cíle; poslední otevřený modul
   vyhraje. Listener bez známé vazby se neukončí.
 - `Logs` čte lokální log mimo Git.
-- `Stáhnout novější verzi` provede pouze fresh-remote-verified
-  `git pull --ff-only` na čistém expected-branch checkoutu.
+- `Stáhnout novější verzi` nejdřív ověří, že lokální `origin` a upstream
+  odpovídají repozitáři a větvi deklarovaným v Organization manifestu. Potom
+  fetchne pouze tuto manifestovou větev, zapamatuje si její přesný commit a
+  provede lokální `git merge --ff-only <ověřený-commit>` na čistém
+  expected-branch checkoutu. Mutace proto nikdy znovu nečte pohyblivý
+  `origin`/upstream.
 - `Stáhnout a zachovat změny` je explicitní autostash flow pro checkout s
   incoming commity a bez outgoing commitů: odloží tracked i untracked změny,
   provede fast-forward, obnoví i staged stav a stash smaže až po úspěšném
@@ -516,6 +520,12 @@ Organization/workspace scope i živý rebase marker, spustí jen `git rebase
 --abort` a výsledek znovu přečte; nikdy nepoužívá `reset --hard` ani nemaže
 stash.
 
+`git am` používá na disku podobný marker jako apply-backend rebase. Launchpad
+ho proto klasifikuje samostatně: ukáže trvalé recovery varování a žádost
+o screenshot pro Agenta, ale nenabídne `git rebase --abort`. Skutečný
+apply-backend rebase zůstává rozpoznaný jako rebase a guarded abort pro něj
+funguje.
+
 ### Čerstvost Git stavu
 
 Údaj „novější verze / N commitů pozadu“ se počítá vůči lokálním remote refs,
@@ -524,8 +534,9 @@ ale jejich síťové obnovení je řízené samostatně:
 - `/api/apps` používá krátkou sdílenou cache lokální Git kontroly a nikdy samo
   nespouští síťový fetch;
 - aktivní Organization pohled žádá `/api/git/repos?company=<slug>` jen pro
-  zvolenou Organizaci; první požadavek naplánuje `git fetch --all --prune`
-  asynchronně, takže síť neblokuje hlavní mřížku;
+  zvolenou Organizaci; první požadavek asynchronně naplánuje kontrolovaný fetch
+  přesně manifestové větve do jejího očekávaného `origin/<branch>` refu, takže
+  síť neblokuje hlavní mřížku a cizí remote se nikdy nefetchuje;
 - jedna Launchpad server instance deduplikuje požadavky všech karet a pro jedno
   repo obnovuje remote nejvýše jednou za 5 minut plus stabilní jitter do
   60 sekund; souběžně běží nejvýše dva fetch procesy;

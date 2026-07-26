@@ -21,6 +21,7 @@ export function humanGitStatusLabel(status) {
     dirty_local_changes: "rozdělaná práce",
     wrong_branch: "jiný režim",
     rebase_in_progress: "rebase vyžaduje pomoc",
+    git_am_in_progress: "aplikování patchů vyžaduje pomoc",
     not_on_main: "jiný režim",
     repo_missing: "chybí složka",
     git_unavailable: "Git nejde spustit",
@@ -58,6 +59,8 @@ export function gitStatusUserMessage(repo) {
       "Tenhle modul je v nestandardním pracovním režimu. Pomocník zjistí proč.",
     rebase_in_progress:
       "Stahování změn zůstalo rozpracované. Rebase můžeš abortnout nebo předat screenshot agentovi do Codexu.",
+    git_am_in_progress:
+      "Aplikování patchů zůstalo rozpracované. Udělej screenshot a předej ho agentovi do Codexu; Launchpad do git am automaticky nezasahuje.",
     not_on_main:
       "Tenhle modul je v nestandardním pracovním režimu. Pomocník zjistí proč.",
     repo_missing:
@@ -73,7 +76,14 @@ export function gitStatusUserMessage(repo) {
 // Tón chipu podle severity (ok/warn/fail) → mapuje na chip- třídy v CSS.
 export function gitStatusTone(status) {
   const okStates = ["up_to_date"];
-  const failStates = ["diverged", "rebase_in_progress", "repo_missing", "git_unavailable", "check_failed"];
+  const failStates = [
+    "diverged",
+    "rebase_in_progress",
+    "git_am_in_progress",
+    "repo_missing",
+    "git_unavailable",
+    "check_failed",
+  ];
   if (okStates.includes(status)) return "muted";
   if (failStates.includes(status)) return "danger";
   return "warn";
