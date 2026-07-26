@@ -376,7 +376,8 @@ function Invoke-Git {
         $ErrorActionPreference = "Continue"
         $safeArguments = @(
             "-c", "core.sshCommand=",
-            "-c", "core.gitProxy="
+            "-c", "core.gitProxy=",
+            "-c", "protocol.ext.allow=never"
         ) + $Arguments
         $nativeOutput = & $script:GitExecutable @safeArguments 2>&1
         $exitCode = $LASTEXITCODE
@@ -578,14 +579,10 @@ try {
     $currentBranch = Invoke-Git -Arguments @("branch", "--show-current")
     $origin = Invoke-Git -Arguments @("remote", "get-url", "origin")
     $head = Invoke-Git -Arguments @("rev-parse", "--verify", "HEAD^{commit}")
-    # The anchored, delete-on-close lock is intentionally the sole untracked
-    # entry until helper exit. The JS caller performs the final full clean
-    # status after every lock handle has closed.
-    $status = Invoke-Git -Arguments @(
-        "status",
-        "--porcelain=v1",
-        "--untracked-files=no"
-    )
+    # The delete-on-close lock remains visible until helper exit; it is the only
+    # permitted untracked entry while the anchored helper verifies cleanliness.
+    $status = Invoke-Git -Arguments @("status", "--porcelain=v1")
+    $expectedLockStatus = "?? $($targetLock.Name)"
     if (
         -not $root.Ok -or
         [string]::IsNullOrWhiteSpace($root.Output) -or
@@ -596,11 +593,15 @@ try {
         -not $head.Ok -or
         $head.Output -notmatch '^[0-9a-f]{40}$' -or
         -not $status.Ok -or
-        $status.Output -ne ""
+        ($status.Output -ne "" -and $status.Output -cne $expectedLockStatus)
     ) {
         throw "git_verification_failed"
     }
 
+    $targetInode = (
+        ([UInt64]$targetAnchor.Information.FileIndexHigh -shl 32) -bor
+        [UInt64]$targetAnchor.Information.FileIndexLow
+    )
     Write-Result -Payload @{
         ok = $true
         outcome = "materialized"
@@ -610,9 +611,8 @@ try {
         head = $head.Output
         remote = [string]$config.remote
         anchor = @{
-            volume = [string]$targetAnchor.Information.VolumeSerialNumber
-            indexHigh = [string]$targetAnchor.Information.FileIndexHigh
-            indexLow = [string]$targetAnchor.Information.FileIndexLow
+            device = [string]$targetAnchor.Information.VolumeSerialNumber
+            inode = [string]$targetInode
         }
     } -ExitCode 0
 }

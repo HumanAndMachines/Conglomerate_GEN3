@@ -1,6 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { materializeRepoCheckout } from "./git-materialization-lib.mjs";
 import { runAnchoredMaterialization } from "./git-materialization-helper-lib.mjs";
@@ -194,6 +194,95 @@ test.if(process.platform !== "win32")("materialization removes inherited GIT_SSH
 
   expect(existsSync(marker)).toBe(false);
   expect(existsSync(target)).toBe(false);
+});
+
+test.if(process.platform !== "win32")("materialization ignores HOME global hooks", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
+  const target = join(organizationRoot, "workspace", "private-module");
+  const home = join(root, "hostile-home");
+  const hooks = join(home, "hooks");
+  const marker = join(root, "global-hook-ran");
+  await prepareOrganizationRoot(organizationRoot);
+  await mkdir(hooks, { recursive: true });
+  const hook = join(hooks, "post-checkout");
+  await writeFile(hook, `#!/bin/sh\nprintf global-hook > ${JSON.stringify(marker)}\n`);
+  await chmod(hook, 0o755);
+  await writeFile(join(home, ".gitconfig"), `[core]\n\thooksPath = ${hooks}\n`);
+  const remote = join(root, "remotes", "private-module.git");
+  await mkdir(join(root, "sources"), { recursive: true });
+  await initGitRepo(join(root, "sources", "private-module"), { remotePath: remote });
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "BetaCo",
+    github_org: "BetaCo",
+    module_slots: [{ path: "workspace/private-module", git: { url: remote, branch: "main" } }],
+  });
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  const repo = inventory.repos.find((entry) => entry.key === "BetaCo::private-module");
+  const previous = process.env.HOME;
+  process.env.HOME = home;
+  try {
+    const result = await materializeRepoCheckout({ companiesRoot: root, repo });
+    expect(result).toMatchObject({ ok: true, outcome: "materialized" });
+  } finally {
+    if (previous === undefined) delete process.env.HOME;
+    else process.env.HOME = previous;
+  }
+  expect(existsSync(marker)).toBe(false);
+  expect(existsSync(target)).toBe(true);
+});
+
+test("rejects a post-anchor target replacement without running pathname Git verification", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
+  const target = join(organizationRoot, "workspace", "lazurio");
+  const movedTarget = join(root, "anchored-target");
+  const remote = join(root, "remotes", "lazurio.git");
+  await prepareOrganizationRoot(organizationRoot);
+  await mkdir(join(root, "sources"), { recursive: true });
+  await initGitRepo(join(root, "sources", "lazurio"), { remotePath: remote });
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "BetaCo",
+    github_org: "BetaCo",
+    module_slots: [{ path: "workspace/lazurio", git: { url: remote, branch: "main" } }],
+  });
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  const repo = inventory.repos.find((entry) => entry.key === "BetaCo::lazurio");
+  let postAnchorGitCalls = 0;
+  let anchored = false;
+  const result = await materializeRepoCheckout({
+    companiesRoot: root,
+    repo,
+    deps: {
+      run: async (args, options) => {
+        if (anchored) postAnchorGitCalls += 1;
+        return runGit(args, options);
+      },
+      materializeAnchored: async () => {
+        await mkdir(target, { recursive: true });
+        const original = await lstat(target, { bigint: true });
+        await rename(target, movedTarget);
+        await mkdir(target);
+        anchored = true;
+        return {
+          ok: true,
+          outcome: "materialized",
+          anchor: { device: original.dev.toString(), inode: original.ino.toString() },
+        };
+      },
+    },
+  });
+  expect(result).toMatchObject({
+    ok: false,
+    outcome: "failed",
+    code: "materialization_path_forbidden",
+  });
+  expect(postAnchorGitCalls).toBe(0);
+  expect(existsSync(movedTarget)).toBe(true);
 });
 
 test("refuses an Organization root substituted after validation before it can create an external checkout", async () => {

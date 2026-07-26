@@ -50,6 +50,8 @@ test("runGit returns stdout and protects remote probes from interactive credenti
     GCM_INTERACTIVE: "never",
     GIT_ASKPASS: "/bin/false",
     SSH_ASKPASS: "/bin/false",
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_CONFIG_NOSYSTEM: "1",
   });
 });
 
@@ -92,6 +94,8 @@ test("Windows remote Git environment never contains a POSIX askpass executable",
     GIT_TERMINAL_PROMPT: "0",
     GCM_INTERACTIVE: "never",
     SSH_ASKPASS_REQUIRE: "never",
+    GIT_CONFIG_GLOBAL: "NUL",
+    GIT_CONFIG_NOSYSTEM: "1",
   });
 });
 

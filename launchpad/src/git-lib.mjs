@@ -86,6 +86,8 @@ export function safeGitRemoteEnv(platform = process.platform) {
     // z hooku nesmí přesměrovat child proces do jiného repozitáře.
     GIT_ALTERNATE_OBJECT_DIRECTORIES: undefined,
     GIT_COMMON_DIR: undefined,
+    GIT_CONFIG_GLOBAL: platform === "win32" ? "NUL" : "/dev/null",
+    GIT_CONFIG_NOSYSTEM: "1",
     GIT_DIR: undefined,
     GIT_EXEC_PATH: undefined,
     GIT_INDEX_FILE: undefined,
@@ -236,10 +238,7 @@ function commandEnvironment(base, overrides) {
       if (existingKey.toUpperCase() === normalizedKey) delete merged[existingKey];
     }
     if (unsafeAmbientGitEnvironmentKey(key)) {
-      const safePosixAskpass =
-        ["GIT_ASKPASS", "SSH_ASKPASS"].includes(normalizedKey) &&
-        value === "/bin/false";
-      if (safePosixAskpass) merged[normalizedKey] = value;
+      if (safeAmbientGitOverride(normalizedKey, value)) merged[normalizedKey] = value;
       continue;
     }
     if (value !== undefined && value !== null) merged[key] = value;
@@ -247,11 +246,19 @@ function commandEnvironment(base, overrides) {
   return merged;
 }
 
+function safeAmbientGitOverride(key, value) {
+  if (["GIT_ASKPASS", "SSH_ASKPASS"].includes(key)) return value === "/bin/false";
+  if (key === "GIT_CONFIG_NOSYSTEM") return value === "1";
+  if (key === "GIT_CONFIG_GLOBAL") return value === "/dev/null" || value === "NUL";
+  return false;
+}
+
 function unsafeAmbientGitEnvironmentKey(key) {
   const normalizedKey = key.toUpperCase();
   return (
     [
       "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+      "GIT_ALLOW_PROTOCOL",
       "GIT_ASKPASS",
       "GIT_CEILING_DIRECTORIES",
       "GIT_COMMON_DIR",
@@ -268,6 +275,7 @@ function unsafeAmbientGitEnvironmentKey(key) {
       "GIT_NO_REPLACE_OBJECTS",
       "GIT_OBJECT_DIRECTORY",
       "GIT_PREFIX",
+      "GIT_PROTOCOL_FROM_USER",
       "GIT_REPLACE_REF_BASE",
       "GIT_SHALLOW_FILE",
       "GIT_WORK_TREE",

@@ -56,35 +56,13 @@ export async function materializeRepoCheckout({
   });
   if (!anchored.ok) return anchored;
 
-  // Helper drží parent i target jako no-follow directory handly po celou dobu
-  // všech mkdir/Git zápisů. Teprve po jeho ukončení ověříme, že publikovaná
-  // pathname stále ukazuje na checkout uvnitř stejného Organization rootu.
-  const completedBoundary = await inspectCanonicalPathBoundary({
-    rootPath: organizationRoot,
+  const publishedTarget = await verifyPublishedTarget({
     targetPath,
+    anchor: anchored.anchor,
   });
-  if (!completedBoundary.ok) {
-    return boundaryFailure(
-      "Cílová pathname se během ukotvené materializace změnila; Launchpad ji nepublikoval ani nesmazal.",
-    );
-  }
+  if (!publishedTarget.ok) return publishedTarget;
 
-  const verification = await verifyClonedCheckout({
-    path: targetPath,
-    branch,
-    remote,
-    run,
-  });
-  if (!verification.ok || verification.head !== anchored.head) {
-    return verification.ok
-      ? verificationFailure("Ukotvený helper a finální checkout nemají stejný HEAD.")
-      : verification;
-  }
-
-  return {
-    ...anchored,
-    head: verification.head,
-  };
+  return anchored;
 }
 
 async function validateMaterializationTarget({ companiesRoot, repo, run }) {
@@ -188,34 +166,27 @@ async function validateMaterializationTarget({ companiesRoot, repo, run }) {
   };
 }
 
-async function verifyClonedCheckout({ path, branch, remote, run }) {
-  const [root, currentBranch, origin, head, status] = await Promise.all([
-    run(["rev-parse", "--show-toplevel"], { cwd: path, timeoutMs: GIT_LOCAL_TIMEOUT_MS }),
-    run(["branch", "--show-current"], { cwd: path, timeoutMs: GIT_LOCAL_TIMEOUT_MS }),
-    run(["remote", "get-url", "origin"], { cwd: path, timeoutMs: GIT_LOCAL_TIMEOUT_MS }),
-    run(["rev-parse", "--verify", "HEAD^{commit}"], { cwd: path, timeoutMs: GIT_LOCAL_TIMEOUT_MS }),
-    run(["status", "--porcelain=v1"], { cwd: path, timeoutMs: GIT_LOCAL_TIMEOUT_MS }),
-  ]);
-  if ([root, currentBranch, origin, head, status].some((result) => !result.ok)) {
-    return verificationFailure("Naklonovaný checkout nejde spolehlivě ověřit.");
+async function verifyPublishedTarget({ targetPath, anchor }) {
+  const expectedDevice = typeof anchor?.device === "string" ? anchor.device : "";
+  const expectedInode = typeof anchor?.inode === "string" ? anchor.inode : "";
+  if (!expectedDevice || !expectedInode) {
+    return boundaryFailure("Ukotvený helper nevrátil ověřitelnou identitu cíle.");
   }
-  let realRoot;
-  let realPath;
+  let stat;
   try {
-    [realRoot, realPath] = await Promise.all([realpath(root.stdout), realpath(path)]);
+    stat = await lstat(targetPath, { bigint: true });
   } catch {
-    return verificationFailure("Naklonovaný checkout nemá ověřitelný Git root.");
+    return boundaryFailure("Cílová pathname po ukotvené materializaci zmizela.");
   }
   if (
-    !isSamePath(realRoot, realPath)
-    || currentBranch.stdout !== branch
-    || origin.stdout !== remote
-    || status.stdout !== ""
-    || !/^[0-9a-f]{40}$/.test(head.stdout)
+    !stat.isDirectory()
+    || stat.isSymbolicLink()
+    || stat.dev.toString() !== expectedDevice
+    || stat.ino.toString() !== expectedInode
   ) {
-    return verificationFailure("Naklonovaný checkout neodpovídá manifestovanému repu, branchi nebo čistému HEADu.");
+    return boundaryFailure("Cílová pathname po ukotvené materializaci neodpovídá drženému directory anchoru.");
   }
-  return { ok: true, head: head.stdout };
+  return { ok: true };
 }
 
 function invalidTarget(message) {
@@ -232,15 +203,6 @@ function boundaryFailure(message) {
     ok: false,
     outcome: "failed",
     code: "materialization_path_forbidden",
-    message,
-  };
-}
-
-function verificationFailure(message) {
-  return {
-    ok: false,
-    outcome: "failed",
-    code: "materialization_verification_failed",
     message,
   };
 }

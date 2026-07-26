@@ -65,6 +65,7 @@ sub run_git {
     exec {$config->{gitExecutable}} $config->{gitExecutable},
       "-c", "core.sshCommand=",
       "-c", "core.gitProxy=",
+      "-c", "protocol.ext.allow=never",
       @args;
     exit(127);
   }

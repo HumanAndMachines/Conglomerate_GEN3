@@ -161,12 +161,16 @@ binary via a separate release artifact that changes far less often.
   source access or creating a target. POSIX executes Git from a no-follow
   directory handle; Windows creates every descendant relative to a retained
   no-follow parent handle and holds delete-on-close locks while Git uses the
-  target path resolved back from its handle. Source probes and writes run with
+  target path resolved back from its handle. The helper completes all Git
+  verification before releasing that handle; its caller only compares the
+  published target's device/inode identity and never runs Git through its
+  mutable pathname. Source probes and writes run with
   inherited executable selectors (`GIT_SSH_COMMAND`, `GIT_SSH`, proxy and Git
-  executable path variables) removed, and explicit Git config disables
-  Organization-local SSH command/proxy overrides. A platform without either
-  primitive fails closed before creating the target and never treats pathname
-  revalidation as its write boundary.
+  executable path variables) removed; system/global configuration is disabled,
+  and explicit Git config disables Organization-local SSH command/proxy
+  overrides plus the `ext` transport. A platform without either primitive fails
+  closed before creating the target and never treats pathname revalidation as
+  its write boundary.
 - **On the Workspace Host** the Steward seat holds the update through a
   daily cron (e.g. 05:00) that updates the whole system including tests.
 
