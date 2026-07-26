@@ -1,68 +1,95 @@
-import { lstat, realpath } from "node:fs/promises";
-import { resolve } from "node:path";
+import { lstat, mkdtemp, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import {
   GIT_LOCAL_TIMEOUT_MS,
   runGit,
   safeGitMaterializationEnv,
 } from "./git-lib.mjs";
-import { runAnchoredMaterialization } from "./git-materialization-helper-lib.mjs";
 import {
   inspectCanonicalPathBoundary,
   isSamePath,
 } from "./path-boundary-lib.mjs";
 
 export const GIT_CLONE_TIMEOUT_MS = 120_000;
+const MATERIALIZATION_GIT_CONFIG = [
+  "-c", "core.sshCommand=",
+  "-c", "core.hooksPath=",
+  "-c", "protocol.ext.allow=never",
+];
 
 // Explicit sync/update action for an active manifest slot whose checkout is
-// missing. Doctor remains read-only: it only reports missing_access. This
-// helper materializes exactly the manifest-declared repository and branch,
-// while GitHub/Git credentials remain the only access authority.
+// missing. Doctor remains read-only: it only reports missing_access. The
+// trusted-local synchronization flow validates the manifest, confirms remote
+// access, then lets Git create the missing checkout in its declared target.
 export async function materializeRepoCheckout({
   companiesRoot,
   repo,
   deps = {},
 } = {}) {
   if (!companiesRoot) throw new Error("materializeRepoCheckout requires companiesRoot");
-  const {
-    run = runGit,
-    materializeAnchored = runAnchoredMaterialization,
-    anchorTestHook = null,
-  } = deps;
-
+  const { run = runGit } = deps;
   const validation = await validateMaterializationTarget({ companiesRoot, repo, run });
   if (!validation.ok) return validation;
 
   const {
     organizationRoot,
     targetPath,
-    slotSegments,
     branch,
     remote,
-    organizationIdentity,
   } = validation;
+  if (await lstatOrNull(targetPath)) return targetExists();
 
-  const anchored = await materializeAnchored({
-    organizationRoot,
-    organizationIdentity,
-    slotSegments,
+  // Check access before clone so a missing/private remote does not leave a
+  // newly-created target behind. The following clone is intentionally ordinary
+  // Git pathname behavior under the trusted-local workspace contract.
+  // Git reads local .git/config from cwd. Remote transport must therefore not
+  // run from the Organization checkout, where core.gitProxy or protocol.ext
+  // could execute before the source preflight returns. `-c core.gitProxy=`
+  // does not override an existing local multi-value config, so the neutral cwd
+  // is the actual configuration boundary.
+  const transportCwd = await mkdtemp(join(tmpdir(), "launchpad-materialization-"));
+  try {
+    const source = await runMaterializationGit(
+      run,
+      ["ls-remote", "--exit-code", "--heads", "--", remote, `refs/heads/${branch}`],
+      {
+        cwd: transportCwd,
+        timeoutMs: GIT_CLONE_TIMEOUT_MS,
+      },
+    );
+    if (!source.ok || !source.stdout) return missingAccess();
+
+    const clone = await runMaterializationGit(
+      run,
+      ["clone", "--branch", branch, "--single-branch", "--", remote, targetPath],
+      {
+        cwd: transportCwd,
+        timeoutMs: GIT_CLONE_TIMEOUT_MS,
+      },
+    );
+    if (!clone.ok) return cloneFailure();
+  } finally {
+    await rm(transportCwd, { recursive: true, force: true });
+  }
+
+  const verification = await verifyClonedCheckout({
+    path: targetPath,
     branch,
     remote,
-    timeoutMs: GIT_CLONE_TIMEOUT_MS,
-    testHook: anchorTestHook,
-    platform: deps.platform,
-    environment: deps.environment,
-    pathExists: deps.pathExists,
-    spawn: deps.spawn,
+    run,
   });
-  if (!anchored.ok) return anchored;
+  if (!verification.ok) return verification;
 
-  const publishedTarget = await verifyPublishedTarget({
-    targetPath,
-    anchor: anchored.anchor,
-  });
-  if (!publishedTarget.ok) return publishedTarget;
-
-  return anchored;
+  return {
+    ok: true,
+    outcome: "materialized",
+    code: null,
+    message: "Nový manifestovaný modul byl naklonovaný do deklarovaného targetu.",
+    remote,
+    branch,
+    head: verification.head,
+  };
 }
 
 async function validateMaterializationTarget({ companiesRoot, repo, run }) {
@@ -100,37 +127,19 @@ async function validateMaterializationTarget({ companiesRoot, repo, run }) {
   if (!boundary.ok) {
     return boundaryFailure("Manifestovaná cesta vede mimo kanonický root Organizace.");
   }
-  let organizationIdentity;
-  try {
-    const stat = await lstat(organizationRoot, { bigint: true });
-    if (!stat.isDirectory() || stat.isSymbolicLink()) {
-      return boundaryFailure("Organization root musí být přímý adresář s ověřitelnou identitou.");
-    }
-    organizationIdentity = {
-      dev: stat.dev.toString(),
-      ino: stat.ino.toString(),
-    };
-  } catch {
-    return boundaryFailure("Organization root nejde bezpečně ukotvit.");
-  }
 
   const [rootCheck, ignoreCheck, refCheck] = await Promise.all([
-    run(["rev-parse", "--show-toplevel"], {
+    runMaterializationGit(run, ["rev-parse", "--show-toplevel"], {
       cwd: organizationRoot,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
-      env: safeGitMaterializationEnv(),
     }),
-    // Directory-only ignore patterns (např. /workspace/*/) potřebují trailing
-    // separator i pro zatím neexistující target.
-    run(["check-ignore", "--quiet", "--no-index", "--", `${targetPath}/`], {
+    runMaterializationGit(run, ["check-ignore", "--quiet", "--no-index", "--", `${targetPath}/`], {
       cwd: organizationRoot,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
-      env: safeGitMaterializationEnv(),
     }),
-    run(["check-ref-format", "--branch", branch], {
+    runMaterializationGit(run, ["check-ref-format", "--branch", branch], {
       cwd: organizationRoot,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
-      env: safeGitMaterializationEnv(),
     }),
   ]);
   if (!rootCheck.ok) {
@@ -159,34 +168,77 @@ async function validateMaterializationTarget({ companiesRoot, repo, run }) {
     ok: true,
     organizationRoot,
     targetPath,
-    organizationIdentity,
-    slotSegments,
     branch,
     remote,
   };
 }
 
-async function verifyPublishedTarget({ targetPath, anchor }) {
-  const expectedDevice = typeof anchor?.device === "string" ? anchor.device : "";
-  const expectedInode = typeof anchor?.inode === "string" ? anchor.inode : "";
-  if (!expectedDevice || !expectedInode) {
-    return boundaryFailure("Ukotvený helper nevrátil ověřitelnou identitu cíle.");
+async function verifyClonedCheckout({ path, branch, remote, run }) {
+  const options = {
+    cwd: path,
+    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+  };
+  const [root, currentBranch, origin, head, status] = await Promise.all([
+    runMaterializationGit(run, ["rev-parse", "--show-toplevel"], options),
+    runMaterializationGit(run, ["branch", "--show-current"], options),
+    runMaterializationGit(run, ["remote", "get-url", "origin"], options),
+    runMaterializationGit(run, ["rev-parse", "--verify", "HEAD^{commit}"], options),
+    runMaterializationGit(run, ["status", "--porcelain=v1"], options),
+  ]);
+  if ([root, currentBranch, origin, head, status].some((result) => !result.ok)) {
+    return verificationFailure("Naklonovaný checkout nejde spolehlivě ověřit.");
   }
-  let stat;
+  let realRoot;
+  let realPath;
   try {
-    stat = await lstat(targetPath, { bigint: true });
+    [realRoot, realPath] = await Promise.all([realpath(root.stdout), realpath(path)]);
   } catch {
-    return boundaryFailure("Cílová pathname po ukotvené materializaci zmizela.");
+    return verificationFailure("Naklonovaný checkout nemá ověřitelný Git root.");
   }
   if (
-    !stat.isDirectory()
-    || stat.isSymbolicLink()
-    || stat.dev.toString() !== expectedDevice
-    || stat.ino.toString() !== expectedInode
+    !isSamePath(realRoot, realPath)
+    || currentBranch.stdout !== branch
+    || origin.stdout !== remote
+    || status.stdout !== ""
+    || !/^[0-9a-f]{40}$/.test(head.stdout)
   ) {
-    return boundaryFailure("Cílová pathname po ukotvené materializaci neodpovídá drženému directory anchoru.");
+    return verificationFailure("Naklonovaný checkout neodpovídá manifestovanému repu, branchi nebo čistému HEADu.");
   }
-  return { ok: true };
+  return { ok: true, head: head.stdout };
+}
+
+function runMaterializationGit(run, args, options) {
+  return run([...MATERIALIZATION_GIT_CONFIG, ...args], {
+    ...options,
+    env: safeGitMaterializationEnv(),
+  });
+}
+
+function targetExists() {
+  return {
+    ok: false,
+    outcome: "target_exists",
+    code: "materialization_target_exists",
+    message: "Cílová cesta už existuje; Launchpad ji nepřepíše ani nepřevezme.",
+  };
+}
+
+function missingAccess() {
+  return {
+    ok: false,
+    outcome: "missing_access",
+    code: "materialization_source_unavailable",
+    message: "Manifestované repo nebo jeho větev nejsou s aktuálními GitHub přístupy dostupné; nic se nenaklonovalo.",
+  };
+}
+
+function cloneFailure() {
+  return {
+    ok: false,
+    outcome: "failed",
+    code: "materialization_clone_failed",
+    message: "Git nedokončil klon manifestovaného modulu; případný částečný target zůstal pro kontrolu.",
+  };
 }
 
 function invalidTarget(message) {
@@ -205,4 +257,22 @@ function boundaryFailure(message) {
     code: "materialization_path_forbidden",
     message,
   };
+}
+
+function verificationFailure(message) {
+  return {
+    ok: false,
+    outcome: "failed",
+    code: "materialization_verification_failed",
+    message,
+  };
+}
+
+async function lstatOrNull(path) {
+  try {
+    return await lstat(path);
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
 }

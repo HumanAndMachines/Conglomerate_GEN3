@@ -345,24 +345,17 @@ test("pull all reloads a freshly pulled Organization manifest and materializes i
 
   const response = await buildPullAllResponse({ companiesRoot: root });
 
-  const supportsAtomicMaterialization = process.platform === "win32";
   const lazurioResult = response.results.find((result) => result.repo_key === "BetaCo::lazurio");
   expect(response.summary).toMatchObject({
     updated_count: 1,
-    materialized_count: supportsAtomicMaterialization ? 1 : 0,
+    materialized_count: 1,
     missing_access_count: 0,
-    failed_count: supportsAtomicMaterialization ? 0 : 1,
+    failed_count: 0,
   });
-  expect(lazurioResult).toMatchObject(supportsAtomicMaterialization
-    ? { outcome: "materialized", branch: "main" }
-    : { outcome: "failed", code: "materialization_anchor_unavailable" });
+  expect(lazurioResult).toMatchObject({ outcome: "materialized", branch: "main" });
   expect(response.results.some((result) => result.repo_key === "BetaCo::future-lazurio")).toBe(false);
-  if (supportsAtomicMaterialization) {
-    expect(normalizeLineEndings(await readFile(join(orgRoot, "workspace", "lazurio", "README.md"), "utf8")))
-      .toBe("# main\n");
-  } else {
-    expect(existsSync(join(orgRoot, "workspace", "lazurio"))).toBe(false);
-  }
+  expect(normalizeLineEndings(await readFile(join(orgRoot, "workspace", "lazurio", "README.md"), "utf8")))
+    .toBe("# main\n");
 }, 20_000);
 
 test("/api/apps app objects include compact git summary for their module", async () => {

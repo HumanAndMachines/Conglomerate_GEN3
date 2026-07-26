@@ -61,25 +61,20 @@ Launchpad skládá dostupné Organizace scan-first:
 
 `Synchronizovat` je read-only rediscovery už existujících lokálních mountů.
 Mutační `Pullnout vše` (Launchpad) a `bun run update --org <slug>` (CLI)
-provádějí manifest-driven materializaci ve dvou fázích: nejdřív bezpečně
-fast-forwardnou Organization root, potom z nového manifestu sestaví čerstvý
-inventář a na podporované platformě naklonují chybějící aktivní Workspace/root
-slot na přesně deklarovanou větev. `planned_slot` bez Git souřadnic se nikdy neklonuje.
-Když aktuální GitHub identita repo nebo branch nedokáže načíst, checkout
-zůstane `missing_access`; Launchpad žádný paralelní ACL ani grant nevytváří.
-Materializace je nyní podporovaná pouze na Windows. Před atomickým claimem
-helper ověří dostupnost větve; každou komponentu drží přes no-follow handle a
-potom vytváří potomky relativním `NtCreateFile(RootDirectory=parentHandle)`.
-Delete-on-close locky bez `FILE_SHARE_DELETE` stabilizují cestu pro Git child;
-pokud filesystem přesto povolí rename, helper odvodí skutečnou cestu z target
-handlu a nikdy nepoužije přesměrovanou manifest pathname. Na macOS a Linuxu
-POSIX `mkdir` nemá atomický create-and-directory-handle primitive, proto
-materializátor vrací `materialization_anchor_unavailable` před vytvořením
-targetu; aktivní slot zůstane chybějící a akce to čitelně ohlásí jako failure.
-Bezpečný POSIX návrat sleduje `issue-2026-07-26-001`.
-Rekurzivní failure cleanup se záměrně neprovádí: neočekávané selhání
-po claimu nechá částečný adresář jako viditelný lokální blocker k ruční
-kontrole a nikdy neriskuje smazání cizí cesty.
+nejdřív fast-forwardnou čistý Organization root, z nového manifestu sestaví
+čerstvý inventář a chybějící aktivní Workspace/root slot naklonují běžným
+`git clone --branch` na přesně deklarovanou větev. `planned_slot` bez Git
+souřadnic se nikdy neklonuje. Když aktuální GitHub identita repo nebo branch
+nedokáže načíst, checkout zůstane `missing_access`; existující target se nikdy
+nepřepíše a vrátí `target_exists`.
+
+Kontrakt je **trusted-local**: Organization mount je čistý spolupracovníky
+spravovaný Git checkout, změny patří do pojmenovaných worktrees a během
+materializace do jeho cest nevstupuje jiný nedůvěryhodný writer. Launchpad
+validuje manifestovou cestu, Git child spouští bez zděděných SSH/config hooků
+a po klonu ověří remote, branch i čistý HEAD. Neočekávané selhání je viditelný
+lokální blocker pro Agenta; Launchpad nic rekurzivně nemaže ani nevymýšlí
+paralelní access pravidla.
 
 Launchpad čte Launchpad GEN3 root a Organization GEN3 manifesty:
 
@@ -508,19 +503,19 @@ jasný mechanismus:
   obnovení. Při konfliktu je nová verze stažená, konflikt zůstane viditelný a
   bezpečnostní stash se nesmaže.
 - `Pullnout vše` je jedna potvrzená builder akce přes všechny namountované
-  Organizace. V první fázi stáhne Organization root repa; ve druhé znovu načte
-  jejich manifesty, aktualizuje existující Workspace/root sloty a na Windows
-  bezpečně naklonuje chybějící aktivní sloty. Na macOS a Linuxu pro chybějící
-  aktivní slot failuje zavřeně s `materialization_anchor_unavailable` před
-  vytvořením targetu, dokud follow-up `issue-2026-07-26-001` nedodá ověřený
-  POSIX mechanismus. GitHub credentials kolegy zůstávají access autoritou;
-  nedostupný checkout se ohlásí
-  jako `missing_access`, `planned_slot`
-  se nematerializuje. Pro bezpečně autostashovatelné drafty použije stejné
-  recovery flow a každý blocker izoluje, aby nezastavil ostatní repozitáře.
-  Productionspace, wrong-branch, outgoing a diverged checkouty přeskočí a
-  vypíše je v souhrnu. Klonování nespouští package skripty; app-scoped
-  dependencies instaluje až explicitní `Install`/`Otevřít` runtime flow.
+  Organizace. V první fázi stáhne čisté Organization root repa; ve druhé znovu
+  načte jejich manifesty, aktualizuje existující Workspace/root sloty a
+  chybějící aktivní sloty naklonuje běžným `git clone --branch` na přesně
+  deklarovanou větev. GitHub credentials kolegy zůstávají access autoritou;
+  nedostupný checkout se ohlásí jako `missing_access`, existující target jako
+  `target_exists` a `planned_slot` se nematerializuje. Kontrakt předpokládá
+  čistý trusted-local Organization checkout a práci ve worktree; každý
+  neočekávaný stav zůstane viditelný pro Agenta místo automatického mazání.
+  Pro bezpečně autostashovatelné drafty použije stejné recovery flow a každý
+  blocker izoluje, aby nezastavil ostatní repozitáře. Productionspace,
+  wrong-branch, outgoing a diverged checkouty přeskočí a vypíše je v souhrnu.
+  Klonování nespouští package skripty; app-scoped dependencies instaluje až
+  explicitní `Install`/`Otevřít` runtime flow.
 
 Organization root repo není jen součást technického API: aktivní Organization
 pohled ukazuje jeho Git stav, incoming počet, freshness a vhodnou pull/autostash
