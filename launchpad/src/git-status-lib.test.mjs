@@ -1,11 +1,13 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
+import { existsSync } from "fs";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { createGitStatusService, pullRepoWithAutostash, readGitRepoStatus } from "./git-status-lib.mjs";
+import { createGitStatusService, pullRepoWithAutostash, readGitRepoStatus, refreshGitRepoRemote } from "./git-status-lib.mjs";
 import { initGitRepo, normalizeLineEndings, runGit } from "./git-fixture-helpers.test.mjs";
 
 const tempRoots = [];
+const posixTest = test.if(process.platform !== "win32");
 
 afterAll(async () => {
   await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
@@ -23,6 +25,57 @@ test("repo status detects clean main checkout as up_to_date", async () => {
   expect(status.branch).toBe("main");
   expect(status.counts.changed_files).toBe(0);
   expect(status.head.short_sha).toHaveLength(7);
+});
+
+posixTest("repo status never executes a checkout-local core.fsmonitor helper", async () => {
+  const root = await mkdtemp(join(tmpdir(), "launchpad-status-fsmonitor-"));
+  tempRoots.push(root);
+  await initGitRepo(root);
+  await writeFile(join(root, ".git", "info", "exclude"), "fsmonitor-*\n");
+  const marker = join(root, "fsmonitor-ran");
+  const helper = join(root, "fsmonitor-marker.sh");
+  await writeFile(helper, `#!/bin/sh\nprintf fsmonitor > ${JSON.stringify(marker)}\n`);
+  await chmod(helper, 0o755);
+  runGit(["config", "core.fsmonitor", helper], root);
+
+  const status = await readGitRepoStatus({ key: "Fixture::root", absolute_path: root, expected_branch: "main" });
+
+  expect(status.status).toBe("up_to_date");
+  expect(existsSync(marker)).toBe(false);
+});
+
+posixTest("remote refresh never executes a checkout-local core.sshCommand", async () => {
+  const root = await mkdtemp(join(tmpdir(), "launchpad-status-ssh-command-"));
+  tempRoots.push(root);
+  await initGitRepo(root);
+  const marker = join(root, "ssh-command-ran");
+  const helper = join(root, "ssh-command-marker.sh");
+  await writeFile(helper, `#!/bin/sh\nprintf ssh > ${JSON.stringify(marker)}\nexit 1\n`);
+  await chmod(helper, 0o755);
+  runGit(["remote", "add", "origin", "ssh://git@127.0.0.1:1/private/repo.git"], root);
+  runGit(["config", "core.sshCommand", helper], root);
+
+  const result = await refreshGitRepoRemote({ absolute_path: root });
+
+  expect(result.ok).toBe(false);
+  expect(existsSync(marker)).toBe(false);
+});
+
+posixTest("remote refresh blocks git protocol before a checkout-local core.gitProxy runs", async () => {
+  const root = await mkdtemp(join(tmpdir(), "launchpad-status-git-proxy-"));
+  tempRoots.push(root);
+  await initGitRepo(root);
+  const marker = join(root, "git-proxy-ran");
+  const helper = join(root, "git-proxy-marker.sh");
+  await writeFile(helper, `#!/bin/sh\nprintf proxy > ${JSON.stringify(marker)}\nexit 1\n`);
+  await chmod(helper, 0o755);
+  runGit(["remote", "add", "origin", "git://127.0.0.1:1/private/repo.git"], root);
+  runGit(["config", "core.gitProxy", helper], root);
+
+  const result = await refreshGitRepoRemote({ absolute_path: root });
+
+  expect(result.ok).toBe(false);
+  expect(existsSync(marker)).toBe(false);
 });
 
 test("repo status treats untracked files as local drafts that need packaging", async () => {
@@ -224,6 +277,39 @@ test("autostash pull preserves staged and untracked local changes across a non-c
   expect(normalizeLineEndings(await readFile(join(repo, "remote.md"), "utf8"))).toBe("remote change\n");
   expect(runGit(["diff", "--cached", "--name-only"], repo)).toBe("README.md");
   expect(runGit(["stash", "list"], repo)).toBe("");
+});
+
+posixTest("pull never executes a post-merge hook planted in the checkout", async () => {
+  const root = await mkdtemp(join(tmpdir(), "launchpad-pull-hooks-"));
+  tempRoots.push(root);
+  const repo = join(root, "repo");
+  const remote = join(root, "remote.git");
+  await initGitRepo(repo, { remotePath: remote });
+  const contributor = join(root, "contributor");
+  runGit(["clone", remote, contributor], root);
+  runGit(["checkout", "-B", "main", "origin/main"], contributor);
+  runGit(["config", "user.email", "fixture@example.com"], contributor);
+  runGit(["config", "user.name", "Fixture"], contributor);
+  await writeFile(join(contributor, "remote.md"), "remote change\n");
+  runGit(["add", "remote.md"], contributor);
+  runGit(["commit", "-m", "remote change"], contributor);
+  runGit(["push", "origin", "main"], contributor);
+  const marker = join(repo, "hook-ran");
+  const hook = join(repo, ".git", "hooks", "post-merge");
+  await mkdir(join(repo, ".git", "hooks"), { recursive: true });
+  await writeFile(hook, `#!/bin/sh\nprintf hook > ${JSON.stringify(marker)}\n`);
+  await chmod(hook, 0o755);
+  await writeFile(join(repo, "local-draft.md"), "draft\n");
+
+  const result = await pullRepoWithAutostash({
+    key: "Fixture::repo",
+    absolute_path: repo,
+    expected_branch: "main",
+  });
+
+  expect(result.ok).toBe(true);
+  expect(normalizeLineEndings(await readFile(join(repo, "remote.md"), "utf8"))).toBe("remote change\n");
+  expect(existsSync(marker)).toBe(false);
 });
 
 test("autostash pull keeps its stash and reports a conflict instead of hiding it", async () => {

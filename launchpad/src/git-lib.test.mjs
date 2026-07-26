@@ -13,7 +13,9 @@ import {
   runGit,
   safeGitCommandEnv,
   safeGitMaterializationEnv,
+  safeGitRemoteArgs,
   safeGitRemoteEnv,
+  safeGitRuntimeArgs,
 } from "./git-lib.mjs";
 import { initGitRepo } from "./git-fixture-helpers.test.mjs";
 
@@ -102,6 +104,34 @@ test("Windows remote Git environment never contains a POSIX askpass executable",
     GIT_CONFIG_GLOBAL: "",
     GIT_CONFIG_NOSYSTEM: "1",
   });
+});
+
+test("runtime and remote Git argument policy neutralizes checkout-local execution paths", () => {
+  expect(safeGitRuntimeArgs(["status", "--porcelain=v1"], "linux")).toEqual([
+    "-c", "core.hooksPath=/dev/null",
+    "-c", "core.fsmonitor=false",
+    "-c", "core.useBuiltinFSMonitor=false",
+    "status", "--porcelain=v1",
+  ]);
+  expect(safeGitRuntimeArgs(["status", "--porcelain=v1"], "win32")).toEqual([
+    "-c", "core.hooksPath=NUL",
+    "-c", "core.fsmonitor=false",
+    "-c", "core.useBuiltinFSMonitor=false",
+    "status", "--porcelain=v1",
+  ]);
+  expect(safeGitRemoteArgs(["fetch", "--all", "--prune"], "linux")).toEqual([
+    "-c", "core.sshCommand=",
+    "-c", "core.askPass=",
+    "-c", "credential.helper=",
+    "-c", "credential.interactive=false",
+    "-c", "http.proxy=",
+    "-c", "protocol.git.allow=never",
+    "-c", "protocol.ext.allow=never",
+    "-c", "core.hooksPath=/dev/null",
+    "-c", "core.fsmonitor=false",
+    "-c", "core.useBuiltinFSMonitor=false",
+    "fetch", "--all", "--prune",
+  ]);
 });
 
 test("Windows Git resolver falls back to standard Git for Windows locations", async () => {

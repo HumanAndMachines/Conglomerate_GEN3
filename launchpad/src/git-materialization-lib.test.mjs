@@ -88,6 +88,43 @@ test("never overwrites an existing target", async () => {
   expect(existsSync(join(target, ".git"))).toBe(false);
 });
 
+test("refuses a target claimed by another process after source preflight", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
+  const target = join(organizationRoot, "workspace", "lazurio");
+  await prepareOrganizationRoot(organizationRoot);
+  const remote = join(root, "remotes", "lazurio.git");
+  await mkdir(join(root, "sources"), { recursive: true });
+  await initGitRepo(join(root, "sources", "lazurio"), { remotePath: remote });
+  const repo = await createManifestRepo({ root, organizationRoot, remote, slot: "workspace/lazurio" });
+  let claimedByOtherProcess = false;
+
+  const result = await materializeRepoCheckout({
+    companiesRoot: root,
+    repo,
+    deps: {
+      run: async (args, options) => {
+        const command = await runGit(args, options);
+        if (!claimedByOtherProcess && args.includes("ls-remote")) {
+          claimedByOtherProcess = true;
+          await mkdir(target, { recursive: true });
+        }
+        return command;
+      },
+    },
+  });
+
+  expect(claimedByOtherProcess).toBe(true);
+  expect(result).toMatchObject({
+    ok: false,
+    outcome: "target_exists",
+    code: "materialization_target_exists",
+  });
+  expect(existsSync(target)).toBe(true);
+  expect(existsSync(join(target, ".git"))).toBe(false);
+});
+
 test("refuses a target that differs from the manifest inventory boundary", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);

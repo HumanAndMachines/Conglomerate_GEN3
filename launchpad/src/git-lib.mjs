@@ -117,6 +117,35 @@ export function safeGitCommandEnv(platform = process.platform, base = processEnv
   return commandEnvironment(base, safeGitRemoteEnv(platform));
 }
 
+// Checkout-local .git/config is input, not executable policy. These command
+// line overrides protect every local Git operation before it reads a hook or
+// file-monitor path selected by that checkout.
+export function safeGitRuntimeArgs(args, platform = process.platform) {
+  const hooksPath = platform === "win32" ? "NUL" : "/dev/null";
+  return [
+    "-c", `core.hooksPath=${hooksPath}`,
+    "-c", "core.fsmonitor=false",
+    "-c", "core.useBuiltinFSMonitor=false",
+    ...args,
+  ];
+}
+
+// Remote commands add transport guards. core.gitProxy is multi-valued and a
+// command-line empty value cannot override a checkout-local generic proxy;
+// deny git:// before Git reaches that proxy instead.
+export function safeGitRemoteArgs(args, platform = process.platform) {
+  return [
+    "-c", "core.sshCommand=",
+    "-c", "core.askPass=",
+    "-c", "credential.helper=",
+    "-c", "credential.interactive=false",
+    "-c", "http.proxy=",
+    "-c", "protocol.git.allow=never",
+    "-c", "protocol.ext.allow=never",
+    ...safeGitRuntimeArgs(args, platform),
+  ];
+}
+
 // Manifest materialization consumes configuration-controlled remote data and
 // must not read any user, global or system Git configuration.
 export function safeGitMaterializationEnv(platform = process.platform, base = processEnv()) {

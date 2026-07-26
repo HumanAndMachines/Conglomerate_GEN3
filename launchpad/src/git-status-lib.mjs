@@ -8,7 +8,9 @@ import {
   mapWithConcurrency,
   resolveGitExecutable,
   runGit,
+  safeGitRemoteArgs,
   safeGitRemoteEnv,
+  safeGitRuntimeArgs,
 } from "./git-lib.mjs";
 
 export const GIT_STATUS_VALUES = [
@@ -28,6 +30,17 @@ export const GIT_REMOTE_REFRESH_INTERVAL_MS = 5 * 60_000;
 export const GIT_REMOTE_RETRY_MS = 60_000;
 export const GIT_REMOTE_JITTER_MS = 60_000;
 export const GIT_REMOTE_REFRESH_CONCURRENCY = 2;
+
+function runSafeGit(args, options) {
+  return runGit(safeGitRuntimeArgs(args), options);
+}
+
+function runSafeRemoteGit(args, options = {}) {
+  return runGit(safeGitRemoteArgs(args), {
+    ...options,
+    env: { ...options.env, ...safeGitRemoteEnv() },
+  });
+}
 
 // Server-scoped cache: browser polls may be frequent, but local Git inspection is
 // reused briefly and remote fetches are request-driven, deduplicated across tabs
@@ -259,7 +272,7 @@ export async function readGitRepoStatus(repo, { refresh = false } = {}) {
     return withDescriptor(base, "git_unavailable");
   }
 
-  const topLevel = await runGit(["rev-parse", "--show-toplevel"], {
+  const topLevel = await runSafeGit(["rev-parse", "--show-toplevel"], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
@@ -279,13 +292,13 @@ export async function readGitRepoStatus(repo, { refresh = false } = {}) {
   }
 
   const [branchResult, headResult, porcelainResult, upstreamResult] = await Promise.all([
-    runGit(["branch", "--show-current"], { cwd: repo.absolute_path, timeoutMs: GIT_LOCAL_TIMEOUT_MS }),
-    runGit(["log", "-1", "--format=%H%x00%s"], { cwd: repo.absolute_path, timeoutMs: GIT_LOCAL_TIMEOUT_MS }),
-    runGit(["status", "--porcelain=v1", "--untracked-files=normal"], {
+    runSafeGit(["branch", "--show-current"], { cwd: repo.absolute_path, timeoutMs: GIT_LOCAL_TIMEOUT_MS }),
+    runSafeGit(["log", "-1", "--format=%H%x00%s"], { cwd: repo.absolute_path, timeoutMs: GIT_LOCAL_TIMEOUT_MS }),
+    runSafeGit(["status", "--porcelain=v1", "--untracked-files=normal"], {
       cwd: repo.absolute_path,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
     }),
-    runGit(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], {
+    runSafeGit(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], {
       cwd: repo.absolute_path,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
     }),
@@ -307,7 +320,7 @@ export async function readGitRepoStatus(repo, { refresh = false } = {}) {
   let upstream = null;
   if (upstreamResult.ok && upstreamResult.stdout) {
     upstream = upstreamResult.stdout;
-    const revList = await runGit(["rev-list", "--left-right", "--count", `HEAD...${upstream}`], {
+    const revList = await runSafeGit(["rev-list", "--left-right", "--count", `HEAD...${upstream}`], {
       cwd: repo.absolute_path,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
     });
@@ -338,17 +351,16 @@ export async function readGitRepoStatus(repo, { refresh = false } = {}) {
 }
 
 export async function refreshGitRepoRemote(repo) {
-  const remotes = await runGit(["remote"], {
+  const remotes = await runSafeGit(["remote"], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
   if (!remotes.ok || !remotes.stdout) {
     return { ...remotes, ok: false, error: remotes.error ?? "git_remote_missing" };
   }
-  return runGit(["fetch", "--all", "--prune"], {
+  return runSafeRemoteGit(["fetch", "--all", "--prune"], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_FETCH_TIMEOUT_MS,
-    env: safeGitRemoteEnv(),
   });
 }
 
@@ -357,7 +369,7 @@ export async function readRepoChanges(repo) {
   if (status.status === "repo_missing" || status.status === "git_unavailable") {
     return { status, changes: [] };
   }
-  const result = await runGit(["status", "--porcelain=v1", "--untracked-files=normal"], {
+  const result = await runSafeGit(["status", "--porcelain=v1", "--untracked-files=normal"], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
@@ -395,10 +407,9 @@ async function pullFastForwardAfterPreflight(repo, before) {
       before,
     };
   }
-  const pull = await runGit(["pull", "--ff-only"], {
+  const pull = await runSafeRemoteGit(["pull", "--ff-only"], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_FETCH_TIMEOUT_MS,
-    env: safeGitRemoteEnv(),
   });
   if (!pull.ok) {
     return {
@@ -429,7 +440,7 @@ export async function pullRepoWithAutostash(repo, { preflight = null } = {}) {
     };
   }
 
-  const stash = await runGit(
+  const stash = await runSafeGit(
     ["stash", "push", "--include-untracked", "--message", `launchpad-autostash-${new Date().toISOString()}`],
     { cwd: repo.absolute_path, timeoutMs: GIT_LOCAL_TIMEOUT_MS },
   );
@@ -442,12 +453,12 @@ export async function pullRepoWithAutostash(repo, { preflight = null } = {}) {
     };
   }
 
-  const stashRef = await runGit(["rev-parse", "refs/stash"], {
+  const stashRef = await runSafeGit(["rev-parse", "refs/stash"], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
   if (!stashRef.ok || !stashRef.stdout) {
-    const restored = await runGit(["stash", "apply", "--index", "stash@{0}"], {
+    const restored = await runSafeGit(["stash", "apply", "--index", "stash@{0}"], {
       cwd: repo.absolute_path,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
     });
@@ -476,10 +487,9 @@ export async function pullRepoWithAutostash(repo, { preflight = null } = {}) {
     };
   }
 
-  const pull = await runGit(["pull", "--ff-only"], {
+  const pull = await runSafeRemoteGit(["pull", "--ff-only"], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_FETCH_TIMEOUT_MS,
-    env: safeGitRemoteEnv(),
   });
   if (!pull.ok) {
     const restored = await restoreCreatedStash(repo, stashRef.stdout);
@@ -521,13 +531,13 @@ export async function pullRepoWithAutostash(repo, { preflight = null } = {}) {
 }
 
 async function restoreCreatedStash(repo, stashSha) {
-  const apply = await runGit(["stash", "apply", "--index", stashSha], {
+  const apply = await runSafeGit(["stash", "apply", "--index", stashSha], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
   if (!apply.ok) return { ok: false, dropped: false };
 
-  const currentStash = await runGit(["rev-parse", "refs/stash"], {
+  const currentStash = await runSafeGit(["rev-parse", "refs/stash"], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
@@ -536,7 +546,7 @@ async function restoreCreatedStash(repo, stashSha) {
     // abychom nesmazali cizí práci; zůstane jen bezpečná duplicitní kopie.
     return { ok: true, dropped: false };
   }
-  const drop = await runGit(["stash", "drop", "stash@{0}"], {
+  const drop = await runSafeGit(["stash", "drop", "stash@{0}"], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
