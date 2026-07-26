@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
-import { mkdtemp } from "fs/promises";
+import { existsSync, writeFileSync } from "fs";
+import { mkdtemp, rm } from "fs/promises";
+import { createServer } from "net";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
@@ -98,12 +100,41 @@ test("Windows remote Git environment never contains a POSIX askpass executable",
     PATH: "C:\\Windows\\System32",
     GIT_TERMINAL_PROMPT: "0",
     GCM_INTERACTIVE: "never",
+    no_proxy: "*",
     SSH_ASKPASS_REQUIRE: "never",
   });
   expect(safeGitMaterializationEnv("win32", { PATH: "C:\\Windows\\System32" })).toMatchObject({
     GIT_CONFIG_GLOBAL: "",
     GIT_CONFIG_NOSYSTEM: "1",
   });
+});
+
+test.if(process.platform !== "win32")("safe remote environment bypasses URL-specific checkout-local HTTP proxies", async () => {
+  const root = await mkdtemp(join(tmpdir(), "launchpad-git-url-proxy-"));
+  const marker = join(root, "proxy-contacted");
+  const proxy = createServer((socket) => {
+    writeFileSync(marker, "proxy contacted\n");
+    socket.end("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n");
+  });
+  await new Promise((resolveListen) => proxy.listen(0, "127.0.0.1", resolveListen));
+  const port = proxy.address().port;
+
+  try {
+    await initGitRepo(root);
+    const fixtureGit = await import("./git-fixture-helpers.test.mjs");
+    fixtureGit.runGit(["config", "http.https://example.invalid.proxy", `http://127.0.0.1:${port}`], root);
+
+    const result = await runGit(
+      safeGitRemoteArgs(["ls-remote", "https://example.invalid/repo.git"]),
+      { cwd: root, timeoutMs: 5_000, env: safeGitRemoteEnv() },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(existsSync(marker)).toBe(false);
+  } finally {
+    await new Promise((resolveClose) => proxy.close(resolveClose));
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("runtime and remote Git argument policy neutralizes checkout-local execution paths", () => {

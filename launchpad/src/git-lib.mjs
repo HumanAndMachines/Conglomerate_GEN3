@@ -81,6 +81,8 @@ export function safeGitRemoteEnv(platform = process.platform) {
   const common = {
     GIT_TERMINAL_PROMPT: "0",
     GCM_INTERACTIVE: "never",
+    NO_PROXY: "*",
+    no_proxy: "*",
     SSH_ASKPASS_REQUIRE: "never",
     // Launchpad spouští Git nad explicitním cwd. Kontext zděděný například
     // z hooku nesmí přesměrovat child proces do jiného repozitáře.
