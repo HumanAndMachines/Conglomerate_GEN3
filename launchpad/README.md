@@ -68,10 +68,15 @@ deklarovanou větev. `planned_slot` bez Git souřadnic se nikdy neklonuje.
 Když aktuální GitHub identita repo nebo branch nedokáže načíst, checkout
 zůstane `missing_access`; Launchpad žádný paralelní ACL ani grant nevytváří.
 Materializátor dostupnost větve ověří ještě před atomickým claimem targetu,
-target před vzdáleným zápisem připne neprázdným `.git` adresářem a rekurzivní
-failure cleanup záměrně neprovádí. Neočekávané selhání po claimu proto nechá
-částečný adresář jako viditelný lokální blocker k ruční kontrole; nikdy
-neriskuje smazání cesty mezitím přesměrované jiným procesem.
+potom spustí platformní no-follow directory-handle helper. POSIX helper otevírá
+Organization root i parent komponenty přes `O_NOFOLLOW` a všechny mkdir/Git
+zápisy provádí z `fchdir` ukotveného targetu; Windows helper drží každou
+komponentu přes `CreateFileW(FILE_FLAG_OPEN_REPARSE_POINT)` bez
+`FILE_SHARE_DELETE`, takže pathname nejde během Git zápisu přesměrovat.
+Platforma bez schváleného helperu skončí fail-closed ještě před vytvořením
+targetu. Rekurzivní failure cleanup se záměrně neprovádí: neočekávané selhání
+po claimu nechá částečný adresář jako viditelný lokální blocker k ruční
+kontrole a nikdy neriskuje smazání cizí cesty.
 
 Launchpad čte Launchpad GEN3 root a Organization GEN3 manifesty:
 

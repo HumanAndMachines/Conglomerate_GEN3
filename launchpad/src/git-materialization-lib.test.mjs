@@ -1,6 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm, rmdir, symlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { materializeRepoCheckout } from "./git-materialization-lib.mjs";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
@@ -107,17 +107,24 @@ test("never replaces a target directory created concurrently after preflight", a
   const inventory = await buildGitInventory({ companiesRoot: root });
   const repo = inventory.repos.find((entry) => entry.key === "BetaCo::lazurio");
 
-  const result = await materializeRepoCheckout({
+  const readyPath = join(root, "before-claim.ready");
+  const proceedPath = join(root, "before-claim.proceed");
+  const materialization = materializeRepoCheckout({
     companiesRoot: root,
     repo,
     deps: {
-      claimDirectory: async (path) => {
-        await mkdir(path);
-        await writeFile(join(path, "concurrent-owner.txt"), "preserve me\n");
-        return mkdir(path);
+      anchorTestHook: {
+        phase: "before_claim",
+        readyPath,
+        proceedPath,
       },
     },
   });
+  await waitForPath(readyPath);
+  await mkdir(target);
+  await writeFile(join(target, "concurrent-owner.txt"), "preserve me\n");
+  await writeFile(proceedPath, "continue\n");
+  const result = await materialization;
 
   expect(result).toMatchObject({
     ok: false,
@@ -128,118 +135,23 @@ test("never replaces a target directory created concurrently after preflight", a
   expect(existsSync(join(target, ".git"))).toBe(false);
 });
 
-test("ownership pin prevents non-destructive target substitution while Git runs", async () => {
+test("anchored Git writes never follow a target pathname redirected to an external repository", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
   await prepareOrganizationRoot(organizationRoot);
   const target = join(organizationRoot, "workspace", "lazurio");
-  const remote = join(root, "remotes", "lazurio.git");
-  await mkdir(join(root, "sources"), { recursive: true });
-  await initGitRepo(join(root, "sources", "lazurio"), { remotePath: remote });
-  await writeJson(join(organizationRoot, "modules.manifest.json"), {
-    organization_generation: "gen3",
-    company: "BetaCo",
-    github_org: "BetaCo",
-    module_slots: [
-      {
-        path: "workspace/lazurio",
-        teams: ["lazurio"],
-        git: { url: remote, branch: "main" },
-      },
-    ],
-  });
-  const inventory = await buildGitInventory({ companiesRoot: root });
-  const repo = inventory.repos.find((entry) => entry.key === "BetaCo::lazurio");
-  let substitutionWasBlocked = false;
-
-  const result = await materializeRepoCheckout({
-    companiesRoot: root,
-    repo,
-    deps: {
-      run: async (args, options) => {
-        if (args[0] === "fetch") {
-          try {
-            await rmdir(target);
-          } catch {
-            substitutionWasBlocked = true;
-          }
-        }
-        return runGit(args, options);
-      },
-    },
-  });
-
-  expect(result).toMatchObject({ ok: true, outcome: "materialized" });
-  expect(substitutionWasBlocked).toBe(true);
-  expect(existsSync(join(target, ".git"))).toBe(true);
-});
-
-test("refuses a parent replaced by a directory link after preflight and never cleans the external target", async () => {
-  const root = await createLaunchpadGitFixture();
-  tempRoots.push(root);
-  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
-  await prepareOrganizationRoot(organizationRoot);
-  const targetParent = join(organizationRoot, "workspace");
-  const target = join(targetParent, "lazurio");
-  const externalParent = join(root, "external-workspace");
-  const externalTarget = join(externalParent, "lazurio");
-  const remote = join(root, "remotes", "lazurio.git");
-  await mkdir(join(root, "sources"), { recursive: true });
-  await initGitRepo(join(root, "sources", "lazurio"), { remotePath: remote });
-  await writeJson(join(organizationRoot, "modules.manifest.json"), {
-    organization_generation: "gen3",
-    company: "BetaCo",
-    github_org: "BetaCo",
-    module_slots: [
-      {
-        path: "workspace/lazurio",
-        teams: ["lazurio"],
-        git: { url: remote, branch: "main" },
-      },
-    ],
-  });
-  const inventory = await buildGitInventory({ companiesRoot: root });
-  const repo = inventory.repos.find((entry) => entry.key === "BetaCo::lazurio");
-
-  const result = await materializeRepoCheckout({
-    companiesRoot: root,
-    repo,
-    deps: {
-      claimDirectory: async (path) => {
-        await rmdir(targetParent);
-        await mkdir(externalParent);
-        await symlink(externalParent, targetParent, process.platform === "win32" ? "junction" : "dir");
-        return mkdir(path);
-      },
-    },
-  });
-
-  expect(result).toMatchObject({
-    ok: false,
-    outcome: "failed",
-    code: "materialization_path_forbidden",
-  });
-  expect(existsSync(externalTarget)).toBe(true);
-  expect(existsSync(join(externalTarget, ".git"))).toBe(false);
-  expect(existsSync(target)).toBe(true);
-});
-
-test("failed materialization never recursively cleans a parent substituted by another process", async () => {
-  const root = await createLaunchpadGitFixture();
-  tempRoots.push(root);
-  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
-  await prepareOrganizationRoot(organizationRoot);
-  const targetParent = join(organizationRoot, "workspace");
-  const target = join(targetParent, "lazurio");
-  const externalParent = join(root, "external-workspace");
-  const externalTarget = join(externalParent, "lazurio");
+  const movedTarget = join(root, "moved-claimed-lazurio");
+  const externalTarget = join(root, "external-existing-repo");
   const externalEvidence = join(externalTarget, "external-owner.txt");
   const remote = join(root, "remotes", "lazurio.git");
   await mkdir(join(root, "sources"), { recursive: true });
   await initGitRepo(join(root, "sources", "lazurio"), { remotePath: remote });
-  await mkdir(externalTarget, { recursive: true });
-  await writeFile(externalEvidence, "must survive cleanup\n");
+  await initGitRepo(externalTarget);
+  await writeFile(externalEvidence, "must not be modified\n");
+  await runGit(["add", "external-owner.txt"], { cwd: externalTarget });
+  await runGit(["commit", "-m", "external evidence"], { cwd: externalTarget });
+  const externalHeadBefore = await runGit(["rev-parse", "HEAD"], { cwd: externalTarget });
   await writeJson(join(organizationRoot, "modules.manifest.json"), {
     organization_generation: "gen3",
     company: "BetaCo",
@@ -254,35 +166,178 @@ test("failed materialization never recursively cleans a parent substituted by an
   });
   const inventory = await buildGitInventory({ companiesRoot: root });
   const repo = inventory.repos.find((entry) => entry.key === "BetaCo::lazurio");
+  const readyPath = join(root, "after-target-anchor.ready");
+  const proceedPath = join(root, "after-target-anchor.proceed");
+  let substitutionWasBlocked = false;
 
-  const result = await materializeRepoCheckout({
+  const materialization = materializeRepoCheckout({
     companiesRoot: root,
     repo,
     deps: {
-      run: async (args, options) => {
-        if (args[0] !== "fetch") return runGit(args, options);
-        // Simulate a same-user destructive process after the ownership pin:
-        // it removes the claimed checkout, redirects the parent, then the Git
-        // operation fails. The materializer must never recursively clean the
-        // now redirected pathname.
-        await rm(target, { recursive: true, force: true });
-        await rmdir(targetParent);
-        await symlink(externalParent, targetParent, process.platform === "win32" ? "junction" : "dir");
-        return { ok: false, stdout: "", stderr: "simulated fetch failure" };
+      anchorTestHook: {
+        phase: "after_target_anchor",
+        readyPath,
+        proceedPath,
       },
     },
   });
+  await waitForPath(readyPath);
+  try {
+    await rename(target, movedTarget);
+    await symlink(
+      externalTarget,
+      target,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+  } catch {
+    substitutionWasBlocked = true;
+  }
+  await writeFile(proceedPath, "continue\n");
+  const result = await materialization;
+
+  if (process.platform === "win32") {
+    expect(substitutionWasBlocked).toBe(true);
+    expect(result).toMatchObject({ ok: true, outcome: "materialized" });
+  } else {
+    expect(substitutionWasBlocked).toBe(false);
+    expect(result).toMatchObject({
+      ok: false,
+      outcome: "failed",
+      code: "materialization_path_forbidden",
+    });
+    expect(existsSync(join(movedTarget, ".git"))).toBe(true);
+  }
+  expect(await readFile(externalEvidence, "utf8")).toBe("must not be modified\n");
+  const externalHeadAfter = await runGit(["rev-parse", "HEAD"], { cwd: externalTarget });
+  const externalStatus = await runGit(["status", "--porcelain=v1"], { cwd: externalTarget });
+  expect(externalHeadAfter.stdout).toBe(externalHeadBefore.stdout);
+  expect(externalStatus.stdout).toBe("");
+});
+
+test("anchored parent mkdir never follows a pathname redirected before target claim", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
+  await prepareOrganizationRoot(organizationRoot);
+  const targetParent = join(organizationRoot, "workspace");
+  const target = join(targetParent, "lazurio");
+  const movedParent = join(root, "moved-workspace");
+  const externalParent = join(root, "external-workspace");
+  const externalTarget = join(externalParent, "lazurio");
+  const remote = join(root, "remotes", "lazurio.git");
+  await mkdir(join(root, "sources"), { recursive: true });
+  await initGitRepo(join(root, "sources", "lazurio"), { remotePath: remote });
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "BetaCo",
+    github_org: "BetaCo",
+    module_slots: [
+      {
+        path: "workspace/lazurio",
+        teams: ["lazurio"],
+        git: { url: remote, branch: "main" },
+      },
+    ],
+  });
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  const repo = inventory.repos.find((entry) => entry.key === "BetaCo::lazurio");
+  const readyPath = join(root, "anchored-parent.ready");
+  const proceedPath = join(root, "anchored-parent.proceed");
+  let substitutionWasBlocked = false;
+
+  const materialization = materializeRepoCheckout({
+    companiesRoot: root,
+    repo,
+    deps: {
+      anchorTestHook: {
+        phase: "before_claim",
+        readyPath,
+        proceedPath,
+      },
+    },
+  });
+  await waitForPath(readyPath);
+  await mkdir(externalParent);
+  try {
+    await rename(targetParent, movedParent);
+    await symlink(
+      externalParent,
+      targetParent,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+  } catch {
+    substitutionWasBlocked = true;
+  }
+  await writeFile(proceedPath, "continue\n");
+  const result = await materialization;
+
+  if (process.platform === "win32") {
+    expect(substitutionWasBlocked).toBe(true);
+    expect(result).toMatchObject({ ok: true, outcome: "materialized" });
+    expect(existsSync(join(target, ".git"))).toBe(true);
+  } else {
+    expect(substitutionWasBlocked).toBe(false);
+    expect(result).toMatchObject({
+      ok: false,
+      outcome: "failed",
+      code: "materialization_path_forbidden",
+    });
+    expect(existsSync(join(movedParent, "lazurio", ".git"))).toBe(true);
+  }
+  expect(existsSync(externalTarget)).toBe(false);
+});
+
+test("failed anchored Git fetch leaves its owned partial checkout for inspection", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
+  await prepareOrganizationRoot(organizationRoot);
+  const target = join(organizationRoot, "workspace", "lazurio");
+  const remote = join(root, "remotes", "lazurio.git");
+  await mkdir(join(root, "sources"), { recursive: true });
+  await initGitRepo(join(root, "sources", "lazurio"), { remotePath: remote });
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "BetaCo",
+    github_org: "BetaCo",
+    module_slots: [
+      {
+        path: "workspace/lazurio",
+        teams: ["lazurio"],
+        git: { url: remote, branch: "main" },
+      },
+    ],
+  });
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  const repo = inventory.repos.find((entry) => entry.key === "BetaCo::lazurio");
+  const readyPath = join(root, "before-failed-claim.ready");
+  const proceedPath = join(root, "before-failed-claim.proceed");
+
+  const materialization = materializeRepoCheckout({
+    companiesRoot: root,
+    repo,
+    deps: {
+      anchorTestHook: {
+        phase: "before_claim",
+        readyPath,
+        proceedPath,
+      },
+    },
+  });
+  await waitForPath(readyPath);
+  await rm(remote, { recursive: true, force: true });
+  await writeFile(proceedPath, "continue\n");
+  const result = await materialization;
 
   expect(result).toMatchObject({
     ok: false,
     outcome: "failed",
     code: "materialization_incomplete",
   });
-  expect(await readFile(externalEvidence, "utf8")).toBe("must survive cleanup\n");
-  expect(existsSync(target)).toBe(true);
+  expect(existsSync(join(target, ".git"))).toBe(true);
 });
 
-test("keeps an owned partial checkout for inspection instead of recursively deleting it", async () => {
+test("unsupported platforms fail closed before creating the target", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
@@ -310,21 +365,16 @@ test("keeps an owned partial checkout for inspection instead of recursively dele
     companiesRoot: root,
     repo,
     deps: {
-      run: async (args, options) => {
-        if (args[0] === "fetch") {
-          return { ok: false, stdout: "", stderr: "simulated fetch failure" };
-        }
-        return runGit(args, options);
-      },
+      platform: "aix",
     },
   });
 
   expect(result).toMatchObject({
     ok: false,
     outcome: "failed",
-    code: "materialization_incomplete",
+    code: "materialization_anchor_unavailable",
   });
-  expect(existsSync(join(target, ".git"))).toBe(true);
+  expect(existsSync(target)).toBe(false);
 });
 
 test("refuses a target that does not exactly match the manifest inventory boundary", async () => {
@@ -355,4 +405,14 @@ test("refuses a target that does not exactly match the manifest inventory bounda
 async function prepareOrganizationRoot(organizationRoot) {
   await writeFile(join(organizationRoot, ".gitignore"), "/workspace/*/\n");
   await initGitRepo(organizationRoot);
+}
+
+async function waitForPath(path, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!existsSync(path)) {
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out waiting for ${path}`);
+    }
+    await Bun.sleep(20);
+  }
 }
