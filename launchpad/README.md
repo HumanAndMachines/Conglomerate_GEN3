@@ -508,9 +508,12 @@ jasný mechanismus:
   bezpečnostní stash se nesmaže.
 - `Pullnout vše` je jedna potvrzená builder akce přes všechny namountované
   Organizace. V první fázi stáhne Organization root repa; ve druhé znovu načte
-  jejich manifesty, aktualizuje existující Workspace/root sloty a chybějící
-  aktivní sloty bezpečně naklonuje. GitHub credentials kolegy zůstávají access
-  autoritou; nedostupný checkout se ohlásí jako `missing_access`, `planned_slot`
+  jejich manifesty, aktualizuje existující Workspace/root sloty a na Windows
+  bezpečně naklonuje chybějící aktivní sloty. Na macOS a Linuxu pro chybějící
+  aktivní slot failuje zavřeně s `materialization_anchor_unavailable`, dokud
+  follow-up `issue-2026-07-26-001` nedodá ověřený POSIX mechanismus. GitHub
+  credentials kolegy zůstávají access autoritou; nedostupný checkout se ohlásí
+  jako `missing_access`, `planned_slot`
   se nematerializuje. Pro bezpečně autostashovatelné drafty použije stejné
   recovery flow a každý blocker izoluje, aby nezastavil ostatní repozitáře.
   Productionspace, wrong-branch, outgoing a diverged checkouty přeskočí a
