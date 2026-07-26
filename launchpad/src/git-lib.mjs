@@ -120,11 +120,19 @@ export function safeGitCommandEnv(platform = process.platform, base = processEnv
 // Manifest materialization consumes configuration-controlled remote data and
 // must not read any user, global or system Git configuration.
 export function safeGitMaterializationEnv(platform = process.platform, base = processEnv()) {
-  return commandEnvironment(base, {
+  const overrides = {
     ...safeGitRemoteEnv(platform),
     GIT_CONFIG_GLOBAL: "",
     GIT_CONFIG_NOSYSTEM: "1",
-  });
+  };
+  const environment = commandEnvironment(base, overrides);
+  // runCommand() merges this environment with the live process environment.
+  // Preserve explicit removals so a second merge cannot resurrect GIT_SSH*,
+  // stale repository context or askpass helpers from the parent process.
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value === undefined || value === null) environment[key] = undefined;
+  }
+  return environment;
 }
 
 export function gitExecutableCandidates({ platform = process.platform, env = processEnv() } = {}) {

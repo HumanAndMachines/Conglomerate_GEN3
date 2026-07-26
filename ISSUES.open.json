@@ -110,51 +110,6 @@
           "path": "launchpad/src/diagnostics-lib.test.mjs"
         }
       ]
-    },
-    {
-      "id": "issue-2026-07-26-001",
-      "title": "Obnovit bezpečnou POSIX materializaci nových modulových checkoutů",
-      "status": "open",
-      "severity": "medium",
-      "owner": "Launchpad platform agent",
-      "created_at": "2026-07-26",
-      "updated_at": "2026-07-26",
-      "tags": [
-        "launchpad",
-        "git",
-        "materialization",
-        "posix",
-        "security"
-      ],
-      "question": "Jak na macOS a Linuxu bezpečně vytvořit a ukotvit nový deklarovaný checkout tak, aby `Pullnout vše` po získání GitHub přístupu uměl modul automaticky naklonovat, aniž by rename nebo symlink závod mohl Git přesměrovat mimo Organization boundary?",
-      "impact": "Doctor a manifest-driven inventář nový modul dál zobrazí. Windows jej umí automaticky materializovat přes atomický handle-relative claim. Na macOS/Linux aktuální fail-closed cesta vrací `materialization_anchor_unavailable` před vytvořením targetu, takže chybějící aktivní slot automaticky nenaklonuje. Pathname fallback je nepřijatelný: dříve nezávisle reprodukovaný TOCTOU útok mohl Git zápisy přesměrovat mimo Organizaci.",
-      "decision": "Founder 2026-07-26: omezení POSIX automatické materializace není merge blocker pro CAC-0015; patří sem jako známý problém. Současný fail-closed stav zůstává, dokud nebude ověřená bezpečná POSIX implementace. Dočasně se nesmí zavést mkdir + následné pathname/open anchoring ani jiný pathname fallback.",
-      "implementation": "CAC-0015 zachová Windows materializaci s atomickým handle-relative claimem a POSIX před zápisem skončí `materialization_anchor_unavailable`. Navazující práce má provést úzký technický spike nebo architektonický návrh skutečně bezpečného POSIX primitive; teprve pak navrhnout implementační PR.",
-      "verification": [
-        "macOS a Linux reprodukce: při fail-closed výsledku nevznikne target ani Git zápis v targetu",
-        "Windows reálný CI/runtime test: nový aktivní slot se materializuje do přesně deklarovaného targetu",
-        "adversariální rename/symlink test neumožní zápis Git mimo Organization boundary",
-        "bun run check"
-      ],
-      "next_action": "Zařadit samostatný návrhový spike pro POSIX; před implementací doložit atomický mechanismus a testovat ho na macOS i Linuxu. Dokud důkaz neexistuje, nevydávat pathname fallback za bezpečné řešení.",
-      "links": [
-        {
-          "label": "CAC-0015 PR #52",
-          "url": "https://github.com/HumanAndMachines/Conglomerate_GEN3/pull/52"
-        },
-        {
-          "label": "Materialization orchestrátor",
-          "path": "launchpad/src/git-materialization-lib.mjs"
-        },
-        {
-          "label": "Platform helper kontrakt",
-          "path": "launchpad/src/git-materialization-helper-lib.mjs"
-        },
-        {
-          "label": "Bezpečnostní specifikace",
-          "path": "launchpad/docs/launchpad-gen3-redesign-spec.md"
-        }
-      ]
     }
   ]
 }
