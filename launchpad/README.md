@@ -63,21 +63,20 @@ Launchpad skládá dostupné Organizace scan-first:
 Mutační `Pullnout vše` (Launchpad) a `bun run update --org <slug>` (CLI)
 provádějí manifest-driven materializaci ve dvou fázích: nejdřív bezpečně
 fast-forwardnou Organization root, potom z nového manifestu sestaví čerstvý
-inventář a chybějící aktivní Workspace/root sloty naklonují na přesně
-deklarovanou větev. `planned_slot` bez Git souřadnic se nikdy neklonuje.
+inventář a na podporované platformě naklonují chybějící aktivní Workspace/root
+slot na přesně deklarovanou větev. `planned_slot` bez Git souřadnic se nikdy neklonuje.
 Když aktuální GitHub identita repo nebo branch nedokáže načíst, checkout
 zůstane `missing_access`; Launchpad žádný paralelní ACL ani grant nevytváří.
-Materializátor dostupnost větve ověří ještě před atomickým claimem targetu,
-potom spustí platformní no-follow directory-handle helper. POSIX helper otevírá
-Organization root i parent komponenty přes `O_NOFOLLOW` a všechny mkdir/Git
-zápisy provádí z `fchdir` ukotveného targetu; Windows helper drží každou
-komponentu přes no-follow handle a potom vytváří potomky relativním
-`NtCreateFile(RootDirectory=parentHandle)`. Delete-on-close locky bez
-`FILE_SHARE_DELETE` stabilizují path pro Git child; pokud filesystem přesto
-povolí rename, helper odvodí skutečnou cestu z target handlu a nikdy nepoužije
-přesměrovanou manifest pathname.
-Platforma bez schváleného helperu skončí fail-closed ještě před vytvořením
-targetu. Rekurzivní failure cleanup se záměrně neprovádí: neočekávané selhání
+Materializace je nyní podporovaná pouze na Windows. Před atomickým claimem
+helper ověří dostupnost větve; každou komponentu drží přes no-follow handle a
+potom vytváří potomky relativním `NtCreateFile(RootDirectory=parentHandle)`.
+Delete-on-close locky bez `FILE_SHARE_DELETE` stabilizují cestu pro Git child;
+pokud filesystem přesto povolí rename, helper odvodí skutečnou cestu z target
+handlu a nikdy nepoužije přesměrovanou manifest pathname. Na macOS a Linuxu
+POSIX `mkdir` nemá atomický create-and-directory-handle primitive, proto
+materializátor vrací `materialization_anchor_unavailable` před vytvořením
+targetu; aktivní slot zůstane chybějící a akce to čitelně ohlásí jako failure.
+Rekurzivní failure cleanup se záměrně neprovádí: neočekávané selhání
 po claimu nechá částečný adresář jako viditelný lokální blocker k ruční
 kontrole a nikdy neriskuje smazání cizí cesty.
 
