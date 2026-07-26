@@ -244,7 +244,7 @@ implementace** (`MissionControlTemplate/app/v3`).
    **Publikovat** provede publish flow podle role uživatele přes stejný
    backend jako detailní Publish/Repository stránka; publish sémantika
    zůstává create → approve → publish (decision 0035
-   v HumanAndMachines/docs/decisions/), žádný auto-publish. Indikátor odkazuje
+   v manual/decision-register.md), žádný auto-publish. Indikátor odkazuje
    na detailní stránku.
 2. **Pull / freshness mechanismus.** Host/server detekuje remote změny data
    repa **bounded** operací (git fetch s intervalem + manuální refresh

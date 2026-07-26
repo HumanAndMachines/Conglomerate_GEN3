@@ -21,15 +21,15 @@ self-contained provedení těchto rozhodnutí z repozitáře HumanAndMachines:
 
 | Rozhodnutí | Co tento runbook vynucuje |
 |---|---|
-| `HumanAndMachines/docs/decisions/0026-canonical-gen3-organization-layout.md` | Organizace nemá vlastní Launchpad runtime; má jednu root `mission-control/` vrstvu, `manual/`, `workspace/`, `productionspace/`, `infra/`, company vrstvu a appky deklarované v `package.json`. |
-| `HumanAndMachines/docs/decisions/0033-fork-based-generational-migration.md` | Existující GEN2 firma se migruje přes nové repo a paralelní běh, ne in-place přepis. |
-| `HumanAndMachines/docs/decisions/0036-mission-control-legacy-yaml-cutover-gates.md` | Legacy Mission Control pravda se nevypne bez parity, validace, rollbacku, credential authority, approvalu a monitoringu. |
-| `HumanAndMachines/docs/decisions/0037-mission-control-v3-at-gen3-migration-boundary.md` | Mission Control v3 není GEN2 prerequisite; jeho app/data hranice se řeší až v cílové Organizaci GEN3. |
-| `HumanAndMachines/docs/decisions/0041-flat-workspace-folder-and-manifest-grouping.md` | Workspace moduly fyzicky žijí v jedné `workspace/`; příslušnost ke Workspace určuje manifest, ne cesta. Productionspace je rezervovaná org-level hranice. |
-| `HumanAndMachines/docs/decisions/0042-auto-discovery-first-launchpad.md` | Přítomná Organizace se objevuje skenem `organizations/*/company.gen3.json`; root registry není allowlist. |
-| `HumanAndMachines/docs/decisions/0043-launchpad-invalid-manifest-isolation.md` | Vadný app manifest se izoluje; port je unikátní uvnitř Organizace, cross-Organization overlap je povolený a listener bez známé vazby zůstává tvrdý blokátor. |
-| `HumanAndMachines/docs/decisions/0045-genn-permanent-generation-marker.md` | Repo a mount si `_GEN3` nechávají i po cutoveru; `company.slug`, brand a app company suffix nenesou. |
-| `HumanAndMachines/docs/decisions/0049-worktree-runtime-contract.md` | Každá migrační změna vzniká v Mission-Control-owned worktree s kanonickou cestou a sidecarem; hlavní checkout zůstává na `main`. |
+| `manual/decision-register.md0026-canonical-gen3-organization-layout.md` | Organizace nemá vlastní Launchpad runtime; má jednu root `mission-control/` vrstvu, `manual/`, `workspace/`, `productionspace/`, `infra/`, company vrstvu a appky deklarované v `package.json`. |
+| `manual/decision-register.md0033-fork-based-generational-migration.md` | Existující GEN2 firma se migruje přes nové repo a paralelní běh, ne in-place přepis. |
+| `manual/decision-register.md0036-mission-control-legacy-yaml-cutover-gates.md` | Legacy Mission Control pravda se nevypne bez parity, validace, rollbacku, credential authority, approvalu a monitoringu. |
+| `manual/decision-register.md0037-mission-control-v3-at-gen3-migration-boundary.md` | Mission Control v3 není GEN2 prerequisite; jeho app/data hranice se řeší až v cílové Organizaci GEN3. |
+| `manual/decision-register.md0041-flat-workspace-folder-and-manifest-grouping.md` | Workspace moduly fyzicky žijí v jedné `workspace/`; příslušnost ke Workspace určuje manifest, ne cesta. Productionspace je rezervovaná org-level hranice. |
+| `manual/decision-register.md0042-auto-discovery-first-launchpad.md` | Přítomná Organizace se objevuje skenem `organizations/*/company.gen3.json`; root registry není allowlist. |
+| `manual/decision-register.md0043-launchpad-invalid-manifest-isolation.md` | Vadný app manifest se izoluje; port je unikátní uvnitř Organizace, cross-Organization overlap je povolený a listener bez známé vazby zůstává tvrdý blokátor. |
+| `manual/decision-register.md0045-genn-permanent-generation-marker.md` | Repo a mount si `_GEN3` nechávají i po cutoveru; `company.slug`, brand a app company suffix nenesou. |
+| `manual/decision-register.md0049-worktree-runtime-contract.md` | Každá migrační změna vzniká v Mission-Control-owned worktree s kanonickou cestou a sidecarem; hlavní checkout zůstává na `main`. |
 
 Z těchto rozhodnutí plynou nepřekročitelné hranice:
 
@@ -56,7 +56,7 @@ zbytek životního cyklu Organizace:
   `manual/template-promotion-and-sync.md`.
 
 Template hranice během migrace (decision 0033 a decision 0077 v
-`HumanAndMachines/docs/decisions/`; 0077 formalizuje rename na
+`manual/decision-register.md`; 0077 formalizuje rename na
 `OrganizationTemplate_GEN3` a template-first content sync):
 
 - Během konverze je `OrganizationTemplate_GEN3` **jen reference/validation
