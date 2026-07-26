@@ -62,7 +62,10 @@ sub run_git {
   my $pid = open(my $stdout, "-|");
   die "git_fork_failed\n" unless defined($pid);
   if ($pid == 0) {
-    exec {$config->{gitExecutable}} $config->{gitExecutable}, @args;
+    exec {$config->{gitExecutable}} $config->{gitExecutable},
+      "-c", "core.sshCommand=",
+      "-c", "core.gitProxy=",
+      @args;
     exit(127);
   }
   local $/;
@@ -83,6 +86,7 @@ eval {
   die "invalid_config\n" unless ref($config) eq "HASH";
 
   my $organization_root = $config->{organizationRoot};
+  my $organization_identity = $config->{organizationIdentity};
   my $segments = $config->{slotSegments};
   my $remote = $config->{remote};
   my $branch = $config->{branch};
@@ -91,6 +95,11 @@ eval {
     unless defined($organization_root)
     && !ref($organization_root)
     && $organization_root ne ""
+    && ref($organization_identity) eq "HASH"
+    && defined($organization_identity->{dev})
+    && !ref($organization_identity->{dev})
+    && defined($organization_identity->{ino})
+    && !ref($organization_identity->{ino})
     && ref($segments) eq "ARRAY"
     && @{$segments} >= 1
     && !grep { !valid_segment($_) } @{$segments}
@@ -114,7 +123,40 @@ eval {
   my @organization_stat = stat($organization_handle);
   die "organization_anchor_not_directory\n"
     unless @organization_stat && S_ISDIR($organization_stat[2]);
+  die "organization_anchor_changed\n"
+    unless "$organization_stat[0]" eq "$organization_identity->{dev}"
+      && "$organization_stat[1]" eq "$organization_identity->{ino}";
   chdir($organization_handle) or die "organization_anchor_chdir_failed\n";
+
+  my $root_cdup = run_git("rev-parse", "--show-cdup");
+  failure(
+    "materialization_path_forbidden",
+    "Ukotvený Organization root není jeho vlastním Git checkoutem.",
+    31,
+  ) unless $root_cdup->{ok} && $root_cdup->{output} eq "";
+  my $slot_path = join("/", @{$segments});
+  my $ignored = run_git("check-ignore", "--quiet", "--no-index", "--", "$slot_path/");
+  failure(
+    "materialization_manifest_invalid",
+    "Manifestovaná checkout cesta není gitignored v Organization rootu.",
+    31,
+  ) unless $ignored->{ok};
+  my $valid_branch = run_git("check-ref-format", "--branch", $branch);
+  failure(
+    "materialization_manifest_invalid",
+    "Manifest deklaruje neplatný název Git branche.",
+    31,
+  ) unless $valid_branch->{ok};
+  my $source = run_git("ls-remote", "--exit-code", "--heads", "--", $remote, "refs/heads/$branch");
+  finish(
+    {
+      ok => JSON::PP::false,
+      outcome => "missing_access",
+      code => "materialization_source_unavailable",
+      message => "Manifestované repo nebo jeho větev nejsou s aktuálními GitHub přístupy dostupné; nic se nenaklonovalo.",
+    },
+    10,
+  ) unless $source->{ok} && $source->{output} ne "";
 
   my @handles = ($organization_handle);
   for my $index (0 .. $#{$segments} - 1) {

@@ -155,10 +155,16 @@ binary via a separate release artifact that changes far less often.
   builder's own BYOS session (decision 0061), not a platform agent.
 - **Nested manifest materialization** stays separate from read-only Doctor
   diagnostics and runs only where Launchpad has a reviewed platform anchor for
-  every directory creation and Git write. POSIX executes Git from a no-follow
+  every directory creation and Git write. Before the helper starts, the
+  validated Organization root's device/inode identity is captured; the helper
+  opens a no-follow root and rejects a replacement identity before probing
+  source access or creating a target. POSIX executes Git from a no-follow
   directory handle; Windows creates every descendant relative to a retained
   no-follow parent handle and holds delete-on-close locks while Git uses the
-  target path resolved back from its handle. A platform without either
+  target path resolved back from its handle. Source probes and writes run with
+  inherited executable selectors (`GIT_SSH_COMMAND`, `GIT_SSH`, proxy and Git
+  executable path variables) removed, and explicit Git config disables
+  Organization-local SSH command/proxy overrides. A platform without either
   primitive fails closed before creating the target and never treats pathname
   revalidation as its write boundary.
 - **On the Workspace Host** the Steward seat holds the update through a

@@ -87,9 +87,14 @@ export function safeGitRemoteEnv(platform = process.platform) {
     GIT_ALTERNATE_OBJECT_DIRECTORIES: undefined,
     GIT_COMMON_DIR: undefined,
     GIT_DIR: undefined,
+    GIT_EXEC_PATH: undefined,
     GIT_INDEX_FILE: undefined,
     GIT_OBJECT_DIRECTORY: undefined,
     GIT_PREFIX: undefined,
+    GIT_PROXY_COMMAND: undefined,
+    GIT_SSH: undefined,
+    GIT_SSH_COMMAND: undefined,
+    GIT_SSH_VARIANT: undefined,
     GIT_WORK_TREE: undefined,
   };
   if (platform === "win32") {

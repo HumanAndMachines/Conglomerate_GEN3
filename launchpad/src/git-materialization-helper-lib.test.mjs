@@ -30,10 +30,14 @@ test("platform helpers retain no-follow anchors for every materialization write"
   ]);
 
   expect(posix).toContain("O_DIRECTORY | O_NOFOLLOW");
+  expect(posix).toContain("organization_anchor_changed");
+  expect(posix).toContain("core.sshCommand=");
   expect(posix).toContain("chdir($target_handle)");
   expect(posix).not.toContain("remove_tree");
 
   expect(windows).toContain("FILE_FLAG_OPEN_REPARSE_POINT");
+  expect(windows).toContain("organization_anchor_changed");
+  expect(windows).toContain("core.sshCommand=");
   expect(windows).toContain("NtCreateFile");
   expect(windows).toContain("RootDirectory = parent.DangerousGetHandle()");
   expect(windows).toContain("FILE_DELETE_ON_CLOSE");

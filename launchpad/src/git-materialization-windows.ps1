@@ -374,7 +374,11 @@ function Invoke-Git {
         # objects. "Stop" would turn an ordinary successful `git fetch`
         # progress line into a terminating PowerShell exception.
         $ErrorActionPreference = "Continue"
-        $nativeOutput = & $script:GitExecutable @Arguments 2>&1
+        $safeArguments = @(
+            "-c", "core.sshCommand=",
+            "-c", "core.gitProxy="
+        ) + $Arguments
+        $nativeOutput = & $script:GitExecutable @safeArguments 2>&1
         $exitCode = $LASTEXITCODE
     }
     finally {
@@ -406,6 +410,9 @@ try {
     if (
         $null -eq $config -or
         [string]::IsNullOrWhiteSpace([string]$config.organizationRoot) -or
+        $null -eq $config.organizationIdentity -or
+        [string]::IsNullOrWhiteSpace([string]$config.organizationIdentity.dev) -or
+        [string]::IsNullOrWhiteSpace([string]$config.organizationIdentity.ino) -or
         $null -eq $config.slotSegments -or
         $config.slotSegments.Count -lt 1 -or
         [string]::IsNullOrWhiteSpace([string]$config.remote) -or
@@ -431,6 +438,60 @@ try {
         [IO.Path]::GetFullPath([string]$config.organizationRoot)
     )
     $anchors.Add($organizationAnchor.Handle)
+    $actualInode = (
+        ([UInt64]$organizationAnchor.Information.FileIndexHigh -shl 32) -bor
+        [UInt64]$organizationAnchor.Information.FileIndexLow
+    )
+    if (
+        [string]$organizationAnchor.Information.VolumeSerialNumber -ne [string]$config.organizationIdentity.dev -or
+        [string]$actualInode -ne [string]$config.organizationIdentity.ino
+    ) {
+        throw "organization_anchor_changed"
+    }
+    $organizationPath = [LaunchpadDirectoryAnchor]::GetFinalDirectoryPath(
+        $organizationAnchor.Handle
+    )
+    Set-Location -LiteralPath $organizationPath
+    $rootCdup = Invoke-Git -Arguments @("rev-parse", "--show-cdup")
+    if (-not $rootCdup.Ok -or $rootCdup.Output -ne "") {
+        Write-Result -Payload @{
+            ok = $false
+            outcome = "failed"
+            code = "materialization_path_forbidden"
+            message = "The anchored Organization root is not its own Git checkout."
+        } -ExitCode 31
+    }
+    $slotPath = (($config.slotSegments | ForEach-Object { [string]$_ }) -join "/") + "/"
+    $ignored = Invoke-Git -Arguments @("check-ignore", "--quiet", "--no-index", "--", $slotPath)
+    if (-not $ignored.Ok) {
+        Write-Result -Payload @{
+            ok = $false
+            outcome = "failed"
+            code = "materialization_manifest_invalid"
+            message = "The manifest checkout path is not gitignored in the Organization root."
+        } -ExitCode 31
+    }
+    $validBranch = Invoke-Git -Arguments @("check-ref-format", "--branch", [string]$config.branch)
+    if (-not $validBranch.Ok) {
+        Write-Result -Payload @{
+            ok = $false
+            outcome = "failed"
+            code = "materialization_manifest_invalid"
+            message = "The manifest declares an invalid Git branch name."
+        } -ExitCode 31
+    }
+    $source = Invoke-Git -Arguments @(
+        "ls-remote", "--exit-code", "--heads", "--",
+        [string]$config.remote, "refs/heads/$($config.branch)"
+    )
+    if (-not $source.Ok -or [string]::IsNullOrWhiteSpace($source.Output)) {
+        Write-Result -Payload @{
+            ok = $false
+            outcome = "missing_access"
+            code = "materialization_source_unavailable"
+            message = "The manifest repository or branch is unavailable to the current GitHub credentials; no checkout was created."
+        } -ExitCode 10
+    }
     $organizationLock = [LaunchpadDirectoryAnchor]::CreateRelativeLock(
         $organizationAnchor.Handle
     )

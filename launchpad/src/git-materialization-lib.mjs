@@ -38,38 +38,12 @@ export async function materializeRepoCheckout({
     slotSegments,
     branch,
     remote,
+    organizationIdentity,
   } = validation;
-  const existing = await lstatOrNull(targetPath);
-  if (existing) {
-    return {
-      ok: false,
-      outcome: "target_exists",
-      code: "materialization_target_exists",
-      message: "Cílová cesta už existuje; Launchpad ji nepřepíše ani nepřevezme.",
-    };
-  }
-
-  // Přístup ověříme ještě před vytvořením targetu. Běžný access failure tak
-  // nikdy nezanechá ani prázdný checkout, natož částečný klon.
-  const source = await run(
-    ["ls-remote", "--exit-code", "--heads", "--", remote, `refs/heads/${branch}`],
-    {
-      cwd: organizationRoot,
-      timeoutMs: GIT_CLONE_TIMEOUT_MS,
-      env: safeGitRemoteEnv(),
-    },
-  );
-  if (!source.ok || !source.stdout) {
-    return {
-      ok: false,
-      outcome: "missing_access",
-      code: "materialization_source_unavailable",
-      message: "Manifestované repo nebo jeho větev nejsou s aktuálními GitHub přístupy dostupné; nic se nenaklonovalo.",
-    };
-  }
 
   const anchored = await materializeAnchored({
     organizationRoot,
+    organizationIdentity,
     slotSegments,
     branch,
     remote,
@@ -148,18 +122,37 @@ async function validateMaterializationTarget({ companiesRoot, repo, run }) {
   if (!boundary.ok) {
     return boundaryFailure("Manifestovaná cesta vede mimo kanonický root Organizace.");
   }
+  let organizationIdentity;
+  try {
+    const stat = await lstat(organizationRoot, { bigint: true });
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      return boundaryFailure("Organization root musí být přímý adresář s ověřitelnou identitou.");
+    }
+    organizationIdentity = {
+      dev: stat.dev.toString(),
+      ino: stat.ino.toString(),
+    };
+  } catch {
+    return boundaryFailure("Organization root nejde bezpečně ukotvit.");
+  }
 
   const [rootCheck, ignoreCheck, refCheck] = await Promise.all([
-    run(["rev-parse", "--show-toplevel"], { cwd: organizationRoot, timeoutMs: GIT_LOCAL_TIMEOUT_MS }),
+    run(["rev-parse", "--show-toplevel"], {
+      cwd: organizationRoot,
+      timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+      env: safeGitRemoteEnv(),
+    }),
     // Directory-only ignore patterns (např. /workspace/*/) potřebují trailing
     // separator i pro zatím neexistující target.
     run(["check-ignore", "--quiet", "--no-index", "--", `${targetPath}/`], {
       cwd: organizationRoot,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+      env: safeGitRemoteEnv(),
     }),
     run(["check-ref-format", "--branch", branch], {
       cwd: organizationRoot,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+      env: safeGitRemoteEnv(),
     }),
   ]);
   if (!rootCheck.ok) {
@@ -188,6 +181,7 @@ async function validateMaterializationTarget({ companiesRoot, repo, run }) {
     ok: true,
     organizationRoot,
     targetPath,
+    organizationIdentity,
     slotSegments,
     branch,
     remote,
@@ -249,13 +243,4 @@ function verificationFailure(message) {
     code: "materialization_verification_failed",
     message,
   };
-}
-
-async function lstatOrNull(path) {
-  try {
-    return await lstat(path);
-  } catch (error) {
-    if (error?.code === "ENOENT") return null;
-    throw error;
-  }
 }

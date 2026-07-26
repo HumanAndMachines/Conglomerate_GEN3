@@ -1,8 +1,9 @@
 import { afterAll, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { materializeRepoCheckout } from "./git-materialization-lib.mjs";
+import { runAnchoredMaterialization } from "./git-materialization-helper-lib.mjs";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
 import { runGit } from "./git-lib.mjs";
 import {
@@ -81,6 +82,164 @@ test("treats an inaccessible manifest repository as missing_access and leaves no
     code: "materialization_source_unavailable",
   });
   expect(existsSync(target)).toBe(false);
+});
+
+test.if(process.platform !== "win32")("materialization ignores Organization-local core.sshCommand", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
+  await prepareOrganizationRoot(organizationRoot);
+  const marker = join(root, "local-ssh-command-ran");
+  const helper = join(root, "local-ssh-command.sh");
+  const target = join(organizationRoot, "workspace", "private-module");
+  await writeFile(helper, `#!/bin/sh\nprintf attacker > ${JSON.stringify(marker)}\nexit 1\n`);
+  await chmod(helper, 0o755);
+  await runGit(["config", "core.sshCommand", helper], { cwd: organizationRoot });
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "BetaCo",
+    github_org: "BetaCo",
+    module_slots: [{
+      path: "workspace/private-module",
+      git: { url: "ssh://git@127.0.0.1:1/nope", branch: "main" },
+    }],
+  });
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  const repo = inventory.repos.find((entry) => entry.key === "BetaCo::private-module");
+
+  const result = await materializeRepoCheckout({ companiesRoot: root, repo });
+
+  expect(result).toMatchObject({
+    ok: false,
+    outcome: "missing_access",
+    code: "materialization_source_unavailable",
+  });
+  expect(existsSync(marker)).toBe(false);
+  expect(existsSync(target)).toBe(false);
+});
+
+test.if(process.platform !== "win32")("materialization removes inherited GIT_SSH_COMMAND", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
+  await prepareOrganizationRoot(organizationRoot);
+  const marker = join(root, "inherited-ssh-command-ran");
+  const helper = join(root, "inherited-ssh-command.sh");
+  const target = join(organizationRoot, "workspace", "private-module");
+  await writeFile(helper, `#!/bin/sh\nprintf attacker > ${JSON.stringify(marker)}\nexit 1\n`);
+  await chmod(helper, 0o755);
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "BetaCo",
+    github_org: "BetaCo",
+    module_slots: [{
+      path: "workspace/private-module",
+      git: { url: "ssh://git@127.0.0.1:1/nope", branch: "main" },
+    }],
+  });
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  const repo = inventory.repos.find((entry) => entry.key === "BetaCo::private-module");
+  const previous = process.env.GIT_SSH_COMMAND;
+  process.env.GIT_SSH_COMMAND = helper;
+  try {
+    const result = await materializeRepoCheckout({ companiesRoot: root, repo });
+    expect(result).toMatchObject({
+      ok: false,
+      outcome: "missing_access",
+      code: "materialization_source_unavailable",
+    });
+  } finally {
+    if (previous === undefined) delete process.env.GIT_SSH_COMMAND;
+    else process.env.GIT_SSH_COMMAND = previous;
+  }
+
+  expect(existsSync(marker)).toBe(false);
+  expect(existsSync(target)).toBe(false);
+});
+
+test.if(process.platform !== "win32")("materialization removes inherited GIT_SSH", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
+  await prepareOrganizationRoot(organizationRoot);
+  const marker = join(root, "inherited-ssh-ran");
+  const helper = join(root, "inherited-ssh.sh");
+  const target = join(organizationRoot, "workspace", "private-module");
+  await writeFile(helper, `#!/bin/sh\nprintf attacker > ${JSON.stringify(marker)}\nexit 1\n`);
+  await chmod(helper, 0o755);
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "BetaCo",
+    github_org: "BetaCo",
+    module_slots: [{
+      path: "workspace/private-module",
+      git: { url: "ssh://git@127.0.0.1:1/nope", branch: "main" },
+    }],
+  });
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  const repo = inventory.repos.find((entry) => entry.key === "BetaCo::private-module");
+  const previous = process.env.GIT_SSH;
+  process.env.GIT_SSH = helper;
+  try {
+    const result = await materializeRepoCheckout({ companiesRoot: root, repo });
+    expect(result).toMatchObject({
+      ok: false,
+      outcome: "missing_access",
+      code: "materialization_source_unavailable",
+    });
+  } finally {
+    if (previous === undefined) delete process.env.GIT_SSH;
+    else process.env.GIT_SSH = previous;
+  }
+
+  expect(existsSync(marker)).toBe(false);
+  expect(existsSync(target)).toBe(false);
+});
+
+test("refuses an Organization root substituted after validation before it can create an external checkout", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
+  const movedOrganizationRoot = join(root, "moved-BetaCo_GEN3");
+  const externalOrganizationRoot = join(root, "external-organization-root");
+  const externalTarget = join(externalOrganizationRoot, "workspace", "lazurio");
+  await prepareOrganizationRoot(organizationRoot);
+  await mkdir(externalOrganizationRoot, { recursive: true });
+  await prepareOrganizationRoot(externalOrganizationRoot);
+  const remote = join(root, "remotes", "lazurio.git");
+  await mkdir(join(root, "sources"), { recursive: true });
+  await initGitRepo(join(root, "sources", "lazurio"), { remotePath: remote });
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "BetaCo",
+    github_org: "BetaCo",
+    module_slots: [{
+      path: "workspace/lazurio",
+      teams: ["lazurio"],
+      git: { url: remote, branch: "main" },
+    }],
+  });
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  const repo = inventory.repos.find((entry) => entry.key === "BetaCo::lazurio");
+
+  const result = await materializeRepoCheckout({
+    companiesRoot: root,
+    repo,
+    deps: {
+      materializeAnchored: async (options) => {
+        await rename(organizationRoot, movedOrganizationRoot);
+        await rename(externalOrganizationRoot, organizationRoot);
+        return runAnchoredMaterialization(options);
+      },
+    },
+  });
+
+  expect(result).toMatchObject({
+    ok: false,
+    outcome: "failed",
+    code: "materialization_path_forbidden",
+  });
+  expect(existsSync(externalTarget)).toBe(false);
 });
 
 test("never replaces a target directory created concurrently after preflight", async () => {

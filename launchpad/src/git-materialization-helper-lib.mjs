@@ -16,6 +16,7 @@ const WINDOWS_HELPER_PATH = fileURLToPath(
 
 export async function runAnchoredMaterialization({
   organizationRoot,
+  organizationIdentity,
   slotSegments,
   remote,
   branch,
@@ -44,6 +45,7 @@ export async function runAnchoredMaterialization({
 
   const config = {
     organizationRoot,
+    organizationIdentity,
     slotSegments,
     remote,
     branch,
