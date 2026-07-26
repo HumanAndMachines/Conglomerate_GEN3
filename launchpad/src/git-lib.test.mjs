@@ -12,6 +12,7 @@ import {
   resolveGitExecutableSync,
   runGit,
   safeGitCommandEnv,
+  safeGitMaterializationEnv,
   safeGitRemoteEnv,
 } from "./git-lib.mjs";
 import { initGitRepo } from "./git-fixture-helpers.test.mjs";
@@ -50,6 +51,8 @@ test("runGit returns stdout and protects remote probes from interactive credenti
     GCM_INTERACTIVE: "never",
     GIT_ASKPASS: "/bin/false",
     SSH_ASKPASS: "/bin/false",
+  });
+  expect(safeGitMaterializationEnv("linux")).toMatchObject({
     GIT_CONFIG_GLOBAL: "",
     GIT_CONFIG_NOSYSTEM: "1",
   });
@@ -94,6 +97,8 @@ test("Windows remote Git environment never contains a POSIX askpass executable",
     GIT_TERMINAL_PROMPT: "0",
     GCM_INTERACTIVE: "never",
     SSH_ASKPASS_REQUIRE: "never",
+  });
+  expect(safeGitMaterializationEnv("win32", { PATH: "C:\\Windows\\System32" })).toMatchObject({
     GIT_CONFIG_GLOBAL: "",
     GIT_CONFIG_NOSYSTEM: "1",
   });

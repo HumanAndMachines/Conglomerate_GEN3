@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import {
   GIT_LOCAL_TIMEOUT_MS,
   runGit,
-  safeGitRemoteEnv,
+  safeGitMaterializationEnv,
 } from "./git-lib.mjs";
 import { runAnchoredMaterialization } from "./git-materialization-helper-lib.mjs";
 import {
@@ -118,19 +118,19 @@ async function validateMaterializationTarget({ companiesRoot, repo, run }) {
     run(["rev-parse", "--show-toplevel"], {
       cwd: organizationRoot,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
-      env: safeGitRemoteEnv(),
+      env: safeGitMaterializationEnv(),
     }),
     // Directory-only ignore patterns (např. /workspace/*/) potřebují trailing
     // separator i pro zatím neexistující target.
     run(["check-ignore", "--quiet", "--no-index", "--", `${targetPath}/`], {
       cwd: organizationRoot,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
-      env: safeGitRemoteEnv(),
+      env: safeGitMaterializationEnv(),
     }),
     run(["check-ref-format", "--branch", branch], {
       cwd: organizationRoot,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
-      env: safeGitRemoteEnv(),
+      env: safeGitMaterializationEnv(),
     }),
   ]);
   if (!rootCheck.ok) {

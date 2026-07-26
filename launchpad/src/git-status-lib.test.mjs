@@ -249,9 +249,6 @@ test("autostash pull keeps its stash and reports a conflict instead of hiding it
     expected_branch: "main",
   });
 
-  if (result.code !== "autostash_conflict") {
-    console.error("autostash-conflict diagnostic:", JSON.stringify(result));
-  }
   expect(result.ok).toBe(false);
   expect(result.code).toBe("autostash_conflict");
   expect(result.pulled).toBe(true);

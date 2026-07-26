@@ -4,7 +4,7 @@ import { win32 } from "node:path";
 import {
   gitTimeoutKillCommand,
   resolveGitExecutable,
-  safeGitCommandEnv,
+  safeGitMaterializationEnv,
 } from "./git-lib.mjs";
 
 const POSIX_HELPER_PATH = fileURLToPath(
@@ -66,7 +66,7 @@ export async function runAnchoredMaterialization({
       stdin: new Blob([JSON.stringify(config)]),
       stdout: "pipe",
       stderr: "pipe",
-      env: safeGitCommandEnv(platform, environment),
+      env: safeGitMaterializationEnv(platform, environment),
       windowsHide: true,
       detached: platform !== "win32",
     });

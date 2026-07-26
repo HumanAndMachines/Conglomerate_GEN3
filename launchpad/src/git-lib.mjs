@@ -86,8 +86,6 @@ export function safeGitRemoteEnv(platform = process.platform) {
     // z hooku nesmí přesměrovat child proces do jiného repozitáře.
     GIT_ALTERNATE_OBJECT_DIRECTORIES: undefined,
     GIT_COMMON_DIR: undefined,
-    GIT_CONFIG_GLOBAL: "",
-    GIT_CONFIG_NOSYSTEM: "1",
     GIT_DIR: undefined,
     GIT_EXEC_PATH: undefined,
     GIT_INDEX_FILE: undefined,
@@ -117,6 +115,16 @@ export function safeGitRemoteEnv(platform = process.platform) {
 
 export function safeGitCommandEnv(platform = process.platform, base = processEnv()) {
   return commandEnvironment(base, safeGitRemoteEnv(platform));
+}
+
+// Manifest materialization consumes configuration-controlled remote data and
+// must not read any user, global or system Git configuration.
+export function safeGitMaterializationEnv(platform = process.platform, base = processEnv()) {
+  return commandEnvironment(base, {
+    ...safeGitRemoteEnv(platform),
+    GIT_CONFIG_GLOBAL: "",
+    GIT_CONFIG_NOSYSTEM: "1",
+  });
 }
 
 export function gitExecutableCandidates({ platform = process.platform, env = processEnv() } = {}) {
