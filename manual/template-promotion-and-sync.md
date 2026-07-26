@@ -71,7 +71,9 @@ Upstream template: `TemplatesRozjedeme-ai/OrganizationTemplate` (rename na
 
 ## Kdo co smí
 
-- Agent: worktrees a plnohodnotné PRs v obou směrech bez ptaní; žádný merge.
+- Agent: worktrees a plnohodnotné PRs v obou směrech bez ptaní; merge jen na
+  explicitní svolení Principála v threadu a jen tam, kde to GitHub Principálovi
+  dovoluje (decisions 0103/0112).
 - Organization Steward: merge sync PRs své Organizace.
 - Owner template (Admin/Steward): merge promotion PRs do template.
 - Nejistý kandidát na promotion nezakládá PR — zapiš ho do `ISSUES.open.json`
