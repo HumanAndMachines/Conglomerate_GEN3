@@ -230,10 +230,19 @@ jediná spolehlivá ochrana.
 
 Write smoke nedělej na ostrém obsahu. Použij k tomu určený jednorázový cíl
 — testovací kanál, scratch složku nebo drafts cestu, sandbox projekt/space,
-vlastní draft — a artefakt po ověření ukliď (smaž draft, zprávu, testovací
-záznam). Cíl použitý pro smoke zapiš do `INTEGRATIONS.md`, ať ho další
+vlastní draft. Cíl použitý pro smoke zapiš do `INTEGRATIONS.md`, ať ho další
 mašina používá taky a nevzniká nepořádek ani zbytečné notifikace
 v produkčních prostorech Organizace.
+
+**Výjimka pro úklid určeného smoke artefaktu:** když Principál výslovně
+schválil tento jmenovitý smoke cíl, patří do téže schválené operace i úklid
+artefaktu, který agent v tomto konkrétním smoke sám vytvořil (draft, testovací
+zpráva nebo testovací záznam). Agent jej smí po ověření odstranit; nejde o
+samostatnou Publikaci ani o obecné oprávnění mazat. Výjimka se nikdy netýká
+existujícího, ostrého nebo cizího obsahu. Není-li cíl jmenovitě určený v
+`INTEGRATIONS.md`, původ artefaktu není prokazatelný nebo úklid zasahuje mimo
+tento smoke, artefakt ponech a vyžádej si samostatný explicitní pokyn
+Principála.
 
 ## Org-side admin kroky
 
