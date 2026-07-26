@@ -66,10 +66,12 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
    kroku, nejpozději před každou odpovědí Principálovi, která ohlašuje stav
    práce. Po prvním pushi branch hned otevři PR proti správné base branchi
    jako GitHub Draft PR, pokud Principál výslovně neřekl, že PR otevřít
-   nemáš; v handoffu ho přepni na Ready for review. Remote branch bez PR
-   není dokončený handoff: snadno zapadne, Steward ji nemusí vidět a další
-   agent ji nemusí převzít. Rozdělaná práce, která existuje jen lokálně, je
-   porušení disciplíny (decision 0103).
+   nemáš. Jakmile je práce hotová a ověřená, přepni PR na Ready for review
+   sám, ještě před handoffem — Ready není Publikace, říká jen „připraveno
+   ke kontrole"; hotová práce nezůstává viset jako GitHub Draft. Remote
+   branch bez PR není dokončený handoff: snadno zapadne, Steward ji nemusí
+   vidět a další agent ji nemusí převzít. Rozdělaná práce, která existuje
+   jen lokálně, je porušení disciplíny (decisions 0103/0112).
 10. Při pauze, blockeru, předání a před koncem agentního běhu aktualizuj
    `last_touched`, conversation origin aktuálního writer ownera a recovery
    handoff. Morning/night/cleanup agent smí přes lokální thread dohledat
@@ -79,10 +81,12 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
 11. Před handoffem aktualizuj sidecar a znovu spusť audit i
    `bun run worktrees:check`. Check je nutný, ale ne dostačující — teprve po
    něm pokládej otázku na Publikaci.
-12. Handoff veď průvodcovsky (decision 0103): závěrečná zpráva začíná
+12. Handoff veď průvodcovsky (decisions 0103/0112): závěrečná zpráva začíná
    standardizovaným handoff blokem (PR URL, base, exact HEAD, lidské
    shrnutí, ověření, odkaz na aplikaci běžící z worktree) a končí
-   standardizovanou otázkou „Mám změny Publikovat?". Před otázkou zjisti
+   standardizovanou dvojotázkou „Mám změny Publikovat tvým jménem? Nebo mám
+   požádat jiného Kolegu o kontrolu a Publikaci?" — volbu vždy nabídni,
+   nedomýšlej ji za Principála. Před otázkou zjisti
    živá GitHub práva Principála a řiď se jimi, ne textovým labelem role —
    např. `gh api repos/<owner>/<repo> --jq .permissions`,
    `gh api repos/<owner>/<repo>/branches/<base>/protection`,
@@ -123,7 +127,8 @@ bun run check
 bun run doctor
 ```
 
-Handoff začíná standardizovaným blokem podle decision 0103 (PR URL, base,
-exact HEAD, lidské shrnutí, ověření, otázka „Mám změny Publikovat?")
+Handoff začíná standardizovaným blokem podle decisions 0103/0112 (PR URL,
+base, exact HEAD, lidské shrnutí, ověření, dvojotázka „Mám změny Publikovat
+tvým jménem? Nebo mám požádat jiného Kolegu o kontrolu a Publikaci?")
 a obsahuje primary stav, worktree cestu/branch/plán/sidecar, provedené
 ověření a výsledek cleanupu nebo konkrétní důvod ponechání.
