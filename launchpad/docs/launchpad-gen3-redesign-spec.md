@@ -153,6 +153,13 @@ binary via a separate release artifact that changes far less often.
 - **"Vyřešit s Agentem"** fallback: when an update fails, Launchpad offers to
   start a local Codex/Claude session tasked with finishing the update. It is the
   builder's own BYOS session (decision 0061), not a platform agent.
+- **Nested manifest materialization** stays separate from read-only Doctor
+  diagnostics and runs only where Launchpad has a reviewed platform anchor for
+  every directory creation and Git write. POSIX executes Git from a no-follow
+  directory handle; Windows locks the no-follow path chain against
+  rename/delete for the complete Git child lifetime. A platform without either
+  primitive fails closed before creating the target and never falls back to
+  pathname revalidation as its write boundary.
 - **On the Workspace Host** the Steward seat holds the update through a
   daily cron (e.g. 05:00) that updates the whole system including tests.
 
