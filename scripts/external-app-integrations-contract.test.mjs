@@ -7,6 +7,7 @@ function repoPath(relativePath) {
 }
 
 const manualPath = repoPath("../manual/external-app-integrations.md");
+const googleRunbookPath = repoPath("../manual/integrations/google-workspace.md");
 const smokeInstructionPaths = [
   "../manual/integrations/slack.md",
   "../manual/integrations/google-workspace.md",
@@ -33,18 +34,31 @@ test("write smoke cleanup zůstává úzce vymezenou součástí schváleného s
   expect(manual).toContain("nejde o\nsamostatnou Publikaci ani o obecné oprávnění mazat");
   expect(manual).toContain("existujícího, ostrého nebo cizího obsahu");
   expect(manual).toContain("vyžádej si samostatný explicitní pokyn\nPrincipála");
+  expect(manual).toMatch(
+    /Nevratné operace \(odeslání, zveřejnění, mazání, přepis ostrého obsahu,\s+změna oprávnění\) potvrzuje Principál per akci\./,
+  );
 });
 
 test("provider runbooky a skill nesmí cleanup vydávat za obecné oprávnění mazat", async () => {
   for (const path of smokeInstructionPaths) {
     const policy = await readPolicy(path);
 
-    expect(policy).toMatch(/Principál\s+výslovně\s+schválil\s+jmenovitý smoke cíl/);
+    expect(policy).toMatch(/Principál\s+výslovně\s+schválil\s+(?:každý použitý\s+)?jmenovitý smoke cíl/);
     expect(policy).toContain("INTEGRATIONS.md");
     expect(policy).toMatch(/tento\s+konkrétní smoke/);
+    expect(policy).toMatch(/(?:artefakt|zprávu|design)\s+vytvořil\s+tento\s+konkrétní smoke/);
     expect(policy).toMatch(/artefakt\s+ponech/);
     expect(policy).toMatch(/samostatný explicitní\s+pokyn Principála/);
   }
+});
+
+test("Google smoke eviduje a schvaluje každý cleanupovaný write cíl", async () => {
+  const google = await readPolicy(googleRunbookPath);
+
+  expect(google).toMatch(/zapiš oba použité cíle/);
+  expect(google).toMatch(/Drive\s+scratch cestu i jmenovitý Gmail draft cíl/);
+  expect(google).toMatch(/schválil každý použitý jmenovitý smoke cíl/);
+  expect(google).toMatch(/každý artefakt vytvořil tento konkrétní smoke/);
 });
 
 test("kontraktní text se čte shodně z Windows CRLF checkoutu", () => {

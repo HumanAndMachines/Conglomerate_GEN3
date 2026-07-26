@@ -70,11 +70,12 @@ CLI aktivace: `gog auth credentials <cesta-k-client-json>` +
 Smoke začni čtením (výpis Gmail labelů, `search_drive_files` na známý
 soubor, čtení známé Sheet range) a pokračuj zápisem **jen v k tomu určené
 scratch složce Drive a draftu adresovaném sobě** — nikdy v ostrém dokumentu
-a bez odeslání. Scratch cestu zapiš do `INTEGRATIONS.md`. Draft i testovací
-soubor smíš po ověření odstranit jen když Principál výslovně schválil
-jmenovitý smoke cíl zapsaný v `INTEGRATIONS.md` a artefakt vytvořil tento
-konkrétní smoke. Jinak artefakt ponech a vyžádej si samostatný explicitní
-pokyn Principála.
+a bez odeslání. Do `INTEGRATIONS.md` zapiš oba použité cíle: přesnou Drive
+scratch cestu i jmenovitý Gmail draft cíl (org účet a roli příjemce). Draft i
+testovací soubor smíš po ověření odstranit jen když Principál výslovně
+schválil každý použitý jmenovitý smoke cíl zapsaný v `INTEGRATIONS.md` a
+každý artefakt vytvořil tento konkrétní smoke. Jinak artefakt ponech a
+vyžádej si samostatný explicitní pokyn Principála.
 
 ## Custody a rizika
 
