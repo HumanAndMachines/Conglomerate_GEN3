@@ -20,11 +20,11 @@ root metadata — není to allowlist; `planned` sloty a personalspace owner jsou
 per-machine v gitignored `launchpad.gen3.local.json`. Cílové flow je „GitHub přístup
 → Synchronizovat → Organizace/modul se objeví v Launchpadu“; bezpečnostní
 kontroly jsou pro auto-discovered mounty stejně přísné jako pro registrované
-(decision 0042 v HumanAndMachines/docs/decisions/). Mount s markerem
+(decision 0042 v manual/decision-register.md). Mount s markerem
 `company.gen3.json` `organization_kind: "template"` se validuje stejnými gates,
 ale zůstává mimo runtime akce, business přehledy i org počty (klasifikace podle
 strojového markeru, ne podle jména). Template mount žije dle decision 0077
-(HumanAndMachines/docs/decisions/) v `organizations/OrganizationTemplate_GEN3`
+(manual/decision-register.md) v `organizations/OrganizationTemplate_GEN3`
 s `organization_kind` markerem (přesun proveden 2026-07-12).
 
 **Kam se podívat.** Lidská mapa repa („co je co a kde to leží“) je `MAP.md`.
@@ -36,7 +36,7 @@ hádání.
 
 **HumanAndMachine GEN3** je aktuální název systému dříve označovaného jako
 Conglomerate GEN3; „Conglomerate GEN3“ dnes označuje jen produkt pro pracovní
-záležitosti (decision 0039 v HumanAndMachines/docs/decisions/). GitHub
+záležitosti (decision 0039 v manual/decision-register.md). GitHub
 organization je `HumanAndMachines` (singulární `HumanAndMachine` bylo
 zabrané); canonical repo rootu je `HumanAndMachines/Conglomerate_GEN3`.
 
@@ -72,9 +72,10 @@ ohraničené hranice** a **definované procesy**.
   morální kontrakt. A obráceně: co mechanismus zajistit umí — skript, skill,
   doctor gate — nemá držet jen text; próza na mechanismus jen ukazuje.
 
-Tenhle text je úplný sám o sobě — řiď se jím i bez dalších odkazů. Provenience
-pro agenty s přístupem do HumanAndMachines: `apps/principles-overview` a
-decisions `0089`–`0094` a `0112` (`docs/decisions/`).
+Tenhle text je úplný sám o sobě — řiď se jím i bez dalších odkazů. Shrnutí
+navazujících rozhodnutí (mj. `0089`–`0094` a `0112`) drží lokální registr
+`manual/decision-register.md`; plné decision records žijí u maintainerů
+frameworku a k práci v Conglomerate nejsou potřeba.
 
 ### Slovník person: pět pojmů
 
@@ -259,11 +260,13 @@ Root upravuj jen když se mění:
 
 ## Source of truth
 
-- Pyramida přednosti (při konfliktu platí vyšší): decision records
-  (`HumanAndMachines/docs/decisions/`) > root `ARCHITECTURE.md` pro cílový
+- Pyramida přednosti (při konfliktu platí vyšší): decision records > root
+  `ARCHITECTURE.md` pro cílový
   systémový model a názvosloví > schémata a strojové configy pro aktuálně
   nasazený stav > GLOSSARY > `AGENTS.md` daného scope pro pracovní postup >
-  kontrakty > Guide (decision 0040 v HumanAndMachines/docs/decisions/).
+  kontrakty > Guide (decision 0040). Lokální public-safe projekcí decision
+  records je `manual/decision-register.md`; plné records drží maintaineři
+  frameworku a uživatel Conglomerate je k běžné práci nepotřebuje.
 - Nemíchej cílový a aktuální stav: `ARCHITECTURE.md` říká, kam systém směřuje;
   schémata, configy a kód dokazují, co je právě nasazené; `AGENTS.md` říká, jak
   v daném scope pracuje Agent. Výslovně evidovaná migrace smí dočasně držet
@@ -272,8 +275,8 @@ Root upravuj jen když se mění:
   podobu názvu, synchronizovaný provozní kontrakt smí používat delší variantu a
   nové texty mohou preferovat kratší `Agent`.
 - Founder rozhodnutí 2026-07-02 drží formální decision records 0039–0046
-  v `HumanAndMachines/docs/decisions/` (historické drafty v privátním `Rozjedeme-ai/HumanAndMachines` conglomerate-ops/drafts/decision-proposals/
-  jsou superseded).
+  v maintainer source of truth; lokální shrnutí drží
+  `manual/decision-register.md`. Historické drafty jsou superseded.
 - Root config: `launchpad.gen3.json` — root metadata a `planned` sloty, ne allowlist Organizací
 - Root Bun workflow: `package.json`
 - Agentní pravidla: tento soubor
@@ -291,7 +294,7 @@ Root upravuj jen když se mění:
   HumanAndMachines decision 0049 a shaping manual `manual/worktree-management.md`
 - Základní agentní skill balíček: `.agents/skills/` (registry
   `manifest.json`); `.claude/skills` je Git-tracked byte-for-byte mirror
-  aktivních skillů (decision 0104 v HumanAndMachines/docs/decisions/) —
+  aktivních skillů (decision 0104 v manual/decision-register.md) —
   paritu hlídá `bun run doctor:agent-skills`, regeneruje
   `bun run repair:agent-skills`
 - Sdílený Launchpad: `launchpad/`
@@ -382,7 +385,7 @@ Před handoffem uveď:
 
 Závěrečná zpráva pracovního chatu, ve kterém vznikl PR, začíná
 standardizovaným handoff blokem (decision 0103
-v HumanAndMachines/docs/decisions/):
+v manual/decision-register.md):
 
 ```
 ## Handoff

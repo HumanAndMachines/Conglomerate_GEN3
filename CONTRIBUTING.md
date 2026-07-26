@@ -2,7 +2,7 @@
 
 Conglomerate je **sdílený framework pro celou komunitu** HumanAndMachine GEN3.
 Každá mašina ho používá jako direct-pull klon (decision 0030 v
-HumanAndMachines/docs/decisions/): jedna codebase, žádné lokální úpravy kódu,
+manual/decision-register.md): jedna codebase, žádné lokální úpravy kódu,
 vylepšení výhradně přes pull request do tohoto repa. Tahle příručka platí pro
 lidi i pro agenty a její cíl je jediný — aby PR do sdíleného repa přidávaly
 hodnotu celé komunitě, ne chaos.
@@ -71,7 +71,7 @@ změna Conglomerate, ale kandidát na plugin nebo obsah Organizace.
 
 Otevřený PR je Draft — je vidět, dá se editovat a dá se zavřít. Během aktivní
 práce je PR GitHub Draft; v handoffu ho agent přepíná na Ready for review
-(decision 0103 v HumanAndMachines/docs/decisions/). Merge se řídí živými
+(decision 0103 v manual/decision-register.md). Merge se řídí živými
 GitHub právy, ne textovým labelem role: chráněnou `main` merguje Organization
 Steward nebo Organization Admin (včetně vlastního PR, decision 0095);
 nechráněnou `main` mladého repozitáře smí publikovat i Builder, dokud ji
@@ -94,7 +94,7 @@ konfliktu skončí bez přepisu historie. Oba kanály aktualizují tentýž
 direct-pull checkout; update Launchpad binárky je samostatná osa a není
 součástí tohoto mechanismu. Governance kanálů, pravidla klientských checkoutů
 a release policy — včetně toho, kdo smí vytvořit Stable release — drží decision
-draft 0080 v HumanAndMachines/docs/decisions/. Release není Publikace dat.
+draft 0080 v manual/decision-register.md. Release není Publikace dat.
 
 ## Fork policy
 
