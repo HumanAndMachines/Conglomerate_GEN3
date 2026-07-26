@@ -29,11 +29,11 @@ test("write smoke cleanup zůstává úzce vymezenou součástí schváleného s
   const manual = await readPolicy(manualPath);
 
   expect(manual).toContain("Výjimka pro úklid určeného smoke artefaktu");
-  expect(manual).toContain("Principál výslovně\nschválil tento jmenovitý smoke cíl");
+  expect(manual).toMatch(/Principál\s+výslovně\s+schválil tento jmenovitý smoke cíl/);
   expect(manual).toContain("v tomto konkrétním smoke sám vytvořil");
-  expect(manual).toContain("nejde o\nsamostatnou Publikaci ani o obecné oprávnění mazat");
+  expect(manual).toMatch(/nejde o\s+samostatnou Publikaci ani o obecné oprávnění mazat/);
   expect(manual).toContain("existujícího, ostrého nebo cizího obsahu");
-  expect(manual).toContain("vyžádej si samostatný explicitní pokyn\nPrincipála");
+  expect(manual).toMatch(/vyžádej si samostatný explicitní pokyn\s+Principála/);
   expect(manual).toMatch(
     /Nevratné operace \(odeslání, zveřejnění, mazání, přepis ostrého obsahu,\s+změna oprávnění\) potvrzuje Principál per akci\./,
   );
