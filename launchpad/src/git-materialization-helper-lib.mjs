@@ -7,9 +7,6 @@ import {
   safeGitMaterializationEnv,
 } from "./git-lib.mjs";
 
-const POSIX_HELPER_PATH = fileURLToPath(
-  new URL("./git-materialization-posix.pl", import.meta.url),
-);
 const WINDOWS_HELPER_PATH = fileURLToPath(
   new URL("./git-materialization-windows.ps1", import.meta.url),
 );
@@ -136,11 +133,6 @@ export function resolveHelper({
         WINDOWS_HELPER_PATH,
       ],
     };
-  }
-  if (platform === "darwin" || platform === "linux") {
-    const perl = ["/usr/bin/perl", "/bin/perl"].find((candidate) => pathExists(candidate));
-    if (!perl || !pathExists(POSIX_HELPER_PATH)) return null;
-    return { command: [perl, POSIX_HELPER_PATH] };
   }
   return null;
 }

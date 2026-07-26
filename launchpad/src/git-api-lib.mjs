@@ -241,6 +241,7 @@ async function pullAllRepo({ companiesRoot, repo, statusService }) {
           ? "skipped"
           : "failed",
       message: materialization.message,
+      code: materialization.code,
     };
   }
   if (!["repo_missing", "git_unavailable", "check_failed"].includes(preflight.status)) {

@@ -158,13 +158,15 @@ binary via a separate release artifact that changes far less often.
   every directory creation and Git write. Before the helper starts, the
   validated Organization root's device/inode identity is captured; the helper
   opens a no-follow root and rejects a replacement identity before probing
-  source access or creating a target. POSIX executes Git from a no-follow
-  directory handle; Windows creates every descendant relative to a retained
-  no-follow parent handle and holds delete-on-close locks while Git uses the
-  target path resolved back from its handle. The helper completes all Git
-  verification before releasing that handle; its caller only compares the
-  published target's device/inode identity and never runs Git through its
-  mutable pathname. Source probes and writes run with
+  source access or creating a target. Windows creates every descendant through
+  an atomic `FILE_CREATE` directory handle relative to the retained parent,
+  holds delete-on-close locks and runs Git through the target path resolved
+  from that handle. The helper completes all Git verification before releasing
+  that handle; its caller only compares the published target's device/inode
+  identity and never runs Git through its mutable pathname. POSIX is currently
+  unavailable: `mkdir` cannot atomically return a directory handle, and a
+  pathname reopen would reintroduce a target-replacement race. Source probes
+  and writes run with
   inherited executable selectors (`GIT_SSH_COMMAND`, `GIT_SSH`, proxy and Git
   executable path variables) removed; system/global configuration is disabled,
   and explicit Git config disables Organization-local SSH command/proxy

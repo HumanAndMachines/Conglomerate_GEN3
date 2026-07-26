@@ -13,12 +13,13 @@ import {
 } from "./git-fixture-helpers.test.mjs";
 
 const tempRoots = [];
+const materializationTest = process.platform === "win32" ? test : test.skip;
 
 afterAll(async () => {
   await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
 });
 
-test("materializes an active manifest slot on its exact repository and branch", async () => {
+materializationTest("materializes an active manifest slot on its exact repository and branch", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
@@ -54,7 +55,7 @@ test("materializes an active manifest slot on its exact repository and branch", 
     .toContain("# main");
 });
 
-test("treats an inaccessible manifest repository as missing_access and leaves no partial checkout", async () => {
+materializationTest("treats an inaccessible manifest repository as missing_access and leaves no partial checkout", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
@@ -84,7 +85,7 @@ test("treats an inaccessible manifest repository as missing_access and leaves no
   expect(existsSync(target)).toBe(false);
 });
 
-test.if(process.platform !== "win32")("materialization ignores Organization-local core.sshCommand", async () => {
+materializationTest("materialization ignores Organization-local core.sshCommand", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
@@ -118,7 +119,7 @@ test.if(process.platform !== "win32")("materialization ignores Organization-loca
   expect(existsSync(target)).toBe(false);
 });
 
-test.if(process.platform !== "win32")("materialization removes inherited GIT_SSH_COMMAND", async () => {
+materializationTest("materialization removes inherited GIT_SSH_COMMAND", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
@@ -157,7 +158,7 @@ test.if(process.platform !== "win32")("materialization removes inherited GIT_SSH
   expect(existsSync(target)).toBe(false);
 });
 
-test.if(process.platform !== "win32")("materialization removes inherited GIT_SSH", async () => {
+materializationTest("materialization removes inherited GIT_SSH", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
@@ -196,7 +197,7 @@ test.if(process.platform !== "win32")("materialization removes inherited GIT_SSH
   expect(existsSync(target)).toBe(false);
 });
 
-test.if(process.platform !== "win32")("materialization ignores HOME global hooks", async () => {
+materializationTest("materialization ignores HOME global hooks", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
@@ -234,7 +235,7 @@ test.if(process.platform !== "win32")("materialization ignores HOME global hooks
   expect(existsSync(target)).toBe(true);
 });
 
-test("rejects a post-anchor target replacement without running pathname Git verification", async () => {
+materializationTest("rejects a post-anchor target replacement without running pathname Git verification", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
@@ -285,7 +286,7 @@ test("rejects a post-anchor target replacement without running pathname Git veri
   expect(existsSync(movedTarget)).toBe(true);
 });
 
-test("refuses an Organization root substituted after validation before it can create an external checkout", async () => {
+materializationTest("refuses an Organization root substituted after validation before it can create an external checkout", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
@@ -331,7 +332,7 @@ test("refuses an Organization root substituted after validation before it can cr
   expect(existsSync(externalTarget)).toBe(false);
 });
 
-test("never replaces a target directory created concurrently after preflight", async () => {
+materializationTest("never replaces a target directory created concurrently after preflight", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
@@ -383,7 +384,7 @@ test("never replaces a target directory created concurrently after preflight", a
   expect(existsSync(join(target, ".git"))).toBe(false);
 });
 
-test("anchored Git writes never follow a target pathname redirected to an external repository", async () => {
+materializationTest("anchored Git writes never follow a target pathname redirected to an external repository", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
@@ -460,7 +461,7 @@ test("anchored Git writes never follow a target pathname redirected to an extern
   expect(externalStatus.stdout).toBe("");
 });
 
-test("anchored parent mkdir never follows a pathname redirected before target claim", async () => {
+materializationTest("anchored parent mkdir never follows a pathname redirected before target claim", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
@@ -531,7 +532,7 @@ test("anchored parent mkdir never follows a pathname redirected before target cl
   expect(existsSync(externalTarget)).toBe(false);
 });
 
-test("failed anchored Git fetch leaves its owned partial checkout for inspection", async () => {
+materializationTest("failed anchored Git fetch leaves its owned partial checkout for inspection", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
@@ -581,7 +582,7 @@ test("failed anchored Git fetch leaves its owned partial checkout for inspection
   expect(existsSync(join(target, ".git"))).toBe(true);
 });
 
-test("unsupported platforms fail closed before creating the target", async () => {
+test("POSIX platform fails closed before creating the target without an atomic create-handle primitive", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
@@ -609,7 +610,7 @@ test("unsupported platforms fail closed before creating the target", async () =>
     companiesRoot: root,
     repo,
     deps: {
-      platform: "aix",
+      platform: "darwin",
     },
   });
 
@@ -621,7 +622,7 @@ test("unsupported platforms fail closed before creating the target", async () =>
   expect(existsSync(target)).toBe(false);
 });
 
-test("refuses a target that does not exactly match the manifest inventory boundary", async () => {
+materializationTest("refuses a target that does not exactly match the manifest inventory boundary", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const outside = join(root, "outside");

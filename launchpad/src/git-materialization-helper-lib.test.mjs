@@ -2,13 +2,9 @@ import { expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { resolveHelper } from "./git-materialization-helper-lib.mjs";
 
-test("helper resolution uses trusted platform runtimes and fails closed elsewhere", () => {
-  const posix = resolveHelper({
-    platform: "darwin",
-    pathExists: () => true,
-  });
-  expect(posix.command[0]).toBe("/usr/bin/perl");
-  expect(posix.command[1].endsWith("git-materialization-posix.pl")).toBe(true);
+test("helper resolution nabízí jen atomický Windows create-handle primitive", () => {
+  expect(resolveHelper({ platform: "darwin", pathExists: () => true })).toBeNull();
+  expect(resolveHelper({ platform: "linux", pathExists: () => true })).toBeNull();
 
   const windows = resolveHelper({
     platform: "win32",
@@ -23,19 +19,11 @@ test("helper resolution uses trusted platform runtimes and fails closed elsewher
   expect(resolveHelper({ platform: "aix", pathExists: () => true })).toBeNull();
 });
 
-test("platform helpers retain no-follow anchors for every materialization write", async () => {
-  const [posix, windows] = await Promise.all([
-    readFile(new URL("./git-materialization-posix.pl", import.meta.url), "utf8"),
-    readFile(new URL("./git-materialization-windows.ps1", import.meta.url), "utf8"),
-  ]);
-
-  expect(posix).toContain("O_DIRECTORY | O_NOFOLLOW");
-  expect(posix).toContain("organization_anchor_changed");
-  expect(posix).toContain("core.sshCommand=");
-  expect(posix).toContain("protocol.ext.allow=never");
-  expect(posix).toContain("my $status = run_git(\"status\", \"--porcelain=v1\")");
-  expect(posix).toContain("chdir($target_handle)");
-  expect(posix).not.toContain("remove_tree");
+test("Windows helper retains no-follow anchors for every materialization write", async () => {
+  const windows = await readFile(
+    new URL("./git-materialization-windows.ps1", import.meta.url),
+    "utf8",
+  );
 
   expect(windows).toContain("FILE_FLAG_OPEN_REPARSE_POINT");
   expect(windows).toContain("organization_anchor_changed");
