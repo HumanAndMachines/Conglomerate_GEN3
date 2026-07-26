@@ -156,10 +156,11 @@ binary via a separate release artifact that changes far less often.
 - **Nested manifest materialization** stays separate from read-only Doctor
   diagnostics and runs only where Launchpad has a reviewed platform anchor for
   every directory creation and Git write. POSIX executes Git from a no-follow
-  directory handle; Windows locks the no-follow path chain against
-  rename/delete for the complete Git child lifetime. A platform without either
-  primitive fails closed before creating the target and never falls back to
-  pathname revalidation as its write boundary.
+  directory handle; Windows creates every descendant relative to a retained
+  no-follow parent handle and holds delete-on-close locks while Git uses the
+  target path resolved back from its handle. A platform without either
+  primitive fails closed before creating the target and never treats pathname
+  revalidation as its write boundary.
 - **On the Workspace Host** the Steward seat holds the update through a
   daily cron (e.g. 05:00) that updates the whole system including tests.
 

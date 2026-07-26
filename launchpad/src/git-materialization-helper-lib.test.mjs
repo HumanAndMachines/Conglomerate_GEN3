@@ -34,8 +34,12 @@ test("platform helpers retain no-follow anchors for every materialization write"
   expect(posix).not.toContain("remove_tree");
 
   expect(windows).toContain("FILE_FLAG_OPEN_REPARSE_POINT");
+  expect(windows).toContain("NtCreateFile");
+  expect(windows).toContain("RootDirectory = parent.DangerousGetHandle()");
+  expect(windows).toContain("FILE_DELETE_ON_CLOSE");
   expect(windows).toContain("FILE_SHARE_WRITE");
   expect(windows).not.toContain("FILE_SHARE_DELETE");
+  expect(windows).not.toContain("CreateDirectoryW");
   expect(windows).toContain("$anchors.Add($targetAnchor.Handle)");
   expect(windows).not.toContain("Remove-Item");
   expect(/^[\x00-\x7F]*$/.test(windows)).toBe(true);

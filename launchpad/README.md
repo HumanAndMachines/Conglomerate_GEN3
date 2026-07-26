@@ -71,8 +71,11 @@ Materializátor dostupnost větve ověří ještě před atomickým claimem targ
 potom spustí platformní no-follow directory-handle helper. POSIX helper otevírá
 Organization root i parent komponenty přes `O_NOFOLLOW` a všechny mkdir/Git
 zápisy provádí z `fchdir` ukotveného targetu; Windows helper drží každou
-komponentu přes `CreateFileW(FILE_FLAG_OPEN_REPARSE_POINT)` bez
-`FILE_SHARE_DELETE`, takže pathname nejde během Git zápisu přesměrovat.
+komponentu přes no-follow handle a potom vytváří potomky relativním
+`NtCreateFile(RootDirectory=parentHandle)`. Delete-on-close locky bez
+`FILE_SHARE_DELETE` stabilizují path pro Git child; pokud filesystem přesto
+povolí rename, helper odvodí skutečnou cestu z target handlu a nikdy nepoužije
+přesměrovanou manifest pathname.
 Platforma bez schváleného helperu skončí fail-closed ještě před vytvořením
 targetu. Rekurzivní failure cleanup se záměrně neprovádí: neočekávané selhání
 po claimu nechá částečný adresář jako viditelný lokální blocker k ruční

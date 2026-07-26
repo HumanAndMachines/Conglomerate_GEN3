@@ -3,19 +3,37 @@ Set-StrictMode -Version Latest
 
 Add-Type -TypeDefinition @"
 using System;
+using System.ComponentModel;
+using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 public static class LaunchpadDirectoryAnchor
 {
+    public const uint DELETE = 0x00010000;
+    public const uint FILE_LIST_DIRECTORY = 0x00000001;
     public const uint FILE_READ_ATTRIBUTES = 0x00000080;
+    public const uint SYNCHRONIZE = 0x00100000;
     public const uint FILE_SHARE_READ = 0x00000001;
     public const uint FILE_SHARE_WRITE = 0x00000002;
+    public const uint FILE_ATTRIBUTE_HIDDEN = 0x00000002;
     public const uint OPEN_EXISTING = 3;
     public const uint FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
     public const uint FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000;
     public const uint FILE_ATTRIBUTE_DIRECTORY = 0x00000010;
+    public const uint FILE_ATTRIBUTE_NORMAL = 0x00000080;
     public const uint FILE_ATTRIBUTE_REPARSE_POINT = 0x00000400;
+    public const uint FILE_ATTRIBUTE_TEMPORARY = 0x00000100;
+
+    private const uint OBJ_CASE_INSENSITIVE = 0x00000040;
+    private const uint FILE_DIRECTORY_FILE = 0x00000001;
+    private const uint FILE_SYNCHRONOUS_IO_NONALERT = 0x00000020;
+    private const uint FILE_NON_DIRECTORY_FILE = 0x00000040;
+    private const uint FILE_DELETE_ON_CLOSE = 0x00001000;
+    private const uint FILE_OPEN_REPARSE_POINT = 0x00200000;
+    private const uint FILE_CREATE = 2;
+    private const uint FILE_OPEN_IF = 3;
 
     [StructLayout(LayoutKind.Sequential)]
     public struct BY_HANDLE_FILE_INFORMATION
@@ -32,8 +50,46 @@ public static class LaunchpadDirectoryAnchor
         public uint FileIndexLow;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct UNICODE_STRING
+    {
+        public ushort Length;
+        public ushort MaximumLength;
+        public IntPtr Buffer;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct OBJECT_ATTRIBUTES
+    {
+        public int Length;
+        public IntPtr RootDirectory;
+        public IntPtr ObjectName;
+        public uint Attributes;
+        public IntPtr SecurityDescriptor;
+        public IntPtr SecurityQualityOfService;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct IO_STATUS_BLOCK
+    {
+        public IntPtr Status;
+        public UIntPtr Information;
+    }
+
+    public sealed class DirectoryResult
+    {
+        public SafeFileHandle Handle { get; set; }
+        public BY_HANDLE_FILE_INFORMATION Information { get; set; }
+    }
+
+    public sealed class LockResult
+    {
+        public SafeFileHandle Handle { get; set; }
+        public string Name { get; set; }
+    }
+
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    public static extern SafeFileHandle CreateFileW(
+    private static extern SafeFileHandle CreateFileW(
         string fileName,
         uint desiredAccess,
         uint shareMode,
@@ -43,19 +99,211 @@ public static class LaunchpadDirectoryAnchor
         IntPtr templateFile
     );
 
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool CreateDirectoryW(
-        string pathName,
-        IntPtr securityAttributes
-    );
-
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool GetFileInformationByHandle(
+    private static extern bool GetFileInformationByHandle(
         SafeFileHandle file,
         out BY_HANDLE_FILE_INFORMATION information
     );
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint GetFinalPathNameByHandleW(
+        SafeFileHandle file,
+        StringBuilder path,
+        uint pathLength,
+        uint flags
+    );
+
+    [DllImport("ntdll.dll")]
+    private static extern int NtCreateFile(
+        out IntPtr fileHandle,
+        uint desiredAccess,
+        ref OBJECT_ATTRIBUTES objectAttributes,
+        out IO_STATUS_BLOCK ioStatusBlock,
+        IntPtr allocationSize,
+        uint fileAttributes,
+        uint shareAccess,
+        uint createDisposition,
+        uint createOptions,
+        IntPtr eaBuffer,
+        uint eaLength
+    );
+
+    [DllImport("ntdll.dll")]
+    private static extern uint RtlNtStatusToDosError(int status);
+
+    public static DirectoryResult OpenPathDirectory(string path)
+    {
+        SafeFileHandle handle = CreateFileW(
+            path,
+            FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            IntPtr.Zero,
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+            IntPtr.Zero
+        );
+        if (handle.IsInvalid)
+        {
+            int error = Marshal.GetLastWin32Error();
+            handle.Dispose();
+            throw new Win32Exception(error, "directory_anchor_open_failed");
+        }
+        return InspectDirectory(handle);
+    }
+
+    public static DirectoryResult OpenRelativeDirectory(
+        SafeFileHandle parent,
+        string name,
+        bool createNew
+    )
+    {
+        ValidateSegment(name);
+        SafeFileHandle handle = NtOpenRelative(
+            parent,
+            name,
+            FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+            FILE_ATTRIBUTE_NORMAL,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            createNew ? FILE_CREATE : FILE_OPEN_IF,
+            FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT
+        );
+        return InspectDirectory(handle);
+    }
+
+    public static LockResult CreateRelativeLock(SafeFileHandle directory)
+    {
+        string name = ".launchpad-materialization-" + Guid.NewGuid().ToString("N") + ".lock";
+        SafeFileHandle handle = NtOpenRelative(
+            directory,
+            name,
+            DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+            FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_TEMPORARY,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            FILE_CREATE,
+            FILE_NON_DIRECTORY_FILE
+                | FILE_SYNCHRONOUS_IO_NONALERT
+                | FILE_DELETE_ON_CLOSE
+                | FILE_OPEN_REPARSE_POINT
+        );
+        return new LockResult { Handle = handle, Name = name };
+    }
+
+    public static string GetFinalDirectoryPath(SafeFileHandle handle)
+    {
+        StringBuilder output = new StringBuilder(32768);
+        uint length = GetFinalPathNameByHandleW(handle, output, (uint)output.Capacity, 0);
+        if (length == 0 || length >= (uint)output.Capacity)
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error(), "directory_final_path_failed");
+        }
+        string path = output.ToString();
+        if (path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase))
+        {
+            return @"\\" + path.Substring(8);
+        }
+        if (path.StartsWith(@"\\?\", StringComparison.OrdinalIgnoreCase))
+        {
+            return path.Substring(4);
+        }
+        return path;
+    }
+
+    private static DirectoryResult InspectDirectory(SafeFileHandle handle)
+    {
+        BY_HANDLE_FILE_INFORMATION information;
+        if (!GetFileInformationByHandle(handle, out information))
+        {
+            int error = Marshal.GetLastWin32Error();
+            handle.Dispose();
+            throw new Win32Exception(error, "directory_anchor_stat_failed");
+        }
+        if (
+            (information.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0
+            || (information.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0
+        )
+        {
+            handle.Dispose();
+            throw new IOException("directory_anchor_not_plain_directory");
+        }
+        return new DirectoryResult { Handle = handle, Information = information };
+    }
+
+    private static SafeFileHandle NtOpenRelative(
+        SafeFileHandle parent,
+        string name,
+        uint desiredAccess,
+        uint fileAttributes,
+        uint shareAccess,
+        uint createDisposition,
+        uint createOptions
+    )
+    {
+        IntPtr nameBuffer = IntPtr.Zero;
+        IntPtr unicodePointer = IntPtr.Zero;
+        try
+        {
+            nameBuffer = Marshal.StringToHGlobalUni(name);
+            UNICODE_STRING unicode = new UNICODE_STRING
+            {
+                Length = checked((ushort)(name.Length * 2)),
+                MaximumLength = checked((ushort)((name.Length + 1) * 2)),
+                Buffer = nameBuffer
+            };
+            unicodePointer = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(UNICODE_STRING)));
+            Marshal.StructureToPtr(unicode, unicodePointer, false);
+            OBJECT_ATTRIBUTES attributes = new OBJECT_ATTRIBUTES
+            {
+                Length = Marshal.SizeOf(typeof(OBJECT_ATTRIBUTES)),
+                RootDirectory = parent.DangerousGetHandle(),
+                ObjectName = unicodePointer,
+                Attributes = OBJ_CASE_INSENSITIVE,
+                SecurityDescriptor = IntPtr.Zero,
+                SecurityQualityOfService = IntPtr.Zero
+            };
+            IO_STATUS_BLOCK statusBlock;
+            IntPtr rawHandle;
+            int status = NtCreateFile(
+                out rawHandle,
+                desiredAccess,
+                ref attributes,
+                out statusBlock,
+                IntPtr.Zero,
+                fileAttributes,
+                shareAccess,
+                createDisposition,
+                createOptions,
+                IntPtr.Zero,
+                0
+            );
+            if (status < 0)
+            {
+                throw new Win32Exception(
+                    unchecked((int)RtlNtStatusToDosError(status)),
+                    "relative_anchor_open_failed"
+                );
+            }
+            return new SafeFileHandle(rawHandle, true);
+        }
+        finally
+        {
+            if (unicodePointer != IntPtr.Zero) Marshal.FreeHGlobal(unicodePointer);
+            if (nameBuffer != IntPtr.Zero) Marshal.FreeHGlobal(nameBuffer);
+        }
+    }
+
+    private static void ValidateSegment(string name)
+    {
+        if (
+            String.IsNullOrWhiteSpace(name)
+            || name == "."
+            || name == ".."
+            || name.IndexOfAny(new[] { '\\', '/', '\0', '\r', '\n' }) >= 0
+        )
+        {
+            throw new ArgumentException("invalid_relative_segment");
+        }
+    }
 }
 "@
 
@@ -70,71 +318,15 @@ function Write-Result {
 
 function Open-DirectoryAnchor {
     param([string]$Path)
-
-    $handle = [LaunchpadDirectoryAnchor]::CreateFileW(
-        $Path,
-        [LaunchpadDirectoryAnchor]::FILE_READ_ATTRIBUTES,
-        (
-            [LaunchpadDirectoryAnchor]::FILE_SHARE_READ -bor
-            [LaunchpadDirectoryAnchor]::FILE_SHARE_WRITE
-        ),
-        [IntPtr]::Zero,
-        [LaunchpadDirectoryAnchor]::OPEN_EXISTING,
-        (
-            [LaunchpadDirectoryAnchor]::FILE_FLAG_BACKUP_SEMANTICS -bor
-            [LaunchpadDirectoryAnchor]::FILE_FLAG_OPEN_REPARSE_POINT
-        ),
-        [IntPtr]::Zero
-    )
-    if ($handle.IsInvalid) {
-        $errorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
-        $handle.Dispose()
-        throw "directory_anchor_open_failed:$errorCode"
-    }
-
-    $information = New-Object LaunchpadDirectoryAnchor+BY_HANDLE_FILE_INFORMATION
-    if (-not [LaunchpadDirectoryAnchor]::GetFileInformationByHandle(
-        $handle,
-        [ref]$information
-    )) {
-        $errorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
-        $handle.Dispose()
-        throw "directory_anchor_stat_failed:$errorCode"
-    }
-    if (
-        ($information.FileAttributes -band [LaunchpadDirectoryAnchor]::FILE_ATTRIBUTE_DIRECTORY) -eq 0 -or
-        ($information.FileAttributes -band [LaunchpadDirectoryAnchor]::FILE_ATTRIBUTE_REPARSE_POINT) -ne 0
-    ) {
-        $handle.Dispose()
-        throw "directory_anchor_not_plain_directory"
-    }
-
-    return [PSCustomObject]@{
-        Handle = $handle
-        Information = $information
-    }
+    return [LaunchpadDirectoryAnchor]::OpenPathDirectory($Path)
 }
 
 function Open-OrCreateDirectoryAnchor {
-    param([string]$Path)
-    try {
-        return Open-DirectoryAnchor -Path $Path
-    }
-    catch {
-        if ($_.Exception.Message -notmatch 'directory_anchor_open_failed:(2|3)$') {
-            throw
-        }
-    }
-    if (-not [LaunchpadDirectoryAnchor]::CreateDirectoryW(
-        $Path,
-        [IntPtr]::Zero
-    )) {
-        $errorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
-        if ($errorCode -ne 183) {
-            throw "parent_claim_failed:$errorCode"
-        }
-    }
-    return Open-DirectoryAnchor -Path $Path
+    param(
+        [Microsoft.Win32.SafeHandles.SafeFileHandle]$Parent,
+        [string]$Name
+    )
+    return [LaunchpadDirectoryAnchor]::OpenRelativeDirectory($Parent, $Name, $false)
 }
 
 function Pause-ForTest {
@@ -176,8 +368,18 @@ function Pause-ForTest {
 
 function Invoke-Git {
     param([string[]]$Arguments)
-    $nativeOutput = & $script:GitExecutable @Arguments 2>&1
-    $exitCode = $LASTEXITCODE
+    $priorErrorAction = $ErrorActionPreference
+    try {
+        # Windows PowerShell 5.1 wraps native stderr lines as ErrorRecord
+        # objects. "Stop" would turn an ordinary successful `git fetch`
+        # progress line into a terminating PowerShell exception.
+        $ErrorActionPreference = "Continue"
+        $nativeOutput = & $script:GitExecutable @Arguments 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $priorErrorAction
+    }
     $text = (($nativeOutput | ForEach-Object { $_.ToString() }) -join "`n").Trim()
     return [PSCustomObject]@{
         Ok = $exitCode -eq 0
@@ -225,31 +427,40 @@ try {
     }
 
     $script:GitExecutable = [string]$config.gitExecutable
-    $currentPath = [IO.Path]::GetFullPath([string]$config.organizationRoot)
-    $organizationAnchor = Open-DirectoryAnchor -Path $currentPath
+    $organizationAnchor = Open-DirectoryAnchor -Path (
+        [IO.Path]::GetFullPath([string]$config.organizationRoot)
+    )
     $anchors.Add($organizationAnchor.Handle)
+    $organizationLock = [LaunchpadDirectoryAnchor]::CreateRelativeLock(
+        $organizationAnchor.Handle
+    )
+    $anchors.Add($organizationLock.Handle)
+    $currentAnchor = $organizationAnchor
 
     for ($index = 0; $index -lt $config.slotSegments.Count - 1; $index += 1) {
-        $currentPath = [IO.Path]::Combine(
-            $currentPath,
-            [string]$config.slotSegments[$index]
-        )
-        $parentAnchor = Open-OrCreateDirectoryAnchor -Path $currentPath
+        $parentAnchor = Open-OrCreateDirectoryAnchor `
+            -Parent $currentAnchor.Handle `
+            -Name ([string]$config.slotSegments[$index])
         $anchors.Add($parentAnchor.Handle)
+        $parentLock = [LaunchpadDirectoryAnchor]::CreateRelativeLock(
+            $parentAnchor.Handle
+        )
+        $anchors.Add($parentLock.Handle)
+        $currentAnchor = $parentAnchor
     }
 
     Pause-ForTest -Hook $config.testHook -Phase "before_claim"
 
-    $targetPath = [IO.Path]::Combine(
-        $currentPath,
-        [string]$config.slotSegments[$config.slotSegments.Count - 1]
-    )
-    if (-not [LaunchpadDirectoryAnchor]::CreateDirectoryW(
-        $targetPath,
-        [IntPtr]::Zero
-    )) {
-        $errorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
-        if ($errorCode -eq 183) {
+    $targetName = [string]$config.slotSegments[$config.slotSegments.Count - 1]
+    try {
+        $targetAnchor = [LaunchpadDirectoryAnchor]::OpenRelativeDirectory(
+            $currentAnchor.Handle,
+            $targetName,
+            $true
+        )
+    }
+    catch [System.ComponentModel.Win32Exception] {
+        if ($_.Exception.NativeErrorCode -eq 183) {
             Write-Result -Payload @{
                 ok = $false
                 outcome = "target_exists"
@@ -257,26 +468,33 @@ try {
                 message = "Another process created the target checkout; Launchpad left it unchanged."
             } -ExitCode 20
         }
-        throw "target_claim_failed:$errorCode"
+        throw
     }
     $claimed = $true
 
-    $targetAnchor = Open-DirectoryAnchor -Path $targetPath
     $anchors.Add($targetAnchor.Handle)
-    $entries = [IO.Directory]::EnumerateFileSystemEntries($targetPath).GetEnumerator()
-    try {
-        if ($entries.MoveNext()) {
+    $targetLock = [LaunchpadDirectoryAnchor]::CreateRelativeLock(
+        $targetAnchor.Handle
+    )
+    $anchors.Add($targetLock.Handle)
+    $targetPath = [LaunchpadDirectoryAnchor]::GetFinalDirectoryPath(
+        $targetAnchor.Handle
+    )
+    foreach ($entry in [IO.Directory]::EnumerateFileSystemEntries($targetPath)) {
+        if ([IO.Path]::GetFileName($entry) -cne $targetLock.Name) {
             throw "target_not_empty"
         }
     }
-    finally {
-        if ($entries -is [IDisposable]) {
-            $entries.Dispose()
-        }
-    }
 
-    Set-Location -LiteralPath $targetPath
     Pause-ForTest -Hook $config.testHook -Phase "after_target_anchor"
+    # Refresh the path from the retained target handle after the deterministic
+    # race hook. The lock file normally blocks the rename; if a filesystem
+    # permits it, Git still receives the final path of the anchored directory,
+    # never the redirected manifest pathname.
+    $targetPath = [LaunchpadDirectoryAnchor]::GetFinalDirectoryPath(
+        $targetAnchor.Handle
+    )
+    Set-Location -LiteralPath $targetPath
 
     Assert-Git -Arguments @("init", "--initial-branch=$($config.branch)", ".")
     Assert-Git -Arguments @("remote", "add", "origin", [string]$config.remote)
@@ -299,7 +517,14 @@ try {
     $currentBranch = Invoke-Git -Arguments @("branch", "--show-current")
     $origin = Invoke-Git -Arguments @("remote", "get-url", "origin")
     $head = Invoke-Git -Arguments @("rev-parse", "--verify", "HEAD^{commit}")
-    $status = Invoke-Git -Arguments @("status", "--porcelain=v1")
+    # The anchored, delete-on-close lock is intentionally the sole untracked
+    # entry until helper exit. The JS caller performs the final full clean
+    # status after every lock handle has closed.
+    $status = Invoke-Git -Arguments @(
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=no"
+    )
     if (
         -not $root.Ok -or
         [string]::IsNullOrWhiteSpace($root.Output) -or
@@ -354,7 +579,8 @@ catch {
 }
 finally {
     Set-Location -LiteralPath $originalLocation
-    foreach ($handle in $anchors) {
+    for ($index = $anchors.Count - 1; $index -ge 0; $index -= 1) {
+        $handle = $anchors[$index]
         if ($null -ne $handle) {
             $handle.Dispose()
         }
