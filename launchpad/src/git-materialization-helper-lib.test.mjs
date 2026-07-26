@@ -28,7 +28,10 @@ test("Windows helper retains no-follow anchors for every materialization write",
   expect(windows).toContain("FILE_FLAG_OPEN_REPARSE_POINT");
   expect(windows).toContain("organization_anchor_changed");
   expect(windows).toContain("core.sshCommand=");
+  expect(windows).toContain("core.hooksPath=NUL");
+  expect(windows).toContain("core.fsmonitor=false");
   expect(windows).toContain("protocol.ext.allow=never");
+  expect(windows).toContain("Pause-ForTest -Hook $config.testHook -Phase \"after_git_init\"");
   expect(windows).toContain("$expectedLockStatus");
   expect(windows).toContain("device = [string]$targetAnchor.Information.VolumeSerialNumber");
   expect(windows).toContain("NtCreateFile");

@@ -235,6 +235,49 @@ materializationTest("materialization ignores HOME global hooks", async () => {
   expect(existsSync(target)).toBe(true);
 });
 
+materializationTest("materialization disables a post-checkout hook planted after Git init", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
+  const target = join(organizationRoot, "workspace", "private-module");
+  const marker = join(target, "post-checkout-ran");
+  const readyPath = join(root, "after-git-init.ready");
+  const proceedPath = join(root, "after-git-init.proceed");
+  const remote = join(root, "remotes", "private-module.git");
+  await prepareOrganizationRoot(organizationRoot);
+  await mkdir(join(root, "sources"), { recursive: true });
+  await initGitRepo(join(root, "sources", "private-module"), { remotePath: remote });
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "BetaCo",
+    github_org: "BetaCo",
+    module_slots: [{ path: "workspace/private-module", git: { url: remote, branch: "main" } }],
+  });
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  const repo = inventory.repos.find((entry) => entry.key === "BetaCo::private-module");
+
+  const materialization = materializeRepoCheckout({
+    companiesRoot: root,
+    repo,
+    deps: {
+      anchorTestHook: {
+        phase: "after_git_init",
+        readyPath,
+        proceedPath,
+      },
+    },
+  });
+  await waitForPath(readyPath);
+  const hook = join(target, ".git", "hooks", "post-checkout");
+  await writeFile(hook, "#!/bin/sh\nprintf planted > post-checkout-ran\n");
+  await chmod(hook, 0o755);
+  await writeFile(proceedPath, "continue\n");
+  const result = await materialization;
+
+  expect(result).toMatchObject({ ok: true, outcome: "materialized" });
+  expect(existsSync(marker)).toBe(false);
+});
+
 materializationTest("rejects a post-anchor target replacement without running pathname Git verification", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);

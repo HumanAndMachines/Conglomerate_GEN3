@@ -377,6 +377,9 @@ function Invoke-Git {
         $safeArguments = @(
             "-c", "core.sshCommand=",
             "-c", "core.gitProxy=",
+            "-c", "core.hooksPath=NUL",
+            "-c", "core.fsmonitor=false",
+            "-c", "core.useBuiltinFSMonitor=false",
             "-c", "protocol.ext.allow=never"
         ) + $Arguments
         $nativeOutput = & $script:GitExecutable @safeArguments 2>&1
@@ -559,6 +562,7 @@ try {
     Set-Location -LiteralPath $targetPath
 
     Assert-Git -Arguments @("init", "--initial-branch=$($config.branch)", ".")
+    Pause-ForTest -Hook $config.testHook -Phase "after_git_init"
     Assert-Git -Arguments @("remote", "add", "origin", [string]$config.remote)
     Assert-Git -Arguments @(
         "config",
