@@ -41,22 +41,42 @@ Codex, Desktop agenti). Kanonický standard:
    Connector, GCP OAuth client) vypiš do PR jako checklist.
 5. **Aktivace per mašina:** jména `<org_slug>_<provider>`; secret hodnoty a
    env soubor do custody cest podle `manual/security/local-secret-custody.md`;
-   OAuth consent a výběr účtu dokončuje Principál v prohlížeči; začni
-   read-only a nejmenšími scopes; write až po samostatném souhlasu.
-6. **Zaseknutí nebo zastaralý manuál = povinný upstream PR.** Runbooky jsou
+   OAuth consent a výběr účtu dokončuje Principál v prohlížeči; scopes
+   uděluj defaultně read i write (LinkedIn zůstává post-only výjimka).
+6. **Write je Draft, ne Publikace.** Co v externí aplikaci vytvoříš, musí
+   být vratné a editovatelné Principálem — draft zprávy místo odeslání,
+   nový soubor místo přepisu ostrého, testovací kanál místo ostrého.
+   Nevratný krok (odeslat, zveřejnit, smazat, přepsat ostrý obsah, změnit
+   oprávnění) udělej jen na explicitní pokyn Principála v daném threadu.
+   Mechanický gate se liší podle cesty (Codex approval mode, Claude Code
+   permission pravidla per `mcp__<server>__<tool>`, u CLI jen shell
+   permissions — MCP approval mode se na CLI nevztahuje) a udělený OAuth
+   grant je schopnost celé mašiny, ne jen agenta; procesní pravidlo je
+   proto hlavní hranice, ne pojistka. Tabulky Draft/Publikace, gate per
+   cesta a pravidlo vratného smoke cíle jsou v
+   `manual/external-app-integrations.md`.
+7. **Zaseknutí nebo zastaralý manuál = povinný upstream PR.** Runbooky jsou
    živý komunitní standard; nikdo je denně nepřetestovává. Když se Kolega
    při instalaci zasekne nebo realita poskytovatele neodpovídá runbooku,
    oprav manuál/runbook a pošli PR na `HumanAndMachines/Conglomerate_GEN3`;
    bez známého řešení zapiš aspoň issue do root `ISSUES.open.json` (také
    PR). Org-specifika patří do `INTEGRATIONS.md` dané Organizace; upstream
    jde jen generalizované, anonymizované poučení bez secrets.
-7. **Closeout metadata-only:** název serveru, scope, owner, datum, výsledek
+8. **Closeout metadata-only:** název serveru, scope, owner, datum, výsledek
    smoke testu. Nikdy token, OAuth URL/kód ani obsah credential souboru.
 
 ## Ověření
 
-- Server je vidět (`codex mcp list` / `/mcp` v Claude Code) a read-only
-  smoke prošel na známém záznamu správného org účtu.
+- Server je vidět (`codex mcp list` / `/mcp` v Claude Code) a smoke prošel:
+  čtení známého záznamu správného org účtu, zápis na **jednorázovém cíli**
+  (testovací kanál, scratch složka, draft sobě) vratnou formou, bez
+  nevratné publikace. Artefakt smíš po ověření uklidit jen když Principál
+  výslovně schválil jmenovitý smoke cíl zapsaný v `INTEGRATIONS.md` a
+  artefakt vytvořil tento konkrétní smoke. Jinak artefakt ponech a vyžádej
+  si samostatný explicitní pokyn Principála.
+- Write gate je nastavený podle cesty a zapsaný v `INTEGRATIONS.md`: v
+  Claude Code write nástroje v `ask`/`deny` (nikdy plošné allow serveru),
+  v Codexu `writes`/`prompt`, u CLI allowlist jen čtecích příkazů.
 - Katalog Organizace obsahuje integraci včetně env jmen a admin kroků;
   žádný secret v Gitu (`git grep` na jméno env souboru a provider).
 - Env soubor a token cache mají módy `0600`/`0700` v custody cestě.

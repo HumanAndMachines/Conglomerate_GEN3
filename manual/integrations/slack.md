@@ -28,8 +28,9 @@ pinned verzí.
 1. Admin workspace musí schválit MCP klienta (např. aplikaci Claude) v app
    management nastavení; na Enterprise Grid platí org-wide app policy
    ([návod](https://docs.slack.dev/ai/slack-mcp-server/connect-to-claude/)).
-2. Scopes drž minimální: začni `search:read.*` + čtení historie; `chat:write`
-   až po schválení write workflow.
+2. Scopes uděluj podle workflow rovnou včetně write (`search:read.*`,
+   čtení historie, `chat:write`…); per-action ochranu odeslání drží
+   approval mode harnessu.
 
 ## Per-machine aktivace
 
@@ -53,8 +54,13 @@ pojmenovaných serverů, každý s vlastní OAuth session.
 
 ## Smoke test
 
-Read-only: vyhledání známé zprávy, výpis kanálů. Odeslání zprávy až po
-explicitním souhlasu, nejdřív do testovacího kanálu.
+Smoke začni čtením (vyhledání známé zprávy, výpis kanálů) a pokračuj
+zápisem **výhradně do k tomu určeného testovacího kanálu** (např.
+`#<org-slug>-agent-smoke`), nikdy do ostrého kanálu ani DM. Testovací
+kanál zapiš do `INTEGRATIONS.md`. Testovací zprávu smíš po ověření odstranit
+jen když Principál výslovně schválil jmenovitý smoke cíl zapsaný v
+`INTEGRATIONS.md` a zprávu vytvořil tento konkrétní smoke. Jinak artefakt
+ponech a vyžádej si samostatný explicitní pokyn Principála.
 
 ## Custody a rizika
 
