@@ -86,7 +86,7 @@ export function safeGitRemoteEnv(platform = process.platform) {
     // z hooku nesmí přesměrovat child proces do jiného repozitáře.
     GIT_ALTERNATE_OBJECT_DIRECTORIES: undefined,
     GIT_COMMON_DIR: undefined,
-    GIT_CONFIG_GLOBAL: platform === "win32" ? "NUL" : "/dev/null",
+    GIT_CONFIG_GLOBAL: "",
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_DIR: undefined,
     GIT_EXEC_PATH: undefined,
@@ -249,7 +249,7 @@ function commandEnvironment(base, overrides) {
 function safeAmbientGitOverride(key, value) {
   if (["GIT_ASKPASS", "SSH_ASKPASS"].includes(key)) return value === "/bin/false";
   if (key === "GIT_CONFIG_NOSYSTEM") return value === "1";
-  if (key === "GIT_CONFIG_GLOBAL") return value === "/dev/null" || value === "NUL";
+  if (key === "GIT_CONFIG_GLOBAL") return value === "";
   return false;
 }
 
