@@ -67,6 +67,11 @@ inventář a chybějící aktivní Workspace/root sloty naklonují na přesně
 deklarovanou větev. `planned_slot` bez Git souřadnic se nikdy neklonuje.
 Když aktuální GitHub identita repo nebo branch nedokáže načíst, checkout
 zůstane `missing_access`; Launchpad žádný paralelní ACL ani grant nevytváří.
+Materializátor dostupnost větve ověří ještě před atomickým claimem targetu,
+target před vzdáleným zápisem připne neprázdným `.git` adresářem a rekurzivní
+failure cleanup záměrně neprovádí. Neočekávané selhání po claimu proto nechá
+částečný adresář jako viditelný lokální blocker k ruční kontrole; nikdy
+neriskuje smazání cesty mezitím přesměrované jiným procesem.
 
 Launchpad čte Launchpad GEN3 root a Organization GEN3 manifesty:
 

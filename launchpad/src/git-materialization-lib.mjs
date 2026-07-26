@@ -1,5 +1,5 @@
-import { lstat, mkdir, realpath, rm } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { lstat, mkdir, realpath } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import {
   GIT_LOCAL_TIMEOUT_MS,
   runGit,
@@ -26,7 +26,7 @@ export async function materializeRepoCheckout({
     run = runGit,
     makeDirectory = mkdir,
     claimDirectory = mkdir,
-    remove = rm,
+    pinDirectory = mkdir,
   } = deps;
 
   const validation = await validateMaterializationTarget({ companiesRoot, repo, run });
@@ -48,8 +48,27 @@ export async function materializeRepoCheckout({
     };
   }
 
+  // Přístup ověříme ještě před vytvořením targetu. Běžný access failure tak
+  // nikdy nezanechá ani prázdný checkout, natož částečný klon.
+  const source = await run(
+    ["ls-remote", "--exit-code", "--heads", "--", remote, `refs/heads/${branch}`],
+    {
+      cwd: organizationRoot,
+      timeoutMs: GIT_CLONE_TIMEOUT_MS,
+      env: safeGitRemoteEnv(),
+    },
+  );
+  if (!source.ok || !source.stdout) {
+    return {
+      ok: false,
+      outcome: "missing_access",
+      code: "materialization_source_unavailable",
+      message: "Manifestované repo nebo jeho větev nejsou s aktuálními GitHub přístupy dostupné; nic se nenaklonovalo.",
+    };
+  }
+
   const targetParent = dirname(targetPath);
-  let ownsTarget = false;
+  let claimedTarget = false;
   try {
     await makeDirectory(targetParent, { recursive: true });
     const parentBoundary = await inspectCanonicalPathBoundary({
@@ -64,11 +83,10 @@ export async function materializeRepoCheckout({
 
     // mkdir bez recursive je atomický no-clobber claim. Na rozdíl od POSIX
     // rename nikdy nenahradí prázdný adresář, který mezi kontrolou a zápisem
-    // vytvořil jiný Pull/CLI proces. Uvnitř claimnutého adresáře klonujeme
-    // přímo a při každém neúspěchu uklidíme jen checkout, který vlastníme.
+    // vytvořil jiný Pull/CLI proces.
     try {
       await claimDirectory(targetPath);
-      ownsTarget = true;
+      claimedTarget = true;
     } catch (error) {
       if (error?.code === "EEXIST") {
         return {
@@ -86,36 +104,43 @@ export async function materializeRepoCheckout({
       targetPath,
     });
     if (!claimedBoundary.ok) {
-      // Parent mohl být mezi preflightem a mkdir nahrazený symlinkem. Cizí
-      // cesty se nedotkneme ani cleanupem; především do nich nic neklonujeme.
-      ownsTarget = false;
+      // Parent mohl být mezi preflightem a mkdir nahrazený symlinkem nebo
+      // Windows junction. Cizí cesty se nedotkneme; především do nich nic
+      // neklonujeme.
       return boundaryFailure("Cílový parent po claimu změnil kanonickou hranici; Launchpad do něj nic nezapsal.");
     }
 
-    const clone = await run(
-      [
-        "clone",
-        "--branch",
-        branch,
-        "--single-branch",
-        "--origin",
-        "origin",
-        "--",
-        remote,
-        targetPath,
-      ],
-      {
-        cwd: organizationRoot,
-        timeoutMs: GIT_CLONE_TIMEOUT_MS,
-        env: safeGitRemoteEnv(),
-      },
-    );
-    if (!clone.ok) {
+    // Target už vlastníme, ale před vzdáleným zápisem ho uděláme neprázdný:
+    // `.git` je ownership pin a běžný rename/rmdir pak target ani žádného
+    // jeho předka nenahradí. Kanonickou hranici znovu ověříme po vytvoření
+    // pinu. Proces se stejnými právy, který by pin rekurzivně smazal, už umí
+    // přímo měnit libovolný lokální checkout a není synchronizační race.
+    await pinDirectory(join(targetPath, ".git"));
+    const pinnedBoundary = await inspectCanonicalPathBoundary({
+      rootPath: organizationRoot,
+      rootRealPath: parentBoundary.rootRealPath,
+      targetPath,
+    });
+    if (!pinnedBoundary.ok) {
+      return boundaryFailure("Cílový checkout před Git zápisem změnil kanonickou hranici; Launchpad do něj nic nenaklonoval.");
+    }
+
+    const initialized = await initializePinnedCheckout({
+      organizationRoot,
+      targetPath,
+      branch,
+      remote,
+      run,
+    });
+    if (!initialized.ok) {
+      // Rekurzivní cleanup zde záměrně není: pathname mohl změnit cizí proces.
+      // Částečný checkout proto zůstane fail-closed jako viditelný lokální
+      // blocker a nikdy neriskujeme smazání cizího adresáře.
       return {
         ok: false,
-        outcome: "missing_access",
-        code: "materialization_source_unavailable",
-        message: "Manifestované repo nebo jeho větev nejsou s aktuálními GitHub přístupy dostupné; nic se nenaklonovalo.",
+        outcome: "failed",
+        code: "materialization_incomplete",
+        message: "Git checkout po bezpečném claimu selhal; částečný adresář zůstal beze smazání pro ruční kontrolu.",
       };
     }
 
@@ -132,11 +157,8 @@ export async function materializeRepoCheckout({
       targetPath,
     });
     if (!completedBoundary.ok) {
-      ownsTarget = false;
       return boundaryFailure("Cílový checkout během materializace změnil kanonickou hranici; Launchpad ho nepublikoval ani nesmazal.");
     }
-
-    ownsTarget = false;
 
     return {
       ok: true,
@@ -148,27 +170,65 @@ export async function materializeRepoCheckout({
       remote,
     };
   } catch {
+    if (claimedTarget) {
+      return {
+        ok: false,
+        outcome: "failed",
+        code: "materialization_incomplete",
+        message: "Git checkout po bezpečném claimu selhal; částečný adresář zůstal beze smazání pro ruční kontrolu.",
+      };
+    }
     return {
       ok: false,
       outcome: "failed",
       code: "materialization_failed",
       message: "Checkout se nepodařilo bezpečně vytvořit; existující data zůstala beze změny.",
     };
-  } finally {
-    if (ownsTarget) {
-      // Cestu jsme atomicky claimnuli až po kanonické kontrole parentu.
-      // Před rekurzivním cleanupem hranici zopakujeme: stale pathname, jehož
-      // parent někdo nahradil symlinkem, nesmí smazat externí data.
-      const cleanupBoundary = await inspectCanonicalPathBoundary({
-        rootPath: organizationRoot,
-        targetPath,
-        allowMissingTarget: true,
-      }).catch(() => null);
-      if (cleanupBoundary?.ok) {
-        await remove(targetPath, { recursive: true, force: true }).catch(() => {});
-      }
-    }
   }
+}
+
+async function initializePinnedCheckout({
+  organizationRoot,
+  targetPath,
+  branch,
+  remote,
+  run,
+}) {
+  const commands = [
+    {
+      args: ["init", `--initial-branch=${branch}`, "--", targetPath],
+      options: { cwd: organizationRoot, timeoutMs: GIT_LOCAL_TIMEOUT_MS },
+    },
+    {
+      args: ["remote", "add", "origin", remote],
+      options: { cwd: targetPath, timeoutMs: GIT_LOCAL_TIMEOUT_MS },
+    },
+    {
+      args: [
+        "config",
+        "remote.origin.fetch",
+        `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
+      ],
+      options: { cwd: targetPath, timeoutMs: GIT_LOCAL_TIMEOUT_MS },
+    },
+    {
+      args: ["fetch", "--no-tags", "origin"],
+      options: {
+        cwd: targetPath,
+        timeoutMs: GIT_CLONE_TIMEOUT_MS,
+        env: safeGitRemoteEnv(),
+      },
+    },
+    {
+      args: ["checkout", "--force", "-B", branch, "--track", `origin/${branch}`],
+      options: { cwd: targetPath, timeoutMs: GIT_LOCAL_TIMEOUT_MS },
+    },
+  ];
+  for (const command of commands) {
+    const result = await run(command.args, command.options);
+    if (!result.ok) return result;
+  }
+  return { ok: true };
 }
 
 async function validateMaterializationTarget({ companiesRoot, repo, run }) {

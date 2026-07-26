@@ -128,7 +128,54 @@ test("never replaces a target directory created concurrently after preflight", a
   expect(existsSync(join(target, ".git"))).toBe(false);
 });
 
-test("refuses a parent replaced by a symlink after preflight and never cleans the external target", async () => {
+test("ownership pin prevents non-destructive target substitution while Git runs", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
+  await prepareOrganizationRoot(organizationRoot);
+  const target = join(organizationRoot, "workspace", "lazurio");
+  const remote = join(root, "remotes", "lazurio.git");
+  await mkdir(join(root, "sources"), { recursive: true });
+  await initGitRepo(join(root, "sources", "lazurio"), { remotePath: remote });
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "BetaCo",
+    github_org: "BetaCo",
+    module_slots: [
+      {
+        path: "workspace/lazurio",
+        teams: ["lazurio"],
+        git: { url: remote, branch: "main" },
+      },
+    ],
+  });
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  const repo = inventory.repos.find((entry) => entry.key === "BetaCo::lazurio");
+  let substitutionWasBlocked = false;
+
+  const result = await materializeRepoCheckout({
+    companiesRoot: root,
+    repo,
+    deps: {
+      run: async (args, options) => {
+        if (args[0] === "fetch") {
+          try {
+            await rmdir(target);
+          } catch {
+            substitutionWasBlocked = true;
+          }
+        }
+        return runGit(args, options);
+      },
+    },
+  });
+
+  expect(result).toMatchObject({ ok: true, outcome: "materialized" });
+  expect(substitutionWasBlocked).toBe(true);
+  expect(existsSync(join(target, ".git"))).toBe(true);
+});
+
+test("refuses a parent replaced by a directory link after preflight and never cleans the external target", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
@@ -178,7 +225,7 @@ test("refuses a parent replaced by a symlink after preflight and never cleans th
   expect(existsSync(target)).toBe(true);
 });
 
-test("failure cleanup revalidates a substituted parent before any recursive removal", async () => {
+test("failed materialization never recursively cleans a parent substituted by another process", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
@@ -188,6 +235,9 @@ test("failure cleanup revalidates a substituted parent before any recursive remo
   const externalParent = join(root, "external-workspace");
   const externalTarget = join(externalParent, "lazurio");
   const externalEvidence = join(externalTarget, "external-owner.txt");
+  const remote = join(root, "remotes", "lazurio.git");
+  await mkdir(join(root, "sources"), { recursive: true });
+  await initGitRepo(join(root, "sources", "lazurio"), { remotePath: remote });
   await mkdir(externalTarget, { recursive: true });
   await writeFile(externalEvidence, "must survive cleanup\n");
   await writeJson(join(organizationRoot, "modules.manifest.json"), {
@@ -198,7 +248,7 @@ test("failure cleanup revalidates a substituted parent before any recursive remo
       {
         path: "workspace/lazurio",
         teams: ["lazurio"],
-        git: { url: join(root, "remotes", "lazurio.git"), branch: "main" },
+        git: { url: remote, branch: "main" },
       },
     ],
   });
@@ -210,22 +260,71 @@ test("failure cleanup revalidates a substituted parent before any recursive remo
     repo,
     deps: {
       run: async (args, options) => {
-        if (args[0] !== "clone") return runGit(args, options);
-        await rmdir(target);
+        if (args[0] !== "fetch") return runGit(args, options);
+        // Simulate a same-user destructive process after the ownership pin:
+        // it removes the claimed checkout, redirects the parent, then the Git
+        // operation fails. The materializer must never recursively clean the
+        // now redirected pathname.
+        await rm(target, { recursive: true, force: true });
         await rmdir(targetParent);
         await symlink(externalParent, targetParent, process.platform === "win32" ? "junction" : "dir");
-        return { ok: false, stdout: "", stderr: "simulated clone failure" };
+        return { ok: false, stdout: "", stderr: "simulated fetch failure" };
       },
     },
   });
 
   expect(result).toMatchObject({
     ok: false,
-    outcome: "missing_access",
-    code: "materialization_source_unavailable",
+    outcome: "failed",
+    code: "materialization_incomplete",
   });
   expect(await readFile(externalEvidence, "utf8")).toBe("must survive cleanup\n");
   expect(existsSync(target)).toBe(true);
+});
+
+test("keeps an owned partial checkout for inspection instead of recursively deleting it", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
+  await prepareOrganizationRoot(organizationRoot);
+  const target = join(organizationRoot, "workspace", "lazurio");
+  const remote = join(root, "remotes", "lazurio.git");
+  await mkdir(join(root, "sources"), { recursive: true });
+  await initGitRepo(join(root, "sources", "lazurio"), { remotePath: remote });
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "BetaCo",
+    github_org: "BetaCo",
+    module_slots: [
+      {
+        path: "workspace/lazurio",
+        teams: ["lazurio"],
+        git: { url: remote, branch: "main" },
+      },
+    ],
+  });
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  const repo = inventory.repos.find((entry) => entry.key === "BetaCo::lazurio");
+
+  const result = await materializeRepoCheckout({
+    companiesRoot: root,
+    repo,
+    deps: {
+      run: async (args, options) => {
+        if (args[0] === "fetch") {
+          return { ok: false, stdout: "", stderr: "simulated fetch failure" };
+        }
+        return runGit(args, options);
+      },
+    },
+  });
+
+  expect(result).toMatchObject({
+    ok: false,
+    outcome: "failed",
+    code: "materialization_incomplete",
+  });
+  expect(existsSync(join(target, ".git"))).toBe(true);
 });
 
 test("refuses a target that does not exactly match the manifest inventory boundary", async () => {
