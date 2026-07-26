@@ -47,9 +47,12 @@ Canva na org-dedikovaných mašinách.
 ## Smoke test
 
 Smoke začni searchem vlastních designů a pokračuj vytvořením **testovacího
-designu ve scratch složce** — nikdy nepřepisuj týmový asset. Design po
-ověření smaž; export směřuj do custody/drafts cesty, ne do sdílených
-složek.
+designu ve scratch složce** — nikdy nepřepisuj týmový asset. Scratch složku
+zapiš do `INTEGRATIONS.md`. Design smíš po ověření odstranit jen když
+Principál výslovně schválil jmenovitý smoke cíl zapsaný v
+`INTEGRATIONS.md` a design vytvořil tento konkrétní smoke. Jinak artefakt
+ponech a vyžádej si samostatný explicitní pokyn Principála. Export směřuj do
+custody/drafts cesty, ne do sdílených složek.
 
 ## Custody a rizika
 

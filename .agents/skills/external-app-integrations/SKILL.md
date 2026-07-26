@@ -70,7 +70,10 @@ Codex, Desktop agenti). Kanonický standard:
 - Server je vidět (`codex mcp list` / `/mcp` v Claude Code) a smoke prošel:
   čtení známého záznamu správného org účtu, zápis na **jednorázovém cíli**
   (testovací kanál, scratch složka, draft sobě) vratnou formou, bez
-  nevratné publikace; artefakt po ověření uklizený.
+  nevratné publikace. Artefakt smíš po ověření uklidit jen když Principál
+  výslovně schválil jmenovitý smoke cíl zapsaný v `INTEGRATIONS.md` a
+  artefakt vytvořil tento konkrétní smoke. Jinak artefakt ponech a vyžádej
+  si samostatný explicitní pokyn Principála.
 - Write gate je nastavený podle cesty a zapsaný v `INTEGRATIONS.md`: v
   Claude Code write nástroje v `ask`/`deny` (nikdy plošné allow serveru),
   v Codexu `writes`/`prompt`, u CLI allowlist jen čtecích příkazů.

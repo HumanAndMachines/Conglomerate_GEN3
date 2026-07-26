@@ -56,8 +56,11 @@ hodnoty v custody env souboru.
 
 Smoke začni čtením známého Jira issue a Confluence stránky přes
 `search_atlassian` a pokračuj zápisem **jen v sandbox projektu/space**
-určeném pro agentní smoke, nikdy v ostrém projektu. Vytvořené issue/stránku
-po ověření smaž nebo zavři a sandbox zapiš do `INTEGRATIONS.md`.
+určeném pro agentní smoke, nikdy v ostrém projektu. Sandbox zapiš do
+`INTEGRATIONS.md`. Vytvořené issue/stránku smíš po ověření smazat nebo
+zavřít jen když Principál výslovně schválil jmenovitý smoke cíl zapsaný v
+`INTEGRATIONS.md` a artefakt vytvořil tento konkrétní smoke. Jinak artefakt
+ponech a vyžádej si samostatný explicitní pokyn Principála.
 
 ## Custody a rizika
 

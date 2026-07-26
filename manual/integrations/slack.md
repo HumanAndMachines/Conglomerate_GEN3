@@ -57,7 +57,10 @@ pojmenovaných serverů, každý s vlastní OAuth session.
 Smoke začni čtením (vyhledání známé zprávy, výpis kanálů) a pokračuj
 zápisem **výhradně do k tomu určeného testovacího kanálu** (např.
 `#<org-slug>-agent-smoke`), nikdy do ostrého kanálu ani DM. Testovací
-zprávu po ověření smaž a kanál zapiš do `INTEGRATIONS.md`.
+kanál zapiš do `INTEGRATIONS.md`. Testovací zprávu smíš po ověření odstranit
+jen když Principál výslovně schválil jmenovitý smoke cíl zapsaný v
+`INTEGRATIONS.md` a zprávu vytvořil tento konkrétní smoke. Jinak artefakt
+ponech a vyžádej si samostatný explicitní pokyn Principála.
 
 ## Custody a rizika
 

@@ -59,8 +59,11 @@ code flow dokončuje Principál; token cache jde do OS keychainu (keytar).
 
 Smoke začni čtením (výpis posledních hlaviček inboxu, kalendář na dnešek)
 a pokračuj **draftem zprávy adresované sobě, bez odeslání**, případně
-událostí v testovacím kalendáři. Draft i testovací událost po ověření
-smaž.
+událostí v testovacím kalendáři. Testovací kalendář nebo drafts cíl zapiš do
+`INTEGRATIONS.md`. Draft i testovací událost smíš po ověření odstranit jen
+když Principál výslovně schválil jmenovitý smoke cíl zapsaný v
+`INTEGRATIONS.md` a artefakt vytvořil tento konkrétní smoke. Jinak artefakt
+ponech a vyžádej si samostatný explicitní pokyn Principála.
 
 ## Custody a rizika
 
