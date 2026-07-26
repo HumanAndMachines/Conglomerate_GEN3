@@ -1,5 +1,6 @@
-import { lstat, realpath } from "node:fs/promises";
-import { resolve } from "node:path";
+import { lstat, mkdtemp, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import {
   GIT_LOCAL_TIMEOUT_MS,
   runGit,
@@ -11,7 +12,11 @@ import {
 } from "./path-boundary-lib.mjs";
 
 export const GIT_CLONE_TIMEOUT_MS = 120_000;
-const MATERIALIZATION_GIT_CONFIG = ["-c", "core.sshCommand=", "-c", "core.hooksPath="];
+const MATERIALIZATION_GIT_CONFIG = [
+  "-c", "core.sshCommand=",
+  "-c", "core.hooksPath=",
+  "-c", "protocol.ext.allow=never",
+];
 
 // Explicit sync/update action for an active manifest slot whose checkout is
 // missing. Doctor remains read-only: it only reports missing_access. The
@@ -38,25 +43,35 @@ export async function materializeRepoCheckout({
   // Check access before clone so a missing/private remote does not leave a
   // newly-created target behind. The following clone is intentionally ordinary
   // Git pathname behavior under the trusted-local workspace contract.
-  const source = await runMaterializationGit(
-    run,
-    ["ls-remote", "--exit-code", "--heads", "--", remote, `refs/heads/${branch}`],
-    {
-      cwd: organizationRoot,
-      timeoutMs: GIT_CLONE_TIMEOUT_MS,
-    },
-  );
-  if (!source.ok || !source.stdout) return missingAccess();
+  // Git reads local .git/config from cwd. Remote transport must therefore not
+  // run from the Organization checkout, where core.gitProxy or protocol.ext
+  // could execute before the source preflight returns. `-c core.gitProxy=`
+  // does not override an existing local multi-value config, so the neutral cwd
+  // is the actual configuration boundary.
+  const transportCwd = await mkdtemp(join(tmpdir(), "launchpad-materialization-"));
+  try {
+    const source = await runMaterializationGit(
+      run,
+      ["ls-remote", "--exit-code", "--heads", "--", remote, `refs/heads/${branch}`],
+      {
+        cwd: transportCwd,
+        timeoutMs: GIT_CLONE_TIMEOUT_MS,
+      },
+    );
+    if (!source.ok || !source.stdout) return missingAccess();
 
-  const clone = await runMaterializationGit(
-    run,
-    ["clone", "--branch", branch, "--single-branch", "--", remote, targetPath],
-    {
-      cwd: organizationRoot,
-      timeoutMs: GIT_CLONE_TIMEOUT_MS,
-    },
-  );
-  if (!clone.ok) return cloneFailure();
+    const clone = await runMaterializationGit(
+      run,
+      ["clone", "--branch", branch, "--single-branch", "--", remote, targetPath],
+      {
+        cwd: transportCwd,
+        timeoutMs: GIT_CLONE_TIMEOUT_MS,
+      },
+    );
+    if (!clone.ok) return cloneFailure();
+  } finally {
+    await rm(transportCwd, { recursive: true, force: true });
+  }
 
   const verification = await verifyClonedCheckout({
     path: targetPath,

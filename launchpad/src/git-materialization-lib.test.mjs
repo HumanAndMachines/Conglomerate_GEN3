@@ -137,6 +137,45 @@ posixTest("materialization ignores Organization-local core.sshCommand", async ()
   expect(existsSync(marker)).toBe(false);
 });
 
+posixTest("materialization ignores Organization-local executable transport configuration", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
+  const proxyMarker = join(root, "local-git-proxy-ran");
+  const proxyHelper = join(root, "local-git-proxy.sh");
+  const extMarker = join(root, "local-ext-protocol-ran");
+  const extHelper = join(root, "local-ext-protocol.sh");
+  await prepareOrganizationRoot(organizationRoot);
+  await writeFile(proxyHelper, `#!/bin/sh\nprintf attacker > ${JSON.stringify(proxyMarker)}\nexit 1\n`);
+  await writeFile(extHelper, `#!/bin/sh\nprintf attacker > ${JSON.stringify(extMarker)}\nexit 1\n`);
+  await chmod(proxyHelper, 0o755);
+  await chmod(extHelper, 0o755);
+
+  await runGit(["config", "core.gitProxy", proxyHelper], { cwd: organizationRoot });
+  const proxyRepo = await createManifestRepo({
+    root,
+    organizationRoot,
+    remote: "git://127.0.0.1:1/nope",
+    slot: "workspace/private-module",
+  });
+  const proxyResult = await materializeRepoCheckout({ companiesRoot: root, repo: proxyRepo });
+
+  await runGit(["config", "--unset", "core.gitProxy"], { cwd: organizationRoot });
+  await runGit(["config", "protocol.ext.allow", "always"], { cwd: organizationRoot });
+  const extRepo = await createManifestRepo({
+    root,
+    organizationRoot,
+    remote: `ext::${extHelper}`,
+    slot: "workspace/private-module",
+  });
+  const extResult = await materializeRepoCheckout({ companiesRoot: root, repo: extRepo });
+
+  expect(proxyResult).toMatchObject({ ok: false, outcome: "missing_access" });
+  expect(extResult).toMatchObject({ ok: false, outcome: "missing_access" });
+  expect(existsSync(proxyMarker)).toBe(false);
+  expect(existsSync(extMarker)).toBe(false);
+});
+
 posixTest("materialization removes inherited GIT_SSH_COMMAND and GIT_SSH", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
