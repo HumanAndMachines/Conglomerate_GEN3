@@ -3,8 +3,22 @@ import { existsSync } from "fs";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { createGitStatusService, pullRepoWithAutostash, readGitRepoStatus, refreshGitRepoRemote } from "./git-status-lib.mjs";
-import { initGitRepo, normalizeLineEndings, runGit } from "./git-fixture-helpers.test.mjs";
+import {
+  abortRepoRebase,
+  createGitStatusService,
+  pullRepoFastForward,
+  pullRepoWithAutostash,
+  readGitRepoStatus,
+  refreshGitRepoRemote,
+} from "./git-status-lib.mjs";
+import {
+  initGitRepo,
+  normalizeLineEndings,
+  runGit,
+  startConflictingApplyRebase,
+  startConflictingGitAm,
+  startConflictingRebase,
+} from "./git-fixture-helpers.test.mjs";
 
 const tempRoots = [];
 const posixTest = test.if(process.platform !== "win32");
@@ -53,9 +67,16 @@ posixTest("remote refresh never executes a checkout-local core.sshCommand", asyn
   await writeFile(helper, `#!/bin/sh\nprintf ssh > ${JSON.stringify(marker)}\nexit 1\n`);
   await chmod(helper, 0o755);
   runGit(["remote", "add", "origin", "ssh://git@127.0.0.1:1/private/repo.git"], root);
+  runGit(["config", "branch.main.remote", "origin"], root);
+  runGit(["config", "branch.main.merge", "refs/heads/main"], root);
   runGit(["config", "core.sshCommand", helper], root);
 
-  const result = await refreshGitRepoRemote({ absolute_path: root });
+  const result = await refreshGitRepoRemote({
+    key: "Fixture::root",
+    absolute_path: root,
+    expected_branch: "main",
+    repo: "ssh://git@127.0.0.1:1/private/repo.git",
+  });
 
   expect(result.ok).toBe(false);
   expect(existsSync(marker)).toBe(false);
@@ -70,12 +91,48 @@ posixTest("remote refresh blocks git protocol before a checkout-local core.gitPr
   await writeFile(helper, `#!/bin/sh\nprintf proxy > ${JSON.stringify(marker)}\nexit 1\n`);
   await chmod(helper, 0o755);
   runGit(["remote", "add", "origin", "git://127.0.0.1:1/private/repo.git"], root);
+  runGit(["config", "branch.main.remote", "origin"], root);
+  runGit(["config", "branch.main.merge", "refs/heads/main"], root);
   runGit(["config", "core.gitProxy", helper], root);
 
-  const result = await refreshGitRepoRemote({ absolute_path: root });
+  const result = await refreshGitRepoRemote({
+    key: "Fixture::root",
+    absolute_path: root,
+    expected_branch: "main",
+    repo: "git://127.0.0.1:1/private/repo.git",
+  });
 
   expect(result.ok).toBe(false);
   expect(existsSync(marker)).toBe(false);
+});
+
+test("remote refresh treats a checkout-local URL rewrite as a source mismatch before fetching", async () => {
+  const root = await mkdtemp(join(tmpdir(), "launchpad-status-url-rewrite-"));
+  tempRoots.push(root);
+  const manifestRemote = "https://example.invalid/manifest.git";
+  await initGitRepo(root);
+  runGit(["remote", "add", "origin", manifestRemote], root);
+  runGit(["config", "branch.main.remote", "origin"], root);
+  runGit(["config", "branch.main.merge", "refs/heads/main"], root);
+  runGit(["config", "url.file:///attacker/.insteadOf", manifestRemote], root);
+
+  const result = await refreshGitRepoRemote({
+    key: "Fixture::root",
+    absolute_path: root,
+    expected_branch: "main",
+    repo: manifestRemote,
+  });
+
+  expect(result).toMatchObject({
+    ok: false,
+    code: "pull_source_invalid",
+    error: "pull_source_identity_mismatch",
+  });
+});
+
+test("git status routes every checkout Git child through the safe policy wrappers", async () => {
+  const source = await readFile(join(import.meta.dir, "git-status-lib.mjs"), "utf8");
+  expect(source).not.toContain("runGit([");
 });
 
 test("repo status treats untracked files as local drafts that need packaging", async () => {
@@ -118,6 +175,64 @@ test("repo status reports missing checkout without running Git in the parent fol
 
   expect(status.status).toBe("repo_missing");
   expect(status.severity).toBe("fail");
+});
+
+test("repo status exposes a conflicting rebase and guarded abort restores the original branch", async () => {
+  const root = await mkdtemp(join(tmpdir(), "launchpad-status-rebase-"));
+  tempRoots.push(root);
+  await initGitRepo(root);
+  await startConflictingRebase(root);
+
+  const repo = { key: "Fixture::root", absolute_path: root, expected_branch: "main" };
+  const blocked = await readGitRepoStatus(repo);
+  expect(blocked.status).toBe("rebase_in_progress");
+  expect(blocked.severity).toBe("fail");
+  expect(blocked.operation).toMatchObject({ kind: "rebase", can_abort_rebase: true });
+
+  const aborted = await abortRepoRebase(repo);
+  expect(aborted.ok).toBe(true);
+  expect(aborted.before.status).toBe("rebase_in_progress");
+  expect(aborted.after.status).toBe("up_to_date");
+  expect(aborted.after.branch).toBe("main");
+  expect(normalizeLineEndings(await readFile(join(root, "README.md"), "utf8"))).toBe("# local draft\n");
+
+  const repeated = await abortRepoRebase(repo);
+  expect(repeated.ok).toBe(false);
+  expect(repeated.code).toBe("rebase_not_in_progress");
+});
+
+test("repo status recognizes an apply-backend rebase and allows only its guarded rebase abort", async () => {
+  const root = await mkdtemp(join(tmpdir(), "launchpad-status-apply-rebase-"));
+  tempRoots.push(root);
+  await initGitRepo(root);
+  await startConflictingApplyRebase(root);
+
+  const repo = { key: "Fixture::root", absolute_path: root, expected_branch: "main" };
+  const blocked = await readGitRepoStatus(repo);
+  expect(blocked.status).toBe("rebase_in_progress");
+  expect(blocked.operation).toEqual({ kind: "rebase", backend: "apply", can_abort_rebase: true });
+
+  const aborted = await abortRepoRebase(repo);
+  expect(aborted.ok).toBe(true);
+  expect(aborted.after.operation).toBeNull();
+});
+
+test("repo status classifies git am separately and never offers rebase abort", async () => {
+  const root = await mkdtemp(join(tmpdir(), "launchpad-status-git-am-"));
+  tempRoots.push(root);
+  await initGitRepo(root);
+  await startConflictingGitAm(root);
+
+  const repo = { key: "Fixture::root", absolute_path: root, expected_branch: "main" };
+  const blocked = await readGitRepoStatus(repo);
+  expect(blocked.status).toBe("git_am_in_progress");
+  expect(blocked.operation).toEqual({ kind: "am", backend: "apply", can_abort_rebase: false });
+
+  const refused = await abortRepoRebase(repo);
+  expect(refused.ok).toBe(false);
+  expect(refused.code).toBe("rebase_not_in_progress");
+  expect((await readGitRepoStatus(repo)).status).toBe("git_am_in_progress");
+  runGit(["am", "--abort"], root);
 });
 
 test("shared status service deduplicates remote refreshes and respects the freshness window", async () => {
@@ -244,6 +359,133 @@ test("explicit refresh reports check_failed when git fetch cannot verify the rem
   expect(status.details).toEqual(["Vzdálenou verzi se nepodařilo ověřit pomocí git fetch."]);
 });
 
+test("fast-forward pull rejects a remote redirected after preflight and never applies the foreign descendant", async () => {
+  const root = await mkdtemp(join(tmpdir(), "launchpad-pull-source-race-"));
+  tempRoots.push(root);
+  const repoPath = join(root, "repo");
+  const expectedRemote = join(root, "expected.git");
+  const wrongRemote = join(root, "wrong.git");
+  await initGitRepo(repoPath, { remotePath: expectedRemote });
+
+  const expectedContributor = join(root, "expected-contributor");
+  runGit(["clone", expectedRemote, expectedContributor], root);
+  runGit(["checkout", "-B", "main", "origin/main"], expectedContributor);
+  configureFixtureUser(expectedContributor);
+  await writeFile(join(expectedContributor, "expected.md"), "expected payload\n");
+  runGit(["add", "expected.md"], expectedContributor);
+  runGit(["commit", "-m", "expected update"], expectedContributor);
+  runGit(["push", "origin", "main"], expectedContributor);
+
+  const wrongContributor = join(root, "wrong-contributor");
+  runGit(["clone", expectedRemote, wrongContributor], root);
+  runGit(["checkout", "-B", "main", "origin/main"], wrongContributor);
+  configureFixtureUser(wrongContributor);
+  await writeFile(join(wrongContributor, "foreign.md"), "foreign payload\n");
+  runGit(["add", "foreign.md"], wrongContributor);
+  runGit(["commit", "-m", "foreign descendant"], wrongContributor);
+  runGit(["init", "--bare", wrongRemote], root);
+  runGit(["remote", "set-url", "origin", wrongRemote], wrongContributor);
+  runGit(["push", "-u", "origin", "main"], wrongContributor);
+
+  const originalHead = runGit(["rev-parse", "HEAD"], repoPath);
+  const result = await pullRepoFastForward(
+    {
+      key: "Fixture::repo",
+      absolute_path: repoPath,
+      expected_branch: "main",
+      repo: expectedRemote,
+    },
+    {
+      beforeMutation: async () => {
+        runGit(["remote", "set-url", "origin", wrongRemote], repoPath);
+      },
+    },
+  );
+
+  expect(result.ok).toBe(false);
+  expect(result.code).toBe("pull_source_changed");
+  expect(runGit(["rev-parse", "HEAD"], repoPath)).toBe(originalHead);
+  expect(await Bun.file(join(repoPath, "foreign.md")).exists()).toBe(false);
+});
+
+test("fast-forward pull refuses a draft introduced after verified preflight", async () => {
+  const root = await mkdtemp(join(tmpdir(), "launchpad-pull-clean-race-"));
+  tempRoots.push(root);
+  const repoPath = join(root, "repo");
+  const remote = join(root, "remote.git");
+  await initGitRepo(repoPath, { remotePath: remote });
+
+  const contributor = join(root, "contributor");
+  runGit(["clone", remote, contributor], root);
+  runGit(["checkout", "-B", "main", "origin/main"], contributor);
+  configureFixtureUser(contributor);
+  await writeFile(join(contributor, "remote.md"), "remote payload\n");
+  runGit(["add", "remote.md"], contributor);
+  runGit(["commit", "-m", "remote update"], contributor);
+  runGit(["push", "origin", "main"], contributor);
+
+  const originalHead = runGit(["rev-parse", "HEAD"], repoPath);
+  const result = await pullRepoFastForward(
+    {
+      key: "Fixture::repo",
+      absolute_path: repoPath,
+      expected_branch: "main",
+      repo: remote,
+    },
+    {
+      beforeMutation: async () => {
+        await writeFile(join(repoPath, "local-draft.md"), "preserve this draft\n");
+      },
+    },
+  );
+
+  expect(result).toMatchObject({ ok: false, code: "pull_checkout_changed" });
+  expect(runGit(["rev-parse", "HEAD"], repoPath)).toBe(originalHead);
+  expect(await Bun.file(join(repoPath, "remote.md")).exists()).toBe(false);
+  expect(normalizeLineEndings(await readFile(join(repoPath, "local-draft.md"), "utf8"))).toBe("preserve this draft\n");
+});
+
+test("autostash pull restores local work when the manifest source changes before mutation", async () => {
+  const root = await mkdtemp(join(tmpdir(), "launchpad-autostash-source-race-"));
+  tempRoots.push(root);
+  const repoPath = join(root, "repo");
+  const expectedRemote = join(root, "expected.git");
+  const wrongRemote = join(root, "wrong.git");
+  await initGitRepo(repoPath, { remotePath: expectedRemote });
+
+  const contributor = join(root, "contributor");
+  runGit(["clone", expectedRemote, contributor], root);
+  runGit(["checkout", "-B", "main", "origin/main"], contributor);
+  configureFixtureUser(contributor);
+  await writeFile(join(contributor, "expected.md"), "expected payload\n");
+  runGit(["add", "expected.md"], contributor);
+  runGit(["commit", "-m", "expected update"], contributor);
+  runGit(["push", "origin", "main"], contributor);
+  runGit(["init", "--bare", wrongRemote], root);
+  await writeFile(join(repoPath, "local.md"), "preserve local work\n");
+
+  const originalHead = runGit(["rev-parse", "HEAD"], repoPath);
+  const result = await pullRepoWithAutostash(
+    {
+      key: "Fixture::repo",
+      absolute_path: repoPath,
+      expected_branch: "main",
+      repo: expectedRemote,
+    },
+    {
+      beforeMutation: async () => {
+        runGit(["remote", "set-url", "origin", wrongRemote], repoPath);
+      },
+    },
+  );
+
+  expect(result.ok).toBe(false);
+  expect(result.code).toBe("pull_source_changed");
+  expect(runGit(["rev-parse", "HEAD"], repoPath)).toBe(originalHead);
+  expect(normalizeLineEndings(await readFile(join(repoPath, "local.md"), "utf8"))).toBe("preserve local work\n");
+  expect(runGit(["stash", "list"], repoPath)).toBe("");
+});
+
 test("autostash pull preserves staged and untracked local changes across a non-conflicting fast-forward", async () => {
   const root = await mkdtemp(join(tmpdir(), "launchpad-autostash-success-"));
   tempRoots.push(root);
@@ -267,6 +509,7 @@ test("autostash pull preserves staged and untracked local changes across a non-c
     key: "Fixture::repo",
     absolute_path: repo,
     expected_branch: "main",
+    repo: remote,
   });
 
   expect(result.ok).toBe(true);
@@ -305,6 +548,7 @@ posixTest("pull never executes a post-merge hook planted in the checkout", async
     key: "Fixture::repo",
     absolute_path: repo,
     expected_branch: "main",
+    repo: remote,
   });
 
   expect(result.ok).toBe(true);
@@ -333,6 +577,7 @@ test("autostash pull keeps its stash and reports a conflict instead of hiding it
     key: "Fixture::repo",
     absolute_path: repo,
     expected_branch: "main",
+    repo: remote,
   });
 
   expect(result.ok).toBe(false);
@@ -359,4 +604,9 @@ function fixtureStatus(repo) {
     recommended_action: null,
     details: [],
   };
+}
+
+function configureFixtureUser(repo) {
+  runGit(["config", "user.email", "fixture@example.com"], repo);
+  runGit(["config", "user.name", "Fixture"], repo);
 }
