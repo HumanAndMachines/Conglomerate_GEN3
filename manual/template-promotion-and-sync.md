@@ -25,8 +25,10 @@ Upstream template: `TemplatesRozjedeme-ai/OrganizationTemplate` (rename na
   (typicky generický skill), nebo jen **blok uvnitř org souboru** — příklad:
   kanonický blok „Model spolupráce" v AGENTS.md (od nadpisu
   `## Model spolupráce: Principál a Agenti` po další `## `, md5 po
-  `.rstrip()`). AGENTS.md jako celek je soubor Organizace — synchronizuje
-  se jen ten blok, nikdy celý soubor.
+  `.rstrip()`) a blok mezi markery
+  `BEGIN/END TEMPLATE-MANAGED: chat-first-launchpad`. AGENTS.md jako celek je
+  soubor Organizace — synchronizují se jen výslovně managed bloky, nikdy celý
+  soubor.
 - **Template-first je default** (founder 2026-07-12): když dopředu víš, že
   změna je platformní/šablonovatelná (struktura AGENTS.md, generický skill,
   slovník, worktree kultura), autoruj ji přímo v template a do Organizací ji

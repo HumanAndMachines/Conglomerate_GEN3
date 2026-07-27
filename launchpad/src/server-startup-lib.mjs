@@ -5,6 +5,7 @@ export async function startLaunchpadWithPortPolicy({
   host = "127.0.0.1",
   explicitPort,
   shouldOpen,
+  shouldReuse = shouldOpen,
   startServer,
   isRunningExpectedLaunchpad = async () => false,
   openExisting = async () => {},
@@ -17,11 +18,11 @@ export async function startLaunchpadWithPortPolicy({
     } catch (error) {
       if (!isAddressInUse(error)) throw error;
 
-      const requestedUrl = `http://${host}:${requestedPort}`;
-      if (attempt === 0 && shouldOpen) {
-        if (await isRunningExpectedLaunchpad(requestedUrl)) {
-          await openExisting(requestedUrl);
-          return { mode: "reused", url: requestedUrl };
+      const candidateUrl = `http://${host}:${candidatePort}`;
+      if (shouldReuse) {
+        if (await isRunningExpectedLaunchpad(candidateUrl)) {
+          if (shouldOpen) await openExisting(candidateUrl);
+          return { mode: "reused", url: candidateUrl };
         }
         if (explicitPort) throw error;
       }

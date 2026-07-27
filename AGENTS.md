@@ -218,9 +218,13 @@ karta existuje, znovu ji použije. Launchpad je grafické rozhraní ke stejnému
 lokálnímu kontextu, který Agent čte a ve kterém Kolegovi pomáhá; produktový
 vstup pro Kolegu proto začíná v chatu, ne ručním hledáním URL.
 
-Agent používá skutečný zdravý origin, který ohlásila běžící instance Launchpadu
-(případně ji spustí kanonickým root launcherem), a port nikdy nehádá ani
-nehardcoduje. K originu připojí stabilní hash route:
+Agent používá skutečný zdravý origin, který ohlásí `bun run launchpad:serve`
+spuštěný v Conglomerate rootu. Tento agentní launcher zdravou existující
+instanci znovu použije nebo Launchpad spustí, ale nikdy sám neotevře systémový
+browser. Agent nesmí pro tento chat-first krok spouštět `bun run launchpad`,
+`Launchpad.command`, `launchpad.sh` ani jiný human launcher s OS openerem.
+Ohlášený origin otevře výhradně browser capability dané App a port nikdy
+nehádá ani nehardcoduje. K originu připojí stabilní hash route:
 
 - Organizace: `/#/org/<URL-encoded company.slug>`;
 - lokální Personalspace Principála: `/#/personalspace` — URL nikdy nenese
