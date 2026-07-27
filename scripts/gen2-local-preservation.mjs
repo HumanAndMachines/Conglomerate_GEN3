@@ -22,7 +22,7 @@ import { constants as fsConstants } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { safeGitCommandEnv, safeGitRuntimeArgs } from "../launchpad/src/git-lib.mjs";
+import { resolveGitExecutableSync, safeGitCommandEnv, safeGitRuntimeArgs } from "../launchpad/src/git-lib.mjs";
 
 const EVIDENCE_DIR = ".gen2-preservation";
 const INCOMPLETE_FILE = "INCOMPLETE.json";
@@ -114,6 +114,18 @@ async function assertDirectory(path, message) {
 
 async function run(command, args, { cwd, allowFailure = false } = {}) {
   const isGit = command === "git";
+  const executable = isGit ? resolveGitExecutableSync() : command;
+  if (!executable) {
+    const stderr = "Trusted Git executable was not found.";
+    if (!allowFailure) throw new Error(`${command} failed: ${stderr}`);
+    return {
+      code: 1,
+      stdout: "",
+      stderr,
+      stdout_buffer: Buffer.alloc(0),
+      stderr_buffer: Buffer.from(stderr),
+    };
+  }
   const commandArgs = isGit ? safeGitRuntimeArgs(args) : args;
   const commandEnv = isGit
     ? safeGitCommandEnv()
@@ -122,7 +134,7 @@ async function run(command, args, { cwd, allowFailure = false } = {}) {
         GIT_TERMINAL_PROMPT: "0",
       };
   return await new Promise((resolveRun, rejectRun) => {
-    const child = spawn(command, commandArgs, {
+    const child = spawn(executable, commandArgs, {
       cwd,
       env: commandEnv,
       stdio: ["ignore", "pipe", "pipe"],

@@ -189,11 +189,20 @@ describe("metadata-only inventory", () => {
     await writeFile(helper, `#!/bin/sh\nprintf marker > ${JSON.stringify(marker)}\nexit 0\n`);
     await chmod(helper, 0o755);
     run("git", ["config", "core.fsmonitor", helper], source);
+    const pathMarker = join(root, "path-git-ran");
+    const fakeBin = join(root, "fake-bin");
+    await mkdir(fakeBin);
+    const fakeGit = join(fakeBin, "git");
+    await writeFile(fakeGit, `#!/bin/sh\nprintf path-git > ${JSON.stringify(pathMarker)}\nexit 1\n`);
+    await chmod(fakeGit, 0o755);
 
-    const result = cli(["inventory", "--source", source]);
+    const result = cli(["inventory", "--source", source], {
+      env: { PATH: `${fakeBin}:${process.env.PATH}` },
+    });
 
     expect(result.status).toBe(0);
     expect(existsSync(marker)).toBe(false);
+    expect(existsSync(pathMarker)).toBe(false);
   });
 });
 

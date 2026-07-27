@@ -89,12 +89,21 @@ test.if(process.platform !== "win32")("inventory never executes checkout-local f
     markers.push(marker);
   }
 
+  const pathMarker = join(root, "path-git-ran");
+  const fakeBin = join(root, "fake-bin");
+  await mkdir(fakeBin);
+  const fakeGit = join(fakeBin, "git");
+  await writeFile(fakeGit, `#!/bin/sh\nprintf path-git > ${JSON.stringify(pathMarker)}\nexit 1\n`);
+  await chmod(fakeGit, 0o755);
+
   const result = spawnSync(process.execPath, [scriptPath, "--gen2", gen2, "--gen3", gen3, "--json"], {
     encoding: "utf8",
+    env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}` },
   });
 
   expect(result.status).toBe(0);
   for (const marker of markers) expect(existsSync(marker)).toBe(false);
+  expect(existsSync(pathMarker)).toBe(false);
 });
 
 test("inventory refuses implicit built-in organization pairs", () => {

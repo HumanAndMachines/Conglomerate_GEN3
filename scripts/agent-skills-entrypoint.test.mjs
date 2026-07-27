@@ -254,9 +254,14 @@ test("Windows per-user instalace Gitu je mezi trusted kandidáty", async () => {
   expect(withLocalAppData.some((path) => path.includes("AppData\\Local") && path.endsWith("git.exe")))
     .toBe(true);
 
-  // Relativní nebo chybějící LOCALAPPDATA nesmí vytvořit relativního kandidáta.
+  const baseline = trustedGitCandidates("win32", {});
+  // Relativní, current-volume rooted ani UNC LOCALAPPDATA nesmí vytvořit kandidáta.
   expect(trustedGitCandidates("win32", { LOCALAPPDATA: "relativni\\cesta" }))
-    .toEqual(trustedGitCandidates("win32", {}));
+    .toEqual(baseline);
+  expect(trustedGitCandidates("win32", { LOCALAPPDATA: "\\\\Users\\attacker\\controlled-root" }))
+    .toEqual(baseline);
+  expect(trustedGitCandidates("win32", { LOCALAPPDATA: String.raw`\\attacker-host\share` }))
+    .toEqual(baseline);
   expect(trustedGitCandidates("darwin", {})).toContain("/opt/homebrew/bin/git");
   expect(trustedGitCandidates("linux", {})).toContain("/usr/local/bin/git");
 });

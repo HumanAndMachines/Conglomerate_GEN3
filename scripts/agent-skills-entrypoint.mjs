@@ -52,13 +52,17 @@ export function trustedGitCandidates(platform = process.platform, env = process.
     "C:\\Program Files\\Git\\bin\\git.exe",
     "C:\\Program Files (x86)\\Git\\cmd\\git.exe",
     "C:\\Program Files (x86)\\Git\\bin\\git.exe",
-    ...(typeof localAppData === "string" && pathWin32.isAbsolute(localAppData)
+    ...(isDriveQualifiedWindowsPath(localAppData)
       ? [
         pathWin32.join(localAppData, "Programs", "Git", "cmd", "git.exe"),
         pathWin32.join(localAppData, "Programs", "Git", "bin", "git.exe"),
       ]
       : []),
   ];
+}
+
+function isDriveQualifiedWindowsPath(path) {
+  return typeof path === "string" && /^[A-Za-z]:/.test(path) && (path[2] === "\\" || path[2] === "/");
 }
 
 function sanitizedGitEnvironment() {

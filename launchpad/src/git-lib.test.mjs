@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { existsSync, writeFileSync } from "fs";
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from "fs";
+import { spawnSync } from "child_process";
 import { mkdtemp, rm } from "fs/promises";
 import { createServer } from "net";
 import { tmpdir } from "os";
@@ -60,6 +61,34 @@ test("runGit returns stdout and protects remote probes from interactive credenti
     GIT_CONFIG_GLOBAL: "",
     GIT_CONFIG_NOSYSTEM: "1",
   });
+});
+
+test.if(process.platform !== "win32")("runGit never executes a fake Git executable from ambient PATH", async () => {
+  const root = await mkdtemp(join(tmpdir(), "launchpad-git-path-marker-"));
+  try {
+    const fakeBin = join(root, "fake-bin");
+    const marker = join(root, "fake-git-ran");
+    const fakeGit = join(fakeBin, "git");
+    mkdirSync(fakeBin);
+    writeFileSync(fakeGit, `#!/bin/sh\nprintf fake-git > ${JSON.stringify(marker)}\nexit 1\n`);
+    chmodSync(fakeGit, 0o755);
+
+    const moduleUrl = new URL("./git-lib.mjs", import.meta.url).href;
+    const program = `import(${JSON.stringify(moduleUrl)}).then(async ({ runGit }) => {
+      const result = await runGit(["--version"], { cwd: process.cwd() });
+      process.exit(result.ok ? 0 : 1);
+    })`;
+    const result = spawnSync(process.execPath, ["--eval", program], {
+      cwd: root,
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}` },
+    });
+
+    expect(result.status).toBe(0);
+    expect(existsSync(marker)).toBe(false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("Windows remote Git environment never contains a POSIX askpass executable", () => {
@@ -165,6 +194,26 @@ test("runtime and remote Git argument policy neutralizes checkout-local executio
   ]);
 });
 
+test("Git resolver ignores a Git executable discovered through ambient PATH", async () => {
+  const fakePathGit = "/tmp/ambient-bin/git";
+  const trusted = "/usr/bin/git";
+  const probes = [];
+
+  const resolved = await resolveGitExecutable({
+    platform: "darwin",
+    env: {},
+    which: () => fakePathGit,
+    pathExists: (candidate) => candidate === trusted,
+    probe: async (candidate) => {
+      probes.push(candidate);
+      return candidate === trusted;
+    },
+  });
+
+  expect(resolved).toBe(trusted);
+  expect(probes).toEqual([trusted]);
+});
+
 test("Windows Git resolver falls back to standard Git for Windows locations", async () => {
   const env = {
     ProgramFiles: "C:\\Program Files",
@@ -187,7 +236,36 @@ test("Windows Git resolver falls back to standard Git for Windows locations", as
   expect(resolved).toBe(expected);
 });
 
-test("Git resolver přeskočí nefunkční WindowsApps alias a ověří skutečný Git for Windows", async () => {
+test("Windows Git resolver refuses relative and current-volume rooted known-folder roots before probing", async () => {
+  const probes = [];
+  const options = {
+    platform: "win32",
+    env: { ProgramFiles: "\\\\Users\\attacker\\controlled-root", LOCALAPPDATA: "also-relative" },
+    pathExists: () => true,
+  };
+
+  const asyncResolved = await resolveGitExecutable({
+    ...options,
+    probe: async (candidate) => {
+      probes.push(candidate);
+      return true;
+    },
+  });
+  const syncResolved = resolveGitExecutableSync({
+    ...options,
+    probe: (candidate) => {
+      probes.push(candidate);
+      return true;
+    },
+  });
+
+  expect(gitExecutableCandidates(options)).toEqual([]);
+  expect(asyncResolved).toBeNull();
+  expect(syncResolved).toBeNull();
+  expect(probes).toEqual([]);
+});
+
+test("Git resolver ignores WindowsApps PATH alias and verifies only installed Git for Windows", async () => {
   const broken = "C:\\Users\\builder\\AppData\\Local\\Microsoft\\WindowsApps\\git.exe";
   const working = "C:\\Program Files\\Git\\cmd\\git.exe";
   const probes = [];
@@ -212,7 +290,7 @@ test("Git resolver přeskočí nefunkční WindowsApps alias a ověří skutečn
 
   expect(asyncResolved).toBe(working);
   expect(syncResolved).toBe(working);
-  expect(probes).toEqual([broken, working]);
+  expect(probes).toEqual([working]);
 });
 
 test("local Git probes use the Windows-proven timeout and bounded concurrency", () => {

@@ -22,11 +22,10 @@ export async function resolveGitExecutable(options = {}) {
 async function resolveGitExecutableUncached({
   platform = process.platform,
   env = processEnv(),
-  which = defaultWhich,
   pathExists = existsSync,
   probe = probeGitExecutable,
 } = {}) {
-  for (const candidate of orderedGitExecutableCandidates({ platform, env, which, pathExists })) {
+  for (const candidate of orderedGitExecutableCandidates({ platform, env, pathExists })) {
     if (await probe(candidate)) return candidate;
   }
   return null;
@@ -47,11 +46,10 @@ export function resolveGitExecutableSync(options = {}) {
 function resolveGitExecutableSyncUncached({
   platform = process.platform,
   env = processEnv(),
-  which = defaultWhich,
   pathExists = existsSync,
   probe = probeGitExecutableSync,
 } = {}) {
-  for (const candidate of orderedGitExecutableCandidates({ platform, env, which, pathExists })) {
+  for (const candidate of orderedGitExecutableCandidates({ platform, env, pathExists })) {
     if (probe(candidate)) return candidate;
   }
   return null;
@@ -167,7 +165,9 @@ export function safeGitMaterializationEnv(platform = process.platform, base = pr
 }
 
 export function gitExecutableCandidates({ platform = process.platform, env = processEnv() } = {}) {
-  if (platform !== "win32") return [];
+  if (platform !== "win32") {
+    return ["/usr/bin/git", "/opt/homebrew/bin/git", "/usr/local/bin/git", "/bin/git"];
+  }
   const roots = [
     env.ProgramW6432,
     env.ProgramFiles,
@@ -183,7 +183,11 @@ export function gitExecutableCandidates({ platform = process.platform, env = pro
   if (env.LOCALAPPDATA) {
     candidates.push(win32.join(env.LOCALAPPDATA, "Programs", "Git", "cmd", "git.exe"));
   }
-  return [...new Set(candidates)];
+  return [...new Set(candidates.filter(isDriveQualifiedWindowsPath))];
+}
+
+function isDriveQualifiedWindowsPath(candidate) {
+  return /^[A-Za-z]:\\/.test(candidate);
 }
 
 export function resetGitExecutableCacheForTests() {
@@ -334,24 +338,9 @@ function unsafeAmbientGitEnvironmentKey(key) {
   );
 }
 
-function defaultWhich(command) {
-  try {
-    return typeof Bun.which === "function" ? Bun.which(command) : null;
-  } catch {
-    return null;
-  }
-}
-
-function orderedGitExecutableCandidates({ platform, env, which, pathExists }) {
-  const pathCommand = platform === "win32" ? "git.exe" : "git";
-  const fromPath = which(pathCommand) ?? which("git");
-  const installedCandidates = gitExecutableCandidates({ platform, env })
-    .filter((candidate) => pathExists(candidate));
-  return [...new Set([
-    fromPath,
-    ...installedCandidates,
-    pathCommand,
-  ].filter(Boolean))];
+function orderedGitExecutableCandidates({ platform, env, pathExists }) {
+  return [...new Set(gitExecutableCandidates({ platform, env })
+    .filter((candidate) => pathExists(candidate)))];
 }
 
 async function probeGitExecutable(executable) {

@@ -105,6 +105,10 @@ case "$1:$2:$3" in
 esac
 `);
     await chmod(fakeGh, 0o755);
+    const pathMarker = join(root, "path-git-ran");
+    const fakeGit = join(fakeBin, "git");
+    await writeFile(fakeGit, `#!/bin/sh\nprintf path-git > ${JSON.stringify(pathMarker)}\nexit 1\n`);
+    await chmod(fakeGit, 0o755);
 
     const result = spawnSync(process.execPath, [scriptPath], {
       cwd: root,
@@ -114,6 +118,7 @@ esac
 
     expect(result.status).toBe(0);
     expect(existsSync(marker)).toBe(false);
+    expect(existsSync(pathMarker)).toBe(false);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
