@@ -4,8 +4,10 @@ import { join, resolve } from "path";
 import {
   GIT_FETCH_TIMEOUT_MS,
   GIT_LOCAL_TIMEOUT_MS,
-  runGit,
+  runGit as runBareGit,
+  safeGitRemoteArgs,
   safeGitRemoteEnv,
+  safeGitRuntimeArgs,
 } from "./git-lib.mjs";
 
 export const UPDATE_CHANNELS = ["stable", "nightly"];
@@ -21,6 +23,17 @@ const updateMessages = {
   no_release_tag: "Stable kanál zatím nemá žádný release tag ve formátu vMAJOR.MINOR.PATCH. Můžeš přepnout na nightly.",
   fetch_failed: "Cíl kanálu se nepodařilo bezpečně načíst nebo ověřit. Repo zůstalo beze změny.",
 };
+
+function runGit(args, options) {
+  return runBareGit(safeGitRuntimeArgs(args), options);
+}
+
+function runRemoteGit(args, options = {}) {
+  return runBareGit(safeGitRemoteArgs(args), {
+    ...options,
+    env: { ...options.env, ...safeGitRemoteEnv() },
+  });
+}
 
 export async function readUpdateChannelConfig({ rootPath }) {
   const configPath = join(rootPath, "launchpad.gen3.local.json");
@@ -121,10 +134,9 @@ export async function readRootUpdateStatus({ rootPath, refresh = true } = {}) {
     // --prune-tags drží lokální tagy v synchronizaci s originem — yanknutý
     // nebo přesunutý tag nesmí strašit v Doctor pohledu (update.channel čte
     // lokální tagy), zatímco merge target se ověřuje přes ls-remote.
-    fetchResult = await runGit(["fetch", "origin", "main", "--tags", "--prune", "--prune-tags"], {
+    fetchResult = await runRemoteGit(["fetch", "origin", "main", "--tags", "--prune", "--prune-tags"], {
       cwd: rootPath,
       timeoutMs: GIT_FETCH_TIMEOUT_MS,
-      env: safeGitRemoteEnv(),
     });
   }
 
@@ -336,10 +348,9 @@ async function resolveChannelTarget({ rootPath, channel }) {
 
   // Stable target se vybírá VÝHRADNĚ z tagů inzerovaných originem — lokální
   // nebo stale tagy (git tag --list) nesmí nikdy určit release cíl kanálu.
-  const remoteTags = await runGit(["ls-remote", "--tags", "origin"], {
+  const remoteTags = await runRemoteGit(["ls-remote", "--tags", "origin"], {
     cwd: rootPath,
     timeoutMs: GIT_FETCH_TIMEOUT_MS,
-    env: safeGitRemoteEnv(),
   });
   if (!remoteTags.ok) {
     return {

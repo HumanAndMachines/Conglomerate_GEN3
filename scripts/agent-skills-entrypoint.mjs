@@ -20,6 +20,7 @@ import {
   CLAUDE_SKILLS_MATERIALIZATION,
   inspectAgentSkillsEntrypoint,
 } from "../launchpad/src/agent-skills-entrypoint-lib.mjs";
+import { safeGitRuntimeArgs } from "../launchpad/src/git-lib.mjs";
 
 export const CANONICAL_SKILLS_PATH = ".agents/skills";
 export const CLAUDE_SKILLS_PATH = ".claude/skills";
@@ -51,13 +52,17 @@ export function trustedGitCandidates(platform = process.platform, env = process.
     "C:\\Program Files\\Git\\bin\\git.exe",
     "C:\\Program Files (x86)\\Git\\cmd\\git.exe",
     "C:\\Program Files (x86)\\Git\\bin\\git.exe",
-    ...(typeof localAppData === "string" && pathWin32.isAbsolute(localAppData)
+    ...(isDriveQualifiedWindowsPath(localAppData)
       ? [
         pathWin32.join(localAppData, "Programs", "Git", "cmd", "git.exe"),
         pathWin32.join(localAppData, "Programs", "Git", "bin", "git.exe"),
       ]
       : []),
   ];
+}
+
+function isDriveQualifiedWindowsPath(path) {
+  return typeof path === "string" && /^[A-Za-z]:/.test(path) && (path[2] === "\\" || path[2] === "/");
 }
 
 function sanitizedGitEnvironment() {
@@ -95,7 +100,7 @@ function git(root, args) {
     return { exitCode: 1, stdout: new Uint8Array(), stderr: new Uint8Array() };
   }
   return Bun.spawnSync({
-    cmd: [executable, ...args],
+    cmd: [executable, ...safeGitRuntimeArgs(args)],
     cwd: root,
     env: sanitizedGitEnvironment(),
     stdout: "pipe",

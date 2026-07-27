@@ -1,10 +1,11 @@
-import { lstat, mkdtemp, realpath, rm } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import {
   GIT_LOCAL_TIMEOUT_MS,
   runGit,
   safeGitMaterializationEnv,
+  safeGitRemoteArgs,
 } from "./git-lib.mjs";
 import {
   inspectCanonicalPathBoundary,
@@ -12,11 +13,6 @@ import {
 } from "./path-boundary-lib.mjs";
 
 export const GIT_CLONE_TIMEOUT_MS = 120_000;
-const MATERIALIZATION_GIT_CONFIG = [
-  "-c", "core.sshCommand=",
-  "-c", "core.hooksPath=",
-  "-c", "protocol.ext.allow=never",
-];
 
 // Explicit sync/update action for an active manifest slot whose checkout is
 // missing. Doctor remains read-only: it only reports missing_access. The
@@ -59,6 +55,17 @@ export async function materializeRepoCheckout({
       },
     );
     if (!source.ok || !source.stdout) return missingAccess();
+
+    // git clone accepts an existing empty directory. Claim the final target
+    // atomically after remote preflight so ordinary concurrent syncs cannot
+    // take over another process's declared manifest slot.
+    await mkdir(dirname(targetPath), { recursive: true });
+    try {
+      await mkdir(targetPath);
+    } catch (error) {
+      if (error?.code === "EEXIST") return targetExists();
+      return cloneFailure();
+    }
 
     const clone = await runMaterializationGit(
       run,
@@ -208,7 +215,7 @@ async function verifyClonedCheckout({ path, branch, remote, run }) {
 }
 
 function runMaterializationGit(run, args, options) {
-  return run([...MATERIALIZATION_GIT_CONFIG, ...args], {
+  return run(safeGitRemoteArgs(args), {
     ...options,
     env: safeGitMaterializationEnv(),
   });

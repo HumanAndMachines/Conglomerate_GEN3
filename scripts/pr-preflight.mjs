@@ -3,7 +3,9 @@ import {
   GIT_FETCH_TIMEOUT_MS,
   GIT_LOCAL_TIMEOUT_MS,
   runGit,
+  safeGitRemoteArgs,
   safeGitRemoteEnv,
+  safeGitRuntimeArgs,
 } from "../launchpad/src/git-lib.mjs";
 
 export async function runPrPreflight({
@@ -12,8 +14,8 @@ export async function runPrPreflight({
   gitRunner = runGit,
 } = {}) {
   const cwd = resolve(repoRoot);
-  const local = (args, timeoutMs = GIT_LOCAL_TIMEOUT_MS) => gitRunner(args, { cwd, timeoutMs });
-  const remote = (args) => gitRunner(args, {
+  const local = (args, timeoutMs = GIT_LOCAL_TIMEOUT_MS) => gitRunner(safeGitRuntimeArgs(args), { cwd, timeoutMs });
+  const remote = (args) => gitRunner(safeGitRemoteArgs(args), {
     cwd,
     timeoutMs: GIT_FETCH_TIMEOUT_MS,
     env: safeGitRemoteEnv(),
