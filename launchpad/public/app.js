@@ -115,6 +115,7 @@ const ACTIVE_POLL_INTERVAL_MS = 15_000;
 // Root update status dělá git fetch (síť); v quiet pollu se obnovuje nejvýš
 // jednou za tenhle interval, aby update indikace nezastarala na dobu session.
 const UPDATE_STATUS_REFRESH_INTERVAL_MS = 5 * 60_000;
+let lastUpdateStatusAt = 0;
 const mobilePanelQuery = window.matchMedia("(max-width: 900px)");
 const mobileTopbarQuery = window.matchMedia("(max-width: 900px)");
 const APP_ICON_STYLES = {
@@ -4068,8 +4069,6 @@ async function abortGitRebase({ git, label, pendingKey = `git-rebase-abort:${git
 // Update lane Conglomerate rootu (decision 0059, draft 0080) — oddělená od
 // per-repo org pullů; pill v top baru ukazuje kanál, verzi a akční stav a
 // globální banner dělá dostupný update nepřehlédnutelný ve všech scope.
-let lastUpdateStatusAt = 0;
-
 async function loadUpdateStatus() {
   lastUpdateStatusAt = Date.now();
   const payload = await fetchJsonSafe("/api/update/status");

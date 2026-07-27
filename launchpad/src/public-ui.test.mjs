@@ -989,6 +989,10 @@ test("CAC-0083: dostupný root update je nepřehlédnutelný — banner ve všec
   // čerstvý nejvýš UPDATE_STATUS_REFRESH_INTERVAL_MS starý.
   expect(js).toContain("const UPDATE_STATUS_REFRESH_INTERVAL_MS = 5 * 60_000");
   expect(js).toContain("Date.now() - lastUpdateStatusAt >= UPDATE_STATUS_REFRESH_INTERVAL_MS");
+  const updateStatusState = js.indexOf("let lastUpdateStatusAt = 0;");
+  const initialUpdateStatusLoad = js.indexOf("loadUpdateStatus();");
+  expect(updateStatusState).toBeGreaterThan(-1);
+  expect(updateStatusState).toBeLessThan(initialUpdateStatusLoad);
 
   expect(css).toContain(".update-banner");
   expect(css).toContain(".update-banner-action");
