@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import * as appState from "../public/app-state.js";
 import {
   appBaseTitle,
   appVersionLabel,
@@ -35,6 +36,144 @@ test("Launchpad selection follows the active Organization filter", () => {
 
 test("Launchpad selection becomes empty when no filtered app is visible", () => {
   expect(reconcileSelectedAppId(apps, baseFilters({ company: "MissingCo" }), "democo-app-1")).toBe(null);
+});
+
+test("side-panel response aplikuje stav jen pro nejnovější request aktivního scope", () => {
+  expect(appState.sidePanelResponseIsCurrent).toBeFunction();
+
+  const activeOrganization = {
+    requestedScope: "org",
+    requestedCompany: "OmegaCo",
+    activeScope: "org",
+    activeCompany: "OmegaCo",
+    requestRecoveryGeneration: 5,
+    currentRecoveryGeneration: 5,
+  };
+  expect(appState.sidePanelResponseIsCurrent({
+    ...activeOrganization,
+    requestId: 2,
+    latestRequestId: 2,
+  })).toBe(true);
+  expect(appState.sidePanelResponseIsCurrent({
+    ...activeOrganization,
+    requestId: 1,
+    latestRequestId: 2,
+  })).toBe(false);
+  expect(appState.sidePanelResponseIsCurrent({
+    ...activeOrganization,
+    requestId: 2,
+    latestRequestId: 2,
+    activeCompany: "BetaCo",
+  })).toBe(false);
+  expect(appState.sidePanelResponseIsCurrent({
+    ...activeOrganization,
+    requestId: 2,
+    latestRequestId: 2,
+    requestRecoveryGeneration: 4,
+  })).toBe(false);
+});
+
+test("Pull All success bez recovery invaliduje dříve zahájený Git panel", () => {
+  expect(appState.sidePanelResponseIsCurrent({
+    requestId: 11,
+    latestRequestId: 11,
+    requestedScope: "org",
+    requestedCompany: "OmegaCo",
+    activeScope: "org",
+    activeCompany: "OmegaCo",
+    requestRecoveryGeneration: 8,
+    currentRecoveryGeneration: 9,
+  })).toBe(false);
+});
+
+test("deferred Pull All response nemůže přepsat žádný panelový stav", () => {
+  expect(appState.applySidePanelResponse).toBeFunction();
+  const existingRecovery = new Map([["OmegaCo::deals", { canAbortRebase: true }]]);
+  const update = appState.applySidePanelResponse({
+    requestId: 11,
+    latestRequestId: 11,
+    requestedScope: "org",
+    requestedCompany: "OmegaCo",
+    activeScope: "org",
+    activeCompany: "OmegaCo",
+    requestRecoveryGeneration: 8,
+    currentRecoveryGeneration: 9,
+    recoveryByRepo: existingRecovery,
+    recentResponse: { recent_modules: [{ id: "historický-panel" }] },
+    mostUsedResponse: { cold_start: false, most_used: [{ id: "historický-panel" }] },
+    gitRepos: [{ key: "OmegaCo::deals", operation: null }],
+    gitReposByModule: new Map([["OmegaCo::deals", { status: "historický" }]]),
+  });
+  expect(update).toBeNull();
+  expect(existingRecovery.get("OmegaCo::deals")).toEqual({ canAbortRebase: true });
+});
+
+test("Git panel snapshot nemaže recovery vytvořenou po startu requestu", () => {
+  const freshRecovery = { message: "právě selhalý pull", canAbortRebase: true };
+  const currentRecoveryByRepo = new Map([["OmegaCo::deals", freshRecovery]]);
+  const responseIdentity = {
+    requestId: 7,
+    latestRequestId: 7,
+    requestedScope: "org",
+    requestedCompany: "OmegaCo",
+    activeScope: "org",
+    activeCompany: "OmegaCo",
+  };
+  expect(appState.sidePanelResponseIsCurrent({
+    ...responseIdentity,
+    requestRecoveryGeneration: 4,
+    currentRecoveryGeneration: 5,
+  })).toBe(false);
+  expect(currentRecoveryByRepo.get("OmegaCo::deals")).toBe(freshRecovery);
+
+  const staleRecoveryByRepo = new Map([["OmegaCo::deals", freshRecovery]]);
+  expect(appState.sidePanelResponseIsCurrent({
+    ...responseIdentity,
+    requestRecoveryGeneration: 5,
+    currentRecoveryGeneration: 5,
+  })).toBe(true);
+  const currentPanelResult = appState.reconcileGitRecoveryByRepo(
+    staleRecoveryByRepo,
+    [{ key: "OmegaCo::deals", operation: null }],
+  );
+  expect(currentPanelResult).not.toBe(staleRecoveryByRepo);
+  expect(currentPanelResult.has("OmegaCo::deals")).toBe(false);
+});
+
+test("rebase abort akce vychází výhradně z live Git operation", () => {
+  expect(appState.canAbortGitRebase).toBeFunction();
+  expect(appState.canAbortGitRebase({ operation: { kind: "rebase", can_abort_rebase: true } })).toBe(true);
+  expect(appState.canAbortGitRebase({ operation: { kind: "am", can_abort_rebase: false } })).toBe(false);
+  expect(appState.canAbortGitRebase({ operation: null })).toBe(false);
+  expect(appState.canAbortGitRebase(null)).toBe(false);
+});
+
+test("fresh Git status zahodí jen stale rebase recovery stejného repa", () => {
+  expect(appState.reconcileGitRecoveryByRepo).toBeFunction();
+
+  const staleRebase = { message: "stará rebase", canAbortRebase: true };
+  const liveRebase = { message: "stále běží", canAbortRebase: true };
+  const otherFailure = { message: "source identity", canAbortRebase: false };
+  const outsideCurrentScope = { message: "jiný scope", canAbortRebase: true };
+  const before = new Map([
+    ["OmegaCo::deals", staleRebase],
+    ["OmegaCo::billing", liveRebase],
+    ["OmegaCo::crm", otherFailure],
+    ["BetaCo::deals", outsideCurrentScope],
+  ]);
+
+  const after = appState.reconcileGitRecoveryByRepo(before, [
+    { key: "OmegaCo::deals", operation: null },
+    { key: "OmegaCo::billing", operation: { kind: "rebase", can_abort_rebase: true } },
+    { key: "OmegaCo::crm", operation: null },
+  ]);
+
+  expect(after).not.toBe(before);
+  expect(after.has("OmegaCo::deals")).toBe(false);
+  expect(after.get("OmegaCo::billing")).toBe(liveRebase);
+  expect(after.get("OmegaCo::crm")).toBe(otherFailure);
+  expect(after.get("BetaCo::deals")).toBe(outsideCurrentScope);
+  expect(before.get("OmegaCo::deals")).toBe(staleRebase);
 });
 
 test("partial-failure Personalspace odpověď odstraní revokovaný prostor i soukromá Buddy data", () => {

@@ -62,7 +62,8 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(js).toContain("function visibleMostUsed");
   expect(js).toContain('?company=${encodeURIComponent(requestedCompany)}');
   expect(js).toContain("const requestedCompany = state.filters.company");
-  expect(js).toContain('state.filters.company !== requestedCompany) return');
+  expect(js).toContain("applySidePanelResponse({");
+  expect(js).toContain("activeCompany: state.filters.company,");
   expect(js).toContain("return filtered(state.apps)");
   expect(js).toContain("--space-logo-hue");
   expect(js).toContain("space.organization.logo_url");
@@ -531,6 +532,58 @@ test("CAC-0044: step-005 aktivuje Ukázat změny a guarded Stáhnout novější 
   expect(css).toContain(".toast.is-success");
   expect(css).toContain(".toast.is-error");
   expect(css).toContain(".card-warning-message");
+});
+
+test("Launchpad ignoruje opožděný Git panel a stav rebase bere jen z live operation", async () => {
+  const js = await readFile(join(publicRoot, "app.js"), "utf8");
+  const imports = js.slice(0, js.indexOf("const state"));
+  const sidePanels = js.slice(
+    js.indexOf("async function loadSidePanels"),
+    js.indexOf("function indexGitReposByModule"),
+  );
+  const warningModel = js.slice(
+    js.indexOf("function cardWarningModel"),
+    js.indexOf("function cardWarningNode"),
+  );
+  const gitActions = js.slice(
+    js.indexOf("async function pullGitRepository"),
+    js.indexOf("// Update lane Conglomerate rootu"),
+  );
+  const pullAll = js.slice(
+    js.indexOf("async function pullAllRepositories"),
+    js.indexOf("function selectedRuntimeSourceForApp"),
+  );
+
+  expect(imports).toContain("applySidePanelResponse");
+  expect(imports).toContain("canAbortGitRebase");
+  expect(js).toContain("let sidePanelRequestGeneration = 0;");
+  expect(js).toContain("let gitRecoveryGeneration = 0;");
+  expect(js).toContain("function setGitRecovery");
+  expect(js).toContain("function clearGitRecovery");
+  expect(sidePanels).toContain("const requestId = ++sidePanelRequestGeneration;");
+  expect(sidePanels).toContain("const recoveryGeneration = gitRecoveryGeneration;");
+  expect(sidePanels).toContain("const panelUpdate = applySidePanelResponse({");
+  expect(sidePanels).toContain("requestId,");
+  expect(sidePanels).toContain("latestRequestId: sidePanelRequestGeneration,");
+  expect(sidePanels).toContain("requestRecoveryGeneration: recoveryGeneration,");
+  expect(sidePanels).toContain("currentRecoveryGeneration: gitRecoveryGeneration,");
+  expect(sidePanels).toContain("gitReposByModule: indexGitReposByModule(git?.repos ?? []),");
+  expect(sidePanels).toContain("if (!panelUpdate) return;");
+  expect(sidePanels).toContain("Object.assign(state, panelUpdate);");
+  expect(gitActions).toContain("clearGitRecovery(git.key);");
+  expect(gitActions).toContain("setGitRecovery(git.key, {");
+  expect(js).toContain("function invalidateGitPanelSnapshots");
+  expect(pullAll).toContain("invalidateGitPanelSnapshots();");
+  expect(pullAll.indexOf("invalidateGitPanelSnapshots();")).toBeLessThan(
+    pullAll.indexOf("await loadData({ quiet: true });"),
+  );
+  const recoveryHelpers = js.slice(
+    js.indexOf("function setGitRecovery"),
+    js.indexOf("// Najde git repo pro daný app/modul"),
+  );
+  expect(recoveryHelpers).toContain("state.gitRecoveryByRepo.delete(repoKey);\n  invalidateGitPanelSnapshots();");
+  expect(warningModel).toContain("const canAbortRebase = canAbortGitRebase(gitRepo);");
+  expect(warningModel).not.toContain("recovery?.canAbortRebase");
 });
 
 test("Launchpad nabízí Organization root stav, autostash pull a jeden globální Pullnout vše", async () => {
