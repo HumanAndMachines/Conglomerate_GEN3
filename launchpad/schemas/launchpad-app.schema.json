@@ -21,7 +21,8 @@
     },
     "id": {
       "type": "string",
-      "pattern": "^[a-z0-9][a-z0-9-]*$"
+      "description": "Stable app identity. New manifests should use lowercase; proper-case legacy Organization prefixes remain accepted for incremental GEN3 compatibility.",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*$"
     },
     "title": {
       "type": "string",
