@@ -1,9 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { chmod, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { initGitRepo, runGit } from "../launchpad/src/git-fixture-helpers.test.mjs";
 
 const tempRoots = [];
 const scriptPath = fileURLToPath(new URL("./gen2-gen3-sync-inventory.mjs", import.meta.url));
@@ -67,6 +69,32 @@ test("inventory is explicit-path based and labels shared-root extraction candida
     extraction: "do-not-promote",
   });
   expect(entries.has("company/team/person/AGENTS.md")).toBe(false);
+});
+
+test.if(process.platform !== "win32")("inventory never executes checkout-local fsmonitor in either explicit input", async () => {
+  const root = await mkdtemp(join(tmpdir(), "gen2-gen3-inventory-fsmonitor-"));
+  tempRoots.push(root);
+  const gen2 = join(root, "source-gen2");
+  const gen3 = join(root, "target-gen3");
+  await initGitRepo(gen2);
+  await initGitRepo(gen3);
+  const markers = [];
+
+  for (const [label, checkout] of [["gen2", gen2], ["gen3", gen3]]) {
+    const marker = join(root, `${label}-fsmonitor-ran`);
+    const helper = join(checkout, ".git", `${label}-fsmonitor-marker.sh`);
+    await writeFile(helper, `#!/bin/sh\nprintf ${label} > ${JSON.stringify(marker)}\nexit 0\n`);
+    await chmod(helper, 0o755);
+    runGit(["config", "core.fsmonitor", helper], checkout);
+    markers.push(marker);
+  }
+
+  const result = spawnSync(process.execPath, [scriptPath, "--gen2", gen2, "--gen3", gen3, "--json"], {
+    encoding: "utf8",
+  });
+
+  expect(result.status).toBe(0);
+  for (const marker of markers) expect(existsSync(marker)).toBe(false);
 });
 
 test("inventory refuses implicit built-in organization pairs", () => {

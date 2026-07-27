@@ -9,6 +9,7 @@ import {
   GIT_LOCAL_TIMEOUT_MS,
   resolveGitExecutableSync,
   safeGitCommandEnv,
+  safeGitRuntimeArgs,
 } from '../launchpad/src/git-lib.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -155,7 +156,7 @@ function gitInfo(root) {
   const run = (args) => {
     if (!gitExecutable) return null;
     try {
-      return execFileSync(gitExecutable, args, {
+      return execFileSync(gitExecutable, safeGitRuntimeArgs(args), {
         cwd: root,
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
