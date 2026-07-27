@@ -56,6 +56,54 @@ test("launch reuses only a same-root instance and opens it", async () => {
   ]);
 });
 
+test("agent serve reuses a same-root instance without opening a system browser", async () => {
+  const calls = [];
+  const result = await startLaunchpadWithPortPolicy({
+    requestedPort: 4174,
+    explicitPort: false,
+    shouldOpen: false,
+    shouldReuse: true,
+    startServer() {
+      throw addressInUse();
+    },
+    isRunningExpectedLaunchpad: async (url) => {
+      calls.push(["probe", url]);
+      return true;
+    },
+    openExisting: async (url) => calls.push(["open", url]),
+  });
+
+  expect(result).toEqual({ mode: "reused", url: "http://127.0.0.1:4174" });
+  expect(calls).toEqual([["probe", "http://127.0.0.1:4174"]]);
+});
+
+test("agent serve reuses a same-root instance on a fallback port", async () => {
+  const attempts = [];
+  const calls = [];
+  const result = await startLaunchpadWithPortPolicy({
+    requestedPort: 4174,
+    explicitPort: false,
+    shouldOpen: false,
+    shouldReuse: true,
+    startServer(port) {
+      attempts.push(port);
+      throw addressInUse();
+    },
+    isRunningExpectedLaunchpad: async (url) => {
+      calls.push(["probe", url]);
+      return url === "http://127.0.0.1:4175";
+    },
+    openExisting: async (url) => calls.push(["open", url]),
+  });
+
+  expect(result).toEqual({ mode: "reused", url: "http://127.0.0.1:4175" });
+  expect(attempts).toEqual([4174, 4175]);
+  expect(calls).toEqual([
+    ["probe", "http://127.0.0.1:4174"],
+    ["probe", "http://127.0.0.1:4175"],
+  ]);
+});
+
 test("launch falls forward when the requested implicit port belongs to a foreign root", async () => {
   const attempts = [];
   const calls = [];

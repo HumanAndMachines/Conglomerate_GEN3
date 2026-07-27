@@ -12,6 +12,7 @@
     "dev": "bun src/server.mjs",
     "discover": "bun src/discover-apps.mjs --allow-missing-organizations",
     "launch": "bun src/server.mjs --open",
+    "serve": "bun src/server.mjs --reuse",
     "test": "bun src/run-tests.mjs"
   }
 }

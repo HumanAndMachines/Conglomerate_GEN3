@@ -89,12 +89,14 @@ const startResult = await startLaunchpadWithPortPolicy({
   host,
   explicitPort,
   shouldOpen: Boolean(options.open),
+  shouldReuse: Boolean(options.open || options.reuse),
   startServer,
   isRunningExpectedLaunchpad: (url) => isRunningLaunchpad(url, launchpadRootId),
   openExisting: openBrowser,
 });
 if (startResult.mode === "reused") {
-  console.log(`Launchpad GEN3 už běží na ${startResult.url}; otevírám existující instanci.`);
+  const action = options.open ? "otevírám existující instanci" : "používám existující instanci bez otevření systémového browseru";
+  console.log(`Launchpad GEN3 už běží na ${startResult.url}; ${action}.`);
   process.exit(0);
 }
 const server = startResult.server;
@@ -370,6 +372,10 @@ function parseArgs(args) {
     const arg = args[index];
     if (arg === "--open") {
       parsed.open = true;
+      continue;
+    }
+    if (arg === "--reuse") {
+      parsed.reuse = true;
       continue;
     }
     if (arg.startsWith("--port=")) {

@@ -9,6 +9,7 @@
     "doctor:json": "bun run --cwd launchpad doctor:json",
     "update": "bun run --cwd launchpad update",
     "launchpad": "bun run --cwd launchpad launch",
+    "launchpad:serve": "bun run --cwd launchpad serve",
     "launchpad:dev": "bun run --cwd launchpad dev",
     "personalspace:create": "bun scripts/create-personalspace.mjs",
     "personalspace:test": "bun test scripts/create-personalspace.test.mjs",
