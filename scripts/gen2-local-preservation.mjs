@@ -22,6 +22,7 @@ import { constants as fsConstants } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { safeGitCommandEnv, safeGitRuntimeArgs } from "../launchpad/src/git-lib.mjs";
 
 const EVIDENCE_DIR = ".gen2-preservation";
 const INCOMPLETE_FILE = "INCOMPLETE.json";
@@ -112,13 +113,18 @@ async function assertDirectory(path, message) {
 }
 
 async function run(command, args, { cwd, allowFailure = false } = {}) {
-  return await new Promise((resolveRun, rejectRun) => {
-    const child = spawn(command, args, {
-      cwd,
-      env: {
+  const isGit = command === "git";
+  const commandArgs = isGit ? safeGitRuntimeArgs(args) : args;
+  const commandEnv = isGit
+    ? safeGitCommandEnv()
+    : {
         ...process.env,
         GIT_TERMINAL_PROMPT: "0",
-      },
+      };
+  return await new Promise((resolveRun, rejectRun) => {
+    const child = spawn(command, commandArgs, {
+      cwd,
+      env: commandEnv,
       stdio: ["ignore", "pipe", "pipe"],
     });
     const stdout = [];

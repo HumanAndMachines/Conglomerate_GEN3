@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { once } from "node:events";
 import {
   chmod,
@@ -177,6 +178,22 @@ describe("metadata-only inventory", () => {
       expect(`${result.stdout}\n${result.stderr}`).not.toContain(marker);
     }
     expect(await readFile(join(source, ".ignored-secret"), "utf8")).toBe(before);
+  });
+
+  test.skipIf(process.platform === "win32")("inventory never executes checkout-local core.fsmonitor", async () => {
+    const root = await makeTempRoot();
+    const source = join(root, "source");
+    await makeGitRepo(source);
+    const marker = join(root, "fsmonitor-ran");
+    const helper = join(source, ".git", "fsmonitor-marker.sh");
+    await writeFile(helper, `#!/bin/sh\nprintf marker > ${JSON.stringify(marker)}\nexit 0\n`);
+    await chmod(helper, 0o755);
+    run("git", ["config", "core.fsmonitor", helper], source);
+
+    const result = cli(["inventory", "--source", source]);
+
+    expect(result.status).toBe(0);
+    expect(existsSync(marker)).toBe(false);
   });
 });
 

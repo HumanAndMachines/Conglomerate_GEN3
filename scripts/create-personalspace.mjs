@@ -2,6 +2,7 @@ import { existsSync } from "fs";
 import { readFile } from "fs/promises";
 import { join, resolve } from "path";
 import { spawnSync } from "child_process";
+import { safeGitCommandEnv, safeGitRuntimeArgs } from "../launchpad/src/git-lib.mjs";
 
 export const PERSONALSPACE_TEMPLATE = "HumanAndMachines/PersonalspaceTemplate_GEN3";
 export const PERSONALSPACE_TEMPLATE_VERSION = "humanandmachines.personalspace-template.v1";
@@ -88,8 +89,10 @@ Bez --apply proběhne pouze read-only GitHub a lokální preflight.`);
 }
 
 function run(command, args, { cwd, allowFailure = false, inherit = false } = {}) {
-  const result = spawnSync(command, args, {
+  const isGit = command === "git";
+  const result = spawnSync(command, isGit ? safeGitRuntimeArgs(args) : args, {
     cwd,
+    env: isGit ? safeGitCommandEnv() : process.env,
     shell: false,
     encoding: "utf8",
     stdio: inherit ? "inherit" : ["ignore", "pipe", "pipe"],

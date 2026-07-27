@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,6 +9,7 @@ import {
   repairAgentSkillsMirror,
   trustedGitCandidates,
   trustedGitExecutable,
+  validateGitContract,
 } from "./agent-skills-entrypoint.mjs";
 
 const tempRoots = [];
@@ -41,6 +43,23 @@ async function rootFixture(name, { slugs = ["example-skill"] } = {}) {
   );
   return root;
 }
+
+test.skipIf(process.platform === "win32")("Git contract never executes checkout-local core.fsmonitor", async () => {
+  const root = await rootFixture("fsmonitor");
+  git(root, ["config", "user.name", "Agent Skills Test"]);
+  git(root, ["config", "user.email", "agent-skills@example.invalid"]);
+  git(root, ["add", "."]);
+  git(root, ["commit", "-qm", "fixture"]);
+
+  const marker = join(root, "fsmonitor-ran");
+  const helper = join(root, ".git", "fsmonitor-marker.sh");
+  await writeFile(helper, `#!/bin/sh\nprintf marker > ${JSON.stringify(marker)}\nexit 0\n`);
+  await chmod(helper, 0o755);
+  git(root, ["config", "core.fsmonitor", helper]);
+
+  expect(validateGitContract(root, [])).toEqual([]);
+  expect(existsSync(marker)).toBe(false);
+});
 
 test("čerstvý checkout: check hlásí mirror_missing a repair mirror materializuje byte-for-byte", async () => {
   const root = await rootFixture("fresh");
