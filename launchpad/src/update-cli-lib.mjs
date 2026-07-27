@@ -1,6 +1,7 @@
 import { basename } from "path";
 import { builderPullScopeAllowed } from "./git-api-lib.mjs";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
+import { materializeRepoCheckout } from "./git-materialization-lib.mjs";
 import {
   pullRepoFastForward,
   pullRepoWithAutostash,
@@ -24,7 +25,9 @@ diverged nebo ahead stavy fail-closed ohlásí a nechá beze změny.
 
 Volby:
   --org <slug>   Aktualizuj i Organizaci (root repo + workspace moduly).
-                 Lze opakovat; přijímá company slug i název mount složky.
+                 Po rootu znovu načte manifest a dostupné chybějící moduly
+                 bezpečně naklonuje. Lze opakovat; přijímá company slug i
+                 název mount složky.
   --all-orgs     Aktualizuj všechny namountované Organizace.
   --check        Jen zjisti a vypiš stav; nic nestahuj.
   --preserve     Povol autostash variantu (odlož a obnov lokální změny) pro
@@ -91,6 +94,7 @@ export async function runUpdateLane({ rootPath, options, deps = {} } = {}) {
     readRepoStatus = readGitRepoStatus,
     pullFastForward = pullRepoFastForward,
     pullWithAutostash = pullRepoWithAutostash,
+    materializeRepo = materializeRepoCheckout,
   } = deps;
 
   const root = options.check
@@ -102,37 +106,42 @@ export async function runUpdateLane({ rootPath, options, deps = {} } = {}) {
   let organizations = [];
   let selectorErrors = [];
   if (options.allOrgs || options.orgs.length > 0) {
-    const inventory = await buildInventory({ companiesRoot: rootPath });
-    let repos = inventory.repos;
-    if (!options.allOrgs) {
-      const known = new Set();
-      repos = [];
-      for (const selector of options.orgs) {
-        const matched = inventory.repos.filter((repo) => matchOrganizationSelector(repo, selector));
-        if (matched.length === 0) {
-          selectorErrors.push(
-            `Organizace ${JSON.stringify(selector)} není v git inventáři. Dostupné: ${
-              [...new Set(inventory.repos.map((repo) => repo.organization))].sort().join(", ") || "žádné"
-            }.`,
-          );
-          continue;
-        }
-        for (const repo of matched) {
-          if (!known.has(repo.key)) {
-            known.add(repo.key);
-            repos.push(repo);
-          }
-        }
-      }
-    }
-    organizations = await mapWithConcurrency(repos, GIT_REMOTE_REFRESH_CONCURRENCY, (repo) =>
+    const initialInventory = await buildInventory({ companiesRoot: rootPath });
+    const selected = selectOrganizations(initialInventory, options);
+    selectorErrors = selected.errors;
+    const rootRepos = initialInventory.repos.filter(
+      (repo) => selected.organizations.has(repo.organization) && repo.repo_kind === "organization_root",
+    );
+    const rootResults = await mapWithConcurrency(rootRepos, GIT_REMOTE_REFRESH_CONCURRENCY, (repo) =>
       updateOrganizationRepo({
+        companiesRoot: rootPath,
         repo,
         options,
         readRepoStatus,
         pullFastForward,
         pullWithAutostash,
+        materializeRepo,
       }));
+    // Po mutačním root pullu načti modules.manifest.json znovu. Nový modul
+    // deklarovaný právě staženým commitem se tak materializuje ve stejném
+    // update běhu a ne až při druhém spuštění.
+    const refreshedInventory = options.check
+      ? initialInventory
+      : await buildInventory({ companiesRoot: rootPath });
+    const nestedRepos = refreshedInventory.repos.filter(
+      (repo) => selected.organizations.has(repo.organization) && repo.repo_kind !== "organization_root",
+    );
+    const nestedResults = await mapWithConcurrency(nestedRepos, GIT_REMOTE_REFRESH_CONCURRENCY, (repo) =>
+      updateOrganizationRepo({
+        companiesRoot: rootPath,
+        repo,
+        options,
+        readRepoStatus,
+        pullFastForward,
+        pullWithAutostash,
+        materializeRepo,
+      }));
+    organizations = [...rootResults, ...nestedResults];
   }
 
   const attention = [
@@ -153,7 +162,15 @@ export async function runUpdateLane({ rootPath, options, deps = {} } = {}) {
 
 const ORG_ATTENTION_OUTCOMES = new Set(["blocked_dirty", "conflict", "failed"]);
 
-async function updateOrganizationRepo({ repo, options, readRepoStatus, pullFastForward, pullWithAutostash }) {
+async function updateOrganizationRepo({
+  companiesRoot,
+  repo,
+  options,
+  readRepoStatus,
+  pullFastForward,
+  pullWithAutostash,
+  materializeRepo,
+}) {
   const identity = {
     repo_key: repo.key,
     organization: repo.organization,
@@ -171,6 +188,29 @@ async function updateOrganizationRepo({ repo, options, readRepoStatus, pullFastF
 
   const preflight = await readRepoStatus(repo, { refresh: true });
   const counts = preflight.counts ?? {};
+  if (preflight.status === "repo_missing" && repo.repo_kind !== "organization_root") {
+    if (options.check) {
+      return {
+        ...identity,
+        outcome: "materialization_available",
+        message: "Manifest deklaruje dostupný modul bez lokálního checkoutu; update se ho pokusí bezpečně naklonovat.",
+      };
+    }
+    const materialization = await materializeRepo({ companiesRoot, repo });
+    return {
+      ...identity,
+      outcome: materialization.ok
+        ? "materialized"
+        : materialization.outcome === "missing_access"
+          ? "missing_access"
+          : materialization.outcome === "target_exists"
+            ? "skipped"
+            : "failed",
+      message: materialization.message,
+      branch: materialization.branch ?? null,
+      head: materialization.head ?? null,
+    };
+  }
   if (preflight.status === "up_to_date") {
     return { ...identity, outcome: "up_to_date", message: "Repo už je aktuální." };
   }
@@ -295,9 +335,11 @@ function buildSummary({ root, organizations, selectorErrors }) {
     root_updated: Boolean(root.updated),
     org_repo_count: organizations.length,
     org_updated_count: count("pulled") + count("autostash_pulled"),
-    org_update_available_count: count("update_available"),
+    org_materialized_count: count("materialized"),
+    org_missing_access_count: count("missing_access"),
+    org_update_available_count: count("update_available") + count("materialization_available"),
     org_up_to_date_count: count("up_to_date"),
-    org_skipped_count: count("skipped") + count("policy_skipped"),
+    org_skipped_count: count("skipped") + count("policy_skipped") + count("missing_access"),
     org_blocked_count: count("blocked_dirty") + count("conflict") + count("failed") + selectorErrors.length,
   };
 }
@@ -337,7 +379,8 @@ export function formatUpdateLaneReport(result) {
   if (summary.org_repo_count > 0) {
     lines.push(
       `Souhrn Organizací: ${summary.org_updated_count} aktualizováno, ${summary.org_up_to_date_count} aktuálních, `
-      + `${summary.org_update_available_count} ke stažení, ${summary.org_skipped_count} přeskočeno, `
+      + `${summary.org_materialized_count} nově naklonováno, ${summary.org_update_available_count} ke stažení/klonování, `
+      + `${summary.org_skipped_count} přeskočeno (${summary.org_missing_access_count} bez přístupu), `
       + `${summary.org_blocked_count} vyžaduje pozornost.`,
     );
   }
@@ -349,4 +392,22 @@ export function formatUpdateLaneReport(result) {
 
 function shortSha(value) {
   return typeof value === "string" && value.length >= 7 ? value.slice(0, 7) : String(value ?? "?");
+}
+
+function selectOrganizations(inventory, options) {
+  const available = [...new Set(inventory.repos.map((repo) => repo.organization))].sort();
+  if (options.allOrgs) return { organizations: new Set(available), errors: [] };
+  const organizations = new Set();
+  const errors = [];
+  for (const selector of options.orgs) {
+    const matched = inventory.repos.filter((repo) => matchOrganizationSelector(repo, selector));
+    if (matched.length === 0) {
+      errors.push(
+        `Organizace ${JSON.stringify(selector)} není v git inventáři. Dostupné: ${available.join(", ") || "žádné"}.`,
+      );
+      continue;
+    }
+    for (const repo of matched) organizations.add(repo.organization);
+  }
+  return { organizations, errors };
 }

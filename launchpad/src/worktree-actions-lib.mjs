@@ -2,11 +2,22 @@ import { existsSync } from "fs";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { basename, dirname, join, posix, relative } from "path";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
-import { GIT_LOCAL_TIMEOUT_MS, runGit, safeGitRemoteEnv } from "./git-lib.mjs";
+import { GIT_LOCAL_TIMEOUT_MS, runGit as runBareGit, safeGitRemoteArgs, safeGitRemoteEnv, safeGitRuntimeArgs } from "./git-lib.mjs";
 import { readGitRepoStatus } from "./git-status-lib.mjs";
 import { isMissionControlPlanPath, readMissionControlPlanAt } from "./mission-control-plan-lib.mjs";
 import { inspectCanonicalPathBoundary } from "./path-boundary-lib.mjs";
 import { buildWorktreeIndex } from "./worktree-lib.mjs";
+
+function runGit(args, options) {
+  return runBareGit(safeGitRuntimeArgs(args), options);
+}
+
+function runRemoteGit(args, options = {}) {
+  return runBareGit(safeGitRemoteArgs(args), {
+    ...options,
+    env: { ...options.env, ...safeGitRemoteEnv() },
+  });
+}
 
 export class WorktreeActionError extends Error {
   constructor(message, { status = 500, code = "worktree_action_error", details = [] } = {}) {
@@ -191,10 +202,9 @@ export async function publishWorktreeDraft({
   const head = await runGit(["log", "-1", "--format=%H%x00%s"], { cwd: absoluteWorktreePath, timeoutMs: GIT_LOCAL_TIMEOUT_MS });
   if (!head.ok) throwGitPublishError("git_head_failed", head);
   const [sha, subject] = head.stdout.split("\0");
-  const push = await runGit(["push", "-u", "origin", worktree.branch], {
+  const push = await runRemoteGit(["push", "-u", "origin", worktree.branch], {
     cwd: absoluteWorktreePath,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
-    env: safeGitRemoteEnv(),
   });
   if (!push.ok) throwGitPublishError("git_push_failed", push);
 

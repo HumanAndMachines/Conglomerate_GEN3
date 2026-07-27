@@ -10,6 +10,7 @@ import {
   GIT_LOCAL_TIMEOUT_MS,
   resolveGitExecutableSync,
   safeGitCommandEnv,
+  safeGitRuntimeArgs,
 } from "./git-lib.mjs";
 import { agentSkillsEntrypointsDoctorCheck } from "./agent-skills-entrypoint-lib.mjs";
 import {
@@ -1547,7 +1548,7 @@ function runGit(args, cwd) {
       error: "Git executable was not found or failed validation.",
     };
   }
-  return runCommand(executable, args, { cwd, env: safeGitCommandEnv() });
+  return runCommand(executable, safeGitRuntimeArgs(args), { cwd, env: safeGitCommandEnv() });
 }
 
 function runCommand(command, args, { cwd, env } = {}) {

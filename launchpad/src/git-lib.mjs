@@ -22,11 +22,10 @@ export async function resolveGitExecutable(options = {}) {
 async function resolveGitExecutableUncached({
   platform = process.platform,
   env = processEnv(),
-  which = defaultWhich,
   pathExists = existsSync,
   probe = probeGitExecutable,
 } = {}) {
-  for (const candidate of orderedGitExecutableCandidates({ platform, env, which, pathExists })) {
+  for (const candidate of orderedGitExecutableCandidates({ platform, env, pathExists })) {
     if (await probe(candidate)) return candidate;
   }
   return null;
@@ -47,11 +46,10 @@ export function resolveGitExecutableSync(options = {}) {
 function resolveGitExecutableSyncUncached({
   platform = process.platform,
   env = processEnv(),
-  which = defaultWhich,
   pathExists = existsSync,
   probe = probeGitExecutableSync,
 } = {}) {
-  for (const candidate of orderedGitExecutableCandidates({ platform, env, which, pathExists })) {
+  for (const candidate of orderedGitExecutableCandidates({ platform, env, pathExists })) {
     if (probe(candidate)) return candidate;
   }
   return null;
@@ -81,15 +79,22 @@ export function safeGitRemoteEnv(platform = process.platform) {
   const common = {
     GIT_TERMINAL_PROMPT: "0",
     GCM_INTERACTIVE: "never",
+    NO_PROXY: "*",
+    no_proxy: "*",
     SSH_ASKPASS_REQUIRE: "never",
     // Launchpad spouští Git nad explicitním cwd. Kontext zděděný například
     // z hooku nesmí přesměrovat child proces do jiného repozitáře.
     GIT_ALTERNATE_OBJECT_DIRECTORIES: undefined,
     GIT_COMMON_DIR: undefined,
     GIT_DIR: undefined,
+    GIT_EXEC_PATH: undefined,
     GIT_INDEX_FILE: undefined,
     GIT_OBJECT_DIRECTORY: undefined,
     GIT_PREFIX: undefined,
+    GIT_PROXY_COMMAND: undefined,
+    GIT_SSH: undefined,
+    GIT_SSH_COMMAND: undefined,
+    GIT_SSH_VARIANT: undefined,
     GIT_WORK_TREE: undefined,
   };
   if (platform === "win32") {
@@ -112,8 +117,57 @@ export function safeGitCommandEnv(platform = process.platform, base = processEnv
   return commandEnvironment(base, safeGitRemoteEnv(platform));
 }
 
+// Checkout-local .git/config is input, not executable policy. These command
+// line overrides protect every local Git operation before it reads a hook or
+// file-monitor path selected by that checkout.
+export function safeGitRuntimeArgs(args, platform = process.platform) {
+  const hooksPath = platform === "win32" ? "NUL" : "/dev/null";
+  return [
+    "-c", `core.hooksPath=${hooksPath}`,
+    "-c", "core.fsmonitor=false",
+    "-c", "core.useBuiltinFSMonitor=false",
+    ...args,
+  ];
+}
+
+// Remote commands add transport guards. core.gitProxy is multi-valued and a
+// command-line empty value cannot override a checkout-local generic proxy;
+// deny git:// before Git reaches that proxy instead.
+export function safeGitRemoteArgs(args, platform = process.platform) {
+  return [
+    "-c", "core.sshCommand=",
+    "-c", "core.askPass=",
+    "-c", "credential.helper=",
+    "-c", "credential.interactive=false",
+    "-c", "http.proxy=",
+    "-c", "protocol.git.allow=never",
+    "-c", "protocol.ext.allow=never",
+    ...safeGitRuntimeArgs(args, platform),
+  ];
+}
+
+// Manifest materialization consumes configuration-controlled remote data and
+// must not read any user, global or system Git configuration.
+export function safeGitMaterializationEnv(platform = process.platform, base = processEnv()) {
+  const overrides = {
+    ...safeGitRemoteEnv(platform),
+    GIT_CONFIG_GLOBAL: "",
+    GIT_CONFIG_NOSYSTEM: "1",
+  };
+  const environment = commandEnvironment(base, overrides);
+  // runCommand() merges this environment with the live process environment.
+  // Preserve explicit removals so a second merge cannot resurrect GIT_SSH*,
+  // stale repository context or askpass helpers from the parent process.
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value === undefined || value === null) environment[key] = undefined;
+  }
+  return environment;
+}
+
 export function gitExecutableCandidates({ platform = process.platform, env = processEnv() } = {}) {
-  if (platform !== "win32") return [];
+  if (platform !== "win32") {
+    return ["/usr/bin/git", "/opt/homebrew/bin/git", "/usr/local/bin/git", "/bin/git"];
+  }
   const roots = [
     env.ProgramW6432,
     env.ProgramFiles,
@@ -129,7 +183,11 @@ export function gitExecutableCandidates({ platform = process.platform, env = pro
   if (env.LOCALAPPDATA) {
     candidates.push(win32.join(env.LOCALAPPDATA, "Programs", "Git", "cmd", "git.exe"));
   }
-  return [...new Set(candidates)];
+  return [...new Set(candidates.filter(isDriveQualifiedWindowsPath))];
+}
+
+function isDriveQualifiedWindowsPath(candidate) {
+  return /^[A-Za-z]:\\/.test(candidate);
 }
 
 export function resetGitExecutableCacheForTests() {
@@ -231,10 +289,7 @@ function commandEnvironment(base, overrides) {
       if (existingKey.toUpperCase() === normalizedKey) delete merged[existingKey];
     }
     if (unsafeAmbientGitEnvironmentKey(key)) {
-      const safePosixAskpass =
-        ["GIT_ASKPASS", "SSH_ASKPASS"].includes(normalizedKey) &&
-        value === "/bin/false";
-      if (safePosixAskpass) merged[normalizedKey] = value;
+      if (safeAmbientGitOverride(normalizedKey, value)) merged[normalizedKey] = value;
       continue;
     }
     if (value !== undefined && value !== null) merged[key] = value;
@@ -242,11 +297,19 @@ function commandEnvironment(base, overrides) {
   return merged;
 }
 
+function safeAmbientGitOverride(key, value) {
+  if (["GIT_ASKPASS", "SSH_ASKPASS"].includes(key)) return value === "/bin/false";
+  if (key === "GIT_CONFIG_NOSYSTEM") return value === "1";
+  if (key === "GIT_CONFIG_GLOBAL") return value === "";
+  return false;
+}
+
 function unsafeAmbientGitEnvironmentKey(key) {
   const normalizedKey = key.toUpperCase();
   return (
     [
       "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+      "GIT_ALLOW_PROTOCOL",
       "GIT_ASKPASS",
       "GIT_CEILING_DIRECTORIES",
       "GIT_COMMON_DIR",
@@ -263,6 +326,7 @@ function unsafeAmbientGitEnvironmentKey(key) {
       "GIT_NO_REPLACE_OBJECTS",
       "GIT_OBJECT_DIRECTORY",
       "GIT_PREFIX",
+      "GIT_PROTOCOL_FROM_USER",
       "GIT_REPLACE_REF_BASE",
       "GIT_SHALLOW_FILE",
       "GIT_WORK_TREE",
@@ -274,24 +338,9 @@ function unsafeAmbientGitEnvironmentKey(key) {
   );
 }
 
-function defaultWhich(command) {
-  try {
-    return typeof Bun.which === "function" ? Bun.which(command) : null;
-  } catch {
-    return null;
-  }
-}
-
-function orderedGitExecutableCandidates({ platform, env, which, pathExists }) {
-  const pathCommand = platform === "win32" ? "git.exe" : "git";
-  const fromPath = which(pathCommand) ?? which("git");
-  const installedCandidates = gitExecutableCandidates({ platform, env })
-    .filter((candidate) => pathExists(candidate));
-  return [...new Set([
-    fromPath,
-    ...installedCandidates,
-    pathCommand,
-  ].filter(Boolean))];
+function orderedGitExecutableCandidates({ platform, env, pathExists }) {
+  return [...new Set(gitExecutableCandidates({ platform, env })
+    .filter((candidate) => pathExists(candidate)))];
 }
 
 async function probeGitExecutable(executable) {

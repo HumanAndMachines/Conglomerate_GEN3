@@ -1,6 +1,8 @@
 import {
   appBaseTitle,
   appVersionLabel,
+  applySidePanelResponse,
+  canAbortGitRebase,
   computeSpaceHeroState,
   familyTitle,
   filterApps,
@@ -86,6 +88,8 @@ const state = {
 // click handler stays in sync with the computed verdict.
 let heroAction = "reload";
 let loadDataInFlight = null;
+let sidePanelRequestGeneration = 0;
+let gitRecoveryGeneration = 0;
 let quietPollTimer = null;
 let restoreSpaceMenuFocusOnClose = false;
 let drawerReturnFocus = null;
@@ -761,26 +765,39 @@ async function fetchJsonSafe(path, options = {}) {
 // CAC-0042; dokud read model není dostupný, endpoint vrátí 404 → gitReposByModule
 // zůstane prázdná a git chip se na kartách graceful nevykreslí.
 async function loadSidePanels() {
-  if (state.filters.scope === "personal" || state.filters.company === "all") {
+  const requestId = ++sidePanelRequestGeneration;
+  const recoveryGeneration = gitRecoveryGeneration;
+  const requestedScope = state.filters.scope;
+  const requestedCompany = state.filters.company;
+  if (requestedScope === "personal" || requestedCompany === "all") {
     state.recentModules = [];
     state.mostUsed = [];
     state.coldStartUsage = true;
     return;
   }
-  const requestedCompany = state.filters.company;
   const companyQuery = `?company=${encodeURIComponent(requestedCompany)}`;
   const [recent, mostUsed, git] = await Promise.all([
     fetchJsonSafe(`/api/recent-changes${companyQuery}`),
     fetchJsonSafe(`/api/most-used${companyQuery}`),
     fetchJsonSafe(`/api/git/repos${companyQuery}`),
   ]);
-  // Pomalejší odpověď předchozí Organizace nesmí přepsat panely prostoru,
-  // který uživatel mezitím nově vybral.
-  if (state.filters.scope !== "org" || state.filters.company !== requestedCompany) return;
-  state.recentModules = recent?.recent_modules ?? [];
-  state.mostUsed = mostUsed?.most_used ?? [];
-  state.coldStartUsage = mostUsed ? mostUsed.cold_start !== false && (mostUsed.most_used ?? []).length === 0 : true;
-  state.gitReposByModule = indexGitReposByModule(git?.repos ?? []);
+  const panelUpdate = applySidePanelResponse({
+    requestId,
+    latestRequestId: sidePanelRequestGeneration,
+    requestedScope,
+    requestedCompany,
+    activeScope: state.filters.scope,
+    activeCompany: state.filters.company,
+    requestRecoveryGeneration: recoveryGeneration,
+    currentRecoveryGeneration: gitRecoveryGeneration,
+    recoveryByRepo: state.gitRecoveryByRepo,
+    recentResponse: recent,
+    mostUsedResponse: mostUsed,
+    gitRepos: git?.repos ?? [],
+    gitReposByModule: indexGitReposByModule(git?.repos ?? []),
+  });
+  if (!panelUpdate) return;
+  Object.assign(state, panelUpdate);
   // Plný render, ne jen grid: git model právě dorazil, takže annotateGitAttention
   // musí přepočítat git_attention, aby toggle kontroly i hero počet zahrnuly
   // git stavy hned, ne až po dalším aktivním poll ticku.
@@ -798,6 +815,20 @@ function indexGitReposByModule(repos) {
     if (repo.key) map.set(repo.key, repo);
   }
   return map;
+}
+
+function invalidateGitPanelSnapshots() {
+  gitRecoveryGeneration += 1;
+}
+
+function setGitRecovery(repoKey, recovery) {
+  state.gitRecoveryByRepo.set(repoKey, recovery);
+  invalidateGitPanelSnapshots();
+}
+
+function clearGitRecovery(repoKey) {
+  state.gitRecoveryByRepo.delete(repoKey);
+  invalidateGitPanelSnapshots();
 }
 
 // Najde git repo pro daný app/modul z read modelu (graceful — může vrátit null).
@@ -2614,10 +2645,7 @@ function cardWarningModel(app, gitRepo) {
   const dependencyState = app.dependencies?.state;
   const sharedPortPeer = runningSharedPortPeer(app);
   const recovery = gitRepo ? state.gitRecoveryByRepo.get(gitRepo.key) : null;
-  const canAbortRebase = Boolean(
-    gitRepo?.operation?.can_abort_rebase
-    || recovery?.canAbortRebase,
-  );
+  const canAbortRebase = canAbortGitRebase(gitRepo);
 
   if (["rebase_in_progress", "git_am_in_progress"].includes(gitRepo?.status) || recovery) {
     return {
@@ -4027,12 +4055,12 @@ async function pullGitRepository({ git, label, autostash = false, pendingKey = `
     const action = autostash ? "pull-autostash" : "pull";
     const payload = await fetchJson(`/api/git/repos/${encodeURIComponent(git.key)}/${action}`, { method: "POST" });
     state.gitChangesByRepo.delete(git.key);
-    state.gitRecoveryByRepo.delete(git.key);
+    clearGitRecovery(git.key);
     const stashNote = payload.stash_preserved ? " Bezpečnostní kopie zůstala ve stash stacku." : "";
     toast(`${label}: novější verze stažená (${payload.after?.head?.short_sha ?? "aktuální"}).${stashNote}`, "success", 7000);
     await loadData({ quiet: true });
   } catch (error) {
-    state.gitRecoveryByRepo.set(git.key, {
+    setGitRecovery(git.key, {
       code: error.code,
       message: error.message,
       canAbortRebase: Boolean(error.payload?.recovery?.can_abort_rebase),
@@ -4050,11 +4078,11 @@ async function abortGitRebase({ git, label, pendingKey = `git-rebase-abort:${git
   render();
   try {
     const payload = await fetchJson(`/api/git/repos/${encodeURIComponent(git.key)}/rebase-abort`, { method: "POST" });
-    state.gitRecoveryByRepo.delete(git.key);
+    clearGitRecovery(git.key);
     toast(`${label}: rebase byl bezpečně abortnut.`, "success", 7000);
     if (payload.after) await loadData({ quiet: true });
   } catch (error) {
-    state.gitRecoveryByRepo.set(git.key, {
+    setGitRecovery(git.key, {
       code: error.code,
       message: error.message,
       canAbortRebase: Boolean(error.payload?.recovery?.can_abort_rebase),
@@ -4202,20 +4230,25 @@ async function runRootUpdate() {
 
 async function pullAllRepositories() {
   const confirmed = window.confirm(
-    "Pullnout vše napříč všemi Organizacemi? Launchpad aktualizuje Organization root repa i Workspace moduly. Lokální změny bezpečně odloží a obnoví; productionspace, diverged nebo jinak rizikové checkouty přeskočí.",
+    "Pullnout vše napříč všemi Organizacemi? Launchpad nejdřív aktualizuje Organization root repa, znovu načte jejich manifesty a dostupné nové Workspace moduly bezpečně naklonuje. Lokální změny odloží a obnoví; planned sloty, productionspace, chybějící přístup a jinak rizikové checkouty přeskočí.",
   );
   if (!confirmed) return;
   state.pendingAction = "git:pull-all";
   render();
   try {
     const payload = await fetchJson("/api/git/pull-all", { method: "POST" });
+    invalidateGitPanelSnapshots();
     state.bulkPullResult = payload;
     const summary = payload.summary ?? {};
     const attention = (summary.conflict_count ?? 0) + (summary.failed_count ?? 0);
+    const missingAccess = summary.missing_access_count ?? 0;
+    const otherSkipped = Math.max(0, (summary.skipped_count ?? 0) - missingAccess);
     const message = [
       `${summary.updated_count ?? 0} aktualizováno`,
+      `${summary.materialized_count ?? 0} nově naklonováno`,
       `${summary.up_to_date_count ?? 0} už aktuálních`,
-      `${summary.skipped_count ?? 0} přeskočeno`,
+      otherSkipped > 0 ? `${otherSkipped} přeskočeno` : null,
+      missingAccess > 0 ? `${missingAccess} bez přístupu` : null,
       attention > 0 ? `${attention} vyžaduje pomoc` : null,
     ].filter(Boolean).join(" · ");
     toast(`Pullnout vše: ${message}.`, attention > 0 ? "error" : "success", 10_000);

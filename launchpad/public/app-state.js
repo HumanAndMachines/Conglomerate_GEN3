@@ -33,6 +33,78 @@ export function reconcileSelectedAppId(apps, filters, selectedAppId) {
   return visibleApps[0]?.id ?? null;
 }
 
+export function sidePanelResponseIsCurrent({
+  requestId,
+  latestRequestId,
+  requestedScope,
+  requestedCompany,
+  activeScope,
+  activeCompany,
+  requestRecoveryGeneration,
+  currentRecoveryGeneration,
+}) {
+  return requestId === latestRequestId
+    && requestedScope === activeScope
+    && requestedCompany === activeCompany
+    && requestRecoveryGeneration === currentRecoveryGeneration;
+}
+
+export function applySidePanelResponse({
+  requestId,
+  latestRequestId,
+  requestedScope,
+  requestedCompany,
+  activeScope,
+  activeCompany,
+  requestRecoveryGeneration,
+  currentRecoveryGeneration,
+  recoveryByRepo,
+  recentResponse,
+  mostUsedResponse,
+  gitRepos,
+  gitReposByModule,
+}) {
+  if (!sidePanelResponseIsCurrent({
+    requestId,
+    latestRequestId,
+    requestedScope,
+    requestedCompany,
+    activeScope,
+    activeCompany,
+    requestRecoveryGeneration,
+    currentRecoveryGeneration,
+  })) return null;
+  return {
+    recentModules: recentResponse?.recent_modules ?? [],
+    mostUsed: mostUsedResponse?.most_used ?? [],
+    coldStartUsage: mostUsedResponse
+      ? mostUsedResponse.cold_start !== false && (mostUsedResponse.most_used ?? []).length === 0
+      : true,
+    gitRecoveryByRepo: reconcileGitRecoveryByRepo(recoveryByRepo, gitRepos ?? []),
+    gitReposByModule,
+  };
+}
+
+export function reconcileGitRecoveryByRepo(recoveryByRepo, repos) {
+  const reconciled = new Map(recoveryByRepo);
+  const liveReposByKey = new Map(
+    (repos ?? [])
+      .filter((repo) => typeof repo?.key === "string")
+      .map((repo) => [repo.key, repo]),
+  );
+  for (const [repoKey, recovery] of reconciled) {
+    const liveRepo = liveReposByKey.get(repoKey);
+    if (recovery?.canAbortRebase && liveRepo && liveRepo.operation?.can_abort_rebase !== true) {
+      reconciled.delete(repoKey);
+    }
+  }
+  return reconciled;
+}
+
+export function canAbortGitRebase(repo) {
+  return repo?.operation?.can_abort_rebase === true;
+}
+
 export function replacePersonalspaceResponse(_previous, incoming) {
   // Úspěšná HTTP odpověď je autorita i tehdy, když payload nese ok:false kvůli
   // jedné nevalidní montáži. Dřívější prostory se nesmějí přimíchat zpět:

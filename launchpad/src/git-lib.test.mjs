@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
-import { mkdtemp } from "fs/promises";
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from "fs";
+import { spawnSync } from "child_process";
+import { mkdtemp, rm } from "fs/promises";
+import { createServer } from "net";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
@@ -12,7 +15,10 @@ import {
   resolveGitExecutableSync,
   runGit,
   safeGitCommandEnv,
+  safeGitMaterializationEnv,
+  safeGitRemoteArgs,
   safeGitRemoteEnv,
+  safeGitRuntimeArgs,
 } from "./git-lib.mjs";
 import { initGitRepo } from "./git-fixture-helpers.test.mjs";
 
@@ -51,6 +57,38 @@ test("runGit returns stdout and protects remote probes from interactive credenti
     GIT_ASKPASS: "/bin/false",
     SSH_ASKPASS: "/bin/false",
   });
+  expect(safeGitMaterializationEnv("linux")).toMatchObject({
+    GIT_CONFIG_GLOBAL: "",
+    GIT_CONFIG_NOSYSTEM: "1",
+  });
+});
+
+test.if(process.platform !== "win32")("runGit never executes a fake Git executable from ambient PATH", async () => {
+  const root = await mkdtemp(join(tmpdir(), "launchpad-git-path-marker-"));
+  try {
+    const fakeBin = join(root, "fake-bin");
+    const marker = join(root, "fake-git-ran");
+    const fakeGit = join(fakeBin, "git");
+    mkdirSync(fakeBin);
+    writeFileSync(fakeGit, `#!/bin/sh\nprintf fake-git > ${JSON.stringify(marker)}\nexit 1\n`);
+    chmodSync(fakeGit, 0o755);
+
+    const moduleUrl = new URL("./git-lib.mjs", import.meta.url).href;
+    const program = `import(${JSON.stringify(moduleUrl)}).then(async ({ runGit }) => {
+      const result = await runGit(["--version"], { cwd: process.cwd() });
+      process.exit(result.ok ? 0 : 1);
+    })`;
+    const result = spawnSync(process.execPath, ["--eval", program], {
+      cwd: root,
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}` },
+    });
+
+    expect(result.status).toBe(0);
+    expect(existsSync(marker)).toBe(false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("Windows remote Git environment never contains a POSIX askpass executable", () => {
@@ -73,6 +111,11 @@ test("Windows remote Git environment never contains a POSIX askpass executable",
     Git_Config_Parameters: "'core.hooksPath=C:\\malicious\\hooks'",
     GIT_CONFIG_SYSTEM: "C:\\malicious\\system-config",
     Git_Dir: "C:\\stale-context\\.git",
+    git_exec_path: "C:\\malicious\\exec-path",
+    GIT_PROXY_COMMAND: "C:\\malicious\\proxy.exe",
+    Git_Ssh: "C:\\malicious\\ssh.exe",
+    git_ssh_command: "C:\\malicious\\ssh-command.exe",
+    GIT_SSH_VARIANT: "simple",
     git_implicit_work_tree: "1",
     git_internal_super_prefix: "C:\\stale-context\\super",
     Git_Shallow_File: "C:\\stale-context\\shallow",
@@ -86,8 +129,89 @@ test("Windows remote Git environment never contains a POSIX askpass executable",
     PATH: "C:\\Windows\\System32",
     GIT_TERMINAL_PROMPT: "0",
     GCM_INTERACTIVE: "never",
+    no_proxy: "*",
     SSH_ASKPASS_REQUIRE: "never",
   });
+  expect(safeGitMaterializationEnv("win32", { PATH: "C:\\Windows\\System32" })).toMatchObject({
+    GIT_CONFIG_GLOBAL: "",
+    GIT_CONFIG_NOSYSTEM: "1",
+  });
+});
+
+test.if(process.platform !== "win32")("safe remote environment bypasses URL-specific checkout-local HTTP proxies", async () => {
+  const root = await mkdtemp(join(tmpdir(), "launchpad-git-url-proxy-"));
+  const marker = join(root, "proxy-contacted");
+  const proxy = createServer((socket) => {
+    writeFileSync(marker, "proxy contacted\n");
+    socket.end("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n");
+  });
+  await new Promise((resolveListen) => proxy.listen(0, "127.0.0.1", resolveListen));
+  const port = proxy.address().port;
+
+  try {
+    await initGitRepo(root);
+    const fixtureGit = await import("./git-fixture-helpers.test.mjs");
+    fixtureGit.runGit(["config", "http.https://example.invalid.proxy", `http://127.0.0.1:${port}`], root);
+
+    const result = await runGit(
+      safeGitRemoteArgs(["ls-remote", "https://example.invalid/repo.git"]),
+      { cwd: root, timeoutMs: 5_000, env: safeGitRemoteEnv() },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(existsSync(marker)).toBe(false);
+  } finally {
+    await new Promise((resolveClose) => proxy.close(resolveClose));
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("runtime and remote Git argument policy neutralizes checkout-local execution paths", () => {
+  expect(safeGitRuntimeArgs(["status", "--porcelain=v1"], "linux")).toEqual([
+    "-c", "core.hooksPath=/dev/null",
+    "-c", "core.fsmonitor=false",
+    "-c", "core.useBuiltinFSMonitor=false",
+    "status", "--porcelain=v1",
+  ]);
+  expect(safeGitRuntimeArgs(["status", "--porcelain=v1"], "win32")).toEqual([
+    "-c", "core.hooksPath=NUL",
+    "-c", "core.fsmonitor=false",
+    "-c", "core.useBuiltinFSMonitor=false",
+    "status", "--porcelain=v1",
+  ]);
+  expect(safeGitRemoteArgs(["fetch", "--all", "--prune"], "linux")).toEqual([
+    "-c", "core.sshCommand=",
+    "-c", "core.askPass=",
+    "-c", "credential.helper=",
+    "-c", "credential.interactive=false",
+    "-c", "http.proxy=",
+    "-c", "protocol.git.allow=never",
+    "-c", "protocol.ext.allow=never",
+    "-c", "core.hooksPath=/dev/null",
+    "-c", "core.fsmonitor=false",
+    "-c", "core.useBuiltinFSMonitor=false",
+    "fetch", "--all", "--prune",
+  ]);
+});
+
+test("Git resolver ignores a Git executable discovered through ambient PATH", async () => {
+  const fakePathGit = "/tmp/ambient-bin/git";
+  const trusted = "/usr/bin/git";
+  const probes = [];
+
+  const resolved = await resolveGitExecutable({
+    platform: "darwin",
+    env: {},
+    which: () => fakePathGit,
+    pathExists: (candidate) => candidate === trusted,
+    probe: async (candidate) => {
+      probes.push(candidate);
+      return candidate === trusted;
+    },
+  });
+
+  expect(resolved).toBe(trusted);
+  expect(probes).toEqual([trusted]);
 });
 
 test("Windows Git resolver falls back to standard Git for Windows locations", async () => {
@@ -112,7 +236,36 @@ test("Windows Git resolver falls back to standard Git for Windows locations", as
   expect(resolved).toBe(expected);
 });
 
-test("Git resolver přeskočí nefunkční WindowsApps alias a ověří skutečný Git for Windows", async () => {
+test("Windows Git resolver refuses relative and current-volume rooted known-folder roots before probing", async () => {
+  const probes = [];
+  const options = {
+    platform: "win32",
+    env: { ProgramFiles: "\\\\Users\\attacker\\controlled-root", LOCALAPPDATA: "also-relative" },
+    pathExists: () => true,
+  };
+
+  const asyncResolved = await resolveGitExecutable({
+    ...options,
+    probe: async (candidate) => {
+      probes.push(candidate);
+      return true;
+    },
+  });
+  const syncResolved = resolveGitExecutableSync({
+    ...options,
+    probe: (candidate) => {
+      probes.push(candidate);
+      return true;
+    },
+  });
+
+  expect(gitExecutableCandidates(options)).toEqual([]);
+  expect(asyncResolved).toBeNull();
+  expect(syncResolved).toBeNull();
+  expect(probes).toEqual([]);
+});
+
+test("Git resolver ignores WindowsApps PATH alias and verifies only installed Git for Windows", async () => {
   const broken = "C:\\Users\\builder\\AppData\\Local\\Microsoft\\WindowsApps\\git.exe";
   const working = "C:\\Program Files\\Git\\cmd\\git.exe";
   const probes = [];
@@ -137,7 +290,7 @@ test("Git resolver přeskočí nefunkční WindowsApps alias a ověří skutečn
 
   expect(asyncResolved).toBe(working);
   expect(syncResolved).toBe(working);
-  expect(probes).toEqual([broken, working]);
+  expect(probes).toEqual([working]);
 });
 
 test("local Git probes use the Windows-proven timeout and bounded concurrency", () => {

@@ -1,4 +1,5 @@
 import { buildGitInventory } from "./git-inventory-lib.mjs";
+import { materializeRepoCheckout } from "./git-materialization-lib.mjs";
 import { mapWithConcurrency } from "./git-lib.mjs";
 import { buildMissionControlPlanIndex } from "./mission-control-plan-lib.mjs";
 import {
@@ -101,6 +102,30 @@ export async function buildRepoPullResponse({ companiesRoot, repoKey, statusServ
   const repo = inventory.repos.find((item) => item.key === repoKey);
   if (!repo) throw new GitApiError(`Repo ${repoKey} nebylo nalezeno.`, { status: 404, code: "repo_not_found" });
   assertBuilderPullScope(repo);
+  // Chybějící target poznáme z levného lokálního guardu. U existujícího
+  // checkoutu necháme pullRepoFastForward zachovat jeho pořadí kontrol:
+  // dirty/wrong-branch vysvětlí ještě před případným nedostupným remotem.
+  const localStatus = await readGitRepoStatus(repo);
+  if (localStatus.status === "repo_missing") {
+    const materialization = await materializeRepoCheckout({ companiesRoot, repo });
+    if (!materialization.ok) {
+      throw new GitApiError(materialization.message, {
+        status: materialization.outcome === "missing_access" ? 403 : 409,
+        code: materialization.code,
+      });
+    }
+    statusService?.markRemoteChecked(repo);
+    return {
+      schema_version: "companiesascode.launchpad.git_pull.v1",
+      generated_at: new Date().toISOString(),
+      repo_key: repoKey,
+      action: "materialize_clone",
+      pulled: false,
+      materialized: true,
+      branch: materialization.branch,
+      head: materialization.head,
+    };
+  }
   const result = await pullRepoFastForward(repo);
   if (!result.ok) {
     throw new GitApiError(result.message, {
@@ -195,78 +220,22 @@ function pullRecoveryMetadata(repoKey, result) {
 }
 
 export async function buildPullAllResponse({ companiesRoot, statusService = null } = {}) {
-  const inventory = await buildGitInventory({ companiesRoot });
-  const results = await mapWithConcurrency(
-    inventory.repos,
+  // Dvě fáze jsou podstata manifest-driven syncu: nejdřív stáhneme root
+  // Organizace, potom inventář sestavíme znovu z právě aktualizovaného
+  // modules.manifest.json. Jinak by nově přidaný modul vyžadoval druhé kliknutí.
+  const initialInventory = await buildGitInventory({ companiesRoot });
+  const rootResults = await mapWithConcurrency(
+    initialInventory.repos.filter((repo) => repo.repo_kind === "organization_root"),
     GIT_REMOTE_REFRESH_CONCURRENCY,
-    async (repo) => {
-      const identity = {
-        repo_key: repo.key,
-        organization: repo.organization,
-        module: repo.module,
-        repo_kind: repo.repo_kind,
-      };
-      if (!builderPullScopeAllowed(repo)) {
-        return {
-          ...identity,
-          outcome: "policy_skipped",
-          message: "Productionspace zůstává podle Organization policy read-only.",
-        };
-      }
-
-      const preflight = await readGitRepoStatus(repo, { refresh: true });
-      if (
-        !["repo_missing", "git_unavailable", "check_failed", "rebase_in_progress", "git_am_in_progress"]
-          .includes(preflight.status)
-      ) {
-        statusService?.markRemoteChecked(repo);
-      }
-      if (preflight.status === "up_to_date") {
-        return { ...identity, outcome: "up_to_date", message: "Repo už je aktuální.", before: compactPullStatus(preflight) };
-      }
-
-      let result;
-      if (preflight.status === "pull_available") {
-        result = await pullRepoFastForward(repo, { preflight });
-      } else if (
-        preflight.status === "draft_changes"
-        && preflight.counts.incoming > 0
-        && preflight.counts.outgoing === 0
-      ) {
-        result = await pullRepoWithAutostash(repo, { preflight });
-      } else {
-        return {
-          ...identity,
-          outcome: preflight.status === "check_failed" ? "failed" : "skipped",
-          message: pullAllSkipMessage(preflight),
-          before: compactPullStatus(preflight),
-        };
-      }
-
-      if (result.pulled) statusService?.markRemoteChecked(repo);
-      if (!result.ok) {
-        return {
-          ...identity,
-          outcome: result.code === "autostash_conflict" ? "conflict" : "failed",
-          message: result.message,
-          before: compactPullStatus(result.before),
-          after: compactPullStatus(result.after),
-          stash_preserved: Boolean(result.stash_preserved),
-        };
-      }
-      statusService?.markRemoteChecked(repo);
-      return {
-        ...identity,
-        outcome: result.autostash ? "autostash_pulled" : "pulled",
-        message: result.autostash
-          ? "Nová verze stažená a lokální změny obnovené."
-          : "Nová verze stažená fast-forwardem.",
-        before: compactPullStatus(result.before),
-        after: compactPullStatus(result.after),
-        stash_preserved: Boolean(result.stash_preserved),
-      };
-    },
+    (repo) => pullAllRepo({ companiesRoot, repo, statusService }),
   );
+  const refreshedInventory = await buildGitInventory({ companiesRoot });
+  const nestedResults = await mapWithConcurrency(
+    refreshedInventory.repos.filter((repo) => repo.repo_kind !== "organization_root"),
+    GIT_REMOTE_REFRESH_CONCURRENCY,
+    (repo) => pullAllRepo({ companiesRoot, repo, statusService }),
+  );
+  const results = [...rootResults, ...nestedResults];
 
   const count = (outcome) => results.filter((result) => result.outcome === outcome).length;
   return {
@@ -275,13 +244,109 @@ export async function buildPullAllResponse({ companiesRoot, statusService = null
     summary: {
       repo_count: results.length,
       updated_count: count("pulled") + count("autostash_pulled"),
+      materialized_count: count("materialized"),
+      missing_access_count: count("missing_access"),
       autostash_count: count("autostash_pulled"),
       up_to_date_count: count("up_to_date"),
-      skipped_count: count("skipped") + count("policy_skipped"),
+      skipped_count: count("skipped") + count("policy_skipped") + count("missing_access"),
       conflict_count: count("conflict"),
       failed_count: count("failed"),
     },
     results,
+  };
+}
+
+async function pullAllRepo({ companiesRoot, repo, statusService }) {
+  const identity = {
+    repo_key: repo.key,
+    organization: repo.organization,
+    module: repo.module,
+    repo_kind: repo.repo_kind,
+  };
+  if (!builderPullScopeAllowed(repo)) {
+    return {
+      ...identity,
+      outcome: "policy_skipped",
+      message: "Productionspace zůstává podle Organization policy read-only.",
+    };
+  }
+
+  const preflight = await readGitRepoStatus(repo, { refresh: true });
+  if (preflight.status === "repo_missing" && repo.repo_kind !== "organization_root") {
+    const materialization = await materializeRepoCheckout({ companiesRoot, repo });
+    if (materialization.ok) {
+      statusService?.markRemoteChecked(repo);
+      return {
+        ...identity,
+        outcome: "materialized",
+        message: materialization.message,
+        branch: materialization.branch,
+        head: materialization.head,
+      };
+    }
+    return {
+      ...identity,
+      outcome: materialization.outcome === "missing_access"
+        ? "missing_access"
+        : materialization.outcome === "target_exists"
+          ? "skipped"
+          : "failed",
+      message: materialization.message,
+      code: materialization.code,
+    };
+  }
+  if (![
+    "repo_missing",
+    "git_unavailable",
+    "check_failed",
+    "rebase_in_progress",
+    "git_am_in_progress",
+  ].includes(preflight.status)) {
+    statusService?.markRemoteChecked(repo);
+  }
+  if (preflight.status === "up_to_date") {
+    return { ...identity, outcome: "up_to_date", message: "Repo už je aktuální.", before: compactPullStatus(preflight) };
+  }
+
+  let result;
+  if (preflight.status === "pull_available") {
+    result = await pullRepoFastForward(repo);
+  } else if (
+    preflight.status === "draft_changes"
+    && preflight.counts.incoming > 0
+    && preflight.counts.outgoing === 0
+  ) {
+    result = await pullRepoWithAutostash(repo);
+  } else {
+    return {
+      ...identity,
+      outcome: preflight.status === "check_failed" ? "failed" : "skipped",
+      message: pullAllSkipMessage(preflight),
+      before: compactPullStatus(preflight),
+    };
+  }
+
+  if (result.pulled) statusService?.markRemoteChecked(repo);
+  if (!result.ok) {
+    return {
+      ...identity,
+      outcome: result.code === "autostash_conflict" ? "conflict" : "failed",
+      message: result.message,
+      before: compactPullStatus(result.before),
+      after: compactPullStatus(result.after),
+      stash_preserved: Boolean(result.stash_preserved),
+    };
+  }
+  statusService?.markRemoteChecked(repo);
+  return {
+    ...identity,
+    outcome: result.autostash ? "autostash_pulled" : "pulled",
+    message: result.autostash
+      ? "Nová verze stažená a lokální změny obnovené."
+      : "Nová verze stažená fast-forwardem.",
+    before: compactPullStatus(result.before),
+    after: compactPullStatus(result.after),
+    stash_preserved: Boolean(result.stash_preserved),
   };
 }
 

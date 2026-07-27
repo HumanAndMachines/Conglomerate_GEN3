@@ -153,6 +153,19 @@ binary via a separate release artifact that changes far less often.
 - **"Vyřešit s Agentem"** fallback: when an update fails, Launchpad offers to
   start a local Codex/Claude session tasked with finishing the update. It is the
   builder's own BYOS session (decision 0061), not a platform agent.
+- **Nested manifest materialization** stays separate from read-only Doctor
+  diagnostics. `Pullnout vše` and CLI update validate the declared
+  Organization-relative slot, check that its remote branch is accessible, and
+  use ordinary `git clone --branch` to create only a missing target. They never
+  overwrite an existing target, run package scripts, grant GitHub access or
+  delete a partial checkout. Git child processes have inherited SSH commands,
+  askpass helpers and global/system configuration disabled; their local
+  `core.sshCommand` and hooks are explicitly neutralized before remote access.
+  The contract is trusted-local: an Organization checkout is collaborator-owned,
+  clean and changed through named worktrees rather than by an unrelated writer
+  racing `Pullnout vše`. If this process contract is broken, the resulting Git
+  state is reported for Agent recovery instead of being hidden behind automatic
+  cleanup or platform-specific locking.
 - **On the Workspace Host** the Steward seat holds the update through a
   daily cron (e.g. 05:00) that updates the whole system including tests.
 

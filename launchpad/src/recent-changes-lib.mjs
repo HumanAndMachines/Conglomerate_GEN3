@@ -12,6 +12,7 @@ import {
   resolveGitExecutable,
   runGit,
   safeGitRemoteEnv,
+  safeGitRuntimeArgs,
 } from "./git-lib.mjs";
 
 const DEFAULT_MODULE_LIMIT = 8;
@@ -69,7 +70,7 @@ async function readRepoCommits(repo, { commitLimit }) {
   if (!existsSync(repo.absolute_path)) return null;
   const format = ["%H", "%h", "%an", "%aI", "%s", "%b"].join(FIELD_SEP);
   const result = await runGit(
-    ["log", `-${commitLimit}`, `--pretty=format:${format}${RECORD_SEP}`, "--no-color"],
+    safeGitRuntimeArgs(["log", `-${commitLimit}`, `--pretty=format:${format}${RECORD_SEP}`, "--no-color"]),
     {
       cwd: repo.absolute_path,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,

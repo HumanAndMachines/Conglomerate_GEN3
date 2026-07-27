@@ -8,7 +8,9 @@ import {
   mapWithConcurrency,
   resolveGitExecutable,
   runGit,
+  safeGitRemoteArgs,
   safeGitRemoteEnv,
+  safeGitRuntimeArgs,
 } from "./git-lib.mjs";
 
 export const GIT_STATUS_VALUES = [
@@ -30,6 +32,17 @@ export const GIT_REMOTE_REFRESH_INTERVAL_MS = 5 * 60_000;
 export const GIT_REMOTE_RETRY_MS = 60_000;
 export const GIT_REMOTE_JITTER_MS = 60_000;
 export const GIT_REMOTE_REFRESH_CONCURRENCY = 2;
+
+function runSafeGit(args, options) {
+  return runGit(safeGitRuntimeArgs(args), options);
+}
+
+function runSafeRemoteGit(args, options = {}) {
+  return runGit(safeGitRemoteArgs(args), {
+    ...options,
+    env: { ...options.env, ...safeGitRemoteEnv() },
+  });
+}
 
 // Server-scoped cache: browser polls may be frequent, but local Git inspection is
 // reused briefly and remote fetches are request-driven, deduplicated across tabs
@@ -262,7 +275,7 @@ export async function readGitRepoStatus(repo, { refresh = false } = {}) {
     return withDescriptor(base, "git_unavailable");
   }
 
-  const topLevel = await runGit(["rev-parse", "--show-toplevel"], {
+  const topLevel = await runSafeGit(["rev-parse", "--show-toplevel"], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
@@ -285,13 +298,13 @@ export async function readGitRepoStatus(repo, { refresh = false } = {}) {
   }
 
   const [branchResult, headResult, porcelainResult, upstreamResult] = await Promise.all([
-    runGit(["branch", "--show-current"], { cwd: repo.absolute_path, timeoutMs: GIT_LOCAL_TIMEOUT_MS }),
-    runGit(["log", "-1", "--format=%H%x00%s"], { cwd: repo.absolute_path, timeoutMs: GIT_LOCAL_TIMEOUT_MS }),
-    runGit(["status", "--porcelain=v1", "--untracked-files=normal"], {
+    runSafeGit(["branch", "--show-current"], { cwd: repo.absolute_path, timeoutMs: GIT_LOCAL_TIMEOUT_MS }),
+    runSafeGit(["log", "-1", "--format=%H%x00%s"], { cwd: repo.absolute_path, timeoutMs: GIT_LOCAL_TIMEOUT_MS }),
+    runSafeGit(["status", "--porcelain=v1", "--untracked-files=normal"], {
       cwd: repo.absolute_path,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
     }),
-    runGit(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], {
+    runSafeGit(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], {
       cwd: repo.absolute_path,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
     }),
@@ -313,7 +326,7 @@ export async function readGitRepoStatus(repo, { refresh = false } = {}) {
   let upstream = null;
   if (upstreamResult.ok && upstreamResult.stdout) {
     upstream = upstreamResult.stdout;
-    const revList = await runGit(["rev-list", "--left-right", "--count", `HEAD...${upstream}`], {
+    const revList = await runSafeGit(["rev-list", "--left-right", "--count", `HEAD...${upstream}`], {
       cwd: repo.absolute_path,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
     });
@@ -346,7 +359,7 @@ export async function readGitRepoStatus(repo, { refresh = false } = {}) {
 
 export async function readGitOperationState(repo) {
   for (const [marker, backend] of [["rebase-merge", "merge"], ["rebase-apply", "apply"]]) {
-    const gitPath = await runGit(["rev-parse", "--git-path", marker], {
+    const gitPath = await runSafeGit(["rev-parse", "--git-path", marker], {
       cwd: repo.absolute_path,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
     });
@@ -383,10 +396,9 @@ export async function abortRepoRebase(repo) {
     };
   }
 
-  const abort = await runGit(["rebase", "--abort"], {
+  const abort = await runSafeGit(["rebase", "--abort"], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
-    env: safeGitRemoteEnv(),
   });
   if (!abort.ok) {
     return {
@@ -421,7 +433,7 @@ export async function refreshGitRepoRemote(repo) {
   const source = await verifyPullSourceIdentity(repo);
   if (!source.ok) return source;
 
-  const fetch = await runGit(
+  const fetch = await runSafeRemoteGit(
     [
       "fetch",
       "--no-tags",
@@ -434,7 +446,6 @@ export async function refreshGitRepoRemote(repo) {
     {
       cwd: repo.absolute_path,
       timeoutMs: GIT_FETCH_TIMEOUT_MS,
-      env: safeGitRemoteEnv(),
     },
   );
   if (!fetch.ok) return fetch;
@@ -468,20 +479,19 @@ async function verifyPullSourceIdentity(repo) {
     };
   }
 
-  const branchCheck = await runGit(["check-ref-format", "--branch", branch], {
+  const branchCheck = await runSafeGit(["check-ref-format", "--branch", branch], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
   if (!branchCheck.ok) {
     return { ok: false, code: "pull_source_invalid", error: "pull_manifest_branch_invalid" };
   }
-
   const [remoteUrls, upstream] = await Promise.all([
-    runGit(["remote", "get-url", "--all", "origin"], {
+    runSafeGit(["remote", "get-url", "--all", "origin"], {
       cwd: repo.absolute_path,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
     }),
-    runGit(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], {
+    runSafeGit(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], {
       cwd: repo.absolute_path,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
     }),
@@ -518,7 +528,7 @@ export async function readRepoChanges(repo) {
   if (status.status === "repo_missing" || status.status === "git_unavailable") {
     return { status, changes: [] };
   }
-  const result = await runGit(["status", "--porcelain=v1", "--untracked-files=normal"], {
+  const result = await runSafeGit(["status", "--porcelain=v1", "--untracked-files=normal"], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
@@ -551,10 +561,9 @@ export async function pullRepoFastForward(repo, { beforeMutation = null } = {}) 
   const verified = await verifyPreparedPull(repo, prepared);
   if (!verified.ok) return { ...verified, before: prepared.before };
 
-  const merge = await runGit(["merge", "--ff-only", "--", prepared.target_oid], {
+  const merge = await runSafeGit(["merge", "--ff-only", "--", prepared.target_oid], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
-    env: safeGitRemoteEnv(),
   });
   if (!merge.ok) {
     return {
@@ -597,13 +606,12 @@ async function prepareVerifiedPull(repo) {
       before,
     };
   }
-
   const [head, target] = await Promise.all([
-    runGit(["rev-parse", "--verify", "HEAD^{commit}"], {
+    runSafeGit(["rev-parse", "--verify", "HEAD^{commit}"], {
       cwd: repo.absolute_path,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
     }),
-    runGit(["rev-parse", "--verify", `${refresh.source.tracking_ref}^{commit}`], {
+    runSafeGit(["rev-parse", "--verify", `${refresh.source.tracking_ref}^{commit}`], {
       cwd: repo.absolute_path,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
     }),
@@ -617,7 +625,7 @@ async function prepareVerifiedPull(repo) {
     };
   }
 
-  const ancestor = await runGit(["merge-base", "--is-ancestor", head.stdout, target.stdout], {
+  const ancestor = await runSafeGit(["merge-base", "--is-ancestor", head.stdout, target.stdout], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
@@ -649,11 +657,11 @@ async function verifyPreparedPull(repo, prepared) {
     };
   }
   const [head, target] = await Promise.all([
-    runGit(["rev-parse", "--verify", "HEAD^{commit}"], {
+    runSafeGit(["rev-parse", "--verify", "HEAD^{commit}"], {
       cwd: repo.absolute_path,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
     }),
-    runGit(["rev-parse", "--verify", `${prepared.source.tracking_ref}^{commit}`], {
+    runSafeGit(["rev-parse", "--verify", `${prepared.source.tracking_ref}^{commit}`], {
       cwd: repo.absolute_path,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
     }),
@@ -663,6 +671,19 @@ async function verifyPreparedPull(repo, prepared) {
       ok: false,
       code: "pull_target_changed",
       message: "Checkout nebo ověřený cílový commit se během kontroly změnil. Pull byl bezpečně zablokován.",
+    };
+  }
+  const checkout = await readGitRepoStatus(repo);
+  if (
+    checkout.status !== "pull_available"
+    || checkout.operation
+    || checkout.counts.incoming < 1
+    || checkout.counts.outgoing > 0
+  ) {
+    return {
+      ok: false,
+      code: "pull_checkout_changed",
+      message: "Lokální pracovní stav se během kontroly změnil. Pull byl bezpečně zablokován.",
     };
   }
   return { ok: true };
@@ -690,7 +711,7 @@ export async function pullRepoWithAutostash(repo, { beforeMutation = null } = {}
     };
   }
 
-  const stash = await runGit(
+  const stash = await runSafeGit(
     ["stash", "push", "--include-untracked", "--message", `launchpad-autostash-${new Date().toISOString()}`],
     { cwd: repo.absolute_path, timeoutMs: GIT_LOCAL_TIMEOUT_MS },
   );
@@ -703,12 +724,12 @@ export async function pullRepoWithAutostash(repo, { beforeMutation = null } = {}
     };
   }
 
-  const stashRef = await runGit(["rev-parse", "refs/stash"], {
+  const stashRef = await runSafeGit(["rev-parse", "refs/stash"], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
   if (!stashRef.ok || !stashRef.stdout) {
-    const restored = await runGit(["stash", "apply", "--index", "stash@{0}"], {
+    const restored = await runSafeGit(["stash", "apply", "--index", "stash@{0}"], {
       cwd: repo.absolute_path,
       timeoutMs: GIT_LOCAL_TIMEOUT_MS,
     });
@@ -752,10 +773,9 @@ export async function pullRepoWithAutostash(repo, { beforeMutation = null } = {}
     };
   }
 
-  const merge = await runGit(["merge", "--ff-only", "--", prepared.target_oid], {
+  const merge = await runSafeGit(["merge", "--ff-only", "--", prepared.target_oid], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
-    env: safeGitRemoteEnv(),
   });
   if (!merge.ok) {
     const restored = await restoreCreatedStash(repo, stashRef.stdout);
@@ -797,13 +817,13 @@ export async function pullRepoWithAutostash(repo, { beforeMutation = null } = {}
 }
 
 async function restoreCreatedStash(repo, stashSha) {
-  const apply = await runGit(["stash", "apply", "--index", stashSha], {
+  const apply = await runSafeGit(["stash", "apply", "--index", stashSha], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
   if (!apply.ok) return { ok: false, dropped: false };
 
-  const currentStash = await runGit(["rev-parse", "refs/stash"], {
+  const currentStash = await runSafeGit(["rev-parse", "refs/stash"], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
@@ -812,7 +832,7 @@ async function restoreCreatedStash(repo, stashSha) {
     // abychom nesmazali cizí práci; zůstane jen bezpečná duplicitní kopie.
     return { ok: true, dropped: false };
   }
-  const drop = await runGit(["stash", "drop", "stash@{0}"], {
+  const drop = await runSafeGit(["stash", "drop", "stash@{0}"], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });

@@ -25,6 +25,19 @@ const moduleRepo = {
   module: "deals",
   repo_kind: "module",
   repo_path: "organizations/Spectoda_GEN3/workspace/deals",
+  absolute_path: "/x/organizations/Spectoda_GEN3/workspace/deals",
+  slot_path: "workspace/deals",
+  expected_branch: "main",
+  repo: "git@github.com:Spectoda/deals.git",
+};
+const newModuleRepo = {
+  ...moduleRepo,
+  key: "spectoda::lazurio",
+  module: "lazurio",
+  repo_path: "organizations/Spectoda_GEN3/workspace/lazurio",
+  absolute_path: "/x/organizations/Spectoda_GEN3/workspace/lazurio",
+  slot_path: "workspace/lazurio",
+  repo: "git@github.com:Spectoda/lazurio.git",
 };
 const productionRepo = {
   key: "spectoda::firmware",
@@ -45,8 +58,14 @@ const rootSlotRepo = {
   repo_path: "organizations/Spectoda_GEN3/mission-control",
 };
 
-function laneDeps({ rootState = "up_to_date", repoStatuses = {}, pulls = {} } = {}) {
-  const calls = { performRoot: [], pullFastForward: [], pullWithAutostash: [] };
+function laneDeps({ rootState = "up_to_date", repoStatuses = {}, pulls = {}, inventories = null } = {}) {
+  const calls = {
+    performRoot: [],
+    pullFastForward: [],
+    pullWithAutostash: [],
+    materializeRepo: [],
+    buildInventory: 0,
+  };
   return {
     calls,
     deps: {
@@ -70,7 +89,12 @@ function laneDeps({ rootState = "up_to_date", repoStatuses = {}, pulls = {} } = 
           to_commit: "bbbbbbb2222",
         };
       },
-      buildInventory: async () => ({ repos: [orgRootRepo, moduleRepo, productionRepo, rootSlotRepo] }),
+      buildInventory: async () => {
+        const index = calls.buildInventory;
+        calls.buildInventory += 1;
+        return inventories?.[Math.min(index, inventories.length - 1)]
+          ?? { repos: [orgRootRepo, moduleRepo, productionRepo, rootSlotRepo] };
+      },
       readRepoStatus: async (repo) => repoStatuses[repo.key] ?? { status: "up_to_date", counts: {} },
       pullFastForward: async (repo) => {
         calls.pullFastForward.push(repo.key);
@@ -79,6 +103,16 @@ function laneDeps({ rootState = "up_to_date", repoStatuses = {}, pulls = {} } = 
       pullWithAutostash: async (repo) => {
         calls.pullWithAutostash.push(repo.key);
         return pulls[repo.key] ?? { ok: true, stash_preserved: false };
+      },
+      materializeRepo: async ({ repo }) => {
+        calls.materializeRepo.push(repo.key);
+        return {
+          ok: true,
+          outcome: "materialized",
+          message: "Nový manifestovaný modul byl bezpečně naklonovaný.",
+          branch: repo.expected_branch,
+          head: "1".repeat(40),
+        };
       },
     },
   };
@@ -186,12 +220,13 @@ describe("runUpdateLane", () => {
     expect(result.ok).toBe(true);
   });
 
-  test("org update pulls eligible repos including root-space slot, skips productionspace, blocks dirty without --preserve", async () => {
+  test("org update pulls eligible repos including root-space slot, skips even missing productionspace, blocks dirty without --preserve", async () => {
     const { deps, calls } = laneDeps({
       repoStatuses: {
         "spectoda::root": { status: "pull_available", counts: { incoming: 1, outgoing: 0 } },
         "spectoda::deals": { status: "draft_changes", counts: { incoming: 2, outgoing: 0 } },
         "spectoda::mission-control": { status: "pull_available", counts: { incoming: 1, outgoing: 0 } },
+        "spectoda::firmware": { status: "repo_missing", counts: {} },
       },
     });
     const result = await runUpdateLane({
@@ -201,6 +236,7 @@ describe("runUpdateLane", () => {
     });
     expect(calls.pullFastForward).toEqual(["spectoda::root", "spectoda::mission-control"]);
     expect(calls.pullWithAutostash).toEqual([]);
+    expect(calls.materializeRepo).toEqual([]);
     const byKey = Object.fromEntries(result.organizations.map((entry) => [entry.repo_key, entry.outcome]));
     expect(byKey["spectoda::root"]).toBe("pulled");
     expect(byKey["spectoda::deals"]).toBe("blocked_dirty");
@@ -208,6 +244,51 @@ describe("runUpdateLane", () => {
     expect(byKey["spectoda::firmware"]).toBe("policy_skipped");
     expect(result.ok).toBe(false);
     expect(result.summary.org_blocked_count).toBe(1);
+  });
+
+  test("org update reloads the manifest after root pull and materializes a newly declared module in the same run", async () => {
+    const { deps, calls } = laneDeps({
+      inventories: [
+        { repos: [orgRootRepo, moduleRepo] },
+        { repos: [orgRootRepo, moduleRepo, newModuleRepo] },
+      ],
+      repoStatuses: {
+        "spectoda::root": { status: "pull_available", counts: { incoming: 1, outgoing: 0 } },
+        "spectoda::lazurio": { status: "repo_missing", counts: {} },
+      },
+    });
+    const result = await runUpdateLane({
+      rootPath: "/x",
+      options: { orgs: ["spectoda"], allOrgs: false, check: false, preserve: false },
+      deps,
+    });
+
+    expect(calls.buildInventory).toBe(2);
+    expect(calls.pullFastForward[0]).toBe("spectoda::root");
+    expect(calls.materializeRepo).toEqual(["spectoda::lazurio"]);
+    expect(result.organizations.find((entry) => entry.repo_key === "spectoda::lazurio"))
+      .toMatchObject({ outcome: "materialized", branch: "main" });
+    expect(result.summary.org_materialized_count).toBe(1);
+    expect(result.ok).toBe(true);
+  });
+
+  test("check mode reports manifest materialization without cloning or rebuilding inventory", async () => {
+    const { deps, calls } = laneDeps({
+      inventories: [{ repos: [orgRootRepo, newModuleRepo] }],
+      repoStatuses: {
+        "spectoda::lazurio": { status: "repo_missing", counts: {} },
+      },
+    });
+    const result = await runUpdateLane({
+      rootPath: "/x",
+      options: { orgs: ["spectoda"], allOrgs: false, check: true, preserve: false },
+      deps,
+    });
+
+    expect(calls.buildInventory).toBe(1);
+    expect(calls.materializeRepo).toEqual([]);
+    expect(result.organizations.find((entry) => entry.repo_key === "spectoda::lazurio").outcome)
+      .toBe("materialization_available");
   });
 
   test("--preserve enables autostash pull for dirty behind-only repos", async () => {
