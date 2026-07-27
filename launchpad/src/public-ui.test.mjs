@@ -490,6 +490,8 @@ test("CAC-0044: git stavy mají lidský text a vstupují do kontrolního togglu"
   // Lidské texty portované 1:1 z GEN2 Kontroly.
   expect(copy).toContain("Někdo mezitím poslal novější verzi. Můžeš ji bezpečně stáhnout.");
   expect(copy).toContain("Tady je rozepsaná práce. Můžeš si zobrazit, co se změnilo.");
+  expect(copy).toContain("git_am_in_progress");
+  expect(copy).toContain("Launchpad do git am automaticky nezasahuje.");
   expect(copy).toContain("export function gitChipModel");
   expect(copy).toContain("export function isGitAttentionStatus");
   // Graceful absence: bez git dat vrací null.
@@ -519,10 +521,16 @@ test("CAC-0044: step-005 aktivuje Ukázat změny a guarded Stáhnout novější 
   expect(js).not.toContain("Můžeš ji bezpečně stáhnout (fast-forward).");
   expect(js).toContain("git.status === \"pull_available\"");
   expect(js).toContain("state.gitChangesByRepo");
+  expect(js).toContain("state.gitRecoveryByRepo");
+  expect(js).toContain("Abortnout rebase");
+  expect(js).toContain("Udělejte screenshot této hlášky a vložte ho agentovi do Codexu");
+  expect(js).toContain("function abortGitRebase");
+  expect(js).toContain("/rebase-abort");
   expect(css).toContain(".git-builder-actions");
   expect(css).toContain(".git-change-list");
   expect(css).toContain(".toast.is-success");
   expect(css).toContain(".toast.is-error");
+  expect(css).toContain(".card-warning-message");
 });
 
 test("Launchpad nabízí Organization root stav, autostash pull a jeden globální Pullnout vše", async () => {

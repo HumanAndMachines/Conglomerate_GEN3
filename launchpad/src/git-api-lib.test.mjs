@@ -9,6 +9,8 @@ import {
   initGitRepo,
   normalizeLineEndings,
   runGit,
+  setModuleRepository,
+  setOrganizationRepository,
   writeJson,
 } from "./git-fixture-helpers.test.mjs";
 
@@ -103,6 +105,12 @@ test("pull response fast-forwards only clean expected-branch repositories", asyn
   const dealsRepo = join(root, "organizations", "BetaCo_GEN3", "workspace", "deals");
   const remotePath = join(root, "remotes", "deals.git");
   await initGitRepo(dealsRepo, { remotePath });
+  await setModuleRepository({
+    root,
+    orgPath: "organizations/BetaCo_GEN3",
+    module: "deals",
+    repo: remotePath,
+  });
   const contributor = join(root, "tmp", "deals-contributor");
   await mkdir(join(root, "tmp"), { recursive: true });
   runGit(["clone", remotePath, contributor], root);
@@ -129,6 +137,11 @@ test("individual pull also allows an Organization root repo", async () => {
   const orgRoot = join(root, "organizations", "BetaCo_GEN3");
   const remotePath = join(root, "remotes", "organization-root-single.git");
   await initGitRepo(orgRoot, { remotePath });
+  await setOrganizationRepository({
+    root,
+    orgPath: "organizations/BetaCo_GEN3",
+    repo: remotePath,
+  });
   await writeFile(join(orgRoot, ".git", "info", "exclude"), "*\n");
   const contributor = join(root, "tmp", "organization-root-single-contributor");
   await mkdir(join(root, "tmp"), { recursive: true });
@@ -152,7 +165,14 @@ test("pull response refuses dirty repositories instead of hiding local draft wor
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const dealsRepo = join(root, "organizations", "BetaCo_GEN3", "workspace", "deals");
-  await initGitRepo(dealsRepo, { remotePath: join(root, "remotes", "dirty-deals.git") });
+  const remotePath = join(root, "remotes", "dirty-deals.git");
+  await initGitRepo(dealsRepo, { remotePath });
+  await setModuleRepository({
+    root,
+    orgPath: "organizations/BetaCo_GEN3",
+    module: "deals",
+    repo: remotePath,
+  });
   await writeFile(join(dealsRepo, "draft.md"), "local draft\n");
 
   try {
@@ -212,6 +232,12 @@ test("pull response allows org root-space slots (CAC-0083): mission-control-like
   const infraRepo = join(root, "organizations", "OmegaCo_GEN3", "infra");
   const remotePath = join(root, "remotes", "infra.git");
   await initGitRepo(infraRepo, { remotePath });
+  await setModuleRepository({
+    root,
+    orgPath: "organizations/OmegaCo_GEN3",
+    module: "infra",
+    repo: remotePath,
+  });
   const contributor = join(root, "tmp", "infra-contributor");
   await mkdir(join(root, "tmp"), { recursive: true });
   runGit(["clone", remotePath, contributor], root);
@@ -238,6 +264,17 @@ test("pull all updates Organization roots and workspace modules, using autostash
   const dealsRemote = join(root, "remotes", "deals-bulk.git");
   await initGitRepo(orgRoot, { remotePath: orgRemote });
   await initGitRepo(dealsRepo, { remotePath: dealsRemote });
+  await setOrganizationRepository({
+    root,
+    orgPath: "organizations/BetaCo_GEN3",
+    repo: orgRemote,
+  });
+  await setModuleRepository({
+    root,
+    orgPath: "organizations/BetaCo_GEN3",
+    module: "deals",
+    repo: dealsRemote,
+  });
   await writeFile(join(orgRoot, ".git", "info", "exclude"), "workspace/\n");
 
   const orgContributor = join(root, "tmp", "org-contributor");

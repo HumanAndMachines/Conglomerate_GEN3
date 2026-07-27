@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from "fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
 
@@ -136,6 +136,27 @@ export async function writeJson(path, value) {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+export async function setOrganizationRepository({ root, orgPath, repo }) {
+  const path = join(root, orgPath, "company.gen3.json");
+  const manifest = JSON.parse(await readFile(path, "utf8"));
+  manifest.company = { ...manifest.company, repository: repo };
+  await writeJson(path, manifest);
+}
+
+export async function setModuleRepository({ root, orgPath, module, repo }) {
+  const path = join(root, orgPath, "modules.manifest.json");
+  const manifest = JSON.parse(await readFile(path, "utf8"));
+  const slot = manifest.module_slots.find((candidate) => candidate.path.split("/").at(-1) === module);
+  if (!slot) throw new Error(`Module slot ${module} was not found.`);
+  if (slot.space === "root" || slot.git) {
+    slot.git = { ...slot.git, url: repo };
+    delete slot.repo;
+  } else {
+    slot.repo = repo;
+  }
+  await writeJson(path, manifest);
+}
+
 // Git for Windows může podle core.autocrlf materializovat tracked text jako
 // CRLF. Obsahové testy ověřují text a zachování draftu, ne platformní EOL.
 export function normalizeLineEndings(value) {
@@ -157,4 +178,74 @@ export function runGit(args, cwd) {
     throw new Error(`git ${args.join(" ")} failed: ${new TextDecoder().decode(result.stderr)}`);
   }
   return new TextDecoder().decode(result.stdout).trim();
+}
+
+export async function startConflictingRebase(repo) {
+  runGit(["checkout", "-b", "rebase-target"], repo);
+  await writeFile(join(repo, "README.md"), "# shared target\n");
+  runGit(["add", "README.md"], repo);
+  runGit(["commit", "-m", "shared target"], repo);
+  runGit(["checkout", "main"], repo);
+  await writeFile(join(repo, "README.md"), "# local draft\n");
+  runGit(["add", "README.md"], repo);
+  runGit(["commit", "-m", "local draft"], repo);
+  const result = Bun.spawnSync(["git", "rebase", "rebase-target"], {
+    cwd: repo,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: {
+      ...process.env,
+      GIT_TERMINAL_PROMPT: "0",
+      GCM_INTERACTIVE: "never",
+    },
+  });
+  if (result.exitCode === 0) throw new Error("Fixture expected a conflicting rebase, but git rebase succeeded.");
+}
+
+export async function startConflictingApplyRebase(repo) {
+  runGit(["checkout", "-b", "rebase-target"], repo);
+  await writeFile(join(repo, "README.md"), "# shared target\n");
+  runGit(["add", "README.md"], repo);
+  runGit(["commit", "-m", "shared target"], repo);
+  runGit(["checkout", "main"], repo);
+  await writeFile(join(repo, "README.md"), "# local draft\n");
+  runGit(["add", "README.md"], repo);
+  runGit(["commit", "-m", "local draft"], repo);
+  const result = Bun.spawnSync(["git", "rebase", "--apply", "rebase-target"], {
+    cwd: repo,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: {
+      ...process.env,
+      GIT_TERMINAL_PROMPT: "0",
+      GCM_INTERACTIVE: "never",
+    },
+  });
+  if (result.exitCode === 0) throw new Error("Fixture expected a conflicting apply-backend rebase.");
+}
+
+export async function startConflictingGitAm(repo) {
+  runGit(["checkout", "-b", "patch-source"], repo);
+  await writeFile(join(repo, "README.md"), "# patch version\n");
+  runGit(["add", "README.md"], repo);
+  runGit(["commit", "-m", "patch version"], repo);
+  const patch = runGit(["format-patch", "-1", "--stdout"], repo);
+  const patchPath = join(dirname(repo), "fixture.patch");
+  await writeFile(patchPath, `${patch}\n`);
+
+  runGit(["checkout", "main"], repo);
+  await writeFile(join(repo, "README.md"), "# main conflict\n");
+  runGit(["add", "README.md"], repo);
+  runGit(["commit", "-m", "main conflict"], repo);
+  const result = Bun.spawnSync(["git", "am", patchPath], {
+    cwd: repo,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: {
+      ...process.env,
+      GIT_TERMINAL_PROMPT: "0",
+      GCM_INTERACTIVE: "never",
+    },
+  });
+  if (result.exitCode === 0) throw new Error("Fixture expected a conflicting git am.");
 }

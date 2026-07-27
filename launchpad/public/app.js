@@ -54,6 +54,7 @@ const state = {
   // absence, git chip se nevykreslí.
   gitReposByModule: new Map(),
   gitChangesByRepo: new Map(),
+  gitRecoveryByRepo: new Map(),
   bulkPullResult: null,
   runtimeSourcesByApp: new Map(),
   openingApps: new Set(),
@@ -716,11 +717,15 @@ async function fetchJson(path, { method = "GET", headers = undefined, body = und
   const response = await fetch(path, { method, headers, body, cache: "no-store" });
   if (!response.ok) {
     let message = `${path} ${response.status}`;
+    let payload = null;
     try {
-      const payload = await response.clone().json();
+      payload = await response.clone().json();
       if (payload?.message) message = payload.message;
     } catch {}
-    throw new Error(message);
+    const error = new Error(message);
+    error.code = payload?.error ?? "http_error";
+    error.payload = payload;
+    throw error;
   }
   return response.json();
 }
@@ -1658,7 +1663,22 @@ function renderOrganizationGitStatus() {
   freshness.textContent = `Vzdálená verze: ${gitFreshnessLabel(rootRepo.freshness)}`;
   card.append(title, badges, copy, freshness);
 
-  if (rootRepo.status === "pull_available" || canAutostashPull(rootRepo)) {
+  if (["rebase_in_progress", "git_am_in_progress"].includes(rootRepo.status)) {
+    const recovery = document.createElement("p");
+    recovery.className = "git-recovery-copy";
+    recovery.textContent = rootRepo.operation?.can_abort_rebase
+      ? "Udělejte screenshot této hlášky a vložte ho agentovi do Codexu, nebo rebase bezpečně abortněte."
+      : "Udělejte screenshot této hlášky a vložte ho agentovi do Codexu. Launchpad do této Git operace automaticky nezasahuje.";
+    card.append(recovery);
+    if (rootRepo.operation?.can_abort_rebase) {
+      const action = builderActionButton(
+        "Abortnout rebase",
+        () => abortGitRebase({ git: rootRepo, label: `${organization} root` }),
+      );
+      action.disabled = state.pendingAction === `git-rebase-abort:${rootRepo.key}`;
+      card.append(action);
+    }
+  } else if (rootRepo.status === "pull_available" || canAutostashPull(rootRepo)) {
     const action = builderActionButton(
       canAutostashPull(rootRepo) ? "Stáhnout a zachovat změny" : "Stáhnout root",
       () => pullGitRepository({
@@ -2592,6 +2612,29 @@ function cardWarningModel(app, gitRepo) {
   if (isProductionspace(app)) return null;
   const dependencyState = app.dependencies?.state;
   const sharedPortPeer = runningSharedPortPeer(app);
+  const recovery = gitRepo ? state.gitRecoveryByRepo.get(gitRepo.key) : null;
+  const canAbortRebase = Boolean(
+    gitRepo?.operation?.can_abort_rebase
+    || recovery?.canAbortRebase,
+  );
+
+  if (["rebase_in_progress", "git_am_in_progress"].includes(gitRepo?.status) || recovery) {
+    return {
+      tone: "danger",
+      title: ["rebase_in_progress", "git_am_in_progress"].includes(gitRepo?.status)
+        ? "Git operace zůstala rozpracovaná"
+        : "Stažení změn se nepovedlo",
+      message: [
+        recovery?.message ?? gitRepo?.message,
+        "Udělejte screenshot této hlášky a vložte ho agentovi do Codexu. Agent problém bezpečně dořeší.",
+      ].filter(Boolean).join(" "),
+      actionLabel: canAbortRebase ? "Abortnout rebase" : null,
+      run: canAbortRebase
+        ? () => abortGitRebase({ git: gitRepo, label: appBaseTitle(app), pendingKey: `${app.id}:git-rebase-abort` })
+        : null,
+      pending: `${app.id}:git-rebase-abort`,
+    };
+  }
 
   if (sharedPortPeer) {
     return {
@@ -2711,6 +2754,12 @@ function cardWarningNode(warning) {
   title.className = "card-warning-title";
   title.textContent = warning.title;
   body.append(title);
+  if (warning.message) {
+    const message = document.createElement("p");
+    message.className = "card-warning-message";
+    message.textContent = warning.message;
+    body.append(message);
+  }
 
   node.append(icon, body);
 
@@ -3977,10 +4026,38 @@ async function pullGitRepository({ git, label, autostash = false, pendingKey = `
     const action = autostash ? "pull-autostash" : "pull";
     const payload = await fetchJson(`/api/git/repos/${encodeURIComponent(git.key)}/${action}`, { method: "POST" });
     state.gitChangesByRepo.delete(git.key);
+    state.gitRecoveryByRepo.delete(git.key);
     const stashNote = payload.stash_preserved ? " Bezpečnostní kopie zůstala ve stash stacku." : "";
     toast(`${label}: novější verze stažená (${payload.after?.head?.short_sha ?? "aktuální"}).${stashNote}`, "success", 7000);
     await loadData({ quiet: true });
   } catch (error) {
+    state.gitRecoveryByRepo.set(git.key, {
+      code: error.code,
+      message: error.message,
+      canAbortRebase: Boolean(error.payload?.recovery?.can_abort_rebase),
+    });
+    toast(`${label}: ${error.message}`, "error", 9000);
+  } finally {
+    state.pendingAction = null;
+    render();
+  }
+}
+
+async function abortGitRebase({ git, label, pendingKey = `git-rebase-abort:${git.key}` }) {
+  if (!window.confirm(`Abortnout probíhající rebase pro ${label}? Git vrátí checkout do stavu před zahájením rebase.`)) return;
+  state.pendingAction = pendingKey;
+  render();
+  try {
+    const payload = await fetchJson(`/api/git/repos/${encodeURIComponent(git.key)}/rebase-abort`, { method: "POST" });
+    state.gitRecoveryByRepo.delete(git.key);
+    toast(`${label}: rebase byl bezpečně abortnut.`, "success", 7000);
+    if (payload.after) await loadData({ quiet: true });
+  } catch (error) {
+    state.gitRecoveryByRepo.set(git.key, {
+      code: error.code,
+      message: error.message,
+      canAbortRebase: Boolean(error.payload?.recovery?.can_abort_rebase),
+    });
     toast(`${label}: ${error.message}`, "error", 9000);
   } finally {
     state.pendingAction = null;
