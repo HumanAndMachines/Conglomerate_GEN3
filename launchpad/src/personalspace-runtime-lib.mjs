@@ -10,7 +10,8 @@
 // nesmí propsat do org discovery (/api/apps), doctor shared reportu ani templates.
 // Doctor personalspace check reportuje jen METADATA (počty, validitu), nikdy obsah.
 
-import { join } from "path";
+import { existsSync } from "fs";
+import { join, win32 } from "path";
 import { discoverPersonalspace } from "./personalspace-lib.mjs";
 import { GbrainAccessError } from "./gbrain-lib.mjs";
 import { createRuntimeManager } from "./runtime-lib.mjs";
@@ -167,31 +168,73 @@ export async function buildPersonalspaceResponse({
   };
 }
 
-export async function inspectGitHubRepository(repo, { cwd = process.cwd(), spawnSync = Bun.spawnSync } = {}) {
+export function githubCliExecutableCandidates({
+  platform = process.platform,
+  env = process.env,
+} = {}) {
+  if (platform !== "win32") return [];
+  const candidates = [];
+  for (const root of [env.ProgramW6432, env.ProgramFiles, env["ProgramFiles(x86)"]].filter(Boolean)) {
+    candidates.push(win32.join(root, "GitHub CLI", "gh.exe"));
+  }
+  if (env.LOCALAPPDATA) {
+    candidates.push(
+      win32.join(env.LOCALAPPDATA, "Programs", "GitHub CLI", "bin", "gh.exe"),
+      win32.join(env.LOCALAPPDATA, "Programs", "GitHub CLI", "gh.exe"),
+    );
+  }
+  return [...new Set(candidates)];
+}
+
+export function resolveGitHubCliExecutable({
+  platform = process.platform,
+  env = process.env,
+  which = Bun.which,
+  pathExists = existsSync,
+} = {}) {
+  const discovered = which("gh");
+  if (typeof discovered === "string" && discovered.trim() !== "") return discovered;
+  return githubCliExecutableCandidates({ platform, env }).find((candidate) => pathExists(candidate)) ?? null;
+}
+
+export async function inspectGitHubRepository(
+  repo,
+  {
+    cwd = process.cwd(),
+    spawnSync = Bun.spawnSync,
+    ghExecutable = resolveGitHubCliExecutable(),
+  } = {},
+) {
   if (typeof repo !== "string" || !githubRepositoryPattern.test(repo)) {
     throw new Error("Neplatná GitHub repository identita.");
   }
-  let result;
-  try {
-    result = spawnSync(
-      ["gh", "repo", "view", repo, "--json", "nameWithOwner,visibility"],
-      {
-        cwd,
-        stdout: "pipe",
-        stderr: "pipe",
-        timeout: githubPrivacyCheckTimeoutMs,
-        windowsHide: true,
-        env: {
-          ...process.env,
-          GH_PROMPT_DISABLED: "1",
-          GH_NO_UPDATE_NOTIFIER: "1",
-        },
-      },
-    );
-  } catch {
-    throw new Error(`GitHub repo ${repo} nejde živě ověřit.`);
+  if (!ghExecutable) {
+    throw new Error("GitHub CLI nebylo nalezeno.");
   }
-  if (result.exitCode !== 0) {
+  let result;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      result = spawnSync(
+        [ghExecutable, "repo", "view", repo, "--json", "nameWithOwner,visibility"],
+        {
+          cwd,
+          stdout: "pipe",
+          stderr: "pipe",
+          timeout: githubPrivacyCheckTimeoutMs,
+          windowsHide: true,
+          env: {
+            ...process.env,
+            GH_PROMPT_DISABLED: "1",
+            GH_NO_UPDATE_NOTIFIER: "1",
+          },
+        },
+      );
+    } catch {
+      result = null;
+    }
+    if (result?.exitCode === 0) break;
+  }
+  if (result?.exitCode !== 0) {
     throw new Error(`GitHub repo ${repo} nejde živě ověřit.`);
   }
   let info;

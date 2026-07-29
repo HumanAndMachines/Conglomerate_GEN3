@@ -466,8 +466,11 @@ jasný mechanismus:
   spustila jiná instance Launchpadu, Launchpad ho adoptuje jen tam, kde může
   pozitivně ověřit PID i CWD vlastníka portu. PID ověří znovu před `SIGTERM`
   i případným `SIGKILL`; neznámý nebo mezitím změněný PID se fail-closed
-  nezabíjí. Windows tuto cross-instance CWD kontrolu zatím nemá: po restartu
-  Launchpadu zůstane listener `unknown-port` a musí se uvolnit mimo Launchpad.
+  nezabíjí. Na Windows si GEN3 při vlastním startu uloží lokální owner proof:
+  PID listeneru, jeho procesní identitu, vazbu na launcher a očekávaný
+  checkout. Po restartu převezme jen proces, u kterého celý důkaz stále sedí.
+  Starší, cizí nebo neověřitelný listener zůstává `unknown-port` a Launchpad
+  jej neukončí.
   Na Windows používá current-instance managed proces cílený
   `taskkill /PID <pid> /T /F` nad PID uloženým v runtime recordu a po ukončení
   čeká na potvrzení původního child handle. Pokud handle exit nepotvrdí,
@@ -531,8 +534,8 @@ funguje.
 Údaj „novější verze / N commitů pozadu“ se počítá vůči lokálním remote refs,
 ale jejich síťové obnovení je řízené samostatně:
 
-- `/api/apps` používá krátkou sdílenou cache lokální Git kontroly a nikdy samo
-  nespouští síťový fetch;
+- `/api/apps` je rychlá discovery/runtime lane a globální Git census vůbec
+  nespouští; aktivní Organization si Git stav načítá odděleně;
 - aktivní Organization pohled žádá `/api/git/repos?company=<slug>` jen pro
   zvolenou Organizaci; první požadavek asynchronně naplánuje kontrolovaný fetch
   přesně manifestové větve do jejího očekávaného `origin/<branch>` refu, takže

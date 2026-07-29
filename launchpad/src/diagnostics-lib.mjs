@@ -51,6 +51,7 @@ export async function buildLaunchpadAppsResponse({
   runtimeManager = createRuntimeManager({ companiesRoot, launchpadRoot }),
   gitStatusService = null,
   allowMissingOrganizations = false,
+  includeGit = true,
 } = {}) {
   const discovery = await discoverLaunchpadApps(companiesRoot, { allowMissingOrganizations });
   const companiesConfig = await readCompaniesConfig(companiesRoot);
@@ -146,7 +147,13 @@ export async function buildLaunchpadAppsResponse({
     runtime_status: "stopped",
   }));
   const visibleApps = [...apps, ...invalidApps];
-  const gitContext = await buildGitContext({ companiesRoot, gitStatusService });
+  // The app grid is a runtime surface, not a Git dashboard. Server callers can
+  // skip the full repository census so first paint and runtime actions never
+  // wait for every mounted repository. The active Organization loads its Git
+  // model separately through /api/git/repos.
+  const gitContext = includeGit
+    ? await buildGitContext({ companiesRoot, gitStatusService })
+    : { reposByKey: new Map(), warnings: [] };
   const appsWithGit = visibleApps.map((app) => ({
     ...app,
     git: compactGitSummaryForApp(gitContext.reposByKey.get(gitRepoKeyForApp(app))),
@@ -894,7 +901,10 @@ function rootSlotContractIssues(manifest, config, organizationRoot) {
 
     const gitUrl = typeof slot.git?.url === "string" ? slot.git.url.trim() : "";
     const gitBranch = typeof slot.git?.branch === "string" ? slot.git.branch.trim() : "";
-    const checkoutExists = existsSync(join(organizationRoot, path));
+    // A directory alone is not a materialized GEN3 checkout: during cutover an
+    // Organization may still keep the tracked in-tree legacy layer at the same
+    // path. Only an actual nested Git boundary makes the planned slot active.
+    const checkoutExists = existsSync(join(organizationRoot, path, ".git"));
     const checkoutCoordinatesStarted = slot.git !== undefined;
     if (slot.status === "planned_slot" && checkoutExists) {
       issues.push(
@@ -955,11 +965,19 @@ function rootSlotContractIssues(manifest, config, organizationRoot) {
     );
   }
   for (const path of declaredLayerPaths) {
-    if (!declaredPaths.has(path)) {
-      issues.push(
-        `company.gen3.json: root vrstva ${path} nemá odpovídající modules.manifest.json slot`,
-      );
-    }
+    if (declaredPaths.has(path)) continue;
+    const layerPath = join(organizationRoot, path);
+    const isTrackedInOrganizationRoot =
+      existsSync(layerPath) && !existsSync(join(layerPath, ".git"));
+    // GEN3 migration may still keep Design System or Mission Control as
+    // ordinary directories tracked by the Organization root repository.
+    // modules.manifest.json describes nested checkout boundaries, so requiring
+    // a second slot for an in-tree layer would contradict the Organization
+    // Doctor and turn a valid compatibility layout into a false blocker.
+    if (isTrackedInOrganizationRoot) continue;
+    issues.push(
+      `company.gen3.json: root vrstva ${path} nemá odpovídající modules.manifest.json slot`,
+    );
   }
   for (const path of declaredPaths) {
     if (!rootLayerPaths.has(path) || declaredLayerPaths.has(path)) continue;

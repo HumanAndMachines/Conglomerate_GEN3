@@ -55,6 +55,11 @@ const principalEmail = resolvePrincipalEmail();
 const runtimeManager = createRuntimeManager({ companiesRoot, launchpadRoot });
 const moduleFolderOpener = createModuleFolderOpener({ companiesRoot, getAppsResponse: buildAppsResponse });
 const gitStatusService = createGitStatusService();
+const appsResponseCacheTtlMs = 30_000;
+const runtimeContract = "launchpad-gen3-reliability-v1";
+let appsResponseCache = null;
+let appsResponseCacheExpiresAt = 0;
+let appsResponseInFlight = null;
 const organizationLogoCandidates = [
   "launchpad/app/v1/web/launchpad-icon.png",
   "launchpad/app/v1/web/logo-square.png",
@@ -103,12 +108,35 @@ if (options.open) {
 
 setInterval(() => {}, 2_147_483_647);
 
-async function buildAppsResponse() {
+async function buildAppsResponse({ force = false } = {}) {
+  if (!force && appsResponseCache && Date.now() < appsResponseCacheExpiresAt) {
+    return appsResponseCache;
+  }
+  if (appsResponseInFlight) return appsResponseInFlight;
+
+  appsResponseInFlight = buildAppsResponseUncached();
+  try {
+    const response = await appsResponseInFlight;
+    appsResponseCache = response;
+    appsResponseCacheExpiresAt = Date.now() + appsResponseCacheTtlMs;
+    return response;
+  } finally {
+    appsResponseInFlight = null;
+  }
+}
+
+function invalidateAppsResponseCache() {
+  appsResponseCache = null;
+  appsResponseCacheExpiresAt = 0;
+}
+
+async function buildAppsResponseUncached() {
   const response = await buildLaunchpadAppsResponse({
     companiesRoot,
     launchpadRoot,
     runtimeManager,
     gitStatusService,
+    includeGit: false,
   });
   const nextLogoPaths = new Map();
   await Promise.all((response.organizations ?? []).map(async (organization) => {
@@ -645,28 +673,35 @@ async function handleRuntimeRoute(request, route) {
       return jsonResponse(await runtimeManager.logs(route.appId));
     }
     if ((route.action === "install" || route.action === "repair") && request.method === "POST") {
-      return jsonResponse(await runtimeManager.install(route.appId, { action: route.action, ...runtimeOptions }));
+      return jsonResponse(await runRuntimeMutation(() =>
+        runtimeManager.install(route.appId, { action: route.action, ...runtimeOptions })));
     }
     if (route.action === "start" && request.method === "POST") {
-      return jsonResponse(await runtimeManager.start(route.appId, runtimeOptions));
+      return jsonResponse(await runRuntimeMutation(() => runtimeManager.start(route.appId, runtimeOptions)));
     }
     if (route.action === "switch" && request.method === "POST") {
-      return jsonResponse(await runtimeManager.switchApp(route.appId, runtimeOptions));
+      return jsonResponse(await runRuntimeMutation(() => runtimeManager.switchApp(route.appId, runtimeOptions)));
     }
     // One-click builder chain (CAC-0044): ensure install → ensure start → URL.
     if (route.action === "open" && request.method === "POST") {
-      return jsonResponse(await runtimeManager.open(route.appId, runtimeOptions));
+      return jsonResponse(await runRuntimeMutation(() => runtimeManager.open(route.appId, runtimeOptions)));
     }
     if (route.action === "stop" && request.method === "POST") {
-      return jsonResponse(await runtimeManager.stop(route.appId, runtimeOptions));
+      return jsonResponse(await runRuntimeMutation(() => runtimeManager.stop(route.appId, runtimeOptions)));
     }
     if (route.action === "restart" && request.method === "POST") {
-      return jsonResponse(await runtimeManager.restart(route.appId, runtimeOptions));
+      return jsonResponse(await runRuntimeMutation(() => runtimeManager.restart(route.appId, runtimeOptions)));
     }
     return jsonResponse({ error: "method_not_allowed" }, 405);
   } catch (error) {
     return runtimeErrorResponse(error);
   }
+}
+
+async function runRuntimeMutation(action) {
+  const result = await action();
+  invalidateAppsResponseCache();
+  return result;
 }
 
 async function runtimeRequestOptions(request) {
@@ -754,7 +789,7 @@ function startServer(startPort) {
         // organizations/*/company.gen3.json bez ruční editace root manifestu.
         // Nový lokální mount (git clone / doctor sync) se objeví bez restartu.
         if (url.pathname === "/api/sync" && request.method === "POST") {
-          const response = await buildAppsResponse();
+          const response = await buildAppsResponse({ force: true });
           return jsonResponse({
             action: "sync",
             synced_at: response.generated_at,
@@ -764,7 +799,9 @@ function startServer(startPort) {
         if (url.pathname === "/api/doctor") return jsonResponse(await buildDoctorReport());
         if (url.pathname === "/api/recent-changes") return jsonResponse(await buildRecentChangesResponse(url.searchParams.get("company")));
         if (url.pathname === "/api/most-used") return jsonResponse(await buildMostUsedResponse(url.searchParams.get("company")));
-        if (url.pathname === "/health") return jsonResponse({ status: "ok" });
+        if (url.pathname === "/health") {
+          return jsonResponse({ status: "ok", runtime_contract: runtimeContract });
+        }
         return serveStatic(url.pathname);
       } catch (error) {
         return jsonResponse({ error: "launchpad_error", message: error.message }, 500);

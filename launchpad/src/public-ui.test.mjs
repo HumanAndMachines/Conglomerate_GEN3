@@ -344,10 +344,12 @@ test("Launchpad quiet refresh is lightweight and non-overlapping", async () => {
   expect(loadDataBlock).toContain("runLoadData({ quiet })");
   expect(loadDataBlock).toContain("quiet");
   expect(loadDataBlock).toContain('fetchJson("/api/apps")');
-  expect(loadDataBlock).toContain('Promise.resolve(null)');
   expect(loadDataBlock).toContain('fetchJson("/api/sync", { method: "POST" })');
+  expect(js).toContain("let doctorLoadInFlight = null;");
+  expect(loadDataBlock).toContain("if (doctorLoadInFlight) return doctorLoadInFlight;");
   expect(loadDataBlock).toContain('fetchJson("/api/doctor")');
-  expect(loadDataBlock).toContain("if (doctorResponse) {");
+  expect(loadDataBlock).toContain("if (!quiet) void loadDoctorInBackground();");
+  expect(loadDataBlock).not.toContain("doctorResponse");
   expect(loadDataBlock).toContain('state.doctorRunState = "complete"');
   expect(loadDataBlock).toContain("if (!state.loaded)");
   expect(loadDataBlock).toContain("if (!quiet || !state.doctor)");

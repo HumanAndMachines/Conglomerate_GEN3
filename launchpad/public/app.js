@@ -86,6 +86,7 @@ const state = {
 // click handler stays in sync with the computed verdict.
 let heroAction = "reload";
 let loadDataInFlight = null;
+let doctorLoadInFlight = null;
 let quietPollTimer = null;
 let restoreSpaceMenuFocusOnClose = false;
 let drawerReturnFocus = null;
@@ -576,6 +577,33 @@ async function loadData({ quiet = false } = {}) {
   }
 }
 
+async function loadDoctorInBackground() {
+  if (doctorLoadInFlight) return doctorLoadInFlight;
+  doctorLoadInFlight = fetchJson("/api/doctor");
+  try {
+    state.doctor = await doctorLoadInFlight;
+    state.doctorRunState = "complete";
+  } catch (error) {
+    state.doctorRunState = "unavailable";
+    if (!state.doctor) {
+      state.doctor = {
+        summary: { status: "fail", fail: 1, warn: 0, ok: 0 },
+        checks: [
+          {
+            id: "launchpad.ui.doctor_fetch",
+            status: "fail",
+            message: error.message,
+            details: [],
+          },
+        ],
+      };
+    }
+  } finally {
+    doctorLoadInFlight = null;
+    render();
+  }
+}
+
 // Polling exists only while this tab is both visible and focused. A recursive
 // timeout avoids overlapping cycles and, unlike a permanent interval, creates
 // no background work while the user is elsewhere. Returning to the window
@@ -636,16 +664,14 @@ async function runLoadData({ quiet = false } = {}) {
     // projede lokální auto-discovery a Doctor. Tiché 15s pozadí je lehké:
     // nevolá Doctor, běží jen v aktivním okně a nepřekrývá se s dalším loadem,
     // aby neucpalo runtime akce.
-    const [appsResponse, doctorResponse, personalspaceResponse] = await Promise.all(
+    const [appsResponse, personalspaceResponse] = await Promise.all(
       quiet
         ? [
             fetchJson("/api/apps"),
-            Promise.resolve(null),
             fetchPersonalspaceSafe(),
           ]
         : [
             fetchJson("/api/sync", { method: "POST" }),
-            fetchJson("/api/doctor"),
             fetchPersonalspaceSafe(),
           ],
     );
@@ -662,10 +688,6 @@ async function runLoadData({ quiet = false } = {}) {
     } else {
       state.personalspaceError = personalspaceResponse.error;
     }
-    if (doctorResponse) {
-      state.doctor = doctorResponse;
-      state.doctorRunState = "complete";
-    }
     state.loaded = true;
     launchpadScopeDataReady = true;
     applyLaunchpadHash({ notify: firstSuccessfulScopeLoad });
@@ -681,6 +703,7 @@ async function runLoadData({ quiet = false } = {}) {
     // Panely Poslední změny / Nejčastější + git read model se načítají zvlášť a
     // best-effort — pomalejší git nesmí blokovat hlavní mřížku aplikací.
     void loadSidePanels();
+    if (!quiet) void loadDoctorInBackground();
   } catch (error) {
     // Přechodný poll výpadek nesmí zahodit poslední úspěšně objevené prostory
     // ani přepnout uživatele z vybrané Organizace na personalspace.

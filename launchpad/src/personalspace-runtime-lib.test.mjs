@@ -5,8 +5,10 @@ import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import {
   attachLiveRepositoryPrivacy,
   buildPersonalspaceResponse,
+  githubCliExecutableCandidates,
   inspectGitHubRepository,
   personalspaceDoctorCheck,
+  resolveGitHubCliExecutable,
   resolveSpaceGbrainVault,
 } from "./personalspace-runtime-lib.mjs";
 import { GbrainAccessError } from "./gbrain-lib.mjs";
@@ -251,6 +253,7 @@ test("live GitHub privacy probe používá bounded shell-free gh příkaz", asyn
   let observed;
   const info = await inspectGitHubRepository("exampleuser/exampleuser-gbrain", {
     cwd: "/tmp/example",
+    ghExecutable: "gh",
     spawnSync: (command, options) => {
       observed = { command, options };
       return {
@@ -277,6 +280,45 @@ test("live GitHub privacy probe používá bounded shell-free gh příkaz", asyn
     windowsHide: true,
   });
   expect(observed.options.env.GH_PROMPT_DISABLED).toBe("1");
+});
+
+test("Windows privacy probe najde user-local GitHub CLI i bez PATH naplánované úlohy", () => {
+  const env = {
+    LOCALAPPDATA: "C:\\Users\\builder\\AppData\\Local",
+    ProgramFiles: "C:\\Program Files",
+  };
+  const expected = "C:\\Users\\builder\\AppData\\Local\\Programs\\GitHub CLI\\bin\\gh.exe";
+  expect(githubCliExecutableCandidates({ platform: "win32", env })).toContain(expected);
+  expect(resolveGitHubCliExecutable({
+    platform: "win32",
+    env,
+    which: () => null,
+    pathExists: (candidate) => candidate === expected,
+  })).toBe(expected);
+});
+
+test("live GitHub privacy probe jednou zopakuje přechodné selhání CLI", async () => {
+  let attempts = 0;
+  const info = await inspectGitHubRepository("exampleuser/exampleuser_GEN3", {
+    ghExecutable: "gh",
+    spawnSync: () => {
+      attempts += 1;
+      if (attempts === 1) {
+        return { exitCode: 1, stdout: new Uint8Array(), stderr: new Uint8Array() };
+      }
+      return {
+        exitCode: 0,
+        stdout: new TextEncoder().encode(JSON.stringify({
+          nameWithOwner: "exampleuser/exampleuser_GEN3",
+          visibility: "PRIVATE",
+        })),
+        stderr: new Uint8Array(),
+      };
+    },
+  });
+
+  expect(attempts).toBe(2);
+  expect(info.visibility).toBe("PRIVATE");
 });
 
 test("Doctor nikdy nečte privátní Buddy presentation warnings", () => {

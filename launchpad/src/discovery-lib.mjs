@@ -285,6 +285,10 @@ function trimmedString(value) {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
 }
 
+function compatibilityIdentityKey(value) {
+  return typeof value === "string" ? value.toLowerCase().replace(/[^a-z0-9]/g, "") : "";
+}
+
 export async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"));
 }
@@ -1142,6 +1146,7 @@ export async function discoverLaunchpadApps(
     const manifestIssues = [];
     const securityIssues = [];
     const builderMetadataWarnings = [];
+    const compatibilityWarnings = [];
     validateAppManifest({
       app,
       packageJson,
@@ -1150,10 +1155,27 @@ export async function discoverLaunchpadApps(
       failures: manifestIssues,
       softWarnings: builderMetadataWarnings,
     });
-    if (typeof app.company === "string" && app.company !== company.slug) {
-      manifestIssues.push(
-        `${packagePath}: companyascode.app.company musí být ${company.slug}, protože package leží ve ${company.path}`,
+    if (
+      typeof app.id === "string"
+      && /^[A-Za-z0-9][A-Za-z0-9-]*$/.test(app.id)
+      && app.id !== app.id.toLowerCase()
+    ) {
+      compatibilityWarnings.push(
+        `${packagePath}: companyascode.app.id "${app.id}" používá legacy proper-case prefix; nové app id zapisuj lowercase`,
       );
+    }
+    let canonicalAppCompany = app.company;
+    if (typeof app.company === "string" && app.company !== company.slug) {
+      if (compatibilityIdentityKey(app.company) === compatibilityIdentityKey(company.slug)) {
+        canonicalAppCompany = company.slug;
+        compatibilityWarnings.push(
+          `${packagePath}: companyascode.app.company "${app.company}" má legacy case/punctuation drift proti "${company.slug}"; runtime používá kanonickou Organization identitu`,
+        );
+      } else {
+        manifestIssues.push(
+          `${packagePath}: companyascode.app.company musí být ${company.slug}, protože package leží ve ${company.path}`,
+        );
+      }
     }
 
     const plugin = manifestIssues.length === 0
@@ -1228,11 +1250,12 @@ export async function discoverLaunchpadApps(
     // Warning-first builder metadata (CAC-0044): valid appka se špatným
     // volitelným polem zůstává funkční, jen zaloguje varování.
     warnings.push(...builderMetadataWarnings.map((issue) => `${issue} (builder metadata)`));
+    warnings.push(...compatibilityWarnings.map((issue) => `${issue} (incremental compatibility)`));
 
     apps.push({
       id: app.id,
       title: app.title,
-      company: app.company,
+      company: canonicalAppCompany,
       module: app.module ?? null,
       surface: app.surface,
       port: app.port,

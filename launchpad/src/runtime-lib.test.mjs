@@ -7,19 +7,22 @@ import {
   RuntimeActionError,
   bunExecutableCandidates,
   createRuntimeManager,
+  parseWindowsProcessIdentity,
   parseWindowsListeningPid,
   resolveBunExecutable,
   runtimeHostsShareListener,
   windowsNetstatCommand,
+  windowsProcessIdentityCommand,
   windowsPowerShellExecutable,
   windowsTaskkillCommand,
 } from "./runtime-lib.mjs";
 import { platformTestTimeout } from "./test-platform-setup.mjs";
 
 const tempRoots = [];
-// Windows záměrně neumí z vestavěného resolveru ověřit CWD cizího procesu,
-// takže adopted/foreign klasifikaci fail-closed drží jako unknown-port. Testy
-// pozitivní CWD adopce patří na OS, kde je skutečný process CWD čitelný.
+// Windows záměrně neumí z vestavěného resolveru ověřit CWD libovolného cizího
+// procesu. Bez GEN3 owner proof proto adopted/foreign klasifikaci drží
+// fail-closed jako unknown-port. Přímá pozitivní CWD adopce patří na OS, kde je
+// skutečný process CWD čitelný.
 const testWithInspectableProcessCwd = process.platform === "win32" ? test.skip : test;
 
 afterAll(async () => {
@@ -120,6 +123,24 @@ test("Windows port ownership používá rychlý systémový netstat a ne lokaliz
   expect(parseWindowsListeningPid([
     "  TCP    127.0.0.1:5799       127.0.0.1:64000  ESTABLISHED     4314",
   ].join("\r\n"), 5799)).toBeNull();
+});
+
+test("Windows process identity command a parser drží PID, parent a creation time", () => {
+  const command = windowsProcessIdentityCommand(4242, { SystemRoot: "C:\\Windows" });
+  expect(command[0]).toBe("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+  expect(command.join(" ")).toContain("ProcessId = 4242");
+  expect(parseWindowsProcessIdentity(JSON.stringify({
+    pid: 4242,
+    parent_pid: 3131,
+    created_at: "2026-07-27T08:00:00.000Z",
+    executable_path: "C:\\Tools\\bun.exe",
+  }))).toEqual({
+    pid: 4242,
+    parent_pid: 3131,
+    created_at: "2026-07-27T08:00:00.000Z",
+    executable_path: "C:\\Tools\\bun.exe",
+  });
+  expect(parseWindowsProcessIdentity("{}")).toBeNull();
 });
 
 test("Windows managed Stop používá taskkill jen nad známým PID a celým stromem", async () => {
@@ -925,6 +946,74 @@ test("runtime manager fail-closed neadoptuje zdravý port při neznámém CWD (W
   } finally {
     try {
       foreignProcess.kill("SIGKILL");
+    } catch {}
+  }
+});
+
+test("Windows po restartu adoptuje jen listener s platným GEN3 owner proof", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port });
+  const appRoot = join(root, "organizations", "TestCompany", "modules", "demo", "app", "v1");
+  const ownedProcess = Bun.spawn(["bun", "server.mjs"], {
+    cwd: appRoot,
+    env: { ...process.env, HOST: "127.0.0.1", PORT: String(port) },
+    stdout: "ignore",
+    stderr: "ignore",
+  });
+  const identity = {
+    pid: ownedProcess.pid,
+    parent_pid: process.pid,
+    created_at: "2026-07-27T08:00:00.000Z",
+    executable_path: "C:\\Tools\\bun.exe",
+  };
+  const stateRoot = join(root, "launchpad", "runtime", "apps");
+  await mkdir(stateRoot, { recursive: true });
+  await writeFile(
+    join(stateRoot, "test-company-demo-v1.json"),
+    `${JSON.stringify({
+      status: "healthy",
+      app_id: "test-company-demo-v1",
+      runtime_key: "test-company-demo-v1",
+      runtime_source: { type: "main" },
+      port,
+      pid: ownedProcess.pid,
+      instance_id: "previous-launchpad-instance",
+      owner_proof: {
+        schema_version: "companiesascode.launchpad.runtime_owner_proof.v1",
+        platform: "win32",
+        launcher_pid: ownedProcess.pid,
+        listener_pid: ownedProcess.pid,
+        listener_identity: identity,
+        expected_cwd: appRoot,
+        captured_at: "2026-07-27T08:00:01.000Z",
+      },
+    }, null, 2)}\n`,
+    "utf8",
+  );
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "new-launchpad-instance",
+    platform: "win32",
+    resolvePortOwnerFn: async () => ({ pid: ownedProcess.pid, cwd_matches: null }),
+    resolveProcessIdentityFn: async () => identity,
+  });
+
+  try {
+    await waitForFetch(`http://127.0.0.1:${port}/health`);
+    expect(await runtime.health("test-company-demo-v1")).toMatchObject({
+      status: "healthy",
+      owner: "adopted-port",
+      managed: true,
+      port_owner: {
+        pid: ownedProcess.pid,
+        cwd_matches: true,
+        verified_by: "runtime-owner-proof",
+      },
+    });
+  } finally {
+    try {
+      ownedProcess.kill("SIGKILL");
     } catch {}
   }
 });

@@ -1012,6 +1012,52 @@ test("Doctor vynucuje root slot contract a Mission Control app/data pár", async
   );
 });
 
+test("in-tree root vrstvy během migrace nevyžadují nested repo slot", async () => {
+  const root = await createCompaniesWorkspaceFixture();
+  const companyRoot = join(root, "organizations", "OmegaCo_GEN3");
+  await mkdir(join(companyRoot, "manual"), { recursive: true });
+  await mkdir(join(companyRoot, "company", "colleagues"), { recursive: true });
+  await mkdir(join(companyRoot, "design-system"), { recursive: true });
+  await mkdir(join(companyRoot, "mission-control"), { recursive: true });
+  await writeJson(join(root, "launchpad.gen3.json"), {
+    launchpad_root: {
+      slug: "test-companies",
+      display_name: "Test Companies",
+      root_role: "companies-root",
+    },
+  });
+  await writeJson(join(companyRoot, "company.gen3.json"), {
+    organization_generation: "gen3",
+    company: { slug: "OmegaCo", display_name: "OmegaCo" },
+    workspaces: [{ slug: "workspace", display_name: "OmegaCo Workspace", default: true }],
+    layers: [
+      { path: "design-system", kind: "design-system", ownership: "manual" },
+      { path: "mission-control", kind: "workspace-tasks", ownership: "manual" },
+    ],
+  });
+  await writeJson(join(companyRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    module_slots: [],
+  });
+  await writeJson(join(companyRoot, "TODO.tasks.json"), {});
+  await writeJson(join(companyRoot, "DONE.tasks.json"), {});
+  await writeJson(join(companyRoot, "ISSUES.open.json"), {});
+
+  const report = await buildLaunchpadDoctorReport({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+  });
+  const declarationCheck = report.checks.find(
+    (check) => check.id === "launchpad.workspace_declarations",
+  );
+
+  expect(declarationCheck?.status).toBe("ok");
+  expect(declarationCheck?.details.join("\n")).not.toContain(
+    "nemá odpovídající modules.manifest.json slot",
+  );
+});
+
 test("planned root slot nemá git a smí zůstat planned jen dokud není materializovaný", async () => {
   const root = await createCompaniesWorkspaceFixture();
   const companyRoot = join(root, "organizations", "OmegaCo_GEN3");
@@ -1060,6 +1106,10 @@ test("planned root slot nemá git a smí zůstat planned jen dokud není materia
   const plannedCheck = await doctor();
   expect(plannedCheck?.status).toBe("ok");
 
+  await mkdir(join(companyRoot, "design-system"), { recursive: true });
+  const legacyInTreeCheck = await doctor();
+  expect(legacyInTreeCheck?.status).toBe("ok");
+
   manifest.module_slots[0].git = {
     url: "git@github.com:OmegaCo/design-system.git",
     branch: "main",
@@ -1071,7 +1121,7 @@ test("planned root slot nemá git a smí zůstat planned jen dokud není materia
     "planned root slot design-system nesmí deklarovat git",
   );
 
-  await mkdir(join(companyRoot, "design-system"), { recursive: true });
+  await mkdir(join(companyRoot, "design-system", ".git"), { recursive: true });
   const materializedWithCoordinatesCheck = await doctor();
   expect(materializedWithCoordinatesCheck?.status).toBe("fail");
   expect(materializedWithCoordinatesCheck?.details.join("\n")).toContain(
@@ -1175,6 +1225,27 @@ test("app workspace se čte z manifest deklarace, ne z filesystem cesty (decisio
   });
   const declarationCheck = report.checks.find((check) => check.id === "launchpad.workspace_declarations");
   expect(declarationCheck?.status).toBe("ok");
+});
+
+test("rychlá apps response přeskočí globální Git census", async () => {
+  const root = await createCompaniesWorkspaceFixture();
+  let gitReadCount = 0;
+  const response = await buildLaunchpadAppsResponse({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+    gitStatusService: {
+      readStatuses: async () => {
+        gitReadCount += 1;
+        throw new Error("Git census must not run");
+      },
+    },
+    includeGit: false,
+  });
+
+  expect(response.ok).toBe(true);
+  expect(gitReadCount).toBe(0);
+  expect(response.apps.every((app) => app.git === null)).toBe(true);
 });
 
 test("invalid_manifest appka je viditelná v apps response a doctor ji hlásí jako warn (decision 0043)", async () => {

@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "fs/promises";
 import { discoverLaunchpadApps, organizationRelativePathIssue } from "./discovery-lib.mjs";
 
 const tempRoots = [];
+const testWithSymlinkSupport = process.platform === "win32" ? test.skip : test;
 
 afterAll(async () => {
   await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
@@ -228,7 +229,7 @@ test("discovery podporuje _GEN3 mount cesty při čisté interní identitě Orga
   ]);
 });
 
-test("proper-case company je přesná identita, ale app id musí zůstat lowercase", async () => {
+test("legacy proper-case app id zůstane během incremental GEN3 rollout funkční s warningem", async () => {
   const root = await createGenerationMountFixture();
   const packagePath = join(
     root,
@@ -243,21 +244,44 @@ test("proper-case company je přesná identita, ale app id musí zůstat lowerca
   packageJson.companyascode.app.id = "BetaCo-mission-control-v2";
   await writeJson(packagePath, packageJson);
 
-  const { apps, invalid_apps, failures } = await discoverLaunchpadApps(root);
+  const { apps, invalid_apps, failures, warnings } = await discoverLaunchpadApps(root);
 
   expect(failures).toEqual([]);
   expect(apps.map((app) => [app.id, app.company])).toEqual([
+    ["BetaCo-mission-control-v2", "BetaCo"],
     ["democo-mission-control-v1", "DemoCo"],
   ]);
-  expect(invalid_apps).toHaveLength(1);
-  expect(invalid_apps[0]).toMatchObject({
-    id: "BetaCo-mission-control-v2",
-    company: "BetaCo",
-    manifest_state: "invalid_manifest",
-  });
-  expect(invalid_apps[0].manifest_issues.join("\n")).toContain(
-    "companyascode.app.id neodpovídá patternu ^[a-z0-9][a-z0-9-]*$",
+  expect(invalid_apps).toEqual([]);
+  expect(warnings.some((warning) =>
+    warning.includes('companyascode.app.id "BetaCo-mission-control-v2"')
+    && warning.includes("incremental compatibility")
+  )).toBe(true);
+});
+
+test("case-only app company drift používá kanonickou Organization identitu s warningem", async () => {
+  const root = await createGenerationMountFixture();
+  const packagePath = join(
+    root,
+    "organizations",
+    "BetaCo_GEN3",
+    "mission-control",
+    "app",
+    "v2",
+    "package.json",
   );
+  const packageJson = await Bun.file(packagePath).json();
+  packageJson.companyascode.app.company = "betaco";
+  await writeJson(packagePath, packageJson);
+
+  const { apps, invalid_apps, failures, warnings } = await discoverLaunchpadApps(root);
+
+  expect(failures).toEqual([]);
+  expect(invalid_apps).toEqual([]);
+  expect(apps.find((app) => app.id === "betaco-mission-control-v2")?.company).toBe("BetaCo");
+  expect(warnings.some((warning) =>
+    warning.includes('companyascode.app.company "betaco"')
+    && warning.includes("incremental compatibility")
+  )).toBe(true);
 });
 
 test("discovery načte root shared Guide local surface jako Launchpad app", async () => {
@@ -1239,7 +1263,7 @@ test("Organization path gate rejects POSIX, drive, UNC and mixed-separator escap
   expect(organizationRelativePathIssue({ organizationRoot, path: "workspace\\future-mixed" })).toBeNull();
 });
 
-test("Organization module paths fail closed on traversal and canonical symlink escapes", async () => {
+testWithSymlinkSupport("Organization module paths fail closed on traversal and canonical symlink escapes", async () => {
   const root = await createCompaniesWorkspaceFixture({});
   const organizationRoot = join(root, "organizations", "TestCompany");
   const foreignRoot = join(root, "organizations", "ForeignOrg", "workspace", "shared");
