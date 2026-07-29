@@ -21,7 +21,8 @@
     },
     "id": {
       "type": "string",
-      "pattern": "^[a-z0-9][a-z0-9-]*$"
+      "description": "Stabilní identita aplikace. Root doctor z ní staví check id `launchpad.runtime.<id>`, takže tenhle pattern musí být PODMNOŽINOU patternu pro checks[].id v doctor-report.schema.json (^[a-z0-9]+([._-][a-z0-9]+)*$) — jinak projde manifestem id, které doctor report neunese. Proto ne `[a-z0-9-]*`: ten pouštěl `trailing-` i `dvojitou--pomlcku`.",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
     },
     "title": {
       "type": "string",
