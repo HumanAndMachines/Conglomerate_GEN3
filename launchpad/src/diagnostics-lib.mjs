@@ -12,6 +12,15 @@ import {
   safeGitCommandEnv,
 } from "./git-lib.mjs";
 import { agentSkillsEntrypointsDoctorCheck } from "./agent-skills-entrypoint-lib.mjs";
+import { runChildDoctorLane } from "./doctor-children-lib.mjs";
+import {
+  DOCTOR_REPORT_SCHEMA_VERSION_V3,
+  buildAggregateReport,
+  buildSummary,
+  flattenChecks,
+  loadDoctorReportSchema,
+  validateDoctorReport,
+} from "./doctor-surface-lib.mjs";
 import {
   isCanonicalOrganizationRepositorySlotPath,
   isOrganizationRootSlotDescendantPath,
@@ -44,6 +53,8 @@ const companyGitignoreProbePaths = [
 
 const worktreePackageLockfileNames = ["bun.lock", "bun.lockb", "package-lock.json", "pnpm-lock.yaml", "yarn.lock"];
 const worktreeSupportedPackageManagers = new Set(["bun"]);
+
+let cachedDoctorReportSchema = null;
 
 export async function buildLaunchpadAppsResponse({
   companiesRoot = join(import.meta.dirname, "..", ".."),
@@ -229,10 +240,36 @@ export async function buildLaunchpadDoctorReport(options = {}) {
         ?? "claude-compatible",
     }),
   ];
+  // Podřízené doctory namountovaných rep (decision 0118). Root nese jen
+  // standardizované kontroly; vlastní kontrola Organizace patří do jejího repa.
+  const schema = loadRootDoctorSchema();
+  const childLane = await runChildDoctorLane({
+    companiesRoot: appsResponse.root,
+    companiesConfig: await readCompaniesConfig(appsResponse.root),
+    schema,
+    enabled: options.runChildDoctors !== false,
+  });
   return buildDoctorReportFromAppsResponse(appsResponse, {
     environmentChecks,
     extraChecks: [...worktreeChecks, ...personalspaceChecks, ...agentSkillsChecks],
+    childLane,
+    schema,
   });
+}
+
+/**
+ * Schéma surfacu je KONTRAKT DODANÝ S KÓDEM, ne per-root konfigurace: čte se ze
+ * zdrojového `launchpad/schemas/`, stejně jako `launchpad-app.schema.json` v
+ * `discovery-lib.mjs` — nikdy z diagnostikovaného rootu, protože ten může být
+ * fixture nebo cizí checkout, a schéma přinesené kontrolovaným stromem by
+ * znamenalo, že se subjekt kontroly měří vlastním metrem. Když chybí, root nemá
+ * čím validovat ani vlastní report, ani reporty dětí, a to je vada instalace.
+ */
+export function loadRootDoctorSchema() {
+  if (!cachedDoctorReportSchema) {
+    cachedDoctorReportSchema = loadDoctorReportSchema(join(import.meta.dirname, ".."));
+  }
+  return cachedDoctorReportSchema;
 }
 
 // Oddělený od org appsResponse: personalspace má vlastní lane. Dynamický import,
@@ -251,13 +288,18 @@ async function buildPersonalspaceDoctorChecks({ companiesRoot, launchpadRoot }) 
     return [
       {
         id: "launchpad.personalspace",
-        status: "skip",
+        // Nikoli `not_applicable`: personalspace lane spadla, takže o osobním
+        // prostoru nevíme NIC. To je nepozorování a zelenou kazit musí.
+        status: "blocked",
         severity: "local-state",
         title: "Personalspace",
-        message: `Personalspace kontrola se přeskočila (${error.message}).`,
+        message: `Personalspace kontrola se nedala provést (${error.message}).`,
         paths: ["personalspace"],
         links: [],
         details: [],
+        blocked_reason: `Personalspace lane skončila chybou: ${error.message}`,
+        remedy:
+          "Oprav personalspace mount (personal.gen3.json, gbrain mount) a spusť doctor znovu.",
       },
     ];
   }
@@ -283,17 +325,21 @@ async function buildWorktreeDoctorChecks({ companiesRoot }) {
         links: [],
         details: [error.stack ?? error.message],
       },
-      skippedCheck({
+      blockedCheck({
         id: "git.worktrees.contract",
         title: "Worktree kontrakt",
-        message: "Worktree contract checks se přeskočily, protože inventory nejde načíst.",
+        message: "Worktree contract kontroly se nedaly provést, protože inventory nejde načíst.",
         paths: ["organizations"],
+        blockedReason: `Worktree inventory nejde načíst: ${error.message}`,
+        remedy: "Oprav worktree inventory (sidecary, umístění) a spusť doctor znovu.",
       }),
-      skippedCheck({
+      blockedCheck({
         id: "git.worktrees.dependencies",
         title: "Worktree dependency readiness",
-        message: "Worktree dependency checks se přeskočily, protože inventory nejde načíst.",
+        message: "Worktree dependency kontroly se nedaly provést, protože inventory nejde načíst.",
         paths: ["organizations"],
+        blockedReason: `Worktree inventory nejde načíst: ${error.message}`,
+        remedy: "Oprav worktree inventory (sidecary, umístění) a spusť doctor znovu.",
       }),
     ];
   }
@@ -583,7 +629,19 @@ function gitRepoKeyForApp(app) {
   return `${app.company}::${app.module}`;
 }
 
-export function buildDoctorReportFromAppsResponse(appsResponse, { environmentChecks = [], extraChecks = [] } = {}) {
+/**
+ * Root doctor report na společném surfacu v3 (decision 0118).
+ *
+ * `childLane` je výstup `runChildDoctorLane`. Když ho volající nepředá, report
+ * NENÍ tiše bez potomků — nese `blocked` kontrolu, že se podřízené doctory
+ * nespouštěly. Fail-closed default je tu schválně: zapomenuté napojení lane by
+ * jinak vypadalo přesně jako root, pod kterým žádný mount doctora nedeklaruje.
+ */
+export function buildDoctorReportFromAppsResponse(
+  appsResponse,
+  { environmentChecks = [], extraChecks = [], childLane = null, schema = null } = {},
+) {
+  const lane = childLane ?? unwiredChildLane();
   const checks = [
     ...environmentChecks,
     discoveryCheck(appsResponse),
@@ -593,16 +651,87 @@ export function buildDoctorReportFromAppsResponse(appsResponse, { environmentChe
     // Additivní checks (např. personalspace, CAC-0048) — nikdy nemění org
     // appsResponse, jen se přidají do reportu.
     ...extraChecks,
+    ...lane.checks,
   ];
-  return {
-    schema_version: "companiesascode.doctor.report.v1",
+  const report = buildAggregateReport({
     scope: {
       type: "launchpad_root",
       path: ".",
       name: appsResponse.launchpad_root.display_name,
       absolute_path: appsResponse.root,
     },
-    summary: summarizeChecks(checks),
+    checks,
+    children: lane.children,
+  });
+  return withSelfConformanceCheck(report, schema);
+}
+
+function unwiredChildLane() {
+  return {
+    children: [],
+    checks: [
+      {
+        id: "doctor.children",
+        status: "blocked",
+        severity: "required",
+        title: "Podřízené doctory",
+        message: "Tenhle běh podřízené doctory vůbec nesvolával.",
+        paths: ["organizations", "personalspace"],
+        links: [],
+        details: [],
+        blocked_reason:
+          "Volající nepředal výstup lane podřízených doctorů, takže o mountech nevíme nic.",
+        remedy: "Zavolej `runChildDoctorLane` a jeho výsledek předej jako `childLane`.",
+      },
+    ],
+  };
+}
+
+/**
+ * Root doctor je sám producentem surfacu, takže se měří vlastním metrem: hotový
+ * report se validuje proti `schemas/doctor-report.schema.json`. Bez toho by root
+ * mohl vydávat report, který se tváří jako v3 a žádný konzument ho nepřijme —
+ * a poznalo by se to až u konzumenta.
+ *
+ * Kontrola se přidává AŽ po validaci a souhrn se přepočítá, aby se nevalidovala
+ * sama sebou. Vlastní tvar téhle kontroly hlídá `doctor-surface-conformance.test.mjs`.
+ */
+function withSelfConformanceCheck(report, schema) {
+  if (!schema) return report;
+  const failures = validateDoctorReport(report, { schema, label: "doctor" });
+  const check = failures.length === 0
+    ? {
+      id: "doctor.self_conformance",
+      status: "ok",
+      severity: "required",
+      title: "Konformita reportu",
+      message: `Report odpovídá ${DOCTOR_REPORT_SCHEMA_VERSION_V3}.`,
+      paths: ["launchpad/schemas/doctor-report.schema.json"],
+      links: [],
+      details: [],
+    }
+    : {
+      id: "doctor.self_conformance",
+      status: "fail",
+      severity: "required",
+      title: "Konformita reportu",
+      message:
+        `Report root doctora neodpovídá společnému surfacu doctorů `
+        + `(${failures.length} porušení schématu).`,
+      paths: ["launchpad/schemas/doctor-report.schema.json"],
+      links: [],
+      details: failures.slice(0, 25),
+    };
+  // Schválně NE přes `buildAggregateReport`: ten za každého rozbitého potomka
+  // syntetizuje `doctor.child.N`, a druhý průchod nad reportem, který ty checky
+  // už nese, by je zdvojil — jedna vada by se v panelu ukázala dvakrát.
+  const checks = [...report.checks, check];
+  const nested = (report.children ?? []).flatMap(
+    (child) => (child.report ? flattenChecks(child.report) : []),
+  );
+  return {
+    ...report,
+    summary: buildSummary([...checks, ...nested]),
     checks,
   };
 }
@@ -613,17 +742,21 @@ export function buildEnvironmentChecks({ companiesRoot, companies = [], template
   if (!gitAvailable) {
     return [
       ...toolChecks,
-      skippedCheck({
+      blockedCheck({
         id: "git.root",
         title: "Git root",
-        message: "Git kontroly jsou přeskočené, protože Git není dostupný.",
+        message: "Git kontroly se nedaly provést, protože Git není dostupný.",
         paths: ["."],
+        blockedReason: "Spustitelný `git` se na téhle mašině nenašel.",
+        remedy: "Nainstaluj Git a spusť doctor znovu.",
       }),
-      skippedCheck({
+      blockedCheck({
         id: "gitignore.protection",
         title: ".gitignore ochrana",
-        message: ".gitignore kontroly jsou přeskočené, protože Git není dostupný.",
+        message: ".gitignore kontroly se nedaly provést, protože Git není dostupný.",
         paths: [".gitignore"],
+        blockedReason: "Spustitelný `git` se na téhle mašině nenašel.",
+        remedy: "Nainstaluj Git a spusť doctor znovu.",
       }),
     ];
   }
@@ -1582,16 +1715,24 @@ function decodeOutput(output) {
   return new TextDecoder().decode(output);
 }
 
-function skippedCheck({ id, title, message, paths }) {
+/**
+ * Kontrola, která MĚLA běžet a nešla pozorovat (decision 0118). Není to
+ * `not_applicable`: předmět kontroly tu je, jen se k němu doctor nedostal —
+ * a nepozorování kazí zelenou vždy. `remedy` je povinná schválně: `blocked` bez
+ * ní je tichá díra s hezčím jménem.
+ */
+function blockedCheck({ id, title, message, paths, blockedReason, remedy }) {
   return {
     id,
-    status: "skip",
+    status: "blocked",
     severity: "required",
     title,
     message,
     paths,
     links: [],
     details: [],
+    blocked_reason: blockedReason,
+    remedy,
   };
 }
 
@@ -1720,13 +1861,17 @@ function runtimeChecks(appsResponse) {
     return [
       {
         id: "launchpad.runtime",
-        status: "skip",
+        status: "blocked",
         severity: "runtime",
         title: "Launchpad runtime",
-        message: "Runtime diagnostika se přeskočila, protože discovery není validní.",
+        message: "Runtime diagnostika se nedala provést, protože discovery není validní.",
         paths: ["launchpad"],
         links: [],
         details: [],
+        blocked_reason:
+          `Discovery skončila s ${appsResponse.failures.length} chybami, takže runtime stav `
+          + "aplikací nešel změřit.",
+        remedy: "Oprav nálezy kontroly `launchpad.discovery` a spusť doctor znovu.",
       },
     ];
   }
@@ -1797,16 +1942,9 @@ export function runtimeAppStatus(app) {
   return "ok";
 }
 
-function summarizeChecks(checks) {
-  const summary = { status: "ok", ok: 0, warn: 0, fail: 0, skip: 0 };
-  for (const check of checks) {
-    summary[check.status] = (summary[check.status] ?? 0) + 1;
-  }
-  if (summary.fail > 0) summary.status = "fail";
-  else if (summary.warn > 0) summary.status = "warn";
-  else summary.status = "ok";
-  return summary;
-}
+// Souhrn se odvozuje JEDINOU funkcí surfacu (`buildSummary`/`summarizeStatus`
+// v doctor-surface-lib.mjs), aby root nemohl mít vlastní představu o tom, co
+// znamená zelená. Lokální kopie odvození tu proto schválně není.
 
 function countBy(values) {
   const counts = {};

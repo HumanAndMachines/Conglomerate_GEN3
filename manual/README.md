@@ -43,6 +43,10 @@ Maintenance agent před zásahem ověřuje:
   Conglomerate a Organization worktree environments, manifestovou dependency
   hydrataci, Launchpad read model a PR-aware bezpečný cleanup; do implementace
   je výrazně označený jako plán, ne jako aktivní CLI návod.
+- `manual/doctor-composable-surface.md` — společný surface doctorů (decision
+  0118): root doctor svolává vlastní doctory namountovaných rep podle deklarace
+  v manifestu, agreguje z vnořených reportů a rozbitého potomka hlásí nahlas.
+  Nese i slovník `not_applicable` / `blocked` / `incomplete`.
 - `manual/personalspace-modules-and-hosted-gbrain.md` — seed koncept pro personalspace privátní moduly, per-user/per-colleague aplikace, hosted GBrain a Obsidian-compatible sync/reader model.
 - `manual/app/v1/` — statická read-only aplikace technického manuálu (`index.html`); nesmí držet pravidla, která nejsou zapsaná v manuálu nebo root dokumentech.
 

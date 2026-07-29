@@ -135,6 +135,48 @@
       },
       "additionalProperties": true
     },
+    "doctor": {
+      "type": "object",
+      "description": "Deklarace VLASTNÍHO doctora tohohle mountu (decision 0118). Root doctor podle ní podřízené doctory NAJDE — discovery je deklarací v manifestu, ne hádáním konvenční cesty: `scripts/doctor.mjs` by nefungovala pro mount, který není Node projekt, a hádaná cesta by z chybějícího doctora udělala ticho místo vady. Chybějící blok znamená 'tenhle mount vlastního doctora nemá', nikdy 'doctor je jinde'. Standardizované kontroly zůstávají rootu, vlastní kontroly patří sem — pull kořenového repa nesmí rozbít prostor, který má vlastní konfiguraci.",
+      "required": [
+        "schema_version",
+        "command"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "humanandmachines.doctor.declaration.v1"
+        },
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          },
+          "description": "argv podřízeného doctora. Dostane tenhle argv a pracovní adresář, vrací v3 report na stdout a exit kód 0=ok|warn, 1=fail, 2=incomplete, 3=report vůbec nevznikl."
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Pracovní adresář relativně k mountu. Výchozí je kořen mountu."
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "description": "Limit, po kterém root dítě ukončí a zapíše outcome 'timeout'. Zaseknutý doctor nepozoroval nic — to není zelená."
+        },
+        "scope_type": {
+          "type": "string",
+          "enum": [
+            "companiesascode_core",
+            "launchpad_root",
+            "organization",
+            "workspace",
+            "personalspace"
+          ],
+          "description": "Očekávaný scope.type v reportu dítěte. Root ho ASERTUJE (nesoulad = outcome 'scope_mismatch'), nikdy podle něj nic nevybírá."
+        }
+      },
+      "additionalProperties": false
+    },
     "repository": {
       "type": "object",
       "required": [
