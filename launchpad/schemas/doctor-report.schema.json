@@ -1,0 +1,708 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://companiesascode.dev/schemas/doctor-report.schema.json",
+  "title": "HumanAndMachines Doctor Report",
+  "description": "Versionovaný kontrakt výstupu doctora a zároveň SPOLEČNÝ SURFACE, přes který se doctory skládají (decision 0118). Stabilní JSON shape, který konzumuje Launchpad GEN3 orchestrace (CAC-0004). v1 je validní subset v2; sync_push blok je optional a plní ho jen sync/push akce, read-only doctor ho vynechá. v3 rozděluje historický 'skip' na 'not_applicable' (strukturálně mimo scope — fakt, zelenou nekazí) a 'blocked' (mělo běžet, nešlo pozorovat — zelenou kazí vždy) a přidává 'children[]' s tím, co root doctor skutečně dostal od podřízených doctorů. Historické 'skip' se čte jako 'blocked', tedy fail-closed směrem.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "scope",
+    "summary",
+    "checks"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": [
+        "companiesascode.doctor.report.v1",
+        "companiesascode.doctor.report.v2",
+        "companiesascode.doctor.report.v3"
+      ]
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "scope": {
+      "type": "object",
+      "required": [
+        "type",
+        "path",
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "companiesascode_core",
+            "launchpad_root",
+            "organization",
+            "workspace",
+            "personalspace"
+          ],
+          "description": "Druh checkoutu, ve kterém doctor běžel. 'personalspace' je Personalspace GEN3 root; na Buddy VPS je to jediný běžící doctor a žádný launchpad_root nad ním neexistuje."
+        },
+        "path": {
+          "type": "string",
+          "description": "Relativní cesta k rootu, kde doctor běžel."
+        },
+        "name": {
+          "type": "string"
+        },
+        "absolute_path": {
+          "type": "string"
+        },
+        "organization_slug": {
+          "type": "string"
+        },
+        "workspace_slug": {
+          "type": "string",
+          "description": "Default 'workspace' dle decision 0023."
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "status",
+        "ok",
+        "warn",
+        "fail"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "warn",
+            "fail",
+            "incomplete"
+          ]
+        },
+        "ok": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warn": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fail": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skip": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Jen v1/v2. Historický smíšený stav; v3 je rozdělený na not_applicable a blocked."
+        },
+        "not_applicable": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Jen v3. Počet kontrol strukturálně mimo scope tohohle doctora. Zelenou nekazí."
+        },
+        "blocked": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Jen v3. Počet kontrol, které měly běžet a nešly pozorovat. Kazí zelenou vždy."
+        }
+      },
+      "description": "Souhrn se ODVOZUJE z checks jedinou funkcí, nikdy se nevyplňuje ručně: fail>0 → fail; jinak blocked>0 → incomplete; jinak warn>0 → warn; jinak ok. 'incomplete' nikdy nesplní bránu. U root doctora se počítá z VLASTNÍCH checks a ze VŠECH checks vnořených v children[].report — nikdy z toho, co dítě řeklo o sobě ve vlastním summary. Verzní gate níž vynucuje, že v1/v2 nese 'skip' a v3 nese 'not_applicable' + 'blocked'."
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "severity",
+          "title",
+          "message"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+([._-][a-z0-9]+)*$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "warn",
+              "fail",
+              "skip",
+              "not_applicable",
+              "blocked"
+            ],
+            "description": "'skip' je legacy (v1/v2) a čte se jako 'blocked'. v3 používá 'not_applicable' pro fakt (kontrolu vlastní někdo jiný nebo její předmět neexistuje) a 'blocked' pro nepozorování (mělo to jít změřit a nešlo)."
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "required",
+              "recommended",
+              "optional",
+              "local-state",
+              "runtime"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "label"
+              ],
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "source-of-truth",
+                    "manual",
+                    "data",
+                    "app",
+                    "external"
+                  ]
+                },
+                "path": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "not_applicable_reason": {
+            "type": "string",
+            "enum": [
+              "owned_by_root",
+              "no_such_mount",
+              "not_declared"
+            ],
+            "description": "Povinné u status=not_applicable. 'owned_by_root' = kontrolu vlastní root doctor (a nad tímhle checkoutem žádný root není); 'no_such_mount' = předmět kontroly v téhle topologii neexistuje; 'not_declared' = manifest tu věc nedeklaruje."
+          },
+          "owner": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Povinné u status=not_applicable: kdo tu kontrolu vlastní MÍSTO tohohle doctora (např. 'root doctor'). Bez ownera je not_applicable nerozeznatelné od zapomenutí."
+          },
+          "blocked_reason": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Povinné u status=blocked: proč se nedalo pozorovat."
+          },
+          "remedy": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Povinné u status=blocked: co má člověk udělat, aby to pozorovatelné bylo. Blocked bez remedy je jen tichá díra s jiným jménem."
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "status"
+              ],
+              "properties": {
+                "status": {
+                  "const": "not_applicable"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "not_applicable_reason",
+                "owner"
+              ]
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "status"
+              ],
+              "properties": {
+                "status": {
+                  "const": "blocked"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "blocked_reason",
+                "remedy"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "worktrees": {
+      "description": "v2 optional: read-only inventory of development worktrees for Launchpad/Doctor UI. Omitted by producers that have not implemented CAC-0021 yet.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "path",
+          "branch",
+          "status",
+          "dirty_class",
+          "dependency_status",
+          "runtime_status"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "upstream": {
+            "type": "string"
+          },
+          "pr_url": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "handoff",
+              "needs_attention",
+              "ready_to_delete",
+              "merged",
+              "closed",
+              "missing_path"
+            ]
+          },
+          "dirty_class": {
+            "type": "string",
+            "enum": [
+              "clean",
+              "dirty",
+              "untracked",
+              "unknown"
+            ]
+          },
+          "dependency_status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "install_needed",
+              "missing_node_modules",
+              "missing_package_json",
+              "blocked",
+              "unknown"
+            ]
+          },
+          "runtime_status": {
+            "type": "string",
+            "enum": [
+              "runnable",
+              "blocked",
+              "external_port_owner",
+              "stale_process",
+              "invalid_location",
+              "unknown"
+            ]
+          },
+          "target_repos": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "sync_push": {
+      "description": "v2: deterministický handoff pro Launchpad orchestraci. Plní ho jen sync/push akce; read-only doctor blok vynechá. Dirty se nikdy nepřepisuje (invariant z GEN2).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation",
+        "mode"
+      ],
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": [
+            "status",
+            "sync",
+            "workspace-pull",
+            "push"
+          ]
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "read-only",
+            "dry-run",
+            "applied"
+          ]
+        },
+        "started_at": {
+          "type": "string"
+        },
+        "finished_at": {
+          "type": "string"
+        },
+        "root": {
+          "$ref": "#/definitions/repoState"
+        },
+        "modules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "module_state",
+              "status",
+              "dirty_class"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "module_state": {
+                "type": "string",
+                "enum": [
+                  "available",
+                  "missing_access",
+                  "planned_slot"
+                ]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "clean",
+                  "advanced",
+                  "blocked",
+                  "failed",
+                  "skipped"
+                ]
+              },
+              "dirty_class": {
+                "type": "string",
+                "enum": [
+                  "clean",
+                  "submodule_pointers_only",
+                  "non_pointer_dirty",
+                  "unknown"
+                ]
+              },
+              "before_sha": {
+                "type": "string"
+              },
+              "after_sha": {
+                "type": "string"
+              },
+              "detail": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "next_action": {
+          "type": "string",
+          "description": "Lidsky čitelný bezpečný další krok, když operace skončila blocked/failed."
+        }
+      }
+    },
+    "children": {
+      "description": "v3: co root doctor SKUTEČNĚ dostal od každého deklarovaného podřízeného doctora. Root agreguje z vnořených reportů, nikdy z toho, co dítě řeklo o sobě — proto tu je surový 'report', ne převzatý souhrn. Chybějící, nespustitelný nebo nevalidní podřízený doctor je hlasitá vada, nikdy tichá zelená: každé outcome != 'report' musí nést aspoň jeden záznam ve 'failures' a rodič k němu přidává vlastní fail check.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "declaration_path",
+          "invoked_command",
+          "outcome",
+          "failures"
+        ],
+        "properties": {
+          "declaration_path": {
+            "type": "string",
+            "description": "Cesta k manifestu (personal.gen3.json / company.gen3.json), který doctora deklaroval, relativně k rootu."
+          },
+          "mount_path": {
+            "type": "string",
+            "description": "Pracovní adresář, ve kterém root dítě spustil, relativně k rootu."
+          },
+          "invoked_command": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            },
+            "description": "Přesné argv, se kterým root dítě spustil. Bez něj se nedá reprodukovat, co se vlastně stalo."
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "report",
+              "no_report",
+              "unparseable",
+              "schema_invalid",
+              "timeout",
+              "signalled",
+              "spawn_failed",
+              "scope_mismatch"
+            ],
+            "description": "Co rodič dostal. 'report' = validní v3 report vázaný na správný mount a doběhnutý vlastním exit kódem; všechno ostatní je vada. 'signalled' = dítě skončilo signálem bez vlastního exit kódu, i kdyby předtím stihlo vypsat validní JSON — nedokončený běh není pozorování."
+          },
+          "exit_code": {
+            "type": "integer",
+            "description": "Exit kód dítěte: 0=ok|warn, 1=fail, 2=incomplete, 3=report vůbec nevznikl."
+          },
+          "duration_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stderr_tail": {
+            "type": "string",
+            "description": "Konec stderru dítěte. Bez něj je 'spawn_failed' nediagnostikovatelný."
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Proč to není 'report'. U outcome='report' prázdné."
+          },
+          "report": {
+            "$ref": "#",
+            "description": "Vnořený report dítěte, validovaný rekurzivně proti témuž schématu. Je tu VÝHRADNĚ u outcome='report': co rodič neověřil, to do agregace nevstupuje."
+          },
+          "exit_code_mismatch": {
+            "type": "integer",
+            "description": "Exit kód, který z vlastního reportu dítěte vychází, když se liší od toho, se kterým dítě skončilo. Přítomnost pole = dítě porušilo invokační kontrakt; rodič k tomu přidává vlastní fail check."
+          },
+          "stdout_tail": {
+            "type": "string",
+            "description": "Konec stdoutu dítěte. Plní se jen u vad, kde je stdout důkaz: 'unparseable', 'schema_invalid', 'scope_mismatch', 'signalled'. Payload se sem ukládá jako TEXT, ne jako 'report' — nevalidovaný ani nedokončený report by se v agregaci počítal jako data."
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "outcome"
+              ],
+              "properties": {
+                "outcome": {
+                  "const": "report"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "report"
+              ]
+            },
+            "else": {
+              "not": {
+                "required": [
+                  "report"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "repoState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "dirty_class"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "clean",
+            "advanced",
+            "blocked",
+            "failed",
+            "skipped"
+          ]
+        },
+        "dirty_class": {
+          "type": "string",
+          "enum": [
+            "clean",
+            "submodule_pointers_only",
+            "non_pointer_dirty",
+            "unknown"
+          ]
+        },
+        "before_sha": {
+          "type": "string"
+        },
+        "after_sha": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
+            "enum": [
+              "companiesascode.doctor.report.v1",
+              "companiesascode.doctor.report.v2"
+            ]
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "children"
+          ]
+        },
+        "properties": {
+          "summary": {
+            "required": [
+              "skip"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "not_applicable"
+                  ]
+                },
+                {
+                  "required": [
+                    "blocked"
+                  ]
+                }
+              ]
+            },
+            "properties": {
+              "status": {
+                "enum": [
+                  "ok",
+                  "warn",
+                  "fail"
+                ]
+              }
+            }
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "properties": {
+                "status": {
+                  "enum": [
+                    "ok",
+                    "warn",
+                    "fail",
+                    "skip"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
+            "enum": [
+              "companiesascode.doctor.report.v3"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "summary": {
+            "required": [
+              "not_applicable",
+              "blocked"
+            ],
+            "not": {
+              "required": [
+                "skip"
+              ]
+            }
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "properties": {
+                "status": {
+                  "enum": [
+                    "ok",
+                    "warn",
+                    "fail",
+                    "not_applicable",
+                    "blocked"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

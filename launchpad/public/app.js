@@ -1025,8 +1025,13 @@ function renderDoctorStatus() {
   elements.runtimeRootBadge.title = rootPath ? `${rootName}: ${rootPath}` : "";
 }
 
+// `blocked` (decision 0118) je kontrola, která MĚLA běžet a nešla pozorovat.
+// Musí být v panelu vidět, jinak by se z nepozorování stalo prázdné místo —
+// `not_applicable` naopak vidět být nemá, to je fakt o topologii, ne nález.
+const REPORTED_CHECK_STATUSES = new Set(["fail", "warn", "blocked"]);
+
 function renderProblems(spaceHealth) {
-  const reportedChecks = (state.doctor?.checks ?? []).filter((check) => check.status === "fail" || check.status === "warn");
+  const reportedChecks = (state.doctor?.checks ?? []).filter((check) => REPORTED_CHECK_STATUSES.has(check.status));
   const hasRuntimeAppCheck = reportedChecks.some((check) => check.id.startsWith("launchpad.runtime."));
   const failedChecks = reportedChecks.filter((check) => check.id !== "launchpad.runtime" || !hasRuntimeAppCheck);
   const activeSlotBlockers = activeOrganizationSlotBlockers(failedChecks);
@@ -1149,7 +1154,12 @@ function problemCheckNode(check) {
   const title = document.createElement("strong");
   title.textContent = `${check.id}: ${check.message}`;
   node.append(title);
-  const meta = [...(check.paths ?? []), ...(check.details ?? [])];
+  // `blocked` bez remedy je tichá díra s hezčím jménem (decision 0118), takže
+  // se remedy ukazuje hned vedle důvodu — ne schovaná mezi detaily.
+  const blockedMeta = check.status === "blocked"
+    ? [check.blocked_reason, check.remedy ? `Náprava: ${check.remedy}` : null].filter(Boolean)
+    : [];
+  const meta = [...blockedMeta, ...(check.paths ?? []), ...(check.details ?? [])];
   if (meta.length > 0) {
     const list = document.createElement("ul");
     list.className = "problem-meta";
@@ -4652,6 +4662,12 @@ function statusLabel(status) {
       ok: "v pořádku",
       warn: "varování",
       fail: "chyba",
+      // Slovník společného surfacu doctorů (decision 0118). `incomplete` není
+      // „skoro zelená": je to stav, ve kterém jsme nepozorovali, co jsme
+      // pozorovat měli, a bránu nikdy nesplní.
+      incomplete: "nedokončeno",
+      blocked: "nešlo změřit",
+      not_applicable: "mimo scope",
       unknown: "nezjištěno",
     }[status] ?? status
   );

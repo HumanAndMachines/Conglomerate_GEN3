@@ -357,13 +357,16 @@ export async function agentSkillsEntrypointsDoctorCheck({
   const applicable = inspected.filter((item) => item.state.status !== "not_applicable");
   const blocked = applicable.filter((item) => item.state.status === "blocked");
   const repairNeeded = applicable.filter((item) => item.state.status === "repair_needed");
+  // „Žádný checkout entrypoint nedeklaruje" je FAKT o mountech, ne nezměřená
+  // kontrola — proto `not_applicable` a ne `blocked` (společný surface doctorů,
+  // decision 0118). Vlastníkem je mount, ne root: entrypoint deklaruje checkout.
   const status = blocked.length > 0
     ? "fail"
     : repairNeeded.length > 0
       ? "warn"
       : applicable.length > 0
         ? "ok"
-        : "skip";
+        : "not_applicable";
 
   return {
     id: "launchpad.agent_skills_entrypoints",
@@ -387,5 +390,11 @@ export async function agentSkillsEntrypointsDoctorCheck({
     links: [],
     details: applicable.map(({ mount, state: entrypointState }) =>
       `${mount.label ?? mount.path}: ${entrypointState.status}/${entrypointState.code} — ${entrypointState.message}`),
+    ...(status === "not_applicable"
+      ? {
+        not_applicable_reason: "not_declared",
+        owner: "namountované checkouty (entrypoint deklaruje mount, ne sdílený root)",
+      }
+      : {}),
   };
 }

@@ -2,7 +2,12 @@ import { createHash } from "node:crypto";
 import { constants, existsSync, lstatSync, realpathSync } from "fs";
 import { open, readFile } from "fs/promises";
 import { isAbsolute, join, normalize, relative, resolve } from "path";
-import { buildDoctorReportFromAppsResponse, buildLaunchpadAppsResponse } from "./diagnostics-lib.mjs";
+import {
+  buildDoctorReportFromAppsResponse,
+  buildLaunchpadAppsResponse,
+  loadRootDoctorSchema,
+} from "./diagnostics-lib.mjs";
+import { runChildDoctorLane } from "./doctor-children-lib.mjs";
 import { openBrowser } from "./browser-open-lib.mjs";
 import { startLaunchpadWithPortPolicy } from "./server-startup-lib.mjs";
 import {
@@ -202,9 +207,40 @@ async function buildDoctorReport() {
     buildAppsResponse(),
     buildPersonalspace({ verifyRepositoryPrivacy: true }),
   ]);
+  // Podřízené doctory se svolávají i v HTTP lane (decision 0118). Kdyby je
+  // spouštěl jen CLI doctor, ukazoval by Launchpad jinou zelenou než terminál —
+  // a jedna z těch dvou odpovědí by byla o kontrolách, které nikdo nespustil.
+  //
+  // ZNÁMÉ OMEZENÍ: invokace potomka je `spawnSync`, takže po dobu jeho běhu
+  // blokuje event loop. Je to stejný tvar, jaký tahle lane už dnes používá pro
+  // `git` a `gh repo view` (bounded timeout), a náklad je nulový, dokud žádný
+  // mount doctora nedeklaruje. Až první deklarace vznikne, patří sem
+  // asynchronní varianta invokace — ne kratší timeout, protože rozdílný limit
+  // v CLI a v UI by znamenal dvě různé odpovědi o téže mašině.
+  const schema = loadRootDoctorSchema();
+  const childLane = await runChildDoctorLane({
+    companiesRoot,
+    companiesConfig: await readLaunchpadRootConfig(),
+    schema,
+  });
   return buildDoctorReportFromAppsResponse(appsResponse, {
     extraChecks: [personalspaceDoctorCheck(personalspaceResponse)],
+    childLane,
+    schema,
   });
+}
+
+async function readLaunchpadRootConfig() {
+  const configPath = join(companiesRoot, "launchpad.gen3.json");
+  if (!existsSync(configPath)) return null;
+  try {
+    return JSON.parse(await readFile(configPath, "utf8"));
+  } catch {
+    // Rozbitý root config nesmí shodit celou doctor lane: mountpointy pak
+    // spadnou na výchozí `organizations` / `personalspace` a rozbitý JSON
+    // hlásí vlastní kontrola discovery.
+    return null;
+  }
 }
 
 async function buildPersonalspace({ verifyRepositoryPrivacy = false } = {}) {

@@ -1,5 +1,6 @@
 import { join, resolve } from "path";
 import { buildLaunchpadDoctorReport } from "./diagnostics-lib.mjs";
+import { exitCodeForSummaryStatus } from "./doctor-surface-lib.mjs";
 
 const options = parseArgs(Bun.argv.slice(2));
 const companiesRoot = resolve(options.root ?? join(import.meta.dirname, "..", ".."));
@@ -8,6 +9,7 @@ const report = await buildLaunchpadDoctorReport({
   companiesRoot,
   launchpadRoot,
   allowMissingOrganizations: options.allowMissingOrganizations,
+  runChildDoctors: !options.skipChildren,
 });
 
 if (options.json) {
@@ -16,16 +18,36 @@ if (options.json) {
   printHumanReport(report);
 }
 
-if (report.summary.fail > 0) process.exit(1);
+// Invokační kontrakt společného surfacu (decision 0118): 0 = ok|warn, 1 = fail,
+// 2 = incomplete, 3 = report vůbec nevznikl. `incomplete` NIKDY nesplní bránu.
+//
+// Schválně `process.exitCode` místo `process.exit()`: `process.exit()` ukončí
+// proces dřív, než se stihne dopsat celý stdout, a rodič, který by tenhle doctor
+// zavolal jako podřízeného, by useknutý JSON klasifikoval jako `unparseable`.
+process.exitCode = exitCodeForSummaryStatus(report.summary.status);
 
 function printHumanReport(doctorReport) {
   console.log(`${doctorReport.summary.status} - ${doctorReport.scope.name}`);
   for (const check of doctorReport.checks) {
     console.log(`${check.status} - ${check.id}: ${check.message}`);
-    if (check.status === "ok" || check.details.length === 0) continue;
+    if (check.status === "blocked") {
+      console.log(`  ! ${check.blocked_reason}`);
+      console.log(`  → ${check.remedy}`);
+    }
+    if (check.status === "not_applicable") {
+      console.log(`  ~ ${check.not_applicable_reason} · vlastní: ${check.owner}`);
+    }
+    if (check.status === "ok" || (check.details ?? []).length === 0) continue;
     for (const detail of check.details) {
       console.log(`  - ${detail}`);
     }
+  }
+  for (const child of doctorReport.children ?? []) {
+    console.log(
+      `${child.outcome} - podřízený doctor ${child.declaration_path} `
+      + `(${child.invoked_command.join(" ")})`,
+    );
+    for (const failure of child.failures ?? []) console.log(`  - ${failure}`);
   }
 }
 
@@ -33,6 +55,7 @@ function parseArgs(args) {
   const parsed = {
     json: false,
     allowMissingOrganizations: false,
+    skipChildren: false,
   };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -42,6 +65,12 @@ function parseArgs(args) {
     }
     if (arg === "--allow-missing-organizations") {
       parsed.allowMissingOrganizations = true;
+      continue;
+    }
+    // Ladicí přepínač, ne tichý vypínač: bez potomků se `doctor.children`
+    // ohlásí jako `blocked` a souhrn skončí `incomplete`, který bránu nesplní.
+    if (arg === "--skip-children") {
+      parsed.skipChildren = true;
       continue;
     }
     if (arg.startsWith("--root=")) {

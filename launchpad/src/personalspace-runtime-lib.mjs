@@ -270,8 +270,12 @@ function normalizeProfileEmail(value) {
 
 // Doctor check pro personalspace — METADATA ONLY. Nikdy nečte obsah osobních
 // modulů ani gbrain zápisů; reportuje jen počty prostorů/aplikací, validitu
-// configu, identity invariant a gbrain mount stav. Chybějící personalspace =
-// skip (ne každá mašina má osobní prostor namountovaný).
+// configu, identity invariant a gbrain mount stav.
+//
+// Chybějící personalspace je `not_applicable` (decision 0118), ne `blocked`:
+// ne každá mašina má osobní prostor namountovaný, takže je to FAKT o topologii,
+// ne kontrola, kterou se nepodařilo změřit. Zelenou proto nekazí — na rozdíl od
+// personalspace lane, která spadne (ta je v diagnostics-lib.mjs `blocked`).
 export function personalspaceDoctorCheck(personalspaceResponse) {
   const spaces = personalspaceResponse.spaces ?? [];
   const failures = personalspaceResponse.failures ?? [];
@@ -279,13 +283,15 @@ export function personalspaceDoctorCheck(personalspaceResponse) {
   if (spaces.length === 0 && failures.length === 0 && warnings.length === 0) {
     return {
       id: "launchpad.personalspace",
-      status: "skip",
+      status: "not_applicable",
       severity: "local-state",
       title: "Personalspace",
       message: "Na této mašině není namountovaný žádný osobní prostor.",
       paths: [personalspaceResponse.mountpoint ?? "personalspace"],
       links: [],
       details: [],
+      not_applicable_reason: "no_such_mount",
+      owner: "Principál mašiny (osobní prostor si mountuje sám, root ho nezakládá)",
     };
   }
   const invalidSpaces = spaces.filter((space) => !space.config_valid);

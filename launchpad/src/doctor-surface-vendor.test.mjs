@@ -1,0 +1,123 @@
+// Provenience vendorovaného surfacu doctorů (decision 0118).
+//
+// PROČ. `src/doctor-surface-lib.mjs`, `src/json-schema-mini.mjs` a
+// `schemas/doctor-report.schema.json` jsou KOPIE ze `Rozjedeme-ai/HumanAndMachines`.
+// Kopie bez záznamu je fork, který se tváří jako kopie: kdokoli do ní sáhne, změna
+// zůstane jen tady a nikdo ji nikdy neuvidí. Tenhle test dělá z prózy mechanismus —
+// každý vendorovaný soubor má v `schemas/doctor-surface-vendor.json` otisk a každá
+// odchylka od upstreamu musí být pojmenovaná.
+//
+// CO TEST NEUMÍ, a je to napsané i v samotném záznamu: nechodí na síť, takže
+// neporovná repo se ŽIVÝM upstreamem. Pozná drift proti záznamu, ne drift proti
+// HumanAndMachines. Kdyby tvrdil víc, byl by to přesně ten druh zelené, kterou
+// decision 0118 zakazuje.
+//
+// SCÉNÁŘ. Za měsíc někdo opraví klasifikaci potomka rovnou tady, protože „je to
+// jeden řádek". Bez tohohle testu se to tiše povede a HumanAndMachines o opravě
+// nikdy nebude vědět; s ním spadne `doctor-surface-vendor` a v hlášce stojí, který
+// soubor a jaký otisk se rozešel se záznamem.
+
+import { expect, test } from "bun:test";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const launchpadRoot = join(import.meta.dirname, "..");
+const recordPath = join(launchpadRoot, "schemas", "doctor-surface-vendor.json");
+const record = JSON.parse(readFileSync(recordPath, "utf8"));
+
+function sha256(text) {
+  return createHash("sha256").update(text).digest("hex");
+}
+
+/**
+ * Vrací seznam nálezů — prázdný znamená, že záznam sedí. Je to funkce, ne
+ * `expect` uvnitř cyklu, aby se dala pustit i na ZÁMĚRNĚ rozbitý záznam:
+ * kontrola, která nemůže selhat, nic nedokazuje.
+ */
+export function vendorFindings(vendorRecord, readFile) {
+  const findings = [];
+  const files = Array.isArray(vendorRecord?.files) ? vendorRecord.files : [];
+  if (files.length === 0) findings.push("záznam nevyjmenovává jediný vendorovaný soubor");
+  for (const file of files) {
+    let content;
+    try {
+      content = readFile(file.path);
+    } catch (error) {
+      findings.push(`${file.path}: vendorovaný soubor nejde přečíst (${error.message})`);
+      continue;
+    }
+    const actual = sha256(content);
+    if (actual !== file.vendored_sha256) {
+      findings.push(
+        `${file.path}: otisk ${actual} neodpovídá zaznamenanému ${file.vendored_sha256}`,
+      );
+    }
+    const delta = Array.isArray(file.local_delta) ? file.local_delta : [];
+    const identical = file.vendored_sha256 === file.upstream_sha256;
+    if (identical && delta.length > 0) {
+      findings.push(`${file.path}: záznam tvrdí shodu s upstreamem, ale vyjmenovává odchylky`);
+    }
+    if (!identical && delta.length === 0) {
+      findings.push(
+        `${file.path}: liší se od upstreamu, ale žádná odchylka není pojmenovaná — `
+        + "nepřiznaný fork kontraktu",
+      );
+    }
+    for (const entry of delta) {
+      if (!entry?.summary || !entry?.anchor) {
+        findings.push(`${file.path}: odchylka bez 'summary' nebo 'anchor'`);
+        continue;
+      }
+      if (!content.includes(entry.anchor)) {
+        findings.push(
+          `${file.path}: deklarovaná odchylka „${entry.summary}" v souboru není `
+          + `(kotva '${entry.anchor}' se nenašla)`,
+        );
+      }
+    }
+  }
+  return findings;
+}
+
+const readVendored = (relativePath) => readFileSync(join(launchpadRoot, relativePath), "utf8");
+
+test("vendorovaný surface doctorů sedí se svým záznamem provenience", () => {
+  expect(vendorFindings(record, readVendored)).toEqual([]);
+});
+
+test("záznam pojmenovává upstream repo, ref i commit — jinak není co reprodukovat", () => {
+  expect(record.upstream?.repository).toBe("Rozjedeme-ai/HumanAndMachines");
+  expect(record.upstream?.commit).toMatch(/^[0-9a-f]{40}$/);
+  expect(String(record.upstream?.ref ?? "")).not.toBe("");
+});
+
+test("vendorovaná kopie je dnes bajt na bajt shodná s upstreamem — žádná odchylka", () => {
+  // Tenhle test je záměrná past. Root si k surfacu přidává vlastní politiku
+  // (povinné svázání identity dítěte s mountem, exit kód z CELÉHO reportu) — a
+  // přidává si ji v `doctor-children-lib.mjs`, ne uvnitř vendorovaných souborů.
+  // Jakmile někdo tu hranici poruší a upraví kopii, tenhle test spadne a donutí ho
+  // odpovědět, proč se kontrakt forkuje v konzumentovi místo v HumanAndMachines.
+  for (const file of record.files) {
+    expect(file.vendored_sha256).toBe(file.upstream_sha256);
+    expect(file.local_delta).toEqual([]);
+  }
+  expect(record.upstream_reconciliation_required).toBe(false);
+});
+
+test("KONTROLNÍ TEST: rozešlý otisk i nepřiznaná odchylka musí spadnout", () => {
+  const tampered = structuredClone(record);
+  tampered.files[0].vendored_sha256 = "0".repeat(64);
+  expect(vendorFindings(tampered, readVendored).join(" ")).toContain("neodpovídá zaznamenanému");
+
+  // Nepřiznaný fork: záznam tvrdí, že se soubor od upstreamu liší, ale žádnou
+  // odchylku nejmenuje. Přesně tak vypadá „opravím to jen tady, je to jeden řádek".
+  const undeclared = structuredClone(record);
+  undeclared.files[0].upstream_sha256 = "1".repeat(64);
+  undeclared.files[0].local_delta = [];
+  expect(vendorFindings(undeclared, readVendored).join(" ")).toContain("nepřiznaný fork");
+
+  const ghostDelta = structuredClone(record);
+  ghostDelta.files[1].local_delta = [{ summary: "odchylka, která tu není", anchor: "KOTVA-KTERA-V-SOUBORU-NENI" }];
+  expect(vendorFindings(ghostDelta, readVendored).join(" ")).toContain("vyjmenovává odchylky");
+});

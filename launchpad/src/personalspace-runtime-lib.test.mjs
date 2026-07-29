@@ -160,14 +160,14 @@ test("personalspaceDoctorCheck je metadata-only a nikdy neobsahuje obsah zápis�
   });
   const check = personalspaceDoctorCheck(response);
   expect(check.id).toBe("launchpad.personalspace");
-  expect(["ok", "warn", "fail", "skip"]).toContain(check.status);
+  expect(["ok", "warn", "fail", "not_applicable", "blocked"]).toContain(check.status);
   // Detaily nesou jen počty/validitu/gbrain mode, ne obsah.
   expect(JSON.stringify(check)).not.toContain("soukromá poznámka");
   expect(check.details.join(" ")).toContain("Principálův");
   expect(check.details.join(" ")).toContain("gbrain repo živě ověřeno private");
 });
 
-test("personalspaceDoctorCheck = skip, když není žádný osobní prostor", async () => {
+test("personalspaceDoctorCheck = not_applicable, když není žádný osobní prostor", async () => {
   const root = await mkdtemp(join(tmpdir(), "ps-empty-"));
   tempRoots.push(root);
   await writeJson(join(root, "launchpad.gen3.json"), { workspace_generation: "gen3", personalspace_mountpoint: "personalspace" });
@@ -183,7 +183,11 @@ test("personalspaceDoctorCheck = skip, když není žádný osobní prostor", as
     inspectRepository: privateRepoInspector,
   });
   const check = personalspaceDoctorCheck(response);
-  expect(check.status).toBe("skip");
+  // Chybějící osobní prostor je FAKT o topologii, ne nezměřená kontrola
+  // (decision 0118): zelenou nekazí, ale musí říct, kdo ho vlastní.
+  expect(check.status).toBe("not_applicable");
+  expect(check.not_applicable_reason).toBe("no_such_mount");
+  expect(check.owner.length).toBeGreaterThan(0);
 });
 
 test("Doctor fail-closed odmítne public gbrain repo i při private deklaraci v manifestu", async () => {
@@ -290,7 +294,7 @@ test("Doctor nikdy nečte privátní Buddy presentation warnings", () => {
     summary: { app_count: 0 },
   });
 
-  expect(check.status).toBe("skip");
+  expect(check.status).toBe("not_applicable");
   expect(JSON.stringify(check)).not.toContain(privateDetail);
 });
 

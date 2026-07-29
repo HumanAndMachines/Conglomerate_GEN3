@@ -607,6 +607,15 @@ button.update-pill:disabled {
   color: #b91c1c;
 }
 
+/* Slovník společného surfacu doctorů (decision 0118): `incomplete` je souhrn,
+   ve kterém jsme nepozorovali, co jsme pozorovat měli. Nesmí vypadat jako
+   zelená ani jako pouhé varování — proto vlastní, výrazně odlišný stav. */
+.status-incomplete {
+  border-color: transparent;
+  background: var(--c-warn-bg);
+  color: #7c3aed;
+}
+
 .status-unknown {
   border-color: var(--line);
   background: var(--bg-subtle);
@@ -683,6 +692,9 @@ button.update-pill:disabled {
 }
 [data-theme="dark"] .status-fail {
   color: #fca5a5;
+}
+[data-theme="dark"] .status-incomplete {
+  color: #c4b5fd;
 }
 
 .icon-btn {
