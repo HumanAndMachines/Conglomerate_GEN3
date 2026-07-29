@@ -276,6 +276,7 @@ export function runChildDoctor({
   mountPath,
   declaration,
   schema,
+  expectedScopeType,
   spawn = spawnSync,
   now = () => Date.now(),
 }) {
@@ -297,6 +298,30 @@ export function runChildDoctor({
 
   if (command.length === 0) {
     entry.failures.push("Deklarace doctora nemá 'command' — root nemá co spustit.");
+    return entry;
+  }
+  // Očekávaný druh scope určuje LANE, která mount našla (organizations/ →
+  // 'organization', personalspace/ → 'personalspace'), nikdy dítě samo. Volající,
+  // který ho nepředá, nedostane volnější kontrolu, ale hlasitou vadu: bez očekávání
+  // by se identita reportu neměla proti čemu vázat a cizí report by prošel.
+  if (typeof expectedScopeType !== "string" || expectedScopeType.trim() === "") {
+    entry.failures.push(
+      "Root nedostal očekávaný scope.type mountu, takže by report dítěte neměl proti čemu "
+      + "vázat identitu. Nespouštíme nic — nevázaný report je horší než žádný.",
+    );
+    return entry;
+  }
+  // Deklarace smí očekávaný typ POTVRDIT, nikdy ho přepsat. Mount pod
+  // `organizations/`, který si do manifestu napíše `scope_type: "personalspace"`,
+  // je rozbitá deklarace, ne jiný lane.
+  if (
+    typeof declaration?.scope_type === "string"
+    && declaration.scope_type !== expectedScopeType
+  ) {
+    entry.failures.push(
+      `Deklarace tvrdí scope_type '${declaration.scope_type}', ale mount leží v lane `
+      + `'${expectedScopeType}'. Deklarace očekávaný typ potvrzuje, nepřepisuje ho.`,
+    );
     return entry;
   }
   if (!existsSync(cwd)) {
@@ -337,6 +362,19 @@ export function runChildDoctor({
     entry.failures.push(`Podřízený doctor nešel spustit: ${result.error.message}`);
     return entry;
   }
+  // Proces zabitý signálem NEDOBĚHL. Cokoli, co stihl vypsat, je půlka reportu —
+  // a půlka reportu je nepozorování, ne zdravý mount. Kontroluje se PŘED parsováním
+  // stdoutu, jinak by syntakticky platný JSON z procesu zabitého `SIGKILL` (OOM
+  // killer, `kill -9` z jiného skriptu) prošel jako `outcome: report` bez jediného
+  // failure — přesně ta tichá zelená, kvůli které tahle lane existuje.
+  if (result?.signal && !Number.isInteger(result?.status)) {
+    entry.outcome = "spawn_failed";
+    entry.failures.push(
+      `Podřízený doctor byl ukončen signálem ${result.signal} a normálně neskončil. `
+      + "Cokoli stihl vypsat, je nedokončený běh — nepozorovali jsme nic.",
+    );
+    return entry;
+  }
 
   const stdout = String(result?.stdout ?? "").trim();
   if (stdout === "") {
@@ -367,8 +405,22 @@ export function runChildDoctor({
     return entry;
   }
 
+  // IDENTITA REPORTU SE VÁŽE POVINNĚ, obojím směrem. Schéma nechává
+  // `scope.absolute_path` volitelné, protože doctor běžící sám o sobě nemá koho
+  // přesvědčovat — jenže root ho spustil kvůli konkrétnímu mountu. Report bez
+  // rozložené cesty proto do agregace nevstupuje: bez ní by stačilo vrátit platný
+  // v3 report o ČEMKOLI a root by pod tímhle mountem hlásil zdraví cizího checkoutu.
   const reportedPath = parsed?.scope?.absolute_path;
-  if (typeof reportedPath === "string" && reportedPath !== "" && !samePath(reportedPath, cwd)) {
+  if (typeof reportedPath !== "string" || reportedPath.trim() === "") {
+    entry.outcome = "scope_mismatch";
+    entry.stdout_tail = tail(stdout);
+    entry.failures.push(
+      "Podřízený doctor nehlásí 'scope.absolute_path', takže jeho report se nedá svázat s "
+      + `mountem, ve kterém ho root spustil ('${cwd}'). Nevázaný report se do agregace nepočítá.`,
+    );
+    return entry;
+  }
+  if (!samePath(reportedPath, cwd)) {
     entry.outcome = "scope_mismatch";
     entry.stdout_tail = tail(stdout);
     entry.failures.push(
@@ -376,14 +428,12 @@ export function runChildDoctor({
     );
     return entry;
   }
-  if (
-    typeof declaration?.scope_type === "string"
-    && parsed?.scope?.type !== declaration.scope_type
-  ) {
+  if (parsed?.scope?.type !== expectedScopeType) {
     entry.outcome = "scope_mismatch";
     entry.stdout_tail = tail(stdout);
     entry.failures.push(
-      `Manifest deklaruje scope.type '${declaration.scope_type}', report hlásí '${parsed?.scope?.type}'.`,
+      `Mount leží v lane '${expectedScopeType}', ale report hlásí scope.type `
+      + `'${parsed?.scope?.type}'.`,
     );
     return entry;
   }
@@ -392,7 +442,11 @@ export function runChildDoctor({
   // podle `blocked` znát nemohlo — čte se fail-closed (viz níž), ale nesoudí se
   // podle pravidla, které v době jeho vzniku neexistovalo.
   if (parsed?.schema_version === DOCTOR_REPORT_SCHEMA_VERSION_V3) {
-    const expectedExit = exitCodeForSummaryStatus(summarizeStatus(parsed.checks));
+    // Očekávaný exit kód se počítá z CELÉHO reportu, tedy i z checks vnořených
+    // vnuků — dítě, které je samo rootem, končí podle svého agregátu. Kdyby se
+    // počítal jen z `parsed.checks`, dítě s vlastním `ok` a zablokovaným vnukem by
+    // správně skončilo dvojkou a rodič by mu za to vystavil falešný fail.
+    const expectedExit = exitCodeForSummaryStatus(summarizeStatus(flattenChecks(parsed)));
     if (Number.isInteger(entry.exit_code) && entry.exit_code !== expectedExit) {
       entry.exit_code_mismatch = expectedExit;
     }

@@ -234,6 +234,10 @@ export async function runChildDoctorLane({
         mountPath: entry.mountPath,
         declaration: entry.declaration,
         schema,
+        // Očekávaný druh scope určuje lane, ve které mount leží, ne dítě a ne jeho
+        // manifest. Bez tohohle svázání by mount pod `organizations/` mohl vrátit
+        // platný v3 report typu `workspace` a root by ho přijal jako svůj.
+        expectedScopeType: entry.scopeKind,
       }),
     );
   }

@@ -115,6 +115,34 @@ nespuštěný doctor není zelený doctor.
 | `launchpad/src/doctor-children-lib.mjs` | root-side lane: discovery deklarací, spuštění, kontrola `doctor.children` |
 | `launchpad/src/doctor-children-lib.test.mjs` | root-side test: rozbitý potomek shodí agregát |
 | `launchpad/src/doctor-surface-conformance.test.mjs` | konformní test producenta: root doctor je sám na surfacu |
+| `launchpad/schemas/doctor-surface-vendor.json` | provenience kopie: upstream repo/ref/commit, otisky a **pojmenované** odchylky |
+| `launchpad/src/doctor-surface-vendor.test.mjs` | test provenience: tichá editace vendorovaného souboru i nepřiznaná odchylka spadnou |
+
+## Jak se váže identita dítěte
+
+Root nikdy nevěří tomu, co dítě řeklo o sobě — ani o tom, ČÍ zdraví hlásí.
+Očekávaný druh scope určuje **lane, ve které mount leží** (`organizations/` →
+`organization`, `personalspace/` → `personalspace`), nikdy dítě a nikdy jeho
+vlastní manifest: deklarace smí očekávaný typ potvrdit, ne přepsat. K tomu musí
+report nést **rozložený `scope.absolute_path`**, který sedí na adresář, ve kterém
+ho root spustil. Report bez něj se do agregace nepočítá.
+
+Scénář, kvůli kterému to tak je: Organizace si do `company.gen3.json` napíše
+deklaraci s jediným polem `command`. Její doctor je omylem spuštěný přes wrapper,
+který reportuje jiný checkout — dokud se identita nevázala povinně, obě porovnání
+se přeskočila, root přijal cizí report jako svůj a pod tímhle mountem hlásil
+zdraví úplně jiné mašiny. Dnes je to `scope_mismatch`, vlastní `doctor.child.N`
+s `fail` a exit 1.
+
+Stejnou logikou se soudí konec běhu: dítě ukončené signálem (OOM killer,
+`kill -9`) **nedoběhlo**, i kdyby na stdout stihlo vypsat konformní JSON.
+Klasifikuje se jako `spawn_failed` ještě před parsováním payloadu.
+
+A obráceně, aby kontrakt nevystavoval falešné vady: očekávaný exit kód dítěte se
+počítá z **celého plochého reportu včetně vnuků**. Dítě, které je samo rootem, má
+vlastní kontroly `ok`, ale vnořený vnuk `blocked` — jeho agregát je `incomplete`
+a správně končí dvojkou. Kdyby se očekávání počítalo jen z jeho vlastních checks,
+rodič by mu za správné chování vystavil `doctor.child.N.exit_code` s `fail`.
 
 ## Co se nesmí tvrdit
 
@@ -142,3 +170,22 @@ v CLI a v UI by znamenal dvě různé odpovědi o téže mašině.
 protože Launchpad UI páruje blokátory aplikací přes přesné
 `launchpad.runtime.${app.id}`. Oprava patří buď k přejmenování těch app id, nebo
 ke změně párování v UI, a je to vlastní změna s vlastním PR.
+
+Ta volba **není rozhodnutí rootu**: `AgentMint-*` a `Macano-Tech-*` jsou app id
+z manifestů dvou Organizací, které leží v gitignorovaném mountu `organizations/`
+a patří jiným repům. Root je přejmenovat nemůže a nemá to po kom chtít bez
+vlastníka. Druhá cesta — párovat blokátory v UI přes odvozený slug — znamená
+tutéž funkci na dvou místech (`launchpad/src/diagnostics-lib.mjs` produkuje id,
+`launchpad/public/app.js` je páruje) a `checks[].id` má
+`additionalProperties: false`, takže se app id nedá poslat vedle jako pole. Dokud
+o tom nerozhodne vlastník, zůstává `doctor.self_conformance` **`fail`** s výpisem
+konkrétních id — hlasitá vada je správnější stav než uvolněný pattern.
+
+**Vendorovaná kopie a pořadí merge.** `doctor-surface-lib.mjs` se od upstreamu
+(HumanAndMachines PR #262) odchyluje: drží `cwd` uvnitř mountu, klasifikuje běh
+ukončený signálem, váže identitu dítěte na lane a počítá očekávaný exit z celého
+reportu. Každá odchylka je pojmenovaná v `launchpad/schemas/doctor-surface-vendor.json`
+a musí doputovat do HumanAndMachines **dřív**, než se tenhle PR mergne — jinak
+v repu zůstane root fork kontraktu, který se tváří jako kopie. Test provenience
+pozná drift proti záznamu; drift proti živému upstreamu nepozná nikdo, protože
+testy nechodí na síť. To hlídá pořadí merge, ne mechanismus.

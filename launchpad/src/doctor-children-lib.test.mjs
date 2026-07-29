@@ -17,6 +17,7 @@ import {
   buildAggregateReport,
   exitCodeForSummaryStatus,
   loadDoctorReportSchema,
+  runChildDoctor,
   summarizeStatus,
   validateDoctorReport,
 } from "./doctor-surface-lib.mjs";
@@ -247,7 +248,7 @@ test("report o cizím scope je scope_mismatch", async () => {
   expectLoudDefect(report, "scope_mismatch");
 });
 
-test("deklarovaný scope_type se asertuje proti reportu dítěte", async () => {
+test("deklarace nesmí přepsat lane: scope_type proti mountpointu je hlasitá vada", async () => {
   const root = await createRoot();
   await mountOrganization(root, "ExampleOrg_GEN3", {
     declaration: {
@@ -264,7 +265,54 @@ test("deklarovaný scope_type se asertuje proti reportu dítěte", async () => {
 
   const { report } = await runLane(root);
 
+  expectLoudDefect(report, "spawn_failed");
+  expect(report.children[0].failures.join(" ")).toContain("scope_type");
+  expect(report.children[0].failures.join(" ")).toContain("organization");
+});
+
+test("report bez scope.absolute_path se nedá svázat s mountem, takže je scope_mismatch", async () => {
+  const root = await createRoot();
+  await mountOrganization(root, "ExampleOrg_GEN3", {
+    // Deklarace nese jen `command` — přesně ten minimální tvar, u kterého se dřív
+    // obě porovnání identity přeskočila a platný report o cizím checkoutu prošel.
+    declaration: {
+      schema_version: "humanandmachines.doctor.declaration.v1",
+      command: [bun, "doctor.mjs"],
+    },
+    script: `const report = {
+  schema_version: "companiesascode.doctor.report.v3",
+  scope: { type: "organization", path: ".", name: "Child" },
+  summary: { status: "ok", ok: 1, warn: 0, fail: 0, not_applicable: 0, blocked: 0 },
+  checks: ${JSON.stringify([okCheck("example.custom")])},
+};
+console.log(JSON.stringify(report));
+`,
+  });
+
+  const { report } = await runLane(root);
+
   expectLoudDefect(report, "scope_mismatch");
+  expect(report.children[0].failures.join(" ")).toContain("scope.absolute_path");
+});
+
+test("scope.type se váže na LANE, i když deklarace mlčí", async () => {
+  const root = await createRoot();
+  await mountOrganization(root, "ExampleOrg_GEN3", {
+    declaration: {
+      schema_version: "humanandmachines.doctor.declaration.v1",
+      command: [bun, "doctor.mjs"],
+    },
+    script: childScript({
+      scopeType: "workspace",
+      checks: [okCheck("example.custom")],
+      summary: { status: "ok", ok: 1, warn: 0, fail: 0, not_applicable: 0, blocked: 0 },
+    }),
+  });
+
+  const { report } = await runLane(root);
+
+  expectLoudDefect(report, "scope_mismatch");
+  expect(report.children[0].failures.join(" ")).toContain("workspace");
 });
 
 test("zaseknutý podřízený doctor je timeout, ne čekání donekonečna", async () => {
@@ -346,6 +394,121 @@ test("exit kód, který neodpovídá reportu, je porušení invokačního kontra
   expect(report.children[0].exit_code_mismatch).toBe(1);
   const mismatch = report.checks.find((check) => check.id === "doctor.child.0.exit_code");
   expect(mismatch?.status).toBe("fail");
+});
+
+test("dítě zabité signálem není report, i když stihlo vypsat platný JSON", async () => {
+  const root = await createRoot();
+  const mountPath = await mountOrganization(root, "ExampleOrg_GEN3", {
+    script: "console.log('{}');\n",
+  });
+  const payload = JSON.stringify({
+    schema_version: "companiesascode.doctor.report.v3",
+    scope: { type: "organization", path: ".", name: "Child", absolute_path: mountPath },
+    summary: { status: "ok", ok: 1, warn: 0, fail: 0, not_applicable: 0, blocked: 0 },
+    checks: [okCheck("example.custom")],
+  });
+
+  // OOM killer nebo `kill -9` z jiného skriptu: status je null, signal SIGKILL a
+  // stdout přesto nese konformní report. Bez kontroly signálu by tohle byl
+  // `outcome: "report"` s prázdným `failures` — nedoběhlý běh vydávaný za zdraví.
+  const child = runChildDoctor({
+    root,
+    declarationPath: join(mountPath, "company.gen3.json"),
+    mountPath,
+    declaration: { command: [bun, "doctor.mjs"] },
+    schema,
+    expectedScopeType: "organization",
+    spawn: () => ({ status: null, signal: "SIGKILL", stdout: payload, stderr: "" }),
+  });
+
+  expect(child.outcome).toBe("spawn_failed");
+  expect(child.report).toBeUndefined();
+  expect(child.failures.join(" ")).toContain("SIGKILL");
+  const report = buildAggregateReport({
+    scope: { type: "launchpad_root", path: ".", name: "Test root", absolute_path: root },
+    checks: [],
+    children: [child],
+  });
+  expect(report.summary.status).toBe("fail");
+  expect(exitCodeForSummaryStatus(report.summary.status)).toBe(1);
+});
+
+test("volající, který nepředá očekávaný scope_type, nedostane volnější kontrolu ale vadu", async () => {
+  const root = await createRoot();
+  const mountPath = await mountOrganization(root, "ExampleOrg_GEN3", {
+    script: "console.log('{}');\n",
+  });
+
+  const child = runChildDoctor({
+    root,
+    declarationPath: join(mountPath, "company.gen3.json"),
+    mountPath,
+    declaration: { command: [bun, "doctor.mjs"] },
+    schema,
+    spawn: () => {
+      throw new Error("dítě se nesmí vůbec spustit");
+    },
+  });
+
+  expect(child.outcome).toBe("spawn_failed");
+  expect(child.failures.join(" ")).toContain("scope.type");
+});
+
+test("dítě, které je samo rootem, se soudí podle CELÉHO reportu, ne jen podle vlastních checks", async () => {
+  const root = await createRoot();
+  const mountPath = join(root, "organizations", "ExampleOrg_GEN3");
+  const grandchildReport = {
+    schema_version: "companiesascode.doctor.report.v3",
+    scope: { type: "personalspace", path: ".", name: "Vnuk", absolute_path: "/vnuk" },
+    summary: { status: "incomplete", ok: 0, warn: 0, fail: 0, not_applicable: 0, blocked: 1 },
+    checks: [{
+      id: "vnuk.custom",
+      status: "blocked",
+      severity: "required",
+      title: "Kontrola vnuka",
+      message: "Nešlo pozorovat.",
+      paths: ["."],
+      links: [],
+      details: [],
+      blocked_reason: "Vnukův datový repozitář nebyl k dispozici.",
+      remedy: "Namountuj datový repozitář a spusť doctor znovu.",
+    }],
+  };
+  // Dítě má vlastní `ok`, ale vnořený report vnuka je `blocked`. Jeho agregát je
+  // proto `incomplete` a invokační kontrakt mu ukládá skončit dvojkou.
+  await mountOrganization(root, "ExampleOrg_GEN3", {
+    script: `const report = {
+  schema_version: "companiesascode.doctor.report.v3",
+  scope: { type: "organization", path: ".", name: "Child", absolute_path: process.cwd() },
+  summary: { status: "incomplete", ok: 1, warn: 0, fail: 0, not_applicable: 0, blocked: 1 },
+  checks: ${JSON.stringify([okCheck("example.custom")])},
+  children: [{
+    declaration_path: "sub/personal.gen3.json",
+    mount_path: "sub",
+    invoked_command: ["bun", "doctor.mjs"],
+    outcome: "report",
+    failures: [],
+    report: ${JSON.stringify(grandchildReport)},
+  }],
+};
+console.log(JSON.stringify(report));
+process.exitCode = 2;
+`,
+  });
+  expect(mountPath).toContain("ExampleOrg_GEN3");
+
+  const { report } = await runLane(root);
+
+  expect(report.children[0].outcome).toBe("report");
+  expect(report.children[0].exit_code).toBe(2);
+  // Rodič nesmí dítěti vystavit falešné porušení kontraktu…
+  expect(report.children[0].exit_code_mismatch).toBeUndefined();
+  expect(report.checks.find((check) => check.id === "doctor.child.0.exit_code")).toBeUndefined();
+  // …a `blocked` vnuka se musí propsat až do souhrnu rootu.
+  expect(report.summary.blocked).toBe(1);
+  expect(report.summary.status).toBe("incomplete");
+  expect(exitCodeForSummaryStatus(report.summary.status)).toBe(2);
+  expect(validateDoctorReport(report, { schema, label: "root" })).toEqual([]);
 });
 
 test("starší v1 dítě se čte fail-closed: skip se počítá jako blocked a rodič to přizná", async () => {
