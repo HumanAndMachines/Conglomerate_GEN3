@@ -52,17 +52,52 @@ export async function recordAppOpen({ launchpadRoot, appId, now = new Date() } =
   return { app_id: appId, ...entry };
 }
 
+// Historie počítadel přežije změnu velikosti písmen v app id.
+//
+// Konkrétní den, kvůli kterému to tady je: 2026-07-29 se dvacet app id
+// (`AgentMint-*`, `Macano-Tech-*`) přejmenovalo na malá písmena, aby
+// `launchpad.runtime.<id>` odpovídalo surfacu doctor reportu (decision 0118).
+// usage.json je ale klíčovaný přesným řetězcem, takže by se devatenáct
+// počítadel utrhlo od svých aplikací — nic by nespadlo, jen by panel
+// „Nejčastější" tiše ukázal nulu. Že to není teorie, dokazuje tentýž soubor:
+// po dřívějším přechodu Rozjedeme-ai v něm dodnes leží `Rozjedeme-ai-deals-v2`
+// (count 5) vedle `rozjedeme-ai-deals-v2` a nikdo si toho nevšiml, protože
+// osiřelý klíč se z panelu jen odfiltruje.
+//
+// Sčítáme proto záznamy, které se liší jen velikostí písmen, a párujeme je s
+// discovery case-insensitive. Soubor se tím nepřepisuje — migrace se nevnucuje
+// cizí mašině, jen se z ní přestane ztrácet historie.
+function foldUsageByCaseInsensitiveId(usageApps) {
+  const folded = new Map();
+  for (const [appId, entry] of Object.entries(usageApps)) {
+    const key = appId.toLowerCase();
+    const previous = folded.get(key);
+    const count = entry?.count ?? 0;
+    const lastOpenedAt = entry?.last_opened_at ?? null;
+    if (!previous) {
+      folded.set(key, { count, last_opened_at: lastOpenedAt });
+      continue;
+    }
+    previous.count += count;
+    if (Date.parse(lastOpenedAt ?? 0) > Date.parse(previous.last_opened_at ?? 0)) {
+      previous.last_opened_at = lastOpenedAt;
+    }
+  }
+  return folded;
+}
+
 // Vrať nejčastěji otevírané aplikace, seřazené podle počtu (tie-break podle
 // posledního otevření). Vrací jen ty, které jsou pořád v discovery (known ids).
 export async function buildMostUsedApps({ launchpadRoot, apps = [], limit = DEFAULT_TOP_LIMIT } = {}) {
   const path = usageFilePath(launchpadRoot);
   const data = await readUsageFile(path);
-  const knownIds = new Map(apps.map((app) => [app.id, app]));
+  const knownIds = new Map(apps.map((app) => [app.id.toLowerCase(), app]));
+  const usage = foldUsageByCaseInsensitiveId(data.apps);
 
-  const ranked = Object.entries(data.apps)
+  const ranked = [...usage.entries()]
     .filter(([appId]) => knownIds.has(appId))
     .map(([appId, entry]) => ({
-      id: appId,
+      id: knownIds.get(appId)?.id ?? appId,
       name: knownIds.get(appId)?.title ?? appId,
       company: knownIds.get(appId)?.company ?? null,
       company_display_name: knownIds.get(appId)?.company_display_name ?? null,
