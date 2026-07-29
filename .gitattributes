@@ -7,6 +7,14 @@
 *.bat text eol=crlf
 *.ps1 text eol=crlf
 
+# Vendorovaná kopie surfacu doctorů se porovnává OTISKEM proti upstreamu
+# (launchpad/schemas/doctor-surface-vendor.json). `* text=auto` by ji na Windows
+# checkoutu přepsal na CRLF, otisk by se rozešel a `doctor-surface-vendor` by
+# spadl JEN na Windows — konkrétní běh: checks run 30492453642, kde macOS a Ubuntu
+# byly zelené a windows-latest hlásil rozešlý otisk schématu. `.mjs` už eol=lf má,
+# schéma je JSON, takže potřebuje vlastní řádek.
+launchpad/schemas/doctor-report.schema.json text eol=lf
+
 *.png binary
 *.jpg binary
 *.jpeg binary

@@ -1,21 +1,13 @@
-// Společný surface doctorů (decision 0118) — VENDOROVANÁ KOPIE.
-//
-// Zdroj pravdy: `Rozjedeme-ai/HumanAndMachines` → `scripts/doctor-surface-lib.mjs`
-// a `schemas/doctor-report.schema.json`. Sem se kopíruje stejnou cestou jako
-// `schemas/personal.gen3.schema.json`: Conglomerate je samostatné repo bez
-// build-time závislosti na HumanAndMachines a mount `organizations/` je
-// gitignored, takže import přes mount by z rootu udělal repo, které nejde
-// naklonovat samo o sobě. Změna surfacu se dělá NEJDŘÍV v HumanAndMachines a
-// teprve pak se sem překopíruje.
+// Společný surface doctorů (decision 0118).
 //
 // Doctor není jeden program. Root doctor v kořeni Conglomerate orchestruje a nese
 // standardizované kontroly; každé namountované repo — organization, personalspace —
 // si nese vlastní nezávislý doctor, který root najde a zavolá. Personalspace doctor
 // musí umět běžet i SAMOSTATNĚ: na Buddy VPS žádný root nad ním neexistuje.
 //
-// Tenhle soubor je jediná kopie surfacu v tomhle repu: slovník stavů, odvození
-// souhrnu, exit kódy, validace reportu a invokace + agregace podřízených doctorů.
-// Root-side lane, která ho používá, je `doctor-children-lib.mjs`.
+// Tenhle soubor je jediná kopie surfacu: slovník stavů, odvození souhrnu, exit kódy,
+// validace reportu a invokace + agregace podřízených doctorů. Kdo chce být doctorem,
+// projde `scripts/doctor-conformance.mjs`, který stojí na těchhle funkcích.
 
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -44,6 +36,7 @@ export const CHILD_OUTCOMES = Object.freeze([
   "unparseable",
   "schema_invalid",
   "timeout",
+  "signalled",
   "spawn_failed",
   "scope_mismatch",
 ]);
@@ -243,25 +236,73 @@ function toRelative(root, target) {
   return relativePath === "" ? "." : relativePath;
 }
 
+function containedIn(parent, candidate) {
+  if (candidate === parent) return true;
+  return candidate.startsWith(parent.endsWith(sep) ? parent : parent + sep);
+}
+
 /**
- * Deklarované `cwd` nesmí vylézt z mountu. Kontroluje se na ROZLOŽENÉ cestě, ne
- * řetězcově — jinak by `cwd: "../../.."` v manifestu jedné Organizace pustil root
- * doctor mimo její access hranici, a symlinkovaný mount by hlásil únik, který se
- * nikdy nestal.
+ * `doctor.cwd` je deklarace mountu, ne důvěra. Mount smí říct, ve kterém svém
+ * podadresáři jeho doctor běží — nesmí říct, že běží jinde. Bez téhle hranice by
+ * `"cwd": "../jiny-checkout"` spustil mountem vlastněného doctora nad cizím
+ * repem a scope check by to POTVRDIL: porovnává se totiž s adresářem, do kterého
+ * root dítě skutečně poslal, takže uniklý cwd souhlasí sám se sebou a vada je
+ * neviditelná. Vrací kandidáta i důvod odmítnutí; runtime je vymáhá fail-closed,
+ * schéma v manifestu je jen doplněk (schéma nevidí symlinky).
  */
-function isInsideMount(mountPath, cwd) {
+export function resolveChildCwd({ mountPath, declaredCwd }) {
+  const mount = resolve(mountPath);
+  if (declaredCwd === undefined || declaredCwd === null || declaredCwd === "") {
+    return { cwd: mount };
+  }
+  if (typeof declaredCwd !== "string") {
+    return { cwd: mount, failure: "Deklarované 'doctor.cwd' není řetězec." };
+  }
+  if (isAbsolute(declaredCwd)) {
+    return {
+      cwd: resolve(declaredCwd),
+      failure:
+        `Deklarované 'doctor.cwd' musí být relativní k mountu, ale je absolutní: '${declaredCwd}'.`,
+    };
+  }
+  const candidate = resolve(mount, declaredCwd);
+  if (!containedIn(mount, candidate)) {
+    return {
+      cwd: candidate,
+      failure:
+        `Deklarované 'doctor.cwd' ('${declaredCwd}') míří mimo mount '${mount}'. `
+        + "Doctor mountu se spouští jen uvnitř svého mountu.",
+    };
+  }
+  return { cwd: candidate };
+}
+
+/**
+ * Druhá polovina té hranice: kontrola na ROZLOŽENÉ cestě. Řetězcové porovnání
+ * není kontrola — `mount/link -> /jiny/checkout` projde lexikálně a teprve
+ * realpath ukáže, kam se doopravdy jde (AGENTS.md, invariant o resolved path).
+ * Když se cesta rozložit nedá, je to odmítnutí, ne tolerance.
+ */
+export function mountContainmentFailure(mountPath, cwd) {
   const canonical = (value) => {
     try {
       return realpathSync(value);
     } catch {
-      return resolve(value);
+      return null;
     }
   };
-  const mount = canonical(mountPath);
-  const target = canonical(cwd);
-  if (mount === target) return true;
-  const relativePath = relative(mount, target);
-  return relativePath !== "" && !relativePath.startsWith("..") && !isAbsolute(relativePath);
+  const canonicalMount = canonical(mountPath);
+  const canonicalCwd = canonical(cwd);
+  if (canonicalMount === null || canonicalCwd === null) {
+    return `Pracovní adresář podřízeného doctora nešlo rozložit na skutečnou cestu (mount '${mountPath}', cwd '${cwd}').`;
+  }
+  if (!containedIn(canonicalMount, canonicalCwd)) {
+    return (
+      `Pracovní adresář podřízeného doctora leží po rozložení symlinků mimo mount: `
+      + `'${canonicalCwd}' není uvnitř '${canonicalMount}'.`
+    );
+  }
+  return null;
 }
 
 /**
@@ -276,14 +317,14 @@ export function runChildDoctor({
   mountPath,
   declaration,
   schema,
-  expectedScopeType,
   spawn = spawnSync,
   now = () => Date.now(),
 }) {
   const command = Array.isArray(declaration?.command) ? declaration.command : [];
-  const cwd = declaration?.cwd
-    ? resolve(mountPath, declaration.cwd)
-    : mountPath;
+  const { cwd, failure: cwdFailure } = resolveChildCwd({
+    mountPath,
+    declaredCwd: declaration?.cwd,
+  });
   const timeoutMs = Number.isInteger(declaration?.timeout_ms)
     ? declaration.timeout_ms
     : DEFAULT_CHILD_TIMEOUT_MS;
@@ -300,39 +341,17 @@ export function runChildDoctor({
     entry.failures.push("Deklarace doctora nemá 'command' — root nemá co spustit.");
     return entry;
   }
-  // Očekávaný druh scope určuje LANE, která mount našla (organizations/ →
-  // 'organization', personalspace/ → 'personalspace'), nikdy dítě samo. Volající,
-  // který ho nepředá, nedostane volnější kontrolu, ale hlasitou vadu: bez očekávání
-  // by se identita reportu neměla proti čemu vázat a cizí report by prošel.
-  if (typeof expectedScopeType !== "string" || expectedScopeType.trim() === "") {
-    entry.failures.push(
-      "Root nedostal očekávaný scope.type mountu, takže by report dítěte neměl proti čemu "
-      + "vázat identitu. Nespouštíme nic — nevázaný report je horší než žádný.",
-    );
-    return entry;
-  }
-  // Deklarace smí očekávaný typ POTVRDIT, nikdy ho přepsat. Mount pod
-  // `organizations/`, který si do manifestu napíše `scope_type: "personalspace"`,
-  // je rozbitá deklarace, ne jiný lane.
-  if (
-    typeof declaration?.scope_type === "string"
-    && declaration.scope_type !== expectedScopeType
-  ) {
-    entry.failures.push(
-      `Deklarace tvrdí scope_type '${declaration.scope_type}', ale mount leží v lane `
-      + `'${expectedScopeType}'. Deklarace očekávaný typ potvrzuje, nepřepisuje ho.`,
-    );
+  if (cwdFailure) {
+    entry.failures.push(cwdFailure);
     return entry;
   }
   if (!existsSync(cwd)) {
     entry.failures.push(`Pracovní adresář podřízeného doctora neexistuje: ${entry.mount_path}`);
     return entry;
   }
-  if (!isInsideMount(mountPath, cwd)) {
-    entry.failures.push(
-      `Deklarované 'cwd' ukazuje mimo mount: '${declaration.cwd}' se rozkládá na `
-      + `${entry.mount_path}. Podřízený doctor běží jen uvnitř svého repa.`,
-    );
+  const containment = mountContainmentFailure(mountPath, cwd);
+  if (containment) {
+    entry.failures.push(containment);
     return entry;
   }
 
@@ -348,8 +367,16 @@ export function runChildDoctor({
   entry.stderr_tail = tail(result?.stderr);
   if (Number.isInteger(result?.status)) entry.exit_code = result.status;
 
+  // `timeout` se tvrdí jen o tom, co jsme pozorovali: buď runtime sám hlásí
+  // ETIMEDOUT, nebo dítě dostalo náš killSignal AŽ POTÉ, co naměřená doba
+  // dosáhla limitu. SIGTERM, který přišel dřív, není náš timeout — je to cizí
+  // signál a patří do `signalled`, ne do hlášky „nedoběhl do N ms".
   const timedOut = result?.error?.code === "ETIMEDOUT"
-    || (result?.signal === "SIGTERM" && !Number.isInteger(result?.status));
+    || (
+      result?.signal === "SIGTERM"
+      && !Number.isInteger(result?.status)
+      && entry.duration_ms >= timeoutMs
+    );
   if (timedOut) {
     entry.outcome = "timeout";
     entry.failures.push(
@@ -362,16 +389,24 @@ export function runChildDoctor({
     entry.failures.push(`Podřízený doctor nešel spustit: ${result.error.message}`);
     return entry;
   }
-  // Proces zabitý signálem NEDOBĚHL. Cokoli, co stihl vypsat, je půlka reportu —
-  // a půlka reportu je nepozorování, ne zdravý mount. Kontroluje se PŘED parsováním
-  // stdoutu, jinak by syntakticky platný JSON z procesu zabitého `SIGKILL` (OOM
-  // killer, `kill -9` z jiného skriptu) prošel jako `outcome: report` bez jediného
-  // failure — přesně ta tichá zelená, kvůli které tahle lane existuje.
-  if (result?.signal && !Number.isInteger(result?.status)) {
+  // Bez řádného numerického exit kódu není co vyhodnotit. `SIGKILL` po vypsání
+  // validního JSON je nejzrádnější případ: payload projde schématem, ale proces
+  // se nedobral konce — a nedokončené pozorování není zelená. Fail-closed:
+  // stdout se uloží jako DŮKAZ do `stdout_tail`, nikdy jako `report`.
+  if (!Number.isInteger(result?.status)) {
+    if (result?.signal) {
+      const stdoutTail = tail(result?.stdout);
+      if (stdoutTail !== "") entry.stdout_tail = stdoutTail;
+      entry.outcome = "signalled";
+      entry.failures.push(
+        `Podřízený doctor byl ukončen signálem ${result.signal} a neskončil vlastním exit kódem. `
+        + "Co po sobě nechal na stdout, není dokončený běh.",
+      );
+      return entry;
+    }
     entry.outcome = "spawn_failed";
     entry.failures.push(
-      `Podřízený doctor byl ukončen signálem ${result.signal} a normálně neskončil. `
-      + "Cokoli stihl vypsat, je nedokončený běh — nepozorovali jsme nic.",
+      "Podřízený doctor neskončil ani exit kódem, ani signálem — root nemá co vyhodnotit.",
     );
     return entry;
   }
@@ -405,22 +440,8 @@ export function runChildDoctor({
     return entry;
   }
 
-  // IDENTITA REPORTU SE VÁŽE POVINNĚ, obojím směrem. Schéma nechává
-  // `scope.absolute_path` volitelné, protože doctor běžící sám o sobě nemá koho
-  // přesvědčovat — jenže root ho spustil kvůli konkrétnímu mountu. Report bez
-  // rozložené cesty proto do agregace nevstupuje: bez ní by stačilo vrátit platný
-  // v3 report o ČEMKOLI a root by pod tímhle mountem hlásil zdraví cizího checkoutu.
   const reportedPath = parsed?.scope?.absolute_path;
-  if (typeof reportedPath !== "string" || reportedPath.trim() === "") {
-    entry.outcome = "scope_mismatch";
-    entry.stdout_tail = tail(stdout);
-    entry.failures.push(
-      "Podřízený doctor nehlásí 'scope.absolute_path', takže jeho report se nedá svázat s "
-      + `mountem, ve kterém ho root spustil ('${cwd}'). Nevázaný report se do agregace nepočítá.`,
-    );
-    return entry;
-  }
-  if (!samePath(reportedPath, cwd)) {
+  if (typeof reportedPath === "string" && reportedPath !== "" && !samePath(reportedPath, cwd)) {
     entry.outcome = "scope_mismatch";
     entry.stdout_tail = tail(stdout);
     entry.failures.push(
@@ -428,12 +449,14 @@ export function runChildDoctor({
     );
     return entry;
   }
-  if (parsed?.scope?.type !== expectedScopeType) {
+  if (
+    typeof declaration?.scope_type === "string"
+    && parsed?.scope?.type !== declaration.scope_type
+  ) {
     entry.outcome = "scope_mismatch";
     entry.stdout_tail = tail(stdout);
     entry.failures.push(
-      `Mount leží v lane '${expectedScopeType}', ale report hlásí scope.type `
-      + `'${parsed?.scope?.type}'.`,
+      `Manifest deklaruje scope.type '${declaration.scope_type}', report hlásí '${parsed?.scope?.type}'.`,
     );
     return entry;
   }
@@ -442,11 +465,7 @@ export function runChildDoctor({
   // podle `blocked` znát nemohlo — čte se fail-closed (viz níž), ale nesoudí se
   // podle pravidla, které v době jeho vzniku neexistovalo.
   if (parsed?.schema_version === DOCTOR_REPORT_SCHEMA_VERSION_V3) {
-    // Očekávaný exit kód se počítá z CELÉHO reportu, tedy i z checks vnořených
-    // vnuků — dítě, které je samo rootem, končí podle svého agregátu. Kdyby se
-    // počítal jen z `parsed.checks`, dítě s vlastním `ok` a zablokovaným vnukem by
-    // správně skončilo dvojkou a rodič by mu za to vystavil falešný fail.
-    const expectedExit = exitCodeForSummaryStatus(summarizeStatus(flattenChecks(parsed)));
+    const expectedExit = exitCodeForSummaryStatus(summarizeStatus(parsed.checks));
     if (Number.isInteger(entry.exit_code) && entry.exit_code !== expectedExit) {
       entry.exit_code_mismatch = expectedExit;
     }
@@ -480,6 +499,7 @@ export function childDefectCheck(child, index) {
     unparseable: "vrátil něco, co není JSON",
     schema_invalid: "vrátil report, který neodpovídá kontraktu",
     timeout: "nedoběhl v limitu",
+    signalled: "byl ukončen signálem, aniž řádně doběhl",
     spawn_failed: "nešel vůbec spustit",
     scope_mismatch: "vrátil report o jiném scope, než v jakém byl spuštěn",
   };

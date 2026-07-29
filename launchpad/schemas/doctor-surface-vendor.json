@@ -2,42 +2,22 @@
   "schema_version": "humanandmachines.vendored-doctor-surface.v1",
   "what_this_is": "Provenience vendorované kopie společného surfacu doctorů (decision 0118). Conglomerate je samostatné repo bez build-time závislosti na HumanAndMachines, takže surface se sem kopíruje. Tenhle záznam říká ODKUD, v jakém stavu a S JAKOU odchylkou — a `src/doctor-surface-vendor.test.mjs` z něj dělá mechanismus místo prózy: tichá editace vendorovaného souboru shodí test.",
   "what_this_is_not": "NENÍ to kontrola proti živému upstreamu. Testy nechodí na síť, takže tenhle záznam pozná jen drift PROTI SOBĚ (někdo sáhl na vendorovaný soubor a nepřiznal to). Jestli se mezitím pohnul HumanAndMachines, se odsud zjistit nedá; to hlídá proces, ne test.",
+  "no_local_banner": "Vendorované soubory schválně NENESOU vlastní hlavičku „tohle je kopie\". Jedna vysvětlující věta navíc by z nich udělala soubory, které se od upstreamu liší, a přesně tím by zmizel jediný silný důkaz, který tenhle záznam umí podat: otisk sedí bajt na bajt. Varováním je tenhle záznam a test nad ním, ne komentář v souboru.",
   "upstream": {
     "repository": "Rozjedeme-ai/HumanAndMachines",
     "pull_request": 262,
-    "ref": "claude/doctor-composable-surface",
-    "commit": "72b097a3cfa6f08e73cafac1eef1d4edb5ac0b62",
-    "note": "Upstream PR je k 2026-07-29 sám v CHANGES_REQUESTED. Odchylky níž jsou opravy, které tam musí doputovat DŘÍV, než se tenhle PR mergne — jinak by v repu vznikl root fork kontraktu."
+    "ref": "main",
+    "commit": "c60e26996d94114d3f84836d7ec0f1f348605746",
+    "note": "Surface přišel na main mergem PR #262 (merge commit bbdc0f7bca189012edba8eaf19aa1ba71efa3daf, autorský commit 6870b5d3eb25b3e7d8685bfbcc33b7eed229912c). Zdejší kopie je vzatá z main po mergi PR #261 (c60e2699); ten se surfacu nedotkl, takže bajty jsou tytéž jako v bbdc0f7b."
   },
-  "upstream_reconciliation_required": true,
+  "upstream_reconciliation_required": false,
   "files": [
     {
       "path": "src/doctor-surface-lib.mjs",
       "upstream_path": "scripts/doctor-surface-lib.mjs",
-      "upstream_sha256": "3310a46ba0dca84426ef3bdf32ae681447ecfaaa3ef8ea934da6da9a1fb84a3c",
-      "vendored_sha256": "9702ce1e140073fc1b0ced218334fff56d2776c378efe02e0379428fc7cb8345",
-      "local_delta": [
-        {
-          "summary": "Hlavička přiznává, že jde o vendorovanou kopii, a ukazuje na zdroj pravdy.",
-          "anchor": "VENDOROVANÁ KOPIE"
-        },
-        {
-          "summary": "Deklarované `cwd` se drží uvnitř mountu, kontrolované na rozložené cestě. Upstream tuhle mez nemá.",
-          "anchor": "function isInsideMount"
-        },
-        {
-          "summary": "Dítě ukončené signálem bez normálního exitu je hlasitá vada ještě před parsováním stdoutu (review agentrozjedemeai, 2026-07-29).",
-          "anchor": "byl ukončen signálem"
-        },
-        {
-          "summary": "Identita reportu se váže povinně na lane, ve které mount leží, a na rozložený `scope.absolute_path` (review agentrozjedemeai + greptile, 2026-07-29).",
-          "anchor": "expectedScopeType"
-        },
-        {
-          "summary": "Očekávaný exit kód dítěte se počítá z celého plochého reportu včetně vnuků, ne jen z jeho vlastních checks (review agentrozjedemeai + greptile, 2026-07-29).",
-          "anchor": "summarizeStatus(flattenChecks(parsed))"
-        }
-      ]
+      "upstream_sha256": "0e5dd714e7506c28f5f4f62322a18b3ea7771bd41b4e32abbf0d8ce76a5c9b82",
+      "vendored_sha256": "0e5dd714e7506c28f5f4f62322a18b3ea7771bd41b4e32abbf0d8ce76a5c9b82",
+      "local_delta": []
     },
     {
       "path": "src/json-schema-mini.mjs",
@@ -49,9 +29,10 @@
     {
       "path": "schemas/doctor-report.schema.json",
       "upstream_path": "schemas/doctor-report.schema.json",
-      "upstream_sha256": "50edd46cb32b39bb83165865eb1afa0d76fd448b06aeefcca97c1d2c7479faba",
-      "vendored_sha256": "50edd46cb32b39bb83165865eb1afa0d76fd448b06aeefcca97c1d2c7479faba",
+      "upstream_sha256": "0bdf0184dcb7fb1a95e312c01cec448d0deaaebf0acc7bd09c3afa5ec4380036",
+      "vendored_sha256": "0bdf0184dcb7fb1a95e312c01cec448d0deaaebf0acc7bd09c3afa5ec4380036",
       "local_delta": []
     }
-  ]
+  ],
+  "root_side_policy": "Co root potřebuje navíc, NENÍ v těchhle souborech — je to v `src/doctor-children-lib.mjs` (`runBoundChildDoctor`): povinné svázání reportu s mountem, druh scope určený lane, do které mount patří, a přepočet očekávaného exit kódu z celého reportu včetně vnuků. Je to politika rootu, ne kontrakt všech doctorů; kdyby seděla ve vendorované kopii, byl by to fork surfacu v konzumentovi."
 }

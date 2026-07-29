@@ -21,7 +21,11 @@ import {
   summarizeStatus,
   validateDoctorReport,
 } from "./doctor-surface-lib.mjs";
-import { discoverChildDoctors, runChildDoctorLane } from "./doctor-children-lib.mjs";
+import {
+  discoverChildDoctors,
+  runBoundChildDoctor,
+  runChildDoctorLane,
+} from "./doctor-children-lib.mjs";
 
 const schema = loadDoctorReportSchema(join(import.meta.dirname, ".."));
 const bun = process.execPath;
@@ -411,19 +415,25 @@ test("dítě zabité signálem není report, i když stihlo vypsat platný JSON"
   // OOM killer nebo `kill -9` z jiného skriptu: status je null, signal SIGKILL a
   // stdout přesto nese konformní report. Bez kontroly signálu by tohle byl
   // `outcome: "report"` s prázdným `failures` — nedoběhlý běh vydávaný za zdraví.
-  const child = runChildDoctor({
+  const child = runBoundChildDoctor({
     root,
     declarationPath: join(mountPath, "company.gen3.json"),
     mountPath,
     declaration: { command: [bun, "doctor.mjs"] },
     schema,
     expectedScopeType: "organization",
-    spawn: () => ({ status: null, signal: "SIGKILL", stdout: payload, stderr: "" }),
+    runChild: (invocation) => runChildDoctor({
+      ...invocation,
+      spawn: () => ({ status: null, signal: "SIGKILL", stdout: payload, stderr: "" }),
+    }),
   });
 
-  expect(child.outcome).toBe("spawn_failed");
+  expect(child.outcome).toBe("signalled");
   expect(child.report).toBeUndefined();
   expect(child.failures.join(" ")).toContain("SIGKILL");
+  // Payload se uchová jako DŮKAZ, nikdy jako report: platný JSON z nedoběhlého
+  // procesu je pořád nedokončené pozorování.
+  expect(child.stdout_tail).toContain("companiesascode.doctor.report.v3");
   const report = buildAggregateReport({
     scope: { type: "launchpad_root", path: ".", name: "Test root", absolute_path: root },
     checks: [],
@@ -439,13 +449,13 @@ test("volající, který nepředá očekávaný scope_type, nedostane volnějš�
     script: "console.log('{}');\n",
   });
 
-  const child = runChildDoctor({
+  const child = runBoundChildDoctor({
     root,
     declarationPath: join(mountPath, "company.gen3.json"),
     mountPath,
     declaration: { command: [bun, "doctor.mjs"] },
     schema,
-    spawn: () => {
+    runChild: () => {
       throw new Error("dítě se nesmí vůbec spustit");
     },
   });

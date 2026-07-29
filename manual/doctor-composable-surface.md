@@ -28,7 +28,10 @@ Surface je `launchpad/schemas/doctor-report.schema.json` (verze **v3**; v1 a v2
 zůstávají čitelné). Je to **vendorovaná kopie** — zdroj pravdy je
 `Rozjedeme-ai/HumanAndMachines` → `schemas/doctor-report.schema.json` a
 `scripts/doctor-surface-lib.mjs`. Změna surfacu se dělá nejdřív tam a teprve pak
-se sem překopíruje, stejně jako u `schemas/personal.gen3.schema.json`.
+se sem překopíruje, stejně jako u `schemas/personal.gen3.schema.json`. Kopie je
+**bajt na bajt** a `launchpad/schemas/doctor-surface-vendor.json` to drží
+otiskem; co potřebuje root navíc, patří do `doctor-children-lib.mjs`, ne do
+kopie.
 
 ### Slovník stavů
 
@@ -112,7 +115,7 @@ nespuštěný doctor není zelený doctor.
 | `launchpad/schemas/doctor-report.schema.json` | surface v3 (vendorovaná kopie z HumanAndMachines) |
 | `launchpad/src/doctor-surface-lib.mjs` | slovník stavů, odvození souhrnu, exit kódy, validace, invokace, agregace (vendorovaná kopie) |
 | `launchpad/src/json-schema-mini.mjs` | draft-07 subset validátor (vendorovaná kopie) |
-| `launchpad/src/doctor-children-lib.mjs` | root-side lane: discovery deklarací, spuštění, kontrola `doctor.children` |
+| `launchpad/src/doctor-children-lib.mjs` | root-side lane: discovery deklarací, spuštění, **svázání identity dítěte s mountem**, kontrola `doctor.children` |
 | `launchpad/src/doctor-children-lib.test.mjs` | root-side test: rozbitý potomek shodí agregát |
 | `launchpad/src/doctor-surface-conformance.test.mjs` | konformní test producenta: root doctor je sám na surfacu |
 | `launchpad/schemas/doctor-surface-vendor.json` | provenience kopie: upstream repo/ref/commit, otisky a **pojmenované** odchylky |
@@ -134,15 +137,26 @@ se přeskočila, root přijal cizí report jako svůj a pod tímhle mountem hlá
 zdraví úplně jiné mašiny. Dnes je to `scope_mismatch`, vlastní `doctor.child.N`
 s `fail` a exit 1.
 
+Kde ta vazba **žije**, je vlastnická otázka, ne stylová. Povinné svázání dělá
+`launchpad/src/doctor-children-lib.mjs` (`runBoundChildDoctor`), ne vendorovaný
+surface. Surface povinně porovnává jen to, co dítě samo nabídlo — a pro
+samostatně běžícího doctora je to správně, protože na Buddy VPS nad ním žádný
+rodič není a nemá koho přesvědčovat. Root si tu povinnost přidává, protože dítě
+spustil kvůli konkrétnímu mountu; kdyby si ji přidal uvnitř kopie, byl by to fork
+kontraktu v konzumentovi.
+
 Stejnou logikou se soudí konec běhu: dítě ukončené signálem (OOM killer,
-`kill -9`) **nedoběhlo**, i kdyby na stdout stihlo vypsat konformní JSON.
-Klasifikuje se jako `spawn_failed` ještě před parsováním payloadu.
+`kill -9`) **nedoběhlo**, i kdyby na stdout stihlo vypsat konformní JSON. Má
+vlastní outcome `signalled`, klasifikovaný ještě před parsováním payloadu; co
+stihlo vypsat, se uchová jako důkaz v `stdout_tail`, nikdy jako `report`.
 
 A obráceně, aby kontrakt nevystavoval falešné vady: očekávaný exit kód dítěte se
 počítá z **celého plochého reportu včetně vnuků**. Dítě, které je samo rootem, má
 vlastní kontroly `ok`, ale vnořený vnuk `blocked` — jeho agregát je `incomplete`
 a správně končí dvojkou. Kdyby se očekávání počítalo jen z jeho vlastních checks,
 rodič by mu za správné chování vystavil `doctor.child.N.exit_code` s `fail`.
+Tenhle přepočet je taky root-side (`rebindChildExitExpectation`), ze stejného
+důvodu: surface o vnucích nic netvrdí, rodič ano.
 
 ## Co se nesmí tvrdit
 
@@ -163,29 +177,40 @@ doctora nedeklaruje. Až první deklarace vznikne, patří do serverové lane
 asynchronní varianta invokace — **ne** kratší timeout, protože rozdílný limit
 v CLI a v UI by znamenal dvě různé odpovědi o téže mašině.
 
-`doctor.self_conformance` na dnešní mašině hlásí `fail`: dvacet kontrol
-`launchpad.runtime.<app id>` má id s velkými písmeny (app id dvou Organizací), a
-`checks[].id` má v surfacu pattern `^[a-z0-9]+([._-][a-z0-9]+)*$`. Je to
-**existující drift**, který tenhle PR jen zviditelnil — id se neopravuje tady,
-protože Launchpad UI páruje blokátory aplikací přes přesné
-`launchpad.runtime.${app.id}`. Oprava patří buď k přejmenování těch app id, nebo
-ke změně párování v UI, a je to vlastní změna s vlastním PR.
+**`doctor.self_conformance` a app id — dluh zůstává otevřený, i když dnes
+neměří.** Původní znění tohohle odstavce tvrdilo, že `self_conformance` na dnešní
+mašině hlásí `fail`, protože dvacet kontrol `launchpad.runtime.<app id>` má id
+s velkými písmeny. **Změřeno 2026-07-30** proti reálnému Conglomerate rootu
+(10 mountů, 8 Organizací, 62 kontrol `launchpad.runtime.*`): žádné z vydaných
+`checks[].id` dnes pattern `^[a-z0-9]+([._-][a-z0-9]+)*$` neporušuje a
+`self_conformance` je `ok`. Nic se tím ale neopravilo a nic se tu neuvolnilo:
 
-Ta volba **není rozhodnutí rootu**: `AgentMint-*` a `Macano-Tech-*` jsou app id
-z manifestů dvou Organizací, které leží v gitignorovaném mountu `organizations/`
-a patří jiným repům. Root je přejmenovat nemůže a nemá to po kom chtít bez
-vlastníka. Druhá cesta — párovat blokátory v UI přes odvozený slug — znamená
-tutéž funkci na dvou místech (`launchpad/src/diagnostics-lib.mjs` produkuje id,
-`launchpad/public/app.js` je páruje) a `checks[].id` má
-`additionalProperties: false`, takže se app id nedá poslat vedle jako pole. Dokud
-o tom nerozhodne vlastník, zůstává `doctor.self_conformance` **`fail`** s výpisem
-konkrétních id — hlasitá vada je správnější stav než uvolněný pattern.
+- pattern v surfacu je nezměněný — je to bajt na bajt kopie upstreamu, takže
+  první app id s velkým písmenem znamená znovu hlasitý `fail`;
+- `bun run doctor` proti tomu rootu je i tak `fail`, ale ze dvou úplně jiných,
+  **předchozích** důvodů (`launchpad.workspace_declarations` s 27 blokátory a
+  `launchpad.personalspace`). Oba padají stejně na `main` bez téhle větve.
 
-**Vendorovaná kopie a pořadí merge.** `doctor-surface-lib.mjs` se od upstreamu
-(HumanAndMachines PR #262) odchyluje: drží `cwd` uvnitř mountu, klasifikuje běh
-ukončený signálem, váže identitu dítěte na lane a počítá očekávaný exit z celého
-reportu. Každá odchylka je pojmenovaná v `launchpad/schemas/doctor-surface-vendor.json`
-a musí doputovat do HumanAndMachines **dřív**, než se tenhle PR mergne — jinak
-v repu zůstane root fork kontraktu, který se tváří jako kopie. Test provenience
-pozná drift proti záznamu; drift proti živému upstreamu nepozná nikdo, protože
-testy nechodí na síť. To hlídá pořadí merge, ne mechanismus.
+Rozhodnutí, které se tím neudělalo, drží dál: kdyby se app id s velkými písmeny
+vrátila, root je přejmenovat nemůže — jsou z manifestů Organizací, které leží
+v gitignorovaném mountu `organizations/` a patří jiným repům. Druhá cesta —
+párovat blokátory v UI přes odvozený slug — znamená tutéž funkci na dvou místech
+(`launchpad/src/diagnostics-lib.mjs` produkuje id, `launchpad/public/app.js` je
+páruje) a `checks[].id` má `additionalProperties: false`, takže se app id nedá
+poslat vedle jako pole. Dokud o tom nerozhodne vlastník, je správný stav hlasitá
+vada, ne uvolněný pattern.
+
+**Vendorovaná kopie je bajt na bajt.** Po mergi HumanAndMachines PR #262 a #261
+se surface re-vendoroval z `main` (`c60e2699`) a **nemá jedinou odchylku**:
+`doctor-report.schema.json`, `doctor-surface-lib.mjs` i `json-schema-mini.mjs`
+mají otisk shodný s upstreamem. Odchylky, které tu dřív byly (mez na `cwd`,
+klasifikace běhu ukončeného signálem), upstream mezitím vyřešil sám — a lépe:
+`cwd` se kontroluje přes `realpath` a nerozložitelná cesta je odmítnutí, běh
+ukončený signálem má vlastní outcome `signalled` místo `spawn_failed`. Zbylé dvě
+odchylky nebyly kontrakt všech doctorů, ale politika rootu, a přestěhovaly se do
+`doctor-children-lib.mjs`. Hlídá to `doctor-surface-vendor.test.mjs`: otisky,
+nulové odchylky, a kontrolní test, který schválně rozbije záznam.
+
+Co ten test **neumí** a co je napsané i v samotném záznamu: nechodí na síť.
+Pozná drift proti záznamu, ne drift proti živému HumanAndMachines. Že tenhle
+repo drží aktuální surface, hlídá pořadí merge, ne mechanismus.

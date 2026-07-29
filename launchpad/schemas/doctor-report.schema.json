@@ -490,10 +490,11 @@
               "unparseable",
               "schema_invalid",
               "timeout",
+              "signalled",
               "spawn_failed",
               "scope_mismatch"
             ],
-            "description": "Co rodič dostal. 'report' = validní v3 report vázaný na správný mount; všechno ostatní je vada."
+            "description": "Co rodič dostal. 'report' = validní v3 report vázaný na správný mount a doběhnutý vlastním exit kódem; všechno ostatní je vada. 'signalled' = dítě skončilo signálem bez vlastního exit kódu, i kdyby předtím stihlo vypsat validní JSON — nedokončený běh není pozorování."
           },
           "exit_code": {
             "type": "integer",
@@ -524,7 +525,7 @@
           },
           "stdout_tail": {
             "type": "string",
-            "description": "Konec stdoutu dítěte. Plní se jen u vad, kde je stdout důkaz: 'unparseable', 'schema_invalid', 'scope_mismatch'. Payload se sem ukládá jako TEXT, ne jako 'report' — nevalidovaný report by se v agregaci počítal jako data."
+            "description": "Konec stdoutu dítěte. Plní se jen u vad, kde je stdout důkaz: 'unparseable', 'schema_invalid', 'scope_mismatch', 'signalled'. Payload se sem ukládá jako TEXT, ne jako 'report' — nevalidovaný ani nedokončený report by se v agregaci počítal jako data."
           }
         },
         "allOf": [
