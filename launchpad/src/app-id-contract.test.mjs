@@ -41,7 +41,7 @@ test("manifestový pattern pro app.id nepovoluje velká písmena", async () => {
   const schema = await readJson(appSchemaPath);
   const pattern = schema.properties?.id?.pattern;
 
-  expect(pattern).toBe("^[a-z0-9][a-z0-9-]*$");
+  expect(pattern).toBe("^[a-z0-9]+(-[a-z0-9]+)*$");
   // Rozšíření na [A-Za-z0-9] by drift legalizovalo, ne opravilo: check id se
   // staví z app.id bez ohledu na to, jestli je manifest validní, takže
   // `doctor.self_conformance` by padal dál a jen by zmizela oranžová karta.
@@ -90,11 +90,35 @@ test("každé app.id povolené manifestem dá doctor check id v souladu se surfa
     expect(appIdPattern.test(id)).toBe(false);
   }
 
-  // Pomlčka na konci projde manifestem, ale surface ji nevezme (segment musí
-  // mít aspoň jeden znak). Je to jediná známá díra mezi těmi dvěma patterny —
-  // je tu zaznamenaná schválně, aby ji nikdo neobjevil znovu jako překvapení.
-  expect(appIdPattern.test("trailing-")).toBe(true);
-  expect(checkIdPattern.test("launchpad.runtime.trailing-")).toBe(false);
+  // ŽÁDNÁ DÍRA MEZI TĚMI DVĚMA PATTERNY. První verze tohohle testu `trailing-`
+  // jen ZAZNAMENALA jako známou odchylku — jenže zaznamenaná díra je pořád díra:
+  // manifest by ho pustil, `launchpad.runtime.trailing-` by surface odmítl a
+  // `doctor.self_conformance` by spadl přesně tak, jak spadl 2026-07-29, jen o
+  // jeden znak jinak (nález greptile na PR #64). Manifestový pattern je proto
+  // teď PODMNOŽINA surfacu: segmenty oddělené pomlčkou, každý neprázdný.
+  for (const id of ["trailing-", "-leading", "double--hyphen", "-"]) {
+    expect({ id, manifest: appIdPattern.test(id) }).toEqual({ id, manifest: false });
+    expect(checkIdPattern.test(`launchpad.runtime.${id}`)).toBe(false);
+  }
+
+  // Vyčerpávající důkaz, že podmnožina platí i pro tvary, na které nikdo
+  // nepomyslel: každý řetězec do délky 5 nad abecedou {a, 1, -}, který
+  // manifest pustí, musí dát platné check id. Prochází 363 kombinací.
+  const alphabet = ["a", "1", "-"];
+  let checked = 0;
+  const leaks = [];
+  const walk = (prefix) => {
+    if (prefix !== "") {
+      checked += 1;
+      if (appIdPattern.test(prefix) && !checkIdPattern.test(`launchpad.runtime.${prefix}`)) {
+        leaks.push(prefix);
+      }
+    }
+    if (prefix.length === 5) return;
+    for (const character of alphabet) walk(prefix + character);
+  };
+  walk("");
+  expect({ leaks, checked }).toEqual({ leaks: [], checked: 363 });
 });
 
 test("validateAppManifest hlásí velké písmeno v app.id jako failure, ne jako soft warning", async () => {

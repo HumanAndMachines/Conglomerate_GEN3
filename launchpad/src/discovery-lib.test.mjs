@@ -256,7 +256,7 @@ test("proper-case company je přesná identita, ale app id musí zůstat lowerca
     manifest_state: "invalid_manifest",
   });
   expect(invalid_apps[0].manifest_issues.join("\n")).toContain(
-    "companyascode.app.id neodpovídá patternu ^[a-z0-9][a-z0-9-]*$",
+    "companyascode.app.id neodpovídá patternu ^[a-z0-9]+(-[a-z0-9]+)*$",
   );
 });
 
