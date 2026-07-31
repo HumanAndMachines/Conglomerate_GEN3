@@ -47,6 +47,7 @@ Maintenance agent před zásahem ověřuje:
   0118): root doctor svolává vlastní doctory namountovaných rep podle deklarace
   v manifestu, agreguje z vnořených reportů a rozbitého potomka hlásí nahlas.
   Nese i slovník `not_applicable` / `blocked` / `incomplete`.
+- `manual/hosted-buddy-vps.md` — pro agenty v rootu: jak zjistit, jestli Principál má hostovaného Buddyho, co s hostem smíš a nesmíš dělat, a pravidlo, že na VPS platí `HumanAndMachines/Buddy_GEN2` místo root pravidel.
 - `manual/personalspace-modules-and-hosted-gbrain.md` — seed koncept pro personalspace privátní moduly, per-user/per-colleague aplikace, hosted GBrain a Obsidian-compatible sync/reader model.
 - `manual/app/v1/` — statická read-only aplikace technického manuálu (`index.html`); nesmí držet pravidla, která nejsou zapsaná v manuálu nebo root dokumentech.
 

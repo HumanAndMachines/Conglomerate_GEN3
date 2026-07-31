@@ -19,6 +19,12 @@ binding a přístup ke gbrainu se přidávají jen tehdy, když vlastník Buddyh
 skutečně onboarduje. Aktivní Buddy smí běžet pouze na dedikované per-owner
 VPS; tento lokální mount drží jeho Git konfiguraci, ne Hermes/Buddy runtime.
 
+**Agentům:** jestli tvůj Principál hostovaného Buddyho má, se nepozná
+z manifestu — deklarace není důkaz a kohortové instalace v něm nemusí být
+vidět vůbec. Postup zjištění, hranice toho, co s hostem smíš dělat, a pravidlo,
+že **na VPS platí instrukce repa `HumanAndMachines/Buddy_GEN2`** a ne pravidla
+tohohle rootu, drží [`../manual/hosted-buddy-vps.md`](../manual/hosted-buddy-vps.md).
+
 Owner identifikátor je GitHub username vlastníka, například `exampleowner` — jeho prostor je
 `personalspace/exampleowner_GEN3/` a repo `exampleowner/exampleowner_GEN3`.
 Lokální OS účet není GEN3 owner identita.
