@@ -30,6 +30,7 @@ frameworku se sem nepřenášejí).
 | 0047 | Dvě surfaces: Launchpad = builder-first lokální; Conglomerate Dashboard GEN3 = hosted admin/user vstup. |
 | 0048 | Produktové plány Free/Solo/Team/Enterprise a hosting režimy (localhost/hosted/selfhosted). |
 | 0049 | Worktree runtime kontrakt: plan-owned worktrees v `.worktrees/`, sidecar metadata, Launchpad spouští aplikace z worktrees. |
+| 0059 | Distribuce Conglomerate a update kanál: update = `git pull` pinnutého commitu + podepsaná binárka z GitHub Release; kanály Nightly/Stable, release policy drží Steward/Admin práva. |
 | 0077 | Template mount Organizace žije v `organizations/OrganizationTemplate_GEN3` s markerem `organization_kind: "template"`; validuje se stejně, ale stojí mimo runtime a přehledy. |
 | 0079 | Personalspace self-service vzniká z veřejného `PersonalspaceTemplate_GEN3`; reálná instance je vždy privátní repo vlastníka. |
 | 0080 | Buddy runtime běží výhradně na dedikované VPS vlastníka; localhost není instalační volba ani fallback. |
