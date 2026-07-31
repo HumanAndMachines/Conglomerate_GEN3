@@ -115,6 +115,12 @@ const ACTIVE_POLL_INTERVAL_MS = 15_000;
 // Root update status dělá git fetch (síť); v quiet pollu se obnovuje nejvýš
 // jednou za tenhle interval, aby update indikace nezastarala na dobu session.
 const UPDATE_STATUS_REFRESH_INTERVAL_MS = 5 * 60_000;
+// `blocked` (decision 0118) je kontrola, která MĚLA běžet a nešla pozorovat.
+// Musí být v panelu vidět, jinak by se z nepozorování stalo prázdné místo —
+// `not_applicable` naopak vidět být nemá, to je fakt o topologii, ne nález.
+// Konstanta musí být inicializovaná před prvním loadData(): ten během module
+// initu synchronně vstoupí do renderProblems().
+const REPORTED_CHECK_STATUSES = new Set(["fail", "warn", "blocked"]);
 let lastUpdateStatusAt = 0;
 const mobilePanelQuery = window.matchMedia("(max-width: 900px)");
 const mobileTopbarQuery = window.matchMedia("(max-width: 900px)");
@@ -1024,11 +1030,6 @@ function renderDoctorStatus() {
   elements.runtimeRootBadge.textContent = isWorktree ? `WORKTREE · ${worktreeName}` : "MAIN";
   elements.runtimeRootBadge.title = rootPath ? `${rootName}: ${rootPath}` : "";
 }
-
-// `blocked` (decision 0118) je kontrola, která MĚLA běžet a nešla pozorovat.
-// Musí být v panelu vidět, jinak by se z nepozorování stalo prázdné místo —
-// `not_applicable` naopak vidět být nemá, to je fakt o topologii, ne nález.
-const REPORTED_CHECK_STATUSES = new Set(["fail", "warn", "blocked"]);
 
 function renderProblems(spaceHealth) {
   const reportedChecks = (state.doctor?.checks ?? []).filter((check) => REPORTED_CHECK_STATUSES.has(check.status));
