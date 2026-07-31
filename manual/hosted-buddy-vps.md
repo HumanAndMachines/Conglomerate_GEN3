@@ -29,24 +29,42 @@ instalace běží mimo self-service lane a v manifestu je nemusí být vidět v�
 Stejná logika jako u přístupů obecně: **scope se prokazuje operací, ne
 přečtením konfigurace.**
 
-Postupuj odshora a zastav se na prvním kroku, který dá odpověď:
+Jsou to **dvě různé otázky** a pletou se snadno:
 
-1. **Zeptej se Principála.** U hostovaného Buddyho je to jednořádková otázka
-   a je to nejlevnější a nejspolehlivější zdroj. Vlastní jméno Buddyho
-   (Principálové jim jména dávají) je dobrý signál, že instalace proběhla.
-2. **Manifest jako indicii.** `personalspace/<owner>_GEN3/personal.gen3.json` —
+- *Existuje Buddy?* — na to odpoví kroky 1–3 níž.
+- *Mám k němu teď přístup?* — na to odpoví **jedině krok 4**.
+
+Kroky 1–3 jsou **indicie, ne odpovědi**. Žádný z nich postup neukončuje: ani
+Principálovo „ano, mám Friday", ani binding v manifestu, ani viditelný node
+v tailnetu neprokazují, že se k Buddymu dnes někdo dostane. Když se na
+kterémkoli z nich zastavíš, začneš plánovat proti Buddymu, který nemusí být
+dosažitelný — a přijdeš na to až ve chvíli, kdy už jsi něco slíbil.
+
+1. **Zeptej se Principála.** Nejlevnější zdroj a jediný, který odpoví na
+   *existuje*. Vlastní jméno Buddyho (Principálové jim jména dávají) je dobrý
+   signál, že instalace proběhla. O přístupu neříká nic.
+2. **Manifest jako indicie.** `personalspace/<owner>_GEN3/personal.gen3.json` —
    pokud nese Buddy binding, ber to jako *pravděpodobné ano, ověř operací*.
-   Pokud ho nenese, **neuzavírej z toho „ne"**.
+   Pokud ho nenese, **neuzavírej z toho „ne"**: kohortové instalace běží mimo
+   self-service lane a v manifestu být nemusí.
 3. **Dosažitelnost hostu.** Hostované Buddy hosty se zpřístupňují přes privátní
    síť Principála, ne veřejným portem. Pokud používá Tailscale, `tailscale
-   status` vypíše i nody sdílené do jeho tailnetu — hostitelský node Buddyho
-   bude mezi nimi. Existence nodu prokazuje **síťovou** dosažitelnost, nic víc.
-4. **Skutečný přístup.** Ten prokazuje jedině operace: přihlášení do chatového
-   rozhraní Buddyho, nebo SSH na host. Tady končí to, co smí agent dělat sám —
-   viz hranice níž.
+   status` vypíše i nody sdílené do jeho tailnetu. **Odpovídající node
+   neprokazuje přístup** — prokazuje jen, že po síti někam dojdeš.
+4. **Skutečný přístup — jediný krok, který otázku uzavírá.** Prokazuje ho
+   výhradně operace, která uspěje: přihlášení do chatového rozhraní Buddyho,
+   nebo SSH na host. Tady zároveň končí to, co smí agent dělat sám — viz
+   hranice níž. Když operace neproběhla, správná odpověď je **„nevím, a proto
+   nemá"**, ne „nejspíš ano".
 
-**Fail-closed:** dokud nemáš důkaz, pracuj s odpovědí „nemá". Nikdy nezakládej
-plán, report ani slib na domněnce, že Buddy existuje a je dosažitelný.
+> **Měřený příklad, proč to takhle stojí.** 2026-08-01 platilo o jednom hostu
+> současně: Principál Buddyho má, node odpovídá (`tailscale ping` → `pong`
+> za 88 ms) — a SSH přesto odmítlo **každého** uživatele. Kroky 1 a 3 daly
+> „ano", pravdivá odpověď byla „ne". Operátor to zjistil až tím, že se
+> skutečně pokusil přihlásit.
+
+**Fail-closed:** dokud nemáš důkaz z kroku 4, pracuj s odpovědí „nemá". Nikdy
+nezakládej plán, report ani slib na domněnce, že Buddy je dosažitelný.
 
 ## Co s tím smíš dělat ty
 
