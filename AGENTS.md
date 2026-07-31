@@ -195,6 +195,15 @@ exportovaného Draftu. Principál má na své mašině plná práva; procesní h
 Worker Agentů drží sandbox jejich harnessu a pravidla práce, ne lokální
 per-modulový IAM.
 
+Má-li Principál **hostovaného Buddyho**, sahá jeho personalspace i mimo tuhle
+mašinu — na dedikovanou per-owner VPS. Hranice tím nekončí, jen se prodlužuje:
+paměť a konverzace Buddyho jsou personalspace se vším, co pro něj platí, a
+přístup na host je Principálův, ne agentův — i když ho lokální mašina technicky
+dovolí použít. Zjištění, jestli Buddy existuje, i pravidla pro práci s ním drží
+[`manual/hosted-buddy-vps.md`](manual/hosted-buddy-vps.md). **Deklarace v
+manifestu není důkaz přístupu; ten se prokazuje operací, a dokud ho nemáš,
+platí odpověď „nemá".**
+
 ## Zásadní pravidlo
 
 Nepracuj v konkrétní firmě z rootu. Nejdřív vyber organizaci v `organizations/<org>/`, přečti její `AGENTS.md` a až potom měň její obsah.
@@ -257,6 +266,14 @@ neinteraktivní běhy bez přímého App chatu s Kolegou.
    Principála, pokračuj podle vlastního `AGENTS.md` personalspace repa
    (`personalspace/<owner>_GEN3/AGENTS.md`, vzor PersonalspaceTemplate_GEN3);
    root pro personalspace drží jen privátní hranici a mount pravidla.
+   **Čtvrtý scope, který není lokální:** pokud se úkol dotýká běhu hostovaného
+   Buddyho — instalace, runtime, paměť, zálohy, incidenty — neleží v tomhle
+   rootu vůbec. Buddy běží na dedikované per-owner VPS (decision 0080) a platí
+   tam instrukce repa `HumanAndMachines/Buddy_GEN2`, ne root pravidla. Lokální
+   mount `personalspace/<owner>_GEN3/buddy/` drží jen Git konfiguraci profilu;
+   runtime tam není (`local_execution: forbidden`). Jak zjistíš, jestli tvůj
+   Principál Buddyho vůbec má, a kde přesně hranice vede, drží
+   [`manual/hosted-buddy-vps.md`](manual/hosted-buddy-vps.md).
 3. **Ověř Git stav a čerstvý main (task-start update rutina).** Před založením
    nebo převzetím jakéhokoli tasku spusť v primárním Conglomerate checkoutu
    `bun run doctor:task`. Tato explicitní Doctor lane provede bounded
