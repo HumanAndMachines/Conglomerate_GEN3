@@ -39,10 +39,10 @@ změna Conglomerate, ale kandidát na plugin nebo obsah Organizace.
   Popiš záměr, koho v komunitě se týká a proč nestačí nižší stupeň žebříku.
   Velké přepisy a refactory bez předchozí domluvy se zavírají.
 - Pracuj v dedikovaném worktree, nikdy v primárním checkoutu — ten zůstává
-  na `main` a slouží jako referenční strom. Umístění a pojmenování worktree
-  neurčuj ručně: drž se toho, co dnes vynucují Doctor/Launchpad guardy;
-  referenci (aktuální postup i cílový model CAC-0065) najdeš v
-  `manual/worktree-management.md`. Dlouhodobá lokální větev na mašině je
+  na `main` a slouží jako referenční strom. Worktree zakládej kanonickou lane
+  `bun run worktrees:create -- --plan <KOD-XXXX>`; postup a guardy drží skill
+  `.agents/skills/worktree-development-discipline/SKILL.md`, správnost hlídá
+  `bun run worktrees:check`. Dlouhodobá lokální větev na mašině je
   zakázaný stav; práce, která nemíří do PR, do Conglomerate nepatří.
 
 ## Kvalita PR — co musí platit
@@ -70,8 +70,9 @@ změna Conglomerate, ale kandidát na plugin nebo obsah Organizace.
 ## Review a merge
 
 Otevřený PR je Draft — je vidět, dá se editovat a dá se zavřít. Během aktivní
-práce je PR GitHub Draft; v handoffu ho agent přepíná na Ready for review
-(decision 0103 v manual/decision-register.md). Merge se řídí živými
+práce je PR GitHub Draft; jakmile je práce hotová a ověřená, přepne ho agent
+na Ready for review sám, ještě před handoffem — Ready není Publikace
+(decisions 0103/0112 v manual/decision-register.md). Merge se řídí živými
 GitHub právy, ne textovým labelem role: chráněnou `main` merguje Organization
 Steward nebo Organization Admin (včetně vlastního PR, decision 0095);
 nechráněnou `main` mladého repozitáře smí publikovat i Builder, dokud ji
@@ -94,7 +95,7 @@ konfliktu skončí bez přepisu historie. Oba kanály aktualizují tentýž
 direct-pull checkout; update Launchpad binárky je samostatná osa a není
 součástí tohoto mechanismu. Governance kanálů, pravidla klientských checkoutů
 a release policy — včetně toho, kdo smí vytvořit Stable release — drží decision
-draft 0080 v manual/decision-register.md. Release není Publikace dat.
+0059 (viz manual/decision-register.md). Release není Publikace dat.
 
 ## Fork policy
 
