@@ -1,11 +1,13 @@
 import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 
-// Decision 0104: .claude/skills je Git-tracked byte-for-byte mirror kanonického
-// .agents/skills (žádné symlinky/junctiony — na Windows nejsou spolehlivé).
-// Tento check běží i nad cizími checkouty (Organization mounty), proto je
-// fail (blocked) vyhrazen jen stavům, které nejde bezpečně opravit lokální
-// repair lane; legacy symlink model a drift jsou repair_needed (warn).
+// Decision 0104 (+ CAC-0085): .claude/skills je Git-tracked byte-for-byte
+// mirror kanonického .agents/skills — celých adresářů aktivních skillů včetně
+// references/, templates/ a scripts/, ne jen SKILL.md (žádné symlinky/junctiony
+// — na Windows nejsou spolehlivé). Tento check běží i nad cizími checkouty
+// (Organization mounty), proto je fail (blocked) vyhrazen jen stavům, které
+// nejde bezpečně opravit lokální repair lane; legacy symlink model, starší
+// SKILL.md-only mirror a drift jsou repair_needed (warn).
 export const AGENT_SKILLS_ENTRYPOINT_SCHEMA = "companiesascode.agent_skills_entrypoint.v2";
 export const CLAUDE_SKILLS_MATERIALIZATION = "tracked-derived-mirror";
 export const AGENT_CAPABILITY_MODES = Object.freeze({
@@ -87,6 +89,38 @@ async function readActiveSkillSlugs(root) {
   return slugs.sort();
 }
 
+// Rekurzivní sken obyčejných souborů jednoho skill adresáře. Vrací mapu
+// relativní cesta (posix "/") → absolutní cesta; symlink nebo nepodporovaný
+// filesystem typ kdekoli uvnitř jde do `unsafe` (mirror i kanonický katalog
+// musí být jen obyčejné soubory a adresáře).
+export async function listSkillFiles(baseDir, displayPrefix) {
+  const files = new Map();
+  const unsafe = [];
+  const stack = [""];
+  while (stack.length > 0) {
+    const relativeDir = stack.pop();
+    const currentDir = relativeDir === "" ? baseDir : join(baseDir, relativeDir);
+    for (const entry of await readdir(currentDir, { withFileTypes: true })) {
+      if (ignoredMirrorEntries.has(entry.name)) continue;
+      const childRelative = relativeDir === "" ? entry.name : `${relativeDir}/${entry.name}`;
+      if (entry.isSymbolicLink()) {
+        unsafe.push(`${displayPrefix}/${childRelative} je symlink; mirror musí být obyčejné soubory.`);
+        continue;
+      }
+      if (entry.isDirectory()) {
+        stack.push(childRelative);
+        continue;
+      }
+      if (entry.isFile()) {
+        files.set(childRelative, join(currentDir, entry.name));
+        continue;
+      }
+      unsafe.push(`${displayPrefix}/${childRelative} má nepodporovaný filesystem typ.`);
+    }
+  }
+  return { files, unsafe };
+}
+
 async function mirrorDrift(root, slugs) {
   const unsafe = [];
   const drift = [];
@@ -94,7 +128,6 @@ async function mirrorDrift(root, slugs) {
   const expectedSlugs = new Set(slugs);
 
   for (const entry of await readdir(mirrorRoot, { withFileTypes: true })) {
-    const entryPath = join(mirrorRoot, entry.name);
     if (ignoredMirrorEntries.has(entry.name)) continue;
     if (entry.isSymbolicLink()) {
       unsafe.push(`${compatibilityRelativePath}/${entry.name} je symlink; mirror musí být obyčejné soubory.`);
@@ -106,17 +139,6 @@ async function mirrorDrift(root, slugs) {
     }
     if (!expectedSlugs.has(entry.name)) {
       drift.push(`${compatibilityRelativePath}/${entry.name} není aktivní skill.`);
-      continue;
-    }
-    for (const child of await readdir(entryPath, { withFileTypes: true })) {
-      if (ignoredMirrorEntries.has(child.name)) continue;
-      if (child.isSymbolicLink()) {
-        unsafe.push(
-          `${compatibilityRelativePath}/${entry.name}/${child.name} je symlink; mirror musí být obyčejné soubory.`,
-        );
-      } else if (!child.isFile() || child.name !== "SKILL.md") {
-        drift.push(`${compatibilityRelativePath}/${entry.name}/${child.name} nepatří do mirroru.`);
-      }
     }
   }
 
@@ -139,19 +161,38 @@ async function mirrorDrift(root, slugs) {
       );
       continue;
     }
-    const mirrorFile = join(mirrorRoot, slug, "SKILL.md");
-    const mirrorStat = await lstatOrNull(mirrorFile);
-    if (!mirrorStat) {
-      drift.push(`${compatibilityRelativePath}/${slug}/SKILL.md chybí.`);
+    const canonicalScan = await listSkillFiles(canonicalDirectory, `${canonicalRelativePath}/${slug}`);
+    unsafe.push(...canonicalScan.unsafe);
+    const mirrorDirectory = join(mirrorRoot, slug);
+    const mirrorDirStat = await lstatOrNull(mirrorDirectory);
+    if (!mirrorDirStat) {
+      drift.push(`${compatibilityRelativePath}/${slug} chybí.`);
       continue;
     }
-    if (!mirrorStat.isFile() || mirrorStat.isSymbolicLink()) continue;
-    const [canonicalBytes, mirrorBytes] = await Promise.all([
-      readFile(canonicalFile),
-      readFile(mirrorFile),
-    ]);
-    if (!canonicalBytes.equals(mirrorBytes)) {
-      drift.push(`${compatibilityRelativePath}/${slug}/SKILL.md není byte-for-byte shodný s kanonickým katalogem.`);
+    // Symlink/ne-adresář na slug úrovni už ohlásil sken mirrorRoot výš.
+    if (mirrorDirStat.isSymbolicLink() || !mirrorDirStat.isDirectory()) continue;
+    const mirrorScan = await listSkillFiles(mirrorDirectory, `${compatibilityRelativePath}/${slug}`);
+    unsafe.push(...mirrorScan.unsafe);
+    for (const [relativeFile, canonicalPath] of canonicalScan.files) {
+      const mirrorPath = mirrorScan.files.get(relativeFile);
+      if (!mirrorPath) {
+        drift.push(`${compatibilityRelativePath}/${slug}/${relativeFile} chybí.`);
+        continue;
+      }
+      const [canonicalBytes, mirrorBytes] = await Promise.all([
+        readFile(canonicalPath),
+        readFile(mirrorPath),
+      ]);
+      if (!canonicalBytes.equals(mirrorBytes)) {
+        drift.push(
+          `${compatibilityRelativePath}/${slug}/${relativeFile} není byte-for-byte shodný s kanonickým katalogem.`,
+        );
+      }
+    }
+    for (const relativeFile of mirrorScan.files.keys()) {
+      if (!canonicalScan.files.has(relativeFile)) {
+        drift.push(`${compatibilityRelativePath}/${slug}/${relativeFile} nepatří do mirroru.`);
+      }
     }
   }
 

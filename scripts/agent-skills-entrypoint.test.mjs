@@ -250,3 +250,41 @@ test("resolution kandidátů najde na hostitelské platformě skutečný git", (
   expect(isAbsolute(resolved)).toBe(true);
   expect(trustedGitCandidates().length).toBeGreaterThan(0);
 });
+
+test("repair materializuje celý adresář skillu včetně references (CAC-0085)", async () => {
+  const root = await rootFixture("full-repair");
+  await mkdir(join(root, ".agents", "skills", "example-skill", "references"), { recursive: true });
+  await writeFile(
+    join(root, ".agents", "skills", "example-skill", "references", "data.yaml"),
+    "key: value\n",
+  );
+
+  const after = await repairAgentSkillsMirror(root);
+  expect(after.status).toBe("ok");
+  const mirrored = await readFile(
+    join(root, ".claude", "skills", "example-skill", "references", "data.yaml"),
+    "utf8",
+  );
+  expect(mirrored).toBe("key: value\n");
+});
+
+test("smazaný kanonický soubor: repair odstraní tracked mirror artefakt", async () => {
+  const root = await rootFixture("full-stale");
+  await mkdir(join(root, ".agents", "skills", "example-skill", "references"), { recursive: true });
+  await writeFile(
+    join(root, ".agents", "skills", "example-skill", "references", "data.yaml"),
+    "key: value\n",
+  );
+  expect((await repairAgentSkillsMirror(root)).status).toBe("ok");
+
+  await rm(join(root, ".agents", "skills", "example-skill", "references", "data.yaml"));
+  const before = await checkAgentSkillsMirror(root);
+  expect(before.status).toBe("repair_needed");
+  expect(before.code).toBe("mirror_drift");
+
+  const after = await repairAgentSkillsMirror(root);
+  expect(after.status).toBe("ok");
+  await expect(
+    readFile(join(root, ".claude", "skills", "example-skill", "references", "data.yaml"), "utf8"),
+  ).rejects.toThrow();
+});
