@@ -286,3 +286,74 @@ test("symlink kanonického SKILL.md hlásí sdílený doctor zavřeně, ne mirro
   expect(check.status).toBe("fail");
   expect(check.details[0]).toContain("blocked/mirror_unsafe_content");
 });
+
+test("úplný mirror: chybějící references soubor je drift, shodný je ok (CAC-0085)", async () => {
+  const { companiesRoot, organizationRoot } = await organizationFixture("full-mirror");
+  await writeSkill(organizationRoot, "example-skill");
+  await mkdir(join(organizationRoot, ".agents", "skills", "example-skill", "references"), { recursive: true });
+  await writeFile(
+    join(organizationRoot, ".agents", "skills", "example-skill", "references", "data.yaml"),
+    "key: value\n",
+  );
+  await writeMirror(organizationRoot, "example-skill");
+
+  const incomplete = await agentSkillsEntrypointsDoctorCheck({
+    companiesRoot,
+    includeRoot: false,
+    mounts: [{ path: "organizations/Example_GEN3", status: "mounted" }],
+  });
+  expect(incomplete.status).toBe("warn");
+  expect(incomplete.details[0]).toContain("repair_needed/mirror_drift");
+  expect(incomplete.details[0]).toContain("references/data.yaml chybí");
+
+  await mkdir(join(organizationRoot, ".claude", "skills", "example-skill", "references"), { recursive: true });
+  await writeFile(
+    join(organizationRoot, ".claude", "skills", "example-skill", "references", "data.yaml"),
+    "key: value\n",
+  );
+  const complete = await agentSkillsEntrypointsDoctorCheck({
+    companiesRoot,
+    includeRoot: false,
+    mounts: [{ path: "organizations/Example_GEN3", status: "mounted" }],
+  });
+  expect(complete.status).toBe("ok");
+  expect(complete.details[0]).toContain("ok/mirror_ready");
+});
+
+test("extra soubor v mirror skill adresáři je drift (repair lane), ne fail", async () => {
+  const { companiesRoot, organizationRoot } = await organizationFixture("full-extra");
+  await writeSkill(organizationRoot, "example-skill");
+  await writeMirror(organizationRoot, "example-skill");
+  await writeFile(
+    join(organizationRoot, ".claude", "skills", "example-skill", "notes.md"),
+    "lokální poznámky\n",
+  );
+
+  const check = await agentSkillsEntrypointsDoctorCheck({
+    companiesRoot,
+    includeRoot: false,
+    mounts: [{ path: "organizations/Example_GEN3", status: "mounted" }],
+  });
+  expect(check.status).toBe("warn");
+  expect(check.details[0]).toContain("repair_needed/mirror_drift");
+  expect(check.details[0]).toContain("notes.md nepatří do mirroru");
+});
+
+test("symlink uvnitř references v mirroru je fail-closed", async () => {
+  const { companiesRoot, organizationRoot } = await organizationFixture("full-symlink");
+  await writeSkill(organizationRoot, "example-skill");
+  await writeMirror(organizationRoot, "example-skill");
+  await mkdir(join(organizationRoot, ".claude", "skills", "example-skill", "references"), { recursive: true });
+  await symlink(
+    join(organizationRoot, ".agents", "skills", "example-skill", "SKILL.md"),
+    join(organizationRoot, ".claude", "skills", "example-skill", "references", "link.md"),
+  );
+
+  const check = await agentSkillsEntrypointsDoctorCheck({
+    companiesRoot,
+    includeRoot: false,
+    mounts: [{ path: "organizations/Example_GEN3", status: "mounted" }],
+  });
+  expect(check.status).toBe("fail");
+  expect(check.details[0]).toContain("blocked/mirror_unsafe_content");
+});
