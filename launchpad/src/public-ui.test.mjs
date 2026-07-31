@@ -1037,7 +1037,7 @@ test("CAC-0083: UI nenabízí Stáhnout mimo builder pull scope a zrcadlí serve
   expect(js).toContain('if (git.status === "pull_available" && builderPullScopeAllowedForRepo(git))');
 });
 
-test("app icon constants initialize before the first data load render", async () => {
+test("render-time constants initialize before the first data load", async () => {
   const js = await readFile(join(publicRoot, "app.js"), "utf8");
 
   const firstDataLoad = js.indexOf("\nawait loadData();");
@@ -1045,6 +1045,8 @@ test("app icon constants initialize before the first data load render", async ()
   expect(js.indexOf("const APP_ICON_STYLES")).toBeLessThan(firstDataLoad);
   expect(js.indexOf("const APP_ICON_PATHS")).toBeLessThan(firstDataLoad);
   expect(js.indexOf("const APP_DESCRIPTION_FALLBACKS")).toBeLessThan(firstDataLoad);
+  expect(js.indexOf('const REPORTED_CHECK_STATUSES = new Set(["fail", "warn", "blocked"])'))
+    .toBeLessThan(firstDataLoad);
 });
 
 function extractClientThemeValidator(js) {
