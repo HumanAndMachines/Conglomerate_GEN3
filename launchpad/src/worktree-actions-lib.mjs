@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { existsSync } from "fs";
-import { mkdir, readFile, writeFile } from "fs/promises";
+import { lstat, mkdir, readFile, realpath, rm, writeFile } from "fs/promises";
 import { basename, dirname, join, posix, relative } from "path";
+import { writeSidecarAtomically } from "../../scripts/worktree-create-lib.mjs";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
 import { GIT_LOCAL_TIMEOUT_MS, runGit, safeGitRemoteEnv } from "./git-lib.mjs";
 import { readGitRepoStatus } from "./git-status-lib.mjs";
@@ -18,6 +20,27 @@ export class WorktreeActionError extends Error {
   }
 }
 
+async function withWorktreeCreateLock(organizationRoot, operation) {
+  const lockPath = join(organizationRoot, ".worktrees", ".worktree-create.lock");
+  await mkdir(dirname(lockPath), { recursive: true });
+  try {
+    await mkdir(lockPath);
+  } catch (error) {
+    if (error?.code === "EEXIST") {
+      throw new WorktreeActionError("Jiná worktree create operace právě drží canonical create lock.", {
+        status: 409,
+        code: "worktree_create_in_progress",
+      });
+    }
+    throw error;
+  }
+  try {
+    return await operation();
+  } finally {
+    await rm(lockPath, { recursive: true, force: true });
+  }
+}
+
 export async function createWorktreeFromPlan({
   companiesRoot,
   repoKey,
@@ -27,6 +50,8 @@ export async function createWorktreeFromPlan({
   conversationOrigin = null,
   recoveryHandoff = null,
   environment = process.env,
+  sidecarWriter = writeSidecarAtomically,
+  worktreeFinder = findWorktree,
 } = {}) {
   if (!companiesRoot) throw new Error("createWorktreeFromPlan requires companiesRoot");
   const repo = await resolveRepo(companiesRoot, repoKey);
@@ -79,24 +104,51 @@ export async function createWorktreeFromPlan({
     paths: [paths.absoluteWorktreePath, paths.absoluteSidecarPath],
     allowMissingTarget: true,
   });
-  if (existsSync(paths.absoluteWorktreePath) || existsSync(paths.absoluteSidecarPath)) {
+  return withWorktreeCreateLock(join(companiesRoot, repo.organization_path), async () => {
+    await assertWorktreePathsInsideOrganization({
+      companiesRoot,
+      repo,
+      paths: [paths.absoluteWorktreePath, paths.absoluteSidecarPath],
+      allowMissingTarget: true,
+    });
+    if (existsSync(paths.absoluteWorktreePath) || existsSync(paths.absoluteSidecarPath)) {
     throw new WorktreeActionError(`Worktree nebo sidecar už existuje: ${paths.relativeWorktreePath}`, {
       status: 409,
       code: "worktree_already_exists",
     });
   }
   await assertBranchDoesNotExist(repo, normalizedBranch);
+  const branchAllocation = await allocateOwnedBranch({ repo, branch: normalizedBranch });
+  if (!branchAllocation.ok) {
+    throw new WorktreeActionError(
+      `Git branch allocation selhala: ${branchAllocation.message}. Nic se neuklízí bez důkazu vlastnictví.`,
+      {
+        status: 500,
+        code: "git_branch_allocate_failed",
+        details: [branchAllocation.message],
+      },
+    );
+  }
   await mkdir(dirname(paths.absoluteWorktreePath), { recursive: true });
 
-  const added = await runGit(["worktree", "add", "-b", normalizedBranch, paths.absoluteWorktreePath], {
+  const added = await runGit(["worktree", "add", paths.absoluteWorktreePath, normalizedBranch], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
   if (!added.ok) {
-    throw new WorktreeActionError(`Git worktree create selhal: ${added.stderr || added.error || added.stdout}`, {
+    const rollback = await rollbackOwnedBranch({
+      repo,
+      branch: normalizedBranch,
+      ownerMarker: branchAllocation.ownerMarker,
+      branchHead: branchAllocation.branchHead,
+    });
+    const residualPath = existsSync(paths.absoluteWorktreePath)
+      ? `neověřená cesta ${paths.absoluteWorktreePath} zůstala nedotčena`
+      : "žádná reziduální cesta";
+    throw new WorktreeActionError(`Git worktree create selhal: ${added.stderr || added.error || added.stdout}; ${rollback}; ${residualPath}.`, {
       status: 500,
       code: "git_worktree_create_failed",
-      details: [added.stderr || added.error || added.stdout].filter(Boolean),
+      details: [added.stderr || added.error || added.stdout, rollback, residualPath].filter(Boolean),
     });
   }
 
@@ -119,16 +171,61 @@ export async function createWorktreeFromPlan({
     recovery_handoff: resolvedRecoveryHandoff,
     status: "active",
   };
-  await writeJson(paths.absoluteSidecarPath, metadata);
-
-  const worktree = await findWorktree(companiesRoot, repo, paths.slug);
-  return {
-    schema_version: "companiesascode.launchpad.worktree_action.v1",
-    action: "create_worktree",
-    repo_key: repo.key,
-    created_at: metadata.created_at,
-    worktree,
-  };
+  let sidecarPublished = false;
+  let sidecarStagingPath = null;
+  try {
+    const sidecarWrite = await sidecarWriter({
+      sidecarPath: paths.absoluteSidecarPath,
+      contents: `${JSON.stringify(metadata, null, 2)}\n`,
+    });
+    sidecarPublished = true;
+    sidecarStagingPath = sidecarWrite?.stagingPath ?? null;
+    if (sidecarWrite?.stagingCleanupError) {
+      throw new Error(`staging sidecar ${sidecarWrite.stagingPath} nelze odstranit: ${sidecarWrite.stagingCleanupError.message}`);
+    }
+    const worktree = await worktreeFinder(companiesRoot, repo, paths.slug);
+    return {
+      schema_version: "companiesascode.launchpad.worktree_action.v1",
+      action: "create_worktree",
+      repo_key: repo.key,
+      created_at: metadata.created_at,
+      worktree,
+    };
+  } catch (error) {
+    // Publikovaný no-clobber sidecar je commit point. Od této chvíle nesmíme
+    // přes path-based rollback mazat ani sidecar, ani worktree: jiný proces mohl
+    // nahradit jejich adresářové položky dřív, než bychom je znovu ověřili.
+    if (sidecarPublished) {
+      throw new WorktreeActionError(
+        `Worktree byl vytvořen a sidecar publikován, ale následné ověření selhalo: ${error instanceof Error ? error.message : error}. Neopakuj create; ověř index a případný staging soubor ukliď vědomě.`,
+        {
+          status: 202,
+          code: "worktree_created_index_pending",
+          details: [error instanceof Error ? error.message : String(error), sidecarStagingPath].filter(Boolean),
+        },
+      );
+    }
+    const attachedStagingPath = ownedSidecarStagingPath(paths.absoluteSidecarPath, error);
+    const stagingReport = attachedStagingPath
+      ? `staging sidecar ${attachedStagingPath} zůstává pro vědomý úklid`
+      : "sidecar nebyl publikován";
+    const rollback = await rollbackOwnedWorktreeCreate({
+      repo,
+      worktreePath: paths.absoluteWorktreePath,
+      branch: normalizedBranch,
+      ownerMarker: branchAllocation.ownerMarker,
+      branchHead: branchAllocation.branchHead,
+    });
+    throw new WorktreeActionError(
+      `Worktree sidecar nelze publikovat: ${error instanceof Error ? error.message : error}; ${stagingReport}; ${rollback}.`,
+      {
+        status: 500,
+        code: "worktree_create_rolled_back",
+        details: [error instanceof Error ? error.message : String(error), stagingReport, rollback],
+      },
+    );
+  }
+  });
 }
 
 export async function publishWorktreeDraft({
@@ -297,6 +394,114 @@ async function assertWorktreePathsInsideOrganization({
       );
     }
   }
+}
+
+function ownedSidecarStagingPath(sidecarPath, error) {
+  const candidate = error && typeof error === "object" ? error.stagingPath : null;
+  if (typeof candidate !== "string") return null;
+  const expectedPrefix = `.${basename(sidecarPath)}.`;
+  return dirname(candidate) === dirname(sidecarPath) && basename(candidate).startsWith(expectedPrefix)
+    ? candidate
+    : null;
+}
+
+async function allocateOwnedBranch({ repo, branch }) {
+  const ownerMarker = `launchpad-worktree-create:${randomUUID()}`;
+  const created = await runGit(["branch", "--no-track", branch], {
+    cwd: repo.absolute_path,
+    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+  });
+  if (!created.ok) {
+    return { ok: false, message: created.stderr || created.error || created.stdout || "branch nelze vytvořit" };
+  }
+
+  const head = await runGit(["rev-parse", `refs/heads/${branch}`], {
+    cwd: repo.absolute_path,
+    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+  });
+  if (!head.ok || !head.stdout) {
+    return { ok: false, message: "branch byl vytvořen, ale nelze ověřit jeho exact head" };
+  }
+  const branchHead = head.stdout.trim();
+
+  const marked = await runGit(["config", "--local", `branch.${branch}.description`, ownerMarker], {
+    cwd: repo.absolute_path,
+    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+  });
+  if (!marked.ok) {
+    return {
+      ok: false,
+      message: `ownership marker nelze zapsat: ${marked.stderr || marked.error || marked.stdout}; branch ${branch}@${branchHead} zůstává pro vědomý recovery handoff, protože ji mohl převzít jiný linked worktree`,
+    };
+  }
+  return { ok: true, ownerMarker, branchHead };
+}
+
+async function ownedBranchStatus({ repo, branch, ownerMarker, branchHead }) {
+  const [marker, head] = await Promise.all([
+    runGit(["config", "--local", "--get", `branch.${branch}.description`], {
+      cwd: repo.absolute_path,
+      timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+    }),
+    runGit(["rev-parse", `refs/heads/${branch}`], {
+      cwd: repo.absolute_path,
+      timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+    }),
+  ]);
+  if (!marker.ok || marker.stdout.trim() !== ownerMarker) return { owned: false, reason: "ownership marker nesedí" };
+  if (!head.ok || head.stdout.trim() !== branchHead) return { owned: false, reason: "branch head se po alokaci změnil" };
+  return { owned: true };
+}
+
+async function rollbackOwnedBranch({ repo, branch, ownerMarker, branchHead }) {
+  const ownership = await ownedBranchStatus({ repo, branch, ownerMarker, branchHead });
+  if (!ownership.owned) return `branch se nemaže: ${ownership.reason}`;
+
+  return `owned branch ${branch}@${branchHead} zůstává pro vědomý recovery handoff; automatické mazání refu není bezpečné vůči cizím linked worktree`;
+}
+
+async function canonicalOwnedWorktreePath(worktreePath) {
+  try {
+    const entry = await lstat(worktreePath);
+    if (!entry.isDirectory() || entry.isSymbolicLink()) return null;
+    return await realpath(worktreePath);
+  } catch {
+    return null;
+  }
+}
+
+function registeredWorktreeMatchesBranch(porcelain, canonicalWorktreePath, branch) {
+  return porcelain.split("\n\n").some((block) => {
+    const lines = block.split("\n");
+    return lines.includes(`worktree ${canonicalWorktreePath}`)
+      && lines.includes(`branch refs/heads/${branch}`);
+  });
+}
+
+async function rollbackOwnedWorktreeCreate({ repo, worktreePath, branch, ownerMarker, branchHead }) {
+  const ownership = await ownedBranchStatus({ repo, branch, ownerMarker, branchHead });
+  if (!ownership.owned) return `worktree ani branch se nemažou: ${ownership.reason}`;
+
+  const registered = await runGit(["worktree", "list", "--porcelain"], {
+    cwd: repo.absolute_path,
+    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+  });
+  const canonicalWorktreePath = await canonicalOwnedWorktreePath(worktreePath);
+  if (
+    !registered.ok
+    || !canonicalWorktreePath
+    || !registeredWorktreeMatchesBranch(registered.stdout, canonicalWorktreePath, branch)
+  ) {
+    return "worktree ani branch se nemažou: exact cesta není registrovaný owned worktree";
+  }
+
+  const removed = await runGit(["worktree", "remove", "--force", worktreePath], {
+    cwd: repo.absolute_path,
+    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+  });
+  if (!removed.ok) return `owned worktree nelze odstranit: ${removed.stderr || removed.error || removed.stdout}`;
+  const branchRollback = await rollbackOwnedBranch({ repo, branch, ownerMarker, branchHead });
+  return `${existsSync(worktreePath) ? "worktree path zůstal" : "owned worktree vrácen"}; ${branchRollback}`;
 }
 
 async function assertBranchDoesNotExist(repo, branch) {

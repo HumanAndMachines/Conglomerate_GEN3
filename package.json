@@ -27,6 +27,6 @@
     "worktrees:create": "bun scripts/worktree-create.mjs",
     "worktrees:status": "bun .agents/skills/worktree-development-discipline/scripts/worktree-inventory.mjs",
     "worktrees:check": "bun .agents/skills/worktree-development-discipline/scripts/worktree-inventory.mjs --check",
-    "worktrees:test": "bun test scripts/worktree-inventory.contract.test.mjs scripts/worktree-create-contract.test.mjs"
+    "worktrees:test": "bun test scripts/worktree-inventory.contract.test.mjs scripts/worktree-create-contract.test.mjs scripts/worktree-create.test.mjs scripts/worktree-create-git-policy.test.mjs"
   }
 }
