@@ -189,9 +189,19 @@ async function main() {
   } catch (error) {
     // Bez sidecaru by worktree zůstal orphan a blokoval čistý retry —
     // čerstvý worktree i branch (== origin/main, bez commitů) vrať zpět.
-    git(primaryRoot, ["worktree", "remove", "--force", worktreePath], { allowFail: true });
-    git(primaryRoot, ["branch", "-D", branch], { allowFail: true });
-    fail(`zápis sidecaru selhal (${error instanceof Error ? error.message : error}); worktree i branch vráceny.`);
+    // Rollback může taky selhat; výsledek reportuj poctivě, ne optimisticky.
+    const worktreeRemoved =
+      git(primaryRoot, ["worktree", "remove", "--force", worktreePath], { allowFail: true }).status === 0;
+    const branchRemoved =
+      git(primaryRoot, ["branch", "-D", branch], { allowFail: true }).status === 0;
+    const leftovers = [
+      ...(worktreeRemoved ? [] : [`worktree ${worktreePath}`]),
+      ...(branchRemoved ? [] : [`branch ${branch}`]),
+    ];
+    const rollbackReport = leftovers.length === 0
+      ? "worktree i branch vráceny"
+      : `rollback neúplný, zůstává ${leftovers.join(" a ")} — dokonči úklid ručně (git worktree remove + git branch -D)`;
+    fail(`zápis sidecaru selhal (${error instanceof Error ? error.message : error}); ${rollbackReport}.`);
   }
 
   console.log(`ok - worktree: ${worktreePath}`);
