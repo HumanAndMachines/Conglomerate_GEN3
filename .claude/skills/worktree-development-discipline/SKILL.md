@@ -33,12 +33,11 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
    výhradně `<Conglomerate>/.worktrees/root/<canonical-plan-basename>/`;
    basename je název kanonického plan souboru bez `.yaml`. Branch obsahuje
    kód plánu.
-4. Vedle worktree vytvoř
-   `<canonical-plan-basename>.worktree.json` podle
-   `companiesascode.worktree.v1` s kanonickými identity/path poli, přesným
-   HumanAndMachines plánem, branchí/base, `created_at`, `created_by` a stavem.
-   Pro bezpečný provoz nový agent doplní také `last_touched`, PR URL, purpose
-   a cleanup pravidlo. Nově vytvořený nebo adoptovaný sidecar navíc obsahuje
+4. Sidecar `<canonical-plan-basename>.worktree.json` (schema
+   `companiesascode.worktree.v1`) generuje create lane — zkontroluj ho,
+   nevytvářej podruhé a nepřepisuj odvozená identity/path pole; doplň jen
+   to, co skript nemohl bezpečně odvodit: `last_touched`, PR URL, purpose
+   a cleanup pravidlo. Platný sidecar navíc obsahuje
    `conversation_origin` (`surface`, `agent_label`, opaque `thread_id` nebo
    výslovný locator status, `captured_at`, `local_only: true`) a
    `recovery_handoff` (stav, stručné netajné summary, blocker, next action,
@@ -68,8 +67,11 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
 9. Commituj a pushuj do PR branche průběžně — po každém uzavřeném pracovním
    kroku, nejpozději před každou odpovědí Principálovi, která ohlašuje stav
    práce. Po prvním pushi branch hned otevři PR proti správné base branchi
-   jako GitHub Draft PR, pokud Principál výslovně neřekl, že PR otevřít
-   nemáš. Jakmile je práce hotová a ověřená, přepni PR na Ready for review
+   jako GitHub Draft PR. Pokud Principál výslovně zakázal PR otevřít,
+   nepokračuj za hranici lokálního experimentu a před dalším pushem nebo
+   koncem práce si vyžádej rozhodnutí: Draft zahodit, nebo PR povolit —
+   samotná remote branch bez PR není přípustná náhrada.
+   Jakmile je práce hotová a ověřená, přepni PR na Ready for review
    sám, ještě před handoffem — Ready není Publikace, říká jen „připraveno
    ke kontrole"; hotová práce nezůstává viset jako GitHub Draft. Remote
    branch bez PR není dokončený handoff: snadno zapadne, Steward ji nemusí
@@ -99,11 +101,13 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
    Po explicitním „Publikuj" v threadu PR mergni metodou, kterou repozitář
    povoluje (při více povolených je default rebase, pokud Organizace ve svém
    `AGENTS.md` nedeklaruje jinak), v primárním checkoutu stáhni main
-   (`bun run doctor:task`, `git pull --ff-only`) a pokračuj krokem 12. Když
-   GitHub merge Principálovi nedovoluje, řekni to rovnou v handoffu;
-   „Publikuj" pak znamená předání: přepni PR na Ready, vyžádej review
-   Stewarda (`gh pr edit --add-reviewer <steward>` + @zmínka v komentáři
-   PR) a předej Principálovi, kdo rozhoduje. Merge neobcházej ani na
+   (`bun run doctor:task`, `git pull --ff-only`) a pokračuj cleanup guardy
+   v kroku 13. Když Principál zvolí předání, nebo mu GitHub merge
+   nedovoluje, vyžádej review Kolegy, kterého Principál zvolil
+   (`gh pr edit --add-reviewer <login>` + @zmínka v komentáři PR); pokud
+   nikoho neurčil, požádej ho o volbu — Stewarda použij bez další otázky
+   jen tehdy, když ho jako výchozí rozhodující osobu určuje politika repa.
+   Předej Principálovi, kdo teď rozhoduje. Merge neobcházej ani na
    opakovanou žádost — GitHub ho fyzicky blokuje. Bez zelené PR zůstává
    otevřený a nic se neděje.
 13. Worktree odstraň jen když je clean včetně untracked souborů, nemá
@@ -131,8 +135,6 @@ bun run check
 bun run doctor
 ```
 
-Handoff začíná standardizovaným blokem podle decisions 0103/0112 (PR URL,
-base, exact HEAD, lidské shrnutí, ověření, dvojotázka „Mám změny Publikovat
-tvým jménem? Nebo mám požádat jiného Kolegu o kontrolu a Publikaci?")
-a obsahuje primary stav, worktree cestu/branch/plán/sidecar, provedené
-ověření a výsledek cleanupu nebo konkrétní důvod ponechání.
+Povinný obsah a zakončení handoffu drží krok 12; navíc uveď stav primary
+checkoutu, worktree cestu/branch/plán/sidecar, provedené ověření a výsledek
+cleanupu nebo konkrétní důvod ponechání.

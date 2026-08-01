@@ -12,6 +12,8 @@ frameworku se sem nepřenášejí).
 | # | Norma (shrnutí) |
 | --- | --- |
 | 0013 | Launchpad root je workstation/control-plane pattern: právě jeden root na mašinu; Organizace dynamicky načítá a spouští, ale nedrží jejich business pravdu. |
+| 0018 | Každá Organizace má vlastní doctor; diagnostika je per-Organizace, ne globální. |
+| 0031 | Org mounty `organizations/<org>/` jsou gitignored Doctor-managed vnořená repa, ne git submoduly; root config je folder-driven. |
 | 0021 | Team je pojmenovaná skupina uvnitř Organizace; hosted vzor aplikací je `<modul>.<team>.<doména>`. |
 | 0023 | Team může být tým lidí i značka/venture; příslušnost modulů deklaruje manifest. |
 | 0024 | Historický CEO-first koncept Launchpadu; revidováno decision 0047 (builder-first). |
@@ -19,12 +21,14 @@ frameworku se sem nepřenášejí).
 | 0030 | Conglomerate root je direct-pull klon jediného sdíleného upstreamu; vylepšení jdou zpět PR-em, ne fork-syncem. |
 | 0033 | Migrace GEN2 → GEN3 je fork-based a paralelní; stará generace zůstává rollback linkou. |
 | 0034 | Mission Control ↔ template roadmap loop: plánovací vrstva se propaguje template cestou. |
-| 0035 | Datové v3 aplikace: approval model draft → approve → publish nad repository-db. |
+| 0035 | Datové v3 aplikace rozlišují Draft a Publikaci dat nad repository-db; chráněné cesty jdou flow draft → approve → publish. Rozsah approval sleduje progresivní zamykání (viz 0102). |
+| 0036 | Mission Control cutover z legacy YAML má explicitní gates; historické záznamy se nepřepisují. |
 | 0037 | Mission Control v3 nastupuje na hranici GEN3 migrace Organizace. |
 | 0039 | Systém se jmenuje HumanAndMachine GEN3; produkty jsou Conglomerate GEN3 (práce) a Buddy GEN3 (osobní). |
 | 0040 | Pyramida přednosti source of truth: decision records > schémata/configy > GLOSSARY > AGENTS.md scope > kontrakty > Guide. |
-| 0041 | Plochá složka `workspace/`; Team je deklarace v manifestu (N:M), productionspace bez univerzálních pravidel, doctor tam vynucuje jen bezpečné minimum. |
+| 0041 | (1) `workspace/` je plochá složka všech modulů; (2–5) Team je manifestová N:M deklarace, ne adresář — chybějící deklarace = default Team `workspace`; (6) `productionspace` je rezervovaný org-level slug mimo Teamy; (7) každé productionspace repo má vlastní branch/release pravidla a doctor vynucuje jen bezpečné minimum. |
 | 0042 | Launchpad je auto-discovery first: Organizace objevuje skenem mountů; root config není allowlist; bezpečnostní kontroly platí pro všechny mounty stejně. |
+| 0043 | Neplatný manifest Organizaci izoluje: Launchpad vadný mount bezpečně odstaví, nikdy kvůli němu nepadá celé UI. |
 | 0044 | Noví klienti nastupují rovnou na GEN3 (žádný GEN2 onboarding). |
 | 0045 | `_GENn` je trvalý generační marker názvu repa/mountu; interní brand identita zůstává čistá. |
 | 0046 | Gbrain (paměť Buddyho) patří do personalspace, nikdy do firemní organizace. |
@@ -32,14 +36,18 @@ frameworku se sem nepřenášejí).
 | 0048 | Produktové plány Free/Solo/Team/Enterprise a hosting režimy (localhost/hosted/selfhosted). |
 | 0049 | Worktree runtime kontrakt: plan-owned worktrees v `.worktrees/`, sidecar metadata, Launchpad spouští aplikace z worktrees. |
 | 0051 | Struktura Personalspace: privátní repo `<login>/<login>_GEN3` mimo firemní organizace, `personal.gen3.json`, plochá `workspace/`, gbrain jako root vrstva. |
-| 0059 | Distribuce Conglomerate a update kanál: update = `git pull` pinnutého commitu + podepsaná binárka z GitHub Release; kanály Nightly/Stable, release policy drží Steward/Admin práva. |
+| 0059 | Distribuce má dvě oddělené osy: root checkout se bezpečně fast-forwarduje na cíl kanálu Nightly (`origin/main`) nebo Stable (nejvyšší tag); aktualizace Launchpad binárky je samostatný mechanismus. Stable Release smí vytvořit jen identita s odpovídajícími GitHub právy. |
+| 0060 | Role určuje footprint na mašině: Organization User je zero-install (žádný lokální root, přístup přes produkční aplikace a MCP). |
+| 0061 | BYOS: agentní runtime a subscription zůstávají na stroji buildera; platforma nedodává LLM účet ani skrytou autonomii. |
+| 0062 | Kanonická čtveřice person: Organization Admin / Steward / Builder / User (nesklonné anglické pojmy). |
+| 0063 | Worker Agent pracuje jen v explicitně autorizovaném tasku pod dozorem; drafty schvaluje persona s pravomocí (Kolega nebo AI Kolega — gate je pravomoc, ne rozdíl člověk vs. AI). |
 | 0077 | Template mount Organizace žije v `organizations/OrganizationTemplate_GEN3` s markerem `organization_kind: "template"`; validuje se stejně, ale stojí mimo runtime a přehledy. |
 | 0079 | Personalspace self-service vzniká z veřejného `PersonalspaceTemplate_GEN3`; reálná instance je vždy privátní repo vlastníka. |
 | 0080 | Buddy runtime běží výhradně na dedikované VPS vlastníka; localhost není instalační volba ani fallback. |
-| 0089 | Buddy je důvěryhodný osobní Agent: morální kontrakt (`CONSTITUTION.md`) + trvalé, scoped, odvolatelné mandáty (`MANDATES.md`); transakčně specifické gates mandát nikdy nenahrazuje a Buddy si mandát sám nevydá. |
+| 0089 | Buddy je důvěryhodný osobní zástupce lidského Principála: morální kontrakt (`CONSTITUTION.md`) + trvalé, scoped, odvolatelné mandáty (`MANDATES.md`); transakčně specifické gates mandát nikdy nenahrazuje a Buddy si mandát sám nevydá. |
 | 0090 | Slovník person: Worker Agent je kanonický pojem pro execution session bez pravomocí; „Agent" je hovorová zkratka. |
 | 0091 | Security hranice: Personalspace patří výhradně jednomu Principálovi (+ volitelný Buddy); Principál plně ovládá svou mašinu; GitHub je jediná autorita Workspace source přístupů; repo modulu je nejmenší access hranice. |
-| 0092 | AI Kolega má vlastní GitHub účet, dedikovanou Mašinu (GEN2/GEN3 = VPS), plný Conglomerate a owner-only Personalspace bez Buddyho; do Organizací smí jen to, co dovolí jeho vlastní GitHub identita. |
+| 0092 | AI Kolega má vlastní GitHub účet, dedikovanou Mašinu (GEN2/GEN3 = VPS), vlastní kompletní lokální instalaci Conglomerate a owner-only Personalspace bez Buddyho; do každé Organizace smí jen to, co dovolí jeho vlastní GitHub identita. |
 | 0093 | Infra repo Organizace je Admin-only: Steward ani Builder do něj grant nedostávají. |
 | 0094 | Opatrovník: každý seat AI Kolegy má právě jednoho jmenovaného lidského custodiana s auditovaným, jmenovitým servisním vstupem — jiná osa než organizační role; soukromý Personalspace Kolegy se nečte. |
 | 0095 | Admin smí mergovat i vlastní PR; Steward je běžná merge lane, ne výhradní autorita. |

@@ -2,8 +2,9 @@
 
 Conglomerate je **sdílený framework pro celou komunitu** HumanAndMachine GEN3.
 Každá mašina ho používá jako direct-pull klon (decision 0030 v
-manual/decision-register.md): jedna codebase, žádné lokální úpravy kódu,
-vylepšení výhradně přes pull request do tohoto repa. Tahle příručka platí pro
+manual/decision-register.md): jedna sdílená codebase bez trvalých
+per-machine variant kódu — lokální změny vznikají ve worktree a vracejí se
+do upstreamu výhradně pull requestem do tohoto repa. Tahle příručka platí pro
 lidi i pro agenty a její cíl je jediný — aby PR do sdíleného repa přidávaly
 hodnotu celé komunitě, ne chaos.
 
@@ -78,9 +79,9 @@ Steward nebo Organization Admin (včetně vlastního PR, decision 0095);
 nechráněnou `main` mladého repozitáře smí publikovat i Builder, dokud ji
 Admin vědomě nezamkne (progresivní zamykání). Worker Agent merguje jen na
 explicitní pokyn svého Principála platný v aktuálním threadu. Přímý push na
-`main` tohoto repa nemá nikdo kromě Admina. PRs prochází nočním Steward
-review (Nightly Steward PR Sweep); GitHub Draft PR bez aktivity delší než
-48 hodin sweep uvede v reportu jako stale draft vyžadující pozornost.
+`main` tohoto repa nemá nikdo kromě Admina. Otevřené PRs zachytává Nightly
+Steward PR Sweep, je-li pro repo aktivní; GitHub Draft PR bez aktivity delší
+než 48 hodin uvede v reportu jako stale draft vyžadující pozornost.
 Otevření PR nezakládá nárok na merge — nekvalitní nebo scope-cizí PR
 Steward zavře s vysvětlením.
 
