@@ -11,6 +11,7 @@ frameworku se sem nepřenášejí).
 
 | # | Norma (shrnutí) |
 | --- | --- |
+| 0013 | Launchpad root je workstation/control-plane pattern: právě jeden root na mašinu; Organizace dynamicky načítá a spouští, ale nedrží jejich business pravdu. |
 | 0021 | Team je pojmenovaná skupina uvnitř Organizace; hosted vzor aplikací je `<modul>.<team>.<doména>`. |
 | 0023 | Team může být tým lidí i značka/venture; příslušnost modulů deklaruje manifest. |
 | 0024 | Historický CEO-first koncept Launchpadu; revidováno decision 0047 (builder-first). |
@@ -30,6 +31,7 @@ frameworku se sem nepřenášejí).
 | 0047 | Dvě surfaces: Launchpad = builder-first lokální; Conglomerate Dashboard GEN3 = hosted admin/user vstup. |
 | 0048 | Produktové plány Free/Solo/Team/Enterprise a hosting režimy (localhost/hosted/selfhosted). |
 | 0049 | Worktree runtime kontrakt: plan-owned worktrees v `.worktrees/`, sidecar metadata, Launchpad spouští aplikace z worktrees. |
+| 0051 | Struktura Personalspace: privátní repo `<login>/<login>_GEN3` mimo firemní organizace, `personal.gen3.json`, plochá `workspace/`, gbrain jako root vrstva. |
 | 0059 | Distribuce Conglomerate a update kanál: update = `git pull` pinnutého commitu + podepsaná binárka z GitHub Release; kanály Nightly/Stable, release policy drží Steward/Admin práva. |
 | 0077 | Template mount Organizace žije v `organizations/OrganizationTemplate_GEN3` s markerem `organization_kind: "template"`; validuje se stejně, ale stojí mimo runtime a přehledy. |
 | 0079 | Personalspace self-service vzniká z veřejného `PersonalspaceTemplate_GEN3`; reálná instance je vždy privátní repo vlastníka. |
@@ -45,3 +47,5 @@ frameworku se sem nepřenášejí).
 | 0103 | Agentní PR disciplína: vždy worktree + PR, průběžný push, Draft PR → Ready, průvodcovský handoff, Publikace řízená živými GitHub právy, progresivní zamykání `main`. |
 | 0104 | `.claude/skills` je Git-tracked byte-for-byte mirror `.agents/skills` (Windows-safe, žádné symlinky); paritu hlídá doctor a opravuje repair lane. |
 | 0112 | Agentní instrukce jsou ústava: vysvětlují hodnoty, hranice a očekávání, nediktují postup; slovník pěti pojmů (Principál, Kolega, AI Kolega, Worker Agent, Buddy); jedno pravidlo = jeden kanonický domov; mechaniku nese skript/skill/doctor. |
+| 0113 | Přejmenovatelné jméno (slug, label, deklarace) není autorizační ani join klíč: vazby a výběr drží stabilní identita a ověřený stav, nikdy samotné jméno. |
+| 0118 | Composable doctor surface: root doctor svolává vlastní doctory namountovaných rep podle deklarace v manifestu, agreguje vnořené reporty a rozbitého potomka hlásí nahlas; slovník stavů `not_applicable` / `blocked` / `incomplete`. |
