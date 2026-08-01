@@ -1,7 +1,7 @@
 import { afterAll, expect, test } from "bun:test";
 import { existsSync } from "fs";
 import { mkdir, rm, symlink, writeFile, readFile } from "fs/promises";
-import { dirname, join } from "path";
+import { basename, dirname, join } from "path";
 import { buildWorktreeIndex } from "./worktree-lib.mjs";
 import { createWorktreeFromPlan, publishWorktreeDraft, WorktreeActionError } from "./worktree-actions-lib.mjs";
 import { createLaunchpadGitFixture, initGitRepo, runGit } from "./git-fixture-helpers.test.mjs";
@@ -43,6 +43,7 @@ test("guarded create makes a canonical Mission-Control-owned worktree with sidec
 
   const worktreePath = join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish");
   expect(runGit(["branch", "--show-current"], worktreePath)).toBe("CAC-0042-deals-publish");
+  expect(existsSync(join(orgRoot, ".worktrees", ".worktree-create.lock"))).toBe(false);
 
   const sidecar = JSON.parse(await readFile(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish.worktree.json"), "utf8"));
   expect(sidecar).toMatchObject({
@@ -204,6 +205,204 @@ test("guarded create refuses dirty main checkout and leaves no worktree behind",
   });
 
   expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish"))).toBe(false);
+});
+
+test("guarded create serializes with the canonical Organization create lock", async () => {
+  const { root, orgRoot, dealsRepo } = await setupDealsRepoWithPlan();
+  const lockPath = join(orgRoot, ".worktrees", ".worktree-create.lock");
+  await mkdir(lockPath, { recursive: true });
+
+  await expect(
+    createWorktreeFromPlan({
+      companiesRoot: root,
+      repoKey: "BetaCo::deals",
+      planPath: "mission-control/plans/2026/07/CAC-0042-deals-publish.yaml",
+      branch: "CAC-0042-deals-publish",
+      createdBy: "test-agent",
+    }),
+  ).rejects.toMatchObject({
+    name: "WorktreeActionError",
+    code: "worktree_create_in_progress",
+    status: 409,
+  });
+
+  expect(existsSync(lockPath)).toBe(true);
+  expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish"))).toBe(false);
+  expect(runGit(["branch", "--list", "CAC-0042-deals-publish"], dealsRepo)).toBe("");
+});
+
+test("guarded create rolls back its allocation when sidecar publication fails", async () => {
+  const { root, orgRoot, dealsRepo } = await setupDealsRepoWithPlan();
+
+  await expect(
+    createWorktreeFromPlan({
+      companiesRoot: root,
+      repoKey: "BetaCo::deals",
+      planPath: "mission-control/plans/2026/07/CAC-0042-deals-publish.yaml",
+      branch: "CAC-0042-deals-publish",
+      createdBy: "test-agent",
+      sidecarWriter: async () => { throw new Error("simulated sidecar failure"); },
+    }),
+  ).rejects.toMatchObject({
+    name: "WorktreeActionError",
+    code: "worktree_create_rolled_back",
+    status: 500,
+  });
+
+  expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish"))).toBe(false);
+  expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish.worktree.json"))).toBe(false);
+  expect(runGit(["branch", "--list", "CAC-0042-deals-publish"], dealsRepo)).toContain("CAC-0042-deals-publish");
+  expect(existsSync(join(orgRoot, ".worktrees", ".worktree-create.lock"))).toBe(false);
+});
+
+test("guarded create preserves artefacts when the branch ownership marker changes before rollback", async () => {
+  const { root, orgRoot, dealsRepo } = await setupDealsRepoWithPlan();
+
+  await expect(
+    createWorktreeFromPlan({
+      companiesRoot: root,
+      repoKey: "BetaCo::deals",
+      planPath: "mission-control/plans/2026/07/CAC-0042-deals-publish.yaml",
+      branch: "CAC-0042-deals-publish",
+      createdBy: "test-agent",
+      sidecarWriter: async () => {
+        runGit(["config", "--local", "branch.CAC-0042-deals-publish.description", "foreign-owner"], dealsRepo);
+        throw new Error("simulated writer failure after ownership change");
+      },
+    }),
+  ).rejects.toMatchObject({ code: "worktree_create_rolled_back", status: 500 });
+
+  expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish"))).toBe(true);
+  expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish.worktree.json"))).toBe(false);
+  expect(runGit(["branch", "--list", "CAC-0042-deals-publish"], dealsRepo)).toContain("CAC-0042-deals-publish");
+  expect(existsSync(join(orgRoot, ".worktrees", ".worktree-create.lock"))).toBe(false);
+});
+
+test("guarded create never follows a symlink swapped in before rollback", async () => {
+  const { root, orgRoot, dealsRepo } = await setupDealsRepoWithPlan();
+  const foreignPath = join(root, "foreign-sentinel");
+  await mkdir(foreignPath, { recursive: true });
+  await writeFile(join(foreignPath, "keep.txt"), "foreign\n", "utf8");
+  const worktreePath = join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish");
+
+  await expect(
+    createWorktreeFromPlan({
+      companiesRoot: root,
+      repoKey: "BetaCo::deals",
+      planPath: "mission-control/plans/2026/07/CAC-0042-deals-publish.yaml",
+      branch: "CAC-0042-deals-publish",
+      sidecarWriter: async () => {
+        await rm(worktreePath, { recursive: true, force: true });
+        await symlink(foreignPath, worktreePath);
+        throw new Error("simulated post-add sidecar failure");
+      },
+    }),
+  ).rejects.toMatchObject({ code: "worktree_create_rolled_back" });
+
+  expect(await readFile(join(foreignPath, "keep.txt"), "utf8")).toBe("foreign\n");
+  expect(existsSync(worktreePath)).toBe(true);
+  expect(runGit(["branch", "--list", "CAC-0042-deals-publish"], dealsRepo)).toContain("CAC-0042-deals-publish");
+});
+
+test("guarded create preserves published sidecar when index lookup fails", async () => {
+  const { root, orgRoot, dealsRepo } = await setupDealsRepoWithPlan();
+
+  await expect(
+    createWorktreeFromPlan({
+      companiesRoot: root,
+      repoKey: "BetaCo::deals",
+      planPath: "mission-control/plans/2026/07/CAC-0042-deals-publish.yaml",
+      branch: "CAC-0042-deals-publish",
+      createdBy: "test-agent",
+      worktreeFinder: async () => { throw new Error("simulated index lookup failure"); },
+    }),
+  ).rejects.toMatchObject({
+    name: "WorktreeActionError",
+    code: "worktree_created_index_pending",
+    status: 202,
+  });
+
+  expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish"))).toBe(true);
+  expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish.worktree.json"))).toBe(true);
+  expect(runGit(["branch", "--list", "CAC-0042-deals-publish"], dealsRepo)).toContain("CAC-0042-deals-publish");
+  expect(existsSync(join(orgRoot, ".worktrees", ".worktree-create.lock"))).toBe(false);
+});
+
+test("guarded create never deletes a sidecar replaced after publication", async () => {
+  const { root, orgRoot } = await setupDealsRepoWithPlan();
+  const sidecarPath = join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish.worktree.json");
+
+  await expect(
+    createWorktreeFromPlan({
+      companiesRoot: root,
+      repoKey: "BetaCo::deals",
+      planPath: "mission-control/plans/2026/07/CAC-0042-deals-publish.yaml",
+      branch: "CAC-0042-deals-publish",
+      worktreeFinder: async () => {
+        await rm(sidecarPath, { force: true });
+        await writeFile(sidecarPath, "foreign sidecar\n", "utf8");
+        throw new Error("simulated index failure after sidecar replacement");
+      },
+    }),
+  ).rejects.toMatchObject({ code: "worktree_created_index_pending", status: 202 });
+
+  expect(await readFile(sidecarPath, "utf8")).toBe("foreign sidecar\n");
+});
+
+test("guarded create preserves published sidecar and staging file when staging cleanup fails", async () => {
+  const { root, orgRoot, dealsRepo } = await setupDealsRepoWithPlan();
+  let stagingPath = null;
+
+  await expect(
+    createWorktreeFromPlan({
+      companiesRoot: root,
+      repoKey: "BetaCo::deals",
+      planPath: "mission-control/plans/2026/07/CAC-0042-deals-publish.yaml",
+      branch: "CAC-0042-deals-publish",
+      createdBy: "test-agent",
+      sidecarWriter: async ({ sidecarPath, contents }) => {
+        stagingPath = `${sidecarPath}.staging`;
+        await writeFile(sidecarPath, contents);
+        await writeFile(stagingPath, contents);
+        return { stagingPath, stagingCleanupError: new Error("simulated staging cleanup failure") };
+      },
+    }),
+  ).rejects.toMatchObject({ code: "worktree_created_index_pending", status: 202 });
+
+  expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish"))).toBe(true);
+  expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish.worktree.json"))).toBe(true);
+  expect(existsSync(stagingPath)).toBe(true);
+  expect(runGit(["branch", "--list", "CAC-0042-deals-publish"], dealsRepo)).toContain("CAC-0042-deals-publish");
+  expect(existsSync(join(orgRoot, ".worktrees", ".worktree-create.lock"))).toBe(false);
+});
+
+test("guarded create leaves failed atomic staging file for conscious cleanup", async () => {
+  const { root, orgRoot, dealsRepo } = await setupDealsRepoWithPlan();
+  const finalPath = join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish.worktree.json");
+  const stagingPath = join(dirname(finalPath), `.${basename(finalPath)}.atomic-failure.tmp`);
+
+  await expect(
+    createWorktreeFromPlan({
+      companiesRoot: root,
+      repoKey: "BetaCo::deals",
+      planPath: "mission-control/plans/2026/07/CAC-0042-deals-publish.yaml",
+      branch: "CAC-0042-deals-publish",
+      createdBy: "test-agent",
+      sidecarWriter: async ({ contents }) => {
+        await writeFile(stagingPath, contents);
+        const error = new Error("simulated atomic publish failure");
+        error.stagingPath = stagingPath;
+        error.stagingCleanupError = new Error("simulated first cleanup failure");
+        throw error;
+      },
+    }),
+  ).rejects.toMatchObject({ code: "worktree_create_rolled_back", status: 500 });
+
+  expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish"))).toBe(false);
+  expect(existsSync(finalPath)).toBe(false);
+  expect(existsSync(stagingPath)).toBe(true);
+  expect(runGit(["branch", "--list", "CAC-0042-deals-publish"], dealsRepo)).toContain("CAC-0042-deals-publish");
+  expect(existsSync(join(orgRoot, ".worktrees", ".worktree-create.lock"))).toBe(false);
 });
 
 test("worktree create i publish odmítnou repo checkout přes symlink nebo Windows junction mimo Organizaci", async () => {
