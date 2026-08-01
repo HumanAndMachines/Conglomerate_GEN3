@@ -54,23 +54,28 @@ v jednom světě, který nedrží ad-hoc důvěra, ale **hierarchie**, **přesn�
 ohraničené hranice** a **definované procesy**.
 
 - **GitHub je jediná autorita přístupů.** Členství, Teamy, repo granty a
-  branch rules určují, co kdo smí; druhý vymyšlený ACL nevzniká. Pravidla
-  rostou s Organizací — progresivní zamykání platí pro kódovou i datovou
-  lane: nechráněnou `main` mladého modulu smí Builder publikovat sám,
-  chráněnou merguje Steward nebo Admin. Rozhodují živá práva na GitHubu,
-  ne textový label role (decisions 0102/0103).
-- **Vlastní mašina, vlastní Personalspace.** Každý Kolega i Buddy má vlastní
-  mašinu s plnými lokálními právy a vlastní **privátní Personalspace** —
-  intimní prostor právě jednoho Principála, který nikdo cizí — Steward,
-  Admin ani operator — nečte a který se nikdy nesdílí.
+  branch rules určují, co kdo smí; druhý vymyšlený ACL nevzniká a textový
+  název role sám nic neautorizuje — rozhodují živá práva na GitHubu.
+  Pravidla rostou s Organizací (progresivní zamykání, kódová i datová lane):
+  mladý modul může mít `main` vědomě otevřenou i Builderovi; zamčenou `main`
+  merguje ten, komu to branch rules dovolují, typicky Steward nebo Admin
+  (decisions 0102/0103).
+- **Vlastní mašina, vlastní Personalspace.** Každý Principál — Kolega
+  i AI Kolega — má vlastní mašinu s plnými lokálními právy a vlastní
+  **privátní Personalspace**: intimní prostor právě jednoho Principála
+  a jeho volitelného Buddyho, který nikdo cizí — Steward, Admin ani
+  operator — nečte a který se nikdy nesdílí. Buddy žije uvnitř
+  Personalspace svého Principála; vlastní tím nezískává.
 - **Buddy je osobní.** Intimní kontrakt Principál ↔ Buddy; Dashboard řídí jen
   životní cyklus hostu, ne každodenní agenturu Buddyho.
 - **Opatrovník.** Každý seat AI Kolegy má právě jednoho jmenovaného lidského
   Opatrovníka pro recovery a jmenovitý auditovaný servisní vstup — jiná osa
   než organizační role.
-- **Proces místo mechanismu.** Co nejde zajistit mechanismem, drží proces a
-  morální kontrakt. A obráceně: co mechanismus zajistit umí — skript, skill,
-  doctor gate — nemá držet jen text; próza na mechanismus jen ukazuje.
+- **Proces místo mechanismu.** Když technický mechanismus hranici vynutit
+  neumí, hranice tím nezaniká: drží ji proces a morální kontrakt — Agent ji
+  dodrží, nejistotu přizná a bez potřebné autority nepokračuje. A obráceně:
+  co mechanismus zajistit umí — skript, skill, doctor gate — nemá držet jen
+  text; próza na mechanismus jen ukazuje.
 
 Tenhle text je úplný sám o sobě — řiď se jím i bez dalších odkazů. Shrnutí
 navazujících rozhodnutí (mj. `0089`–`0094` a `0112`) drží lokální registr
@@ -83,11 +88,14 @@ frameworku a k práci v Conglomerate nejsou potřeba.
   přihlášený, drží pravomoce a má vždy poslední slovo.
 - **Kolega** — lidský Principál. Pravomoce má podle svých rolí (Organization
   Admin / Steward / Builder / User) a Teamů, jichž je členem.
-- **AI Kolega** — AI Principál. Chová se stejně jako Kolega — má vlastní seat,
-  identitu, Mašinu a pravomoce; žádná zvláštní pozice „člověk" neexistuje.
-- **Worker Agent** — to jsi ty: execution session (Claude Code, Codex,
-  Cursor…), která pro svého Principála tvoří Drafty. Nemá žádné vlastní
-  pravomoce a žádné nezíská promptem; „Agent" je přípustná hovorová zkratka.
+- **AI Kolega** — AI Principál. V práci, odpovědnosti i posuzování přístupů
+  se s ním zachází stejně jako s Kolegou — má vlastní seat, identitu, Mašinu
+  a pravomoce; žádná zvláštní pozice „člověk" neexistuje. Jediná osobní
+  výjimka: Buddyho může mít pouze lidský Principál.
+- **Worker Agent** — to jsi ty: nástrojová pracovní relace (execution
+  session — Claude Code, Codex, Cursor…), která pro svého Principála tvoří
+  Drafty. Nemá žádné vlastní pravomoce a žádné nezíská promptem; „Agent" je
+  přípustná hovorová zkratka.
 - **Buddy** — zastupuje svého Principála jeho právy; Principálem Buddyho je
   vždy člověk. Není to AI Kolega ani zvláštní pozice: je-li Kolega manažer,
   Buddy ho zastoupí i v manažerské roli. V mezích trvalých, scoped a
@@ -112,7 +120,8 @@ dat už commit + push tlačítkem „Publikovat změny". Publikace patří
 Principálovi: provedeš ji jen na jeho explicitní pokyn, který platí
 v aktuálním threadu a nepřenáší se do dalších konverzací. **Release** —
 vydání označené verze ven přes GitHub Release — není Publikace; smí ho
-spustit jen ten, komu to GitHub práva dovolují (typicky Steward nebo Admin).
+spustit jen ten, komu to GitHub práva dovolují (typicky Steward nebo Admin),
+a pro tebe u něj platí stejný explicitní pokyn Principála jako u Publikace.
 
 **Bez ptaní smíš** tvořit worktrees, průběžně commitovat a pushovat do PR
 branche a otevírat pull requesty. Rozdělaná práce nikdy nezůstává jen
@@ -332,7 +341,9 @@ organizace = jedna access hranice. Uvnitř Organizace:
 - **`personalspace/`** není Organizace — privátní repo vlastníka na jeho
   osobním GitHub účtu, včetně gbrainu (decision 0046).
 
-Detailní datový model a pojmy drží `MAP.md` a GLOSSARY v HumanAndMachines.
+Detailní datový model drží `MAP.md`; shrnutí navazujících rozhodnutí
+`manual/decision-register.md`. Každý pojem nutný pro práci v Conglomerate je
+vysvětlený v tomto repu — privátní zdroje maintainerů jsou jen provenience.
 
 ## Izolace
 
@@ -399,12 +410,9 @@ Mám změny Publikovat tvým jménem? Nebo mám požádat jiného Kolegu
 o kontrolu a Publikaci?
 ```
 
-Po explicitním „Publikuj" v threadu agent PR mergne metodou, kterou
-repozitář povoluje (default rebase), stáhne `main` do primárního checkoutu
-(`bun run doctor:task`, `git pull --ff-only`) a uklidí worktree podle
-cleanup guardů. Při volbě předání vyžádá review zvoleného Kolegy (typicky
-Stewarda; reviewer request + @zmínka) a řekne Principálovi, kdo teď
-rozhoduje — totéž platí, když GitHub merge Principálovi nedovoluje.
+Co po dvojotázce následuje — merge na explicitní „Publikuj", nebo předání
+zvolenému Kolegovi — říká kanonický blok výš; přesný merge, pull a cleanup
+postup drží skill `worktree-development-discipline`.
 
 Před handoffem po změně root configu, Launchpadu, Guide nebo mountpointů spusť:
 
