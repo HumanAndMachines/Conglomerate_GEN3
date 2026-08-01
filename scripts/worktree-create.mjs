@@ -122,6 +122,9 @@ async function main() {
   }
 
   if (existsSync(worktreePath)) fail(`worktree už existuje: ${worktreePath}`);
+  // Osiřelý sidecar bez worktree může nést recovery handoff přerušené práce —
+  // nikdy ho tiše nepřepisuj.
+  if (existsSync(sidecarPath)) fail(`sidecar už existuje: ${sidecarPath}; zkontroluj jeho recovery_handoff a odstraň ho vědomě.`);
   if (git(primaryRoot, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], { allowFail: true }).status === 0) {
     fail(`branch ${branch} už existuje.`);
   }
@@ -181,7 +184,15 @@ async function main() {
   git(primaryRoot, ["fetch", "origin", "main", "--prune"]);
   await mkdir(dirname(worktreePath), { recursive: true });
   git(primaryRoot, ["worktree", "add", worktreePath, "-b", branch, "origin/main"]);
-  await writeFile(sidecarPath, `${JSON.stringify(sidecar, null, 2)}\n`, "utf8");
+  try {
+    await writeFile(sidecarPath, `${JSON.stringify(sidecar, null, 2)}\n`, "utf8");
+  } catch (error) {
+    // Bez sidecaru by worktree zůstal orphan a blokoval čistý retry —
+    // čerstvý worktree i branch (== origin/main, bez commitů) vrať zpět.
+    git(primaryRoot, ["worktree", "remove", "--force", worktreePath], { allowFail: true });
+    git(primaryRoot, ["branch", "-D", branch], { allowFail: true });
+    fail(`zápis sidecaru selhal (${error instanceof Error ? error.message : error}); worktree i branch vráceny.`);
+  }
 
   console.log(`ok - worktree: ${worktreePath}`);
   console.log(`ok - branch: ${branch} (base origin/main)`);
