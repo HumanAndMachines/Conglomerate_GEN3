@@ -15,6 +15,7 @@ Conglomerate/
 ├── launchpad.gen3.json
 ├── package.json
 ├── README.md
+├── ARCHITECTURE.md             # cílové základy Lazuria, Residentů a Agentů
 ├── MAP.md
 ├── AGENTS.md
 ├── manual/
@@ -41,6 +42,9 @@ Conglomerate/
 
 ## Kam jít
 
+- `ARCHITECTURE.md` — cílové základy budoucího `Lazurio/Lazurio`: Owner,
+  Machine, Resident, Agent, společný runtime Buddyho a AI Kolegy a suverenita
+  vůči Lazuriu
 - `launchpad.gen3.json` — root metadata a `planned` sloty Konglomerátu (rootu, šablon a lokálních povrchů), ne allowlist Organizací; dostupné Organizace se auto-discoverují z `organizations/*/company.gen3.json` (decision 0042 v HumanAndMachines/docs/decisions/)
 - `launchpad/` — sdílený builder-first Launchpad GEN3 (decision 0047 v HumanAndMachines/docs/decisions/, reviduje CEO-first 0024): surface pro Buildery Organizace (Organization Builder) — spouštění aplikací z `main` i z worktrees podle Mission Control plánů (decision 0049) a read-only přehled productionspace; dynamicky načítá Organizace/Teamy/moduly a ukazuje stavy `available` / `missing_access` / `planned_slot`; Admin Organizace (Organization Admin), vstup Uživatelů Organizace (Organization User) do produkčních workspace aplikací a deploy/server konfigurace patří do Conglomerate Dashboardu GEN3
 - `guide/` — sdílený netechnický onboarding kurz (26 lekcí) do práce s digitální kanceláří a AI kolegy; technická cesta „mapa systému“ (Launchpad root, Organizace, workspace, productionspace, personalspace) je plánovaná budoucí část, do té doby tato témata drží MAP.md a `manual/`
