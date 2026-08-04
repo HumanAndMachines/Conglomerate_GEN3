@@ -5,6 +5,7 @@ export const GIT_LOCAL_TIMEOUT_MS = 10_000;
 export const GIT_FETCH_TIMEOUT_MS = 20_000;
 export const GIT_COMMAND_CONCURRENCY = 4;
 export const GIT_FETCH_CONCURRENCY = 4;
+const GIT_TIMEOUT_DRAIN_GRACE_MS = 2_000;
 
 let cachedGitExecutablePromise = null;
 let cachedGitExecutableSync;
@@ -156,43 +157,56 @@ export async function mapWithConcurrency(items, limit, fn) {
 async function runCommand(command, { cwd, timeoutMs, env = {} } = {}) {
   let child;
   let timedOut = false;
-  const timeout = setTimeout(() => {
-    timedOut = true;
-    if (!child) return;
-    if (globalThis.process.platform === "win32" && Number.isInteger(child.pid)) {
-      try {
-        const killed = Bun.spawnSync(gitTimeoutKillCommand(child.pid), {
-          stdout: "ignore",
-          stderr: "ignore",
-          windowsHide: true,
-          timeout: 5_000,
-        });
-        if (killed.exitCode === 0) return;
-      } catch {}
-    }
-    try {
-      child.kill("SIGKILL");
-    } catch {}
-  }, timeoutMs);
+  let timeout;
+  let drainTimeout;
   try {
     child = Bun.spawn(command, {
       cwd,
+      stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
       env: commandEnvironment(processEnv(), env),
+      detached: globalThis.process.platform !== "win32",
       windowsHide: true,
     });
-    const [stdout, stderr, exitCode] = await Promise.all([
-      streamText(child.stdout),
-      streamText(child.stderr),
-      child.exited,
-    ]);
+    const stdout = collectStreamText(child.stdout);
+    const stderr = collectStreamText(child.stderr);
+    const completed = Promise.all([stdout.promise, stderr.promise, child.exited]);
+    const forced = new Promise((resolve) => {
+      timeout = setTimeout(() => {
+        timedOut = true;
+        terminateGitProcessTree(child);
+        // A credential helper can escape the Git process group yet keep an
+        // inherited pipe open. Bound the drain as well as the process itself;
+        // cancelling our readers closes the local pipe ends and lets the
+        // update lane return a truthful timeout instead of hanging forever.
+        drainTimeout = setTimeout(async () => {
+          await Promise.allSettled([stdout.cancel(), stderr.cancel()]);
+          resolve(null);
+        }, GIT_TIMEOUT_DRAIN_GRACE_MS);
+      }, timeoutMs);
+    });
+    const completion = await Promise.race([completed, forced]);
+    if (completion === null) {
+      const [partialStdout, partialStderr] = await Promise.all([
+        stdout.promise.catch(() => ""),
+        stderr.promise.catch(() => ""),
+      ]);
+      return {
+        ok: false,
+        exitCode: null,
+        timedOut: true,
+        stdout: partialStdout.trim(),
+        stderr: partialStderr.trim(),
+      };
+    }
+    const [stdoutText, stderrText, exitCode] = completion;
     return {
       ok: exitCode === 0 && !timedOut,
       exitCode,
       timedOut,
-      stdout: stdout.trim(),
-      stderr: stderr.trim(),
+      stdout: stdoutText.trim(),
+      stderr: stderrText.trim(),
     };
   } catch (error) {
     return {
@@ -205,7 +219,35 @@ async function runCommand(command, { cwd, timeoutMs, env = {} } = {}) {
     };
   } finally {
     clearTimeout(timeout);
+    clearTimeout(drainTimeout);
   }
+}
+
+function terminateGitProcessTree(child) {
+  if (!child) return;
+  if (globalThis.process.platform === "win32" && Number.isInteger(child.pid)) {
+    try {
+      const killed = Bun.spawnSync(gitTimeoutKillCommand(child.pid), {
+        stdout: "ignore",
+        stderr: "ignore",
+        windowsHide: true,
+        timeout: 5_000,
+      });
+      if (killed.exitCode === 0) return;
+    } catch {}
+  }
+  if (globalThis.process.platform !== "win32" && Number.isInteger(child.pid)) {
+    try {
+      // POSIX Git transports (notably ssh) are descendants of the Git process
+      // and inherit its pipes. Each command has its own process group, so the
+      // negative pid is bounded to this one Git operation.
+      globalThis.process.kill(-child.pid, "SIGKILL");
+      return;
+    } catch {}
+  }
+  try {
+    child.kill("SIGKILL");
+  } catch {}
 }
 
 export function gitTimeoutKillCommand(pid, env = processEnv()) {
@@ -316,7 +358,35 @@ function probeGitExecutableSync(executable) {
   }
 }
 
-async function streamText(stream) {
-  if (!stream) return "";
-  return new Response(stream).text();
+function collectStreamText(stream) {
+  if (!stream) return { promise: Promise.resolve(""), cancel: async () => {} };
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let cancelled = false;
+  const promise = (async () => {
+    let text = "";
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+      }
+      text += decoder.decode();
+      return text;
+    } catch (error) {
+      if (cancelled) return text;
+      throw error;
+    } finally {
+      reader.releaseLock();
+    }
+  })();
+  return {
+    promise,
+    cancel: async () => {
+      cancelled = true;
+      try {
+        await reader.cancel("Git command timed out");
+      } catch {}
+    },
+  };
 }

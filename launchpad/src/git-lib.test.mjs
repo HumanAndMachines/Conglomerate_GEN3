@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp } from "fs/promises";
+import { mkdtemp, readFile, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
@@ -52,6 +52,83 @@ test("runGit returns stdout and protects remote probes from interactive credenti
     SSH_ASKPASS: "/bin/false",
   });
 });
+
+test.skipIf(process.platform === "win32")("POSIX Git timeout kills descendants that keep command pipes open", async () => {
+  const root = await mkdtemp(join(tmpdir(), "launchpad-git-timeout-"));
+  const childPidPath = join(root, "child.pid");
+  let childPid = null;
+  try {
+    await initGitRepo(root);
+    const startedAt = Date.now();
+    const result = await runGit([
+      "-c",
+      "alias.hold=!sh -c 'sleep 60 & echo $! > \"$1\"; wait' _",
+      "hold",
+      childPidPath,
+    ], {
+      cwd: root,
+      timeoutMs: 250,
+    });
+    childPid = Number.parseInt(await readFile(childPidPath, "utf8"), 10);
+
+    expect(result.ok).toBe(false);
+    expect(result.timedOut).toBe(true);
+    expect(Date.now() - startedAt).toBeLessThan(3_000);
+    expect(await processIsGone(childPid)).toBe(true);
+  } finally {
+    if (Number.isInteger(childPid) && !(await processIsGone(childPid))) {
+      try {
+        process.kill(childPid, "SIGKILL");
+      } catch {}
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test.skipIf(process.platform === "win32" || !Bun.which("perl"))("Git timeout bounds pipe drain even when a descendant escapes the process group", async () => {
+  const root = await mkdtemp(join(tmpdir(), "launchpad-git-drain-timeout-"));
+  const childPidPath = join(root, "escaped-child.pid");
+  let childPid = null;
+  try {
+    await initGitRepo(root);
+    const startedAt = Date.now();
+    const result = await runGit([
+      "-c",
+      "alias.escape=!perl -MPOSIX=setsid -e 'setsid(); open(my $fh, q(>), $ARGV[0]) or die $!; print {$fh} qq($$\\n); close $fh; sleep 60'",
+      "escape",
+      childPidPath,
+    ], {
+      cwd: root,
+      timeoutMs: 250,
+    });
+    childPid = Number.parseInt(await readFile(childPidPath, "utf8"), 10);
+
+    expect(result.ok).toBe(false);
+    expect(result.timedOut).toBe(true);
+    expect(Date.now() - startedAt).toBeLessThan(3_000);
+    expect(await processIsGone(childPid)).toBe(false);
+  } finally {
+    if (Number.isInteger(childPid) && !(await processIsGone(childPid))) {
+      try {
+        process.kill(childPid, "SIGKILL");
+      } catch {}
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+async function processIsGone(pid) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      if (error?.code === "ESRCH") return true;
+      throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return false;
+}
 
 test("Windows remote Git environment never contains a POSIX askpass executable", () => {
   const env = safeGitRemoteEnv("win32");
