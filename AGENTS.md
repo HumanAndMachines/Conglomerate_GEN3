@@ -326,9 +326,17 @@ Root upravuj jen když se mění:
 ## Source of truth
 
 - Pyramida přednosti (při konfliktu platí vyšší): decision records
-  (`HumanAndMachines/docs/decisions/`) > schémata a strojové configy >
-  GLOSSARY > `AGENTS.md` daného scope > kontrakty > Guide (decision 0040
-  v HumanAndMachines/docs/decisions/).
+  (`HumanAndMachines/docs/decisions/`) > root `ARCHITECTURE.md` pro cílový
+  systémový model a názvosloví > schémata a strojové configy pro aktuálně
+  nasazený stav > GLOSSARY > `AGENTS.md` daného scope pro pracovní postup >
+  kontrakty > Guide (decision 0040 v HumanAndMachines/docs/decisions/).
+- Nemíchej cílový a aktuální stav: `ARCHITECTURE.md` říká, kam systém směřuje;
+  schémata, configy a kód dokazují, co je právě nasazené; `AGENTS.md` říká, jak
+  v daném scope pracuje Agent. Výslovně evidovaná migrace smí dočasně držet
+  nasazený stav za cílem. `Worker Agent` a `Agent` označují tutéž roli, nikoli
+  dvě persony nebo runtime profily. Dokud founder samostatně neuzavře finální
+  podobu názvu, synchronizovaný provozní kontrakt smí používat delší variantu a
+  nové texty mohou preferovat kratší `Agent`.
 - Founder rozhodnutí 2026-07-02 drží formální decision records 0039–0046
   v `HumanAndMachines/docs/decisions/` (historické drafty v privátním `Rozjedeme-ai/HumanAndMachines` conglomerate-ops/drafts/decision-proposals/
   jsou superseded).

@@ -4,6 +4,12 @@ Sdílený framework repo pro **HumanAndMachine GEN3** (dříve pracovní název 
 
 Tenhle root není jedna firma ani klientské workspace repo. Je to společný framework, který vyvíjí Rozjedeme.ai a který je na GitHubu hostovaný jako `HumanAndMachines/Conglomerate_GEN3`, protože organizace `HumanAndMachine` byla zabraná. Drží sdílený Launchpad, Guide, šablony, manuály, privátní `personalspace/` mountpoint a lokální mountpointy Organizací; Organizace v něm zůstávají oddělené access hranice a vlastní git repozitáře.
 
+Cílové základy budoucího `Lazurio/Lazurio` drží
+[ARCHITECTURE.md](ARCHITECTURE.md): čtyři základní pojmy `Owner`, `Machine`,
+`Resident` a `Agent`, společný technický základ Buddyho a AI Kolegy a role
+Lazuria jako distribuční a lifecycle vrstvy. Dnešní názvy a provider cesty se
+od cíle mohou lišit do dokončení migrace `CAC-0092`.
+
 ## Začíná se v chatu
 
 Kolega začíná práci přímým chatem s App Agentem. Agent otevře Launchpad GEN3
