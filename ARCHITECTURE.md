@@ -22,8 +22,8 @@ Při čtení zdrojů pravdy rozlišuj tři různé otázky:
   dokumentem. Kolidující decision se musí před implementací cíle výslovně
   novelizovat.
 - **Kam systém směřuje:** tento dokument určuje cílovou architekturu a
-  kanonické pojmy. Schémata, configy a kód mohou během výslovně evidované
-  migrace popisovat starší nasazený stav.
+  význam základních pojmů a jejich vztahy. Schémata, configy a kód mohou během
+  výslovně evidované migrace popisovat starší nasazený stav.
 - **Jak Agent právě pracuje:** příslušný `AGENTS.md` určuje pracovní postup a
   oprávnění v daném scope. Nemůže ale zavést druhý význam pojmů, které zde
   definuje cílová architektura.
@@ -38,7 +38,7 @@ postupně srovnat v navazujících změnách. Tato hranice je zapsaná také v r
 > práci a Lazurio celý model distribuuje a koordinuje, aniž musí stát mezi
 > Ownerem a jeho Residentem.**
 
-## Čtyři kanonické pojmy
+## Čtyři základní pojmy
 
 ### Owner
 
@@ -84,12 +84,13 @@ Kanonický pojem pro tuto dlouhodobou identitu je pouze **Resident**.
 
 ### Agent
 
-Agent je kanonický pojem pro výkonného pracovníka spuštěného za konkrétním
-účelem. Dnešními příklady jsou Codex nebo Claude Code. Delší označení
-`Worker Agent` může během terminologické migrace zůstat v synchronizovaných
-provozních kontraktech a historických dokumentech jako kompatibilní alias.
-Označuje stejného Agenta, nikoli další personu nebo runtime. Nové texty
-používají prostě **Agent**.
+Agent je výkonný pracovník spuštěný za konkrétním účelem. Dnešními příklady
+jsou Codex nebo Claude Code. Označení **Agent** a **Worker Agent** znamenají
+přesně tutéž roli; nejde o dvě persony, dva stupně autonomie ani dva runtime
+profily. Founder zatím finální podobu názvu neuzavřel a aktuálně preferuje
+kratší **Agent**, proto ho používá tento dokument a mohou ho preferovat nové
+texty. `Worker Agent` zůstává plně srozumitelným synonymem, dokud samostatné
+názvoslovné rozhodnutí neurčí jinak.
 
 Agent:
 

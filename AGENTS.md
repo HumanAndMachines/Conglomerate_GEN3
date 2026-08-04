@@ -333,9 +333,10 @@ Root upravuj jen když se mění:
 - Nemíchej cílový a aktuální stav: `ARCHITECTURE.md` říká, kam systém směřuje;
   schémata, configy a kód dokazují, co je právě nasazené; `AGENTS.md` říká, jak
   v daném scope pracuje Agent. Výslovně evidovaná migrace smí dočasně držet
-  nasazený stav za cílem. `Worker Agent` v synchronizovaném provozním kontraktu
-  je po dobu terminologické migrace kompatibilní alias kanonického pojmu
-  `Agent`, nikoli samostatná persona.
+  nasazený stav za cílem. `Worker Agent` a `Agent` označují tutéž roli, nikoli
+  dvě persony nebo runtime profily. Dokud founder samostatně neuzavře finální
+  podobu názvu, synchronizovaný provozní kontrakt smí používat delší variantu a
+  nové texty mohou preferovat kratší `Agent`.
 - Founder rozhodnutí 2026-07-02 drží formální decision records 0039–0046
   v `HumanAndMachines/docs/decisions/` (historické drafty v privátním `Rozjedeme-ai/HumanAndMachines` conglomerate-ops/drafts/decision-proposals/
   jsou superseded).
