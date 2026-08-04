@@ -10,6 +10,28 @@ records se nepřepisují; pokud s tímto cílem kolidují, musí být výslovně
 novelizovány před odpovídající implementací. Současný provider stav se od cíle
 může do dokončení migrace `CAC-0092` lišit.
 
+## Autorita dokumentu
+
+`ARCHITECTURE.md` je kanonický zdroj pro **cílový systémový model a
+názvosloví** Lazuria. Neříká sám o sobě, co už je dnes nasazené, ani nenahrazuje
+provozní instrukce pro Agenty.
+
+Při čtení zdrojů pravdy rozlišuj tři různé otázky:
+
+- **Co je formálně rozhodnuté:** decision records mají přednost před tímto
+  dokumentem. Kolidující decision se musí před implementací cíle výslovně
+  novelizovat.
+- **Kam systém směřuje:** tento dokument určuje cílovou architekturu a
+  kanonické pojmy. Schémata, configy a kód mohou během výslovně evidované
+  migrace popisovat starší nasazený stav.
+- **Jak Agent právě pracuje:** příslušný `AGENTS.md` určuje pracovní postup a
+  oprávnění v daném scope. Nemůže ale zavést druhý význam pojmů, které zde
+  definuje cílová architektura.
+
+GLOSSARY, kontrakty, Guide a nové provozní texty se mají s tímto dokumentem
+postupně srovnat v navazujících změnách. Tato hranice je zapsaná také v root
+`AGENTS.md`, aby nevznikaly dvě konkurenční autority.
+
 ## Jádro v jedné větě
 
 > **Owner vlastní Mašinu, na Mašině žije Resident, Agenti na ní vykonávají
@@ -64,8 +86,10 @@ Kanonický pojem pro tuto dlouhodobou identitu je pouze **Resident**.
 
 Agent je kanonický pojem pro výkonného pracovníka spuštěného za konkrétním
 účelem. Dnešními příklady jsou Codex nebo Claude Code. Delší označení
-`Worker Agent` může zůstat v historických dokumentech, nové texty ale používají
-prostě **Agent**.
+`Worker Agent` může během terminologické migrace zůstat v synchronizovaných
+provozních kontraktech a historických dokumentech jako kompatibilní alias.
+Označuje stejného Agenta, nikoli další personu nebo runtime. Nové texty
+používají prostě **Agent**.
 
 Agent:
 
