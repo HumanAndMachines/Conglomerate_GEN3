@@ -2,6 +2,7 @@ import { lstat, mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
+  GIT_FETCH_TIMEOUT_MS,
   GIT_LOCAL_TIMEOUT_MS,
   runGit,
   safeGitRemoteEnv,
@@ -11,7 +12,7 @@ import {
   isSamePath,
 } from "./path-boundary-lib.mjs";
 
-export const GIT_CLONE_TIMEOUT_MS = 120_000;
+export const GIT_CLONE_TIMEOUT_MS = 10 * 60_000;
 
 // Explicit sync/update action for an active manifest slot whose checkout is
 // missing. Doctor remains read-only: it only reports missing_access. This
@@ -53,7 +54,7 @@ export async function materializeRepoCheckout({
       ["ls-remote", "--exit-code", "--heads", "--", remote, `refs/heads/${branch}`],
       {
         cwd: transportCwd,
-        timeoutMs: GIT_CLONE_TIMEOUT_MS,
+        timeoutMs: GIT_FETCH_TIMEOUT_MS,
         env: safeGitRemoteEnv(),
       },
     );
