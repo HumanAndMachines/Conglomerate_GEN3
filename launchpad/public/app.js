@@ -4213,7 +4213,7 @@ async function runRootUpdate() {
 
 async function pullAllRepositories() {
   const confirmed = window.confirm(
-    "Pullnout vše napříč všemi Organizacemi? Launchpad aktualizuje Organization root repa i Workspace moduly. Lokální změny bezpečně odloží a obnoví; productionspace, diverged nebo jinak rizikové checkouty přeskočí.",
+    "Pullnout vše napříč všemi Organizacemi? Launchpad nejdřív aktualizuje Organization root repa, znovu načte jejich manifesty a dostupné nové Workspace moduly bezpečně naklonuje. Lokální změny odloží a obnoví; planned sloty, productionspace, chybějící přístup a jinak rizikové checkouty přeskočí.",
   );
   if (!confirmed) return;
   state.pendingAction = "git:pull-all";
@@ -4223,10 +4223,14 @@ async function pullAllRepositories() {
     state.bulkPullResult = payload;
     const summary = payload.summary ?? {};
     const attention = (summary.conflict_count ?? 0) + (summary.failed_count ?? 0);
+    const missingAccess = summary.missing_access_count ?? 0;
+    const otherSkipped = Math.max(0, (summary.skipped_count ?? 0) - missingAccess);
     const message = [
       `${summary.updated_count ?? 0} aktualizováno`,
+      `${summary.materialized_count ?? 0} nově naklonováno`,
       `${summary.up_to_date_count ?? 0} už aktuálních`,
-      `${summary.skipped_count ?? 0} přeskočeno`,
+      otherSkipped > 0 ? `${otherSkipped} přeskočeno` : null,
+      missingAccess > 0 ? `${missingAccess} bez přístupu` : null,
       attention > 0 ? `${attention} vyžaduje pomoc` : null,
     ].filter(Boolean).join(" · ");
     toast(`Pullnout vše: ${message}.`, attention > 0 ? "error" : "success", 10_000);

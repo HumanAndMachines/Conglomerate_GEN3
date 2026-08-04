@@ -276,6 +276,20 @@ test("pull all updates Organization roots and workspace modules, using autostash
     repo: dealsRemote,
   });
   await writeFile(join(orgRoot, ".git", "info", "exclude"), "workspace/\n");
+  await writeFile(join(orgRoot, "manual", "README.md"), "# Manual\n");
+  await writeFile(join(orgRoot, "company", "colleagues", "README.md"), "# Colleagues\n");
+  runGit([
+    "add",
+    "company.gen3.json",
+    "modules.manifest.json",
+    "TODO.tasks.json",
+    "DONE.tasks.json",
+    "ISSUES.open.json",
+    "manual/README.md",
+    "company/colleagues/README.md",
+  ], orgRoot);
+  runGit(["commit", "-m", "track organization manifests"], orgRoot);
+  runGit(["push", "origin", "main"], orgRoot);
 
   const orgContributor = join(root, "tmp", "org-contributor");
   const dealsContributor = join(root, "tmp", "deals-bulk-contributor");
@@ -299,14 +313,91 @@ test("pull all updates Organization roots and workspace modules, using autostash
   const rootResult = response.results.find((result) => result.repo_key === "BetaCo::root");
   const dealsResult = response.results.find((result) => result.repo_key === "BetaCo::deals");
 
+  expect(rootResult.outcome).toBe("autostash_pulled");
+  expect(response.results.map((result) => [result.repo_key, result.outcome]))
+    .toContainEqual(["BetaCo::deals", "pulled"]);
+  expect(dealsResult.outcome).toBe("pulled");
   expect(response.summary.updated_count).toBe(2);
   expect(response.summary.autostash_count).toBe(1);
-  expect(rootResult.outcome).toBe("autostash_pulled");
-  expect(dealsResult.outcome).toBe("pulled");
   expect(normalizeLineEndings(await readFile(join(orgRoot, "local-root-draft.md"), "utf8"))).toBe("preserve me\n");
   expect(normalizeLineEndings(await readFile(join(orgRoot, "remote-root.md"), "utf8"))).toBe("remote change\n");
   expect(normalizeLineEndings(await readFile(join(dealsRepo, "remote-deals.md"), "utf8"))).toBe("remote change\n");
-}, 15_000);
+}, 60_000);
+
+test("pull all reloads a freshly pulled Organization manifest and materializes its new module in one action", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const omegaRoot = join(root, "organizations", "OmegaCo_GEN3");
+  const orgRoot = join(root, "organizations", "BetaCo_GEN3");
+  await writeJson(join(omegaRoot, "company.gen3.json"), {
+    organization_generation: "gen3",
+    organization_kind: "template",
+    company: { slug: "OmegaCo", display_name: "OmegaCo template", github_org: "OmegaCo" },
+  });
+  await writeJson(join(orgRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "BetaCo",
+    github_org: "BetaCo",
+    module_slots: [],
+  });
+  await writeFile(join(orgRoot, ".gitignore"), "/workspace/*/\n");
+
+  const orgRemote = join(root, "remotes", "beta-organization-root.git");
+  await initGitRepo(orgRoot, { remotePath: orgRemote });
+  await setOrganizationRepository({
+    root,
+    orgPath: "organizations/BetaCo_GEN3",
+    repo: orgRemote,
+  });
+  runGit(["add", "."], orgRoot);
+  runGit(["commit", "-m", "organization baseline"], orgRoot);
+  runGit(["push", "origin", "main"], orgRoot);
+
+  const moduleRemote = join(root, "remotes", "lazurio-module.git");
+  await mkdir(join(root, "sources"), { recursive: true });
+  await initGitRepo(join(root, "sources", "lazurio-module"), { remotePath: moduleRemote });
+
+  const contributor = join(root, "tmp", "beta-org-contributor");
+  await mkdir(join(root, "tmp"), { recursive: true });
+  runGit(["clone", orgRemote, contributor], root);
+  runGit(["checkout", "-B", "main", "origin/main"], contributor);
+  runGit(["config", "user.email", "fixture@example.com"], contributor);
+  runGit(["config", "user.name", "Fixture"], contributor);
+  await writeJson(join(contributor, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "BetaCo",
+    github_org: "BetaCo",
+    module_slots: [
+      {
+        path: "workspace/lazurio",
+        teams: ["lazurio"],
+        git: { url: moduleRemote, branch: "main" },
+      },
+      {
+        path: "workspace/future-lazurio",
+        teams: ["lazurio"],
+        status: "planned_slot",
+      },
+    ],
+  });
+  runGit(["add", "modules.manifest.json"], contributor);
+  runGit(["commit", "-m", "declare Lazurio modules"], contributor);
+  runGit(["push", "origin", "main"], contributor);
+
+  const response = await buildPullAllResponse({ companiesRoot: root });
+
+  expect(response.summary).toMatchObject({
+    updated_count: 1,
+    materialized_count: 1,
+    missing_access_count: 0,
+    failed_count: 0,
+  });
+  expect(response.results.find((result) => result.repo_key === "BetaCo::lazurio"))
+    .toMatchObject({ outcome: "materialized", branch: "main" });
+  expect(response.results.some((result) => result.repo_key === "BetaCo::future-lazurio")).toBe(false);
+  expect(normalizeLineEndings(await readFile(join(orgRoot, "workspace", "lazurio", "README.md"), "utf8")))
+    .toBe("# main\n");
+}, 20_000);
 
 test("/api/apps app objects include compact git summary for their module", async () => {
   const root = await createLaunchpadGitFixture();
