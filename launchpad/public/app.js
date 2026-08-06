@@ -16,6 +16,11 @@ import {
   variantTag,
 } from "./app-state.js";
 import { gitChipModel } from "./git-status-copy.js";
+import {
+  humanChangeSentence,
+  humanCommitCopy,
+  humanScopeSentence,
+} from "./commit-copy.js";
 import { semanticAppIconKey } from "./app-icon-key.js";
 import {
   organizationHash,
@@ -1849,9 +1854,12 @@ function notificationItem(item, expanded = false) {
   const toggle = document.createElement("button");
   toggle.type = "button";
   toggle.className = "notification-payload-toggle";
+  // Ve sbaleném stavu se ukazuje pročištěný název: bez `feat(scope):` prefixu
+  // a bez „Merge pull request #15 from org/branch", což nikomu nic neříká.
+  const copy = humanCommitCopy(item.payload, item.payload?.description);
   const subject = document.createElement("span");
   subject.className = "notification-subject";
-  subject.textContent = item.payload?.subject || "(bez popisu)";
+  subject.textContent = copy.title || "(bez popisu)";
   const scale = document.createElement("span");
   scale.className = "notification-scale";
   scale.textContent = notificationScaleLabel(item.payload);
@@ -1861,7 +1869,7 @@ function notificationItem(item, expanded = false) {
   const detail = document.createElement("div");
   detail.className = "notification-payload-detail";
   detail.hidden = !expanded;
-  detail.append(...notificationDetailNodes(item));
+  detail.append(...notificationDetailNodes(item, copy));
 
   toggle.addEventListener("click", () => {
     const isExpanded = toggle.getAttribute("aria-expanded") === "true";
@@ -1881,17 +1889,35 @@ function notificationItem(item, expanded = false) {
   return article;
 }
 
-function notificationDetailNodes(item) {
+function notificationDetailNodes(item, copy) {
   const nodes = [];
-  const description = document.createElement("p");
-  description.className = "notification-description";
-  description.textContent = item.payload?.description?.trim()
-    ? item.payload.description.trim()
-    : "Bez dalšího popisu.";
-  nodes.push(description);
+
+  // Nejdřív lidsky: co se stalo a jak velké to bylo. Tyhle dvě věty jsou
+  // odvozené ze struktury commitu, takže platí i u anglicky psaného textu.
+  const summary = document.createElement("p");
+  summary.className = "notification-human-summary";
+  summary.textContent = `${humanChangeSentence(item.payload, copy, item.scope?.name ?? "")} ${humanScopeSentence(item.payload)}`;
+  nodes.push(summary);
+
+  // Teprve potom slova autora — beze změny a přiznaně jako jeho, protože
+  // Launchpad je offline a neumí je přeložit ani přepsat.
+  const authorText = copy?.authorText?.trim();
+  if (authorText) {
+    const label = document.createElement("p");
+    label.className = "notification-author-label";
+    label.textContent = `Vlastními slovy autora (${item.actor?.name ?? "neznámý autor"}):`;
+    const description = document.createElement("p");
+    description.className = "notification-description";
+    description.textContent = authorText;
+    nodes.push(label, description);
+  }
 
   const files = item.payload?.files ?? [];
   if (files.length > 0) {
+    const filesLabel = document.createElement("p");
+    filesLabel.className = "notification-author-label";
+    filesLabel.textContent = "Dotčené soubory:";
+    nodes.push(filesLabel);
     const list = document.createElement("ul");
     list.className = "notification-files";
     for (const file of files) {

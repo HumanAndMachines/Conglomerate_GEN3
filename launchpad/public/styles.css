@@ -3546,6 +3546,22 @@ button.runtime-stage.is-available:hover {
   gap: 0.35rem;
   padding: 0.5rem 0.5rem 0.2rem;
 }
+/* Lidské shrnutí je hlavní text detailu — čitelnější než slova autora,
+   protože platí i u anglicky psaného commitu. */
+.notification-human-summary {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+.notification-author-label {
+  margin: 0.15rem 0 0;
+  color: var(--text-subtle);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 .notification-description {
   margin: 0;
   color: var(--text-muted);

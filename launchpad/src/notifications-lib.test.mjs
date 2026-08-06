@@ -6,6 +6,7 @@ import {
   actorInitials,
   buildNotifications,
   classifyActor,
+  classifyFileKinds,
   parseCoAuthors,
   parseNumstat,
 } from "./notifications-lib.mjs";
@@ -84,6 +85,9 @@ test("notifikace nese actor, scope i payload jedné změny", async () => {
   expect(newest.payload.files).toContain("a.txt");
   expect(newest.payload.insertions).toBeGreaterThan(0);
   expect(newest.payload.hash).toBeTruthy();
+  // Druh souborů se počítá nad úplným seznamem, ne nad oříznutou pěticí —
+  // věta „hlavně dokumentace" by jinak lhala u velkých změn.
+  expect(newest.payload.file_kinds).toEqual({ docs: 2 });
   expect(newest.id).toBe(`acme::alpha@${newest.payload.hash}`);
 });
 
@@ -192,6 +196,29 @@ test("Co-Authored-By trailer je vidět jako spoluautor", () => {
   expect(coAuthors[0].name).toBe("Claude Opus 5");
   expect(coAuthors[0].kind).toBe("agent");
   expect(parseCoAuthors("Bez traileru.")).toEqual([]);
+});
+
+test("druh souboru se pozná podle cesty a testy nespadnou do kódu", () => {
+  const kinds = classifyFileKinds([
+    "README.md",
+    "app/styles.css",
+    "app/src/main.mjs",
+    "app/src/main.test.mjs",
+    "tests/e2e/flow.mjs",
+    "package.json",
+    "assets/logo.png",
+    "Dockerfile",
+  ]);
+  expect(kinds).toEqual({
+    docs: 1,
+    styles: 1,
+    code: 1,
+    tests: 2,
+    config: 1,
+    images: 1,
+    other: 1,
+  });
+  expect(classifyFileKinds([])).toEqual({});
 });
 
 test("numstat parser zvládne binární soubor i prázdný vstup", () => {

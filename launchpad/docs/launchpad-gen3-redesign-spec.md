@@ -657,6 +657,15 @@ klasifikaci chyb do lidského jazyka (`classifyOpenError`).
   payload nese předmět commitu, rozsah (soubory, +/−), popis, dotčené cesty
   a spoluautory z `Co-Authored-By`. Zdroj je stejný bounded, read-only
   `git log` v neinteraktivním git prostředí, obohacený o `--numstat`.
+  - **Commit se ukazuje nejdřív lidsky** (`public/commit-copy.js`). Sbalený
+    řádek nese pročištěný název (bez `feat(scope):` prefixu a bez „Merge pull
+    request #15 from org/branch" — skutečný titulek merge commitu se bere
+    z jeho těla). Detail začíná dvěma českými větami odvozenými ze struktury
+    commitu: druh a místo změny, a její rozsah včetně druhu souborů
+    (`payload.file_kinds`, počítané nad úplným seznamem, ne nad oříznutou
+    pěticí). Teprve pod nimi jsou **vlastní slova autora, beze změny a jako
+    jeho** — Launchpad běží offline, nemá čím překládat, a přebarvit anglickou
+    větu na češtinu by tvrdilo víc, než víme.
   - **Typ actora je odhad, ne evidence.** `actor.kind` (`human` / `agent`) se
     odvozuje z podpisu commitu (`kind_source: "heuristic"`) a heuristika je
     schválně úzká — skrytý GitHub e-mail z Kolegy Agenta nedělá. Přesná

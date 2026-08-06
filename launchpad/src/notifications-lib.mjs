@@ -112,6 +112,32 @@ export function parseNumstat(tail) {
   return { files, insertions, deletions };
 }
 
+// Do payloadu se vejde jen pár cest, ale lidská věta „hlavně dokumentace
+// a nastavení" potřebuje vědět o všech. Proto se druh souborů počítá tady,
+// nad úplným seznamem; UI dostane jen agregát, ne celý diff.
+const FILE_KIND_PATTERNS = [
+  ["docs", /\.(md|mdx|txt|adoc)$/i],
+  ["styles", /\.(css|scss|sass|less)$/i],
+  ["images", /\.(png|jpe?g|gif|svg|webp|avif|ico)$/i],
+  ["config", /\.(json|ya?ml|toml|ini|env|lock)$/i],
+  ["pages", /\.(html|astro|vue|svelte)$/i],
+  ["code", /\.(m?[jt]sx?|py|rs|go|rb|php|sh|mjs|cjs)$/i],
+];
+
+export function classifyFileKinds(files) {
+  const kinds = {};
+  for (const file of files ?? []) {
+    const path = String(file);
+    // Testy poznáme dřív než kód — jinak by `foo.test.mjs` spadlo do „kódu"
+    // a mizel by rozdíl mezi novou funkcí a novým testem.
+    const kind = /(^|\/)(tests?|__tests__)\//i.test(path) || /\.(test|spec)\./i.test(path)
+      ? "tests"
+      : (FILE_KIND_PATTERNS.find(([, pattern]) => pattern.test(path))?.[0] ?? "other");
+    kinds[kind] = (kinds[kind] ?? 0) + 1;
+  }
+  return kinds;
+}
+
 async function readRepoNotifications(repo, { commitLimit }) {
   if (!existsSync(repo.absolute_path)) return [];
   const format =
@@ -182,6 +208,7 @@ function toNotification(record, repo) {
       files_changed: files.length,
       files: files.slice(0, PAYLOAD_FILE_LIMIT),
       files_truncated: Math.max(0, files.length - PAYLOAD_FILE_LIMIT),
+      file_kinds: classifyFileKinds(files),
       insertions,
       deletions,
     },

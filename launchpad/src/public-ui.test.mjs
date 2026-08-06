@@ -508,8 +508,15 @@ test("CAC-0095: zvoneček nese actor, scope a payload a respektuje izolaci", asy
   expect(js).toContain("function notificationItem");
   expect(js).toContain("item.actor?.name");
   expect(js).toContain("změnil·a modul");
-  expect(js).toContain("item.payload?.subject");
   expect(js).toContain("function notificationScaleLabel");
+
+  // Commit se ukazuje nejdřív lidsky a teprve potom slovy autora.
+  expect(js).toContain('from "./commit-copy.js"');
+  expect(js).toContain("humanCommitCopy(item.payload, item.payload?.description)");
+  expect(js).toContain("humanChangeSentence");
+  expect(js).toContain("humanScopeSentence");
+  expect(js).toContain("Vlastními slovy autora");
+  expect(css).toContain(".notification-human-summary");
 
   // Tichý 15s poll překresluje seznam; rozbalený detail ani scroll to nesmí
   // sebrat pod rukama uživateli, který zrovna čte.
