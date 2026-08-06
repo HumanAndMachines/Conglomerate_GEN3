@@ -46,8 +46,12 @@ const state = {
   updateStatus: null,
   updatePending: false,
   openVersionMenu: null,
-  // CAC-0044: per-modul poslední změny + lokální usage tracking + git read model.
-  recentModules: [],
+  // CAC-0095: notifikace (actor / scope / payload) nahradily panel „Poslední
+  // změny". CAC-0044: lokální usage tracking + git read model.
+  notifications: [],
+  notificationsOpen: false,
+  notificationsFilter: "all",
+  readNotificationIds: new Set(),
   mostUsed: [],
   coldStartUsage: true,
   // Git read model (CAC-0042): mapa repo_key → repo. Prázdné = graceful
@@ -252,19 +256,24 @@ const elements = {
   layout: document.querySelector(".layout"),
   recentChangesSidebar: document.querySelector("#recentChangesSidebar"),
   toastRoot: document.querySelector("#toastRoot"),
-  recentModules: document.querySelector("#recentModules"),
   mostUsedPanel: document.querySelector("#mostUsedPanel"),
   organizationGitStatus: document.querySelector("#organizationGitStatus"),
   mostUsed: document.querySelector("#mostUsed"),
-  recentModuleModal: document.querySelector("#recentModuleModal"),
-  recentModuleTitle: document.querySelector("#recentModuleTitle"),
-  recentModuleSubtitle: document.querySelector("#recentModuleSubtitle"),
-  recentModuleCommits: document.querySelector("#recentModuleCommits"),
+  notificationsToggle: document.querySelector("#notificationsToggle"),
+  notificationsPanel: document.querySelector("#notificationsPanel"),
+  notificationsBadge: document.querySelector("#notificationsBadge"),
+  notificationsList: document.querySelector("#notificationsList"),
+  notificationsMarkAll: document.querySelector("#notificationsMarkAll"),
+  notificationsFilterAll: document.querySelector("#notificationsFilterAll"),
+  notificationsFilterUnread: document.querySelector("#notificationsFilterUnread"),
+  notificationsCountAll: document.querySelector("#notificationsCountAll"),
+  notificationsCountUnread: document.querySelector("#notificationsCountUnread"),
 };
 
 initTheme();
 initScrollOffset();
 initResponsiveChrome();
+initNotifications();
 // Personalspace rail dostane most k toastům a k Synchronizovat reloadu, ať
 // osobní runtime akce vypadají stejně jako firemní.
 initPersonalspace({
@@ -768,22 +777,22 @@ async function fetchJsonSafe(path, options = {}) {
 // zůstane prázdná a git chip se na kartách graceful nevykreslí.
 async function loadSidePanels() {
   if (state.filters.scope === "personal" || state.filters.company === "all") {
-    state.recentModules = [];
+    state.notifications = [];
     state.mostUsed = [];
     state.coldStartUsage = true;
     return;
   }
   const requestedCompany = state.filters.company;
   const companyQuery = `?company=${encodeURIComponent(requestedCompany)}`;
-  const [recent, mostUsed, git] = await Promise.all([
-    fetchJsonSafe(`/api/recent-changes${companyQuery}`),
+  const [notifications, mostUsed, git] = await Promise.all([
+    fetchJsonSafe(`/api/notifications${companyQuery}`),
     fetchJsonSafe(`/api/most-used${companyQuery}`),
     fetchJsonSafe(`/api/git/repos${companyQuery}`),
   ]);
   // Pomalejší odpověď předchozí Organizace nesmí přepsat panely prostoru,
   // který uživatel mezitím nově vybral.
   if (state.filters.scope !== "org" || state.filters.company !== requestedCompany) return;
-  state.recentModules = recent?.recent_modules ?? [];
+  state.notifications = notifications?.notifications ?? [];
   state.mostUsed = mostUsed?.most_used ?? [];
   state.coldStartUsage = mostUsed ? mostUsed.cold_start !== false && (mostUsed.most_used ?? []).length === 0 : true;
   state.gitReposByModule = indexGitReposByModule(git?.repos ?? []);
@@ -910,7 +919,7 @@ function render() {
   renderApps(filteredApps);
   renderDetail(filteredApps);
   renderOrganizationGitStatus();
-  renderRecentModules();
+  renderNotifications();
   renderMostUsed();
 }
 
@@ -1622,6 +1631,11 @@ function renderScopeControls() {
   elements.drawerToggle.classList.toggle("hidden", personal);
   elements.layout.classList.toggle("is-personal", personal);
   elements.recentChangesSidebar.classList.toggle("hidden", personal);
+  // Notifikace agregují změny napříč moduly Organizace — v Personalspace
+  // nemají co dělat, stejně jako pravé panely. Zvoneček proto mizí i s
+  // otevřeným panelem, ne jen jeho obsah.
+  elements.notificationsToggle?.classList.toggle("hidden", personal);
+  if (personal && state.notificationsOpen) setNotificationsOpen(false);
   if (personal && state.drawerOpen) setDrawer(false);
 }
 
@@ -1743,87 +1757,274 @@ function bulkPullSummaryNode(payload) {
   return details;
 }
 
-// Panel „Poslední změny" (step-006): per-modul poslední commity z git read
-// modelu. Rozklik otevře modal s detailem commitů daného modulu (port GEN2
-// renderRecentModules + openRecentModuleModal, app.js:2535–2606).
-function renderRecentModules() {
-  const mount = elements.recentModules;
+// Notifikace (CAC-0095): nástupce panelu „Poslední změny". Jednotka není
+// modul, ale jedna změna popsaná trojicí actor / scope / payload — kdo, kde
+// a co. Autor je proto vidět rovnou v seznamu, ne až po rozkliknutí.
+function renderNotifications() {
+  renderNotificationsBadge();
+  const mount = elements.notificationsList;
   if (!mount) return;
-  mount.replaceChildren();
-  const modules = visibleRecentModules();
 
-  if (modules.length === 0) {
+  const all = visibleNotifications();
+  const unread = all.filter((item) => !state.readNotificationIds.has(item.id));
+  renderNotificationsCounts();
+  syncNotificationsFilterButtons();
+
+  const visible = state.notificationsFilter === "unread" ? unread : all;
+  mount.replaceChildren();
+
+  if (visible.length === 0) {
     const empty = document.createElement("p");
     empty.className = "rail-copy";
-    empty.textContent = "Zatím tu nevidím žádné změněné moduly.";
+    empty.textContent = state.notificationsFilter === "unread"
+      ? "Všechno přečtené."
+      : "Zatím tu nevidím žádné změny.";
     mount.append(empty);
     return;
   }
 
-  for (const module of modules) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "recent-module-item";
-    const icon = document.createElement("span");
-    icon.className = "recent-module-icon app-card-icon";
-    icon.style.cssText = appIconStyle(appIconKey(module));
-    icon.innerHTML = appIconSvg(appIconKey(module));
-    const copy = document.createElement("span");
-    copy.className = "recent-module-copy";
-    const name = document.createElement("span");
-    name.className = "recent-module-name";
-    name.textContent = module.name;
-    const meta = document.createElement("span");
-    meta.className = "recent-module-meta";
-    meta.textContent = `${formatModuleChangeDate(module.last_commit_at)} · ${newCommitCountLabel(module.commit_count)}`;
-    copy.append(name, meta);
-    button.append(icon, copy);
-    button.addEventListener("click", () => openRecentModuleModal(module.id));
-    mount.append(button);
+  for (const item of visible) {
+    mount.append(notificationItem(item));
   }
 }
 
-function openRecentModuleModal(moduleId) {
-  const module = visibleRecentModules().find((item) => item.id === moduleId);
-  const modal = elements.recentModuleModal;
-  if (!module || !modal) return;
-  elements.recentModuleTitle.textContent = module.name;
-  elements.recentModuleSubtitle.textContent =
-    `Poslední změna ${formatModuleChangeDate(module.last_commit_at, { includeTime: true })} · ${recentCommitCountLabel(module.commits.length)} v detailu`;
-  const mount = elements.recentModuleCommits;
-  mount.replaceChildren();
-  for (const [index, commit] of module.commits.entries()) {
-    const item = document.createElement("article");
-    item.className = "module-commit-item";
-    const toggle = document.createElement("button");
-    toggle.type = "button";
-    toggle.className = "module-commit-toggle";
-    toggle.setAttribute("aria-expanded", "false");
-    const subject = document.createElement("strong");
-    subject.textContent = commit.subject || "(bez popisu)";
-    const line = document.createElement("span");
-    line.textContent = `${formatModuleChangeDate(commit.committed_at, { includeTime: true })} · ${commit.author} · ${commit.short_hash}`;
-    toggle.append(subject, line);
-    const detail = document.createElement("div");
-    detail.className = "module-commit-detail";
-    detail.hidden = true;
-    const body = document.createElement("p");
-    body.className = "module-commit-description";
-    body.textContent = commit.body?.trim() ? commit.body.trim() : "Bez dalšího popisu.";
-    const fullHash = document.createElement("span");
-    fullHash.className = "module-commit-full-hash";
-    fullHash.textContent = commit.hash;
-    detail.append(body, fullHash);
-    toggle.addEventListener("click", () => {
-      const expanded = toggle.getAttribute("aria-expanded") === "true";
-      toggle.setAttribute("aria-expanded", expanded ? "false" : "true");
-      item.classList.toggle("is-open", !expanded);
-      detail.hidden = expanded;
-    });
-    item.append(toggle, detail);
-    mount.append(item);
+function notificationItem(item) {
+  const read = state.readNotificationIds.has(item.id);
+  const article = document.createElement("article");
+  article.className = "notification-item";
+  article.dataset.read = read ? "true" : "false";
+
+  const avatar = document.createElement("span");
+  avatar.className = "notification-avatar";
+  avatar.dataset.kind = item.actor?.kind ?? "human";
+  avatar.textContent = item.actor?.initials ?? "?";
+  avatar.setAttribute("aria-hidden", "true");
+
+  const body = document.createElement("div");
+  body.className = "notification-body";
+
+  // Řádek 1 — kdo a kde. Sloveso je záměrně jedno a stejné: „změnil(a)"
+  // by muselo hádat rod, „upravil modul" je čitelné a pravdivé pro commit.
+  const headline = document.createElement("p");
+  headline.className = "notification-headline";
+  const actor = document.createElement("strong");
+  actor.textContent = item.actor?.name ?? "Neznámý autor";
+  const verb = document.createTextNode(" změnil·a modul ");
+  const scope = document.createElement("strong");
+  scope.textContent = item.scope?.name ?? item.scope?.module ?? "neznámý modul";
+  headline.append(actor, verb, scope);
+  if (item.actor?.kind === "agent") {
+    const tag = document.createElement("span");
+    tag.className = "notification-actor-tag";
+    tag.textContent = "Agent";
+    tag.title = "Odhadnuto z podpisu commitu, ne z rosteru Organizace.";
+    headline.append(" ", tag);
   }
-  if (typeof modal.showModal === "function") modal.showModal();
+
+  const meta = document.createElement("p");
+  meta.className = "notification-meta";
+  meta.textContent = `${formatModuleChangeDate(item.occurred_at, { includeTime: true })} · ${item.scope?.company_display_name ?? ""}`;
+
+  // Payload — co je součástí té změny. V klidu stačí předmět a rozsah;
+  // detail (popis, soubory, hash) je za rozkliknutím, ať panel nekřičí.
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "notification-payload-toggle";
+  toggle.setAttribute("aria-expanded", "false");
+  const subject = document.createElement("span");
+  subject.className = "notification-subject";
+  subject.textContent = item.payload?.subject || "(bez popisu)";
+  const scale = document.createElement("span");
+  scale.className = "notification-scale";
+  scale.textContent = notificationScaleLabel(item.payload);
+  toggle.append(subject, scale);
+
+  const detail = document.createElement("div");
+  detail.className = "notification-payload-detail";
+  detail.hidden = true;
+  detail.append(...notificationDetailNodes(item));
+
+  toggle.addEventListener("click", () => {
+    const expanded = toggle.getAttribute("aria-expanded") === "true";
+    toggle.setAttribute("aria-expanded", expanded ? "false" : "true");
+    detail.hidden = expanded;
+    if (!expanded) markNotificationRead(item.id, article);
+  });
+
+  body.append(headline, meta, toggle, detail);
+
+  const unreadDot = document.createElement("span");
+  unreadDot.className = "notification-unread-dot";
+  unreadDot.hidden = read;
+  unreadDot.setAttribute("aria-label", "Nepřečteno");
+
+  article.append(avatar, body, unreadDot);
+  return article;
+}
+
+function notificationDetailNodes(item) {
+  const nodes = [];
+  const description = document.createElement("p");
+  description.className = "notification-description";
+  description.textContent = item.payload?.description?.trim()
+    ? item.payload.description.trim()
+    : "Bez dalšího popisu.";
+  nodes.push(description);
+
+  const files = item.payload?.files ?? [];
+  if (files.length > 0) {
+    const list = document.createElement("ul");
+    list.className = "notification-files";
+    for (const file of files) {
+      const entry = document.createElement("li");
+      entry.textContent = file;
+      list.append(entry);
+    }
+    const truncated = item.payload?.files_truncated ?? 0;
+    if (truncated > 0) {
+      const rest = document.createElement("li");
+      rest.className = "notification-files-rest";
+      rest.textContent = `a další ${truncated} ${truncated >= 2 && truncated <= 4 ? "soubory" : "souborů"}`;
+      list.append(rest);
+    }
+    nodes.push(list);
+  }
+
+  // Spoluautoři jsou to jediné místo, kde je vidět, že práci Agenta
+  // publikoval člověk (nebo naopak). Bez toho by notifikace lhala.
+  const coAuthors = item.payload?.co_authors ?? [];
+  if (coAuthors.length > 0) {
+    const line = document.createElement("p");
+    line.className = "notification-coauthors";
+    line.textContent = `Spolu s: ${coAuthors.map((author) => author.name).join(", ")}`;
+    nodes.push(line);
+  }
+
+  const hash = document.createElement("span");
+  hash.className = "notification-hash";
+  hash.textContent = `${item.scope?.relative_path ?? ""} · ${item.payload?.short_hash ?? ""}`;
+  nodes.push(hash);
+  return nodes;
+}
+
+function notificationScaleLabel(payload) {
+  const files = payload?.files_changed ?? 0;
+  if (files === 0) return "bez změny souborů";
+  const fileLabel = files === 1 ? "1 soubor" : files >= 2 && files <= 4 ? `${files} soubory` : `${files} souborů`;
+  return `${fileLabel} · +${payload?.insertions ?? 0} / −${payload?.deletions ?? 0}`;
+}
+
+function renderNotificationsBadge() {
+  const badge = elements.notificationsBadge;
+  const toggle = elements.notificationsToggle;
+  if (!badge || !toggle) return;
+  const unread = visibleNotifications().filter((item) => !state.readNotificationIds.has(item.id)).length;
+  badge.hidden = unread === 0;
+  badge.textContent = unread > 99 ? "99+" : String(unread);
+  const label = unread === 0 ? "Notifikace · nic nového" : `Notifikace · ${unread} nepřečtených`;
+  toggle.setAttribute("aria-label", label);
+  toggle.title = label;
+}
+
+function syncNotificationsFilterButtons() {
+  const unreadActive = state.notificationsFilter === "unread";
+  elements.notificationsFilterAll?.classList.toggle("is-active", !unreadActive);
+  elements.notificationsFilterAll?.setAttribute("aria-selected", String(!unreadActive));
+  elements.notificationsFilterUnread?.classList.toggle("is-active", unreadActive);
+  elements.notificationsFilterUnread?.setAttribute("aria-selected", String(unreadActive));
+}
+
+function setNotificationsOpen(open) {
+  state.notificationsOpen = open;
+  elements.notificationsPanel?.toggleAttribute("hidden", !open);
+  elements.notificationsToggle?.setAttribute("aria-expanded", String(open));
+  if (open) renderNotifications();
+}
+
+function renderNotificationsCounts() {
+  const all = visibleNotifications();
+  const unread = all.filter((item) => !state.readNotificationIds.has(item.id));
+  if (elements.notificationsCountAll) elements.notificationsCountAll.textContent = String(all.length);
+  if (elements.notificationsCountUnread) elements.notificationsCountUnread.textContent = String(unread.length);
+}
+
+// Přečtení se propíše bodově, ne překreslením seznamu: plný render by zavřel
+// detail, který Principálka právě otevřela — a rozkliknutí je zároveň to,
+// čím se položka označuje za přečtenou. Ve filtru „Nepřečtené" položka
+// schválně nezmizí pod rukama; odejde až při dalším renderu.
+function markNotificationRead(id, article) {
+  if (state.readNotificationIds.has(id)) return;
+  state.readNotificationIds.add(id);
+  persistReadNotifications();
+  if (article) {
+    article.dataset.read = "true";
+    const dot = article.querySelector(".notification-unread-dot");
+    if (dot) dot.hidden = true;
+  }
+  renderNotificationsBadge();
+  renderNotificationsCounts();
+}
+
+// Stav přečtení je per Principál a per mašina — localStorage, ne server a
+// rozhodně ne datové repo. Server o tom, co kdo četl, nevede nic.
+const NOTIFICATIONS_READ_STORAGE = "launchpad.notifications.read";
+// Strop, aby položka nerostla donekonečna. Držíme nejnovější přečtené;
+// starší commity už stejně vypadnou z bounded git logu.
+const NOTIFICATIONS_READ_LIMIT = 400;
+
+function loadReadNotifications() {
+  try {
+    const raw = localStorage.getItem(NOTIFICATIONS_READ_STORAGE);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function persistReadNotifications() {
+  try {
+    const ids = [...state.readNotificationIds].slice(-NOTIFICATIONS_READ_LIMIT);
+    state.readNotificationIds = new Set(ids);
+    localStorage.setItem(NOTIFICATIONS_READ_STORAGE, JSON.stringify(ids));
+  } catch {
+    // Zaplněný nebo zakázaný localStorage nesmí shodit panel; stav přečtení
+    // se pak jen nepřenese do dalšího spuštění.
+  }
+}
+
+function initNotifications() {
+  state.readNotificationIds = loadReadNotifications();
+
+  elements.notificationsToggle?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setNotificationsOpen(!state.notificationsOpen);
+  });
+  elements.notificationsPanel?.addEventListener("click", (event) => event.stopPropagation());
+
+  elements.notificationsFilterAll?.addEventListener("click", () => {
+    state.notificationsFilter = "all";
+    renderNotifications();
+  });
+  elements.notificationsFilterUnread?.addEventListener("click", () => {
+    state.notificationsFilter = "unread";
+    renderNotifications();
+  });
+  elements.notificationsMarkAll?.addEventListener("click", () => {
+    for (const item of visibleNotifications()) state.readNotificationIds.add(item.id);
+    persistReadNotifications();
+    renderNotifications();
+  });
+
+  document.addEventListener("click", () => {
+    if (state.notificationsOpen) setNotificationsOpen(false);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && state.notificationsOpen) {
+      setNotificationsOpen(false);
+      elements.notificationsToggle?.focus();
+    }
+  });
 }
 
 // Panel „Nejčastější" (step-007): aplikace řazené podle skutečného lokálního
@@ -1884,9 +2085,11 @@ function renderMostUsed() {
   }
 }
 
-function visibleRecentModules() {
+// Notifikace nikdy nepřekročí hranici prostoru: v Personalspace se nezobrazí
+// vůbec (izolace) a v Organizaci jen ta, která patří vybrané Organizaci.
+function visibleNotifications() {
   if (state.filters.scope === "personal") return [];
-  return state.recentModules.filter((module) => module.company === state.filters.company);
+  return state.notifications.filter((item) => item.scope?.company === state.filters.company);
 }
 
 function visibleMostUsed() {
@@ -1925,11 +2128,6 @@ function newCommitCountLabel(count) {
   return `${count} změn`;
 }
 
-function recentCommitCountLabel(count) {
-  if (count === 1) return "1 commit";
-  if (count >= 2 && count <= 4) return `${count} commity`;
-  return `${count} commitů`;
-}
 
 /* =========================================================
    App cards (daily launcher surface)

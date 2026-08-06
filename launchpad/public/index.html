@@ -48,11 +48,43 @@
             </svg>
             Soukromé
           </span>
+          <div class="notifications-anchor">
+            <button
+              id="notificationsToggle"
+              type="button"
+              class="icon-btn"
+              title="Notifikace — kdo co změnil a ve kterém modulu"
+              aria-label="Notifikace"
+              aria-expanded="false"
+              aria-controls="notificationsPanel"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 8-3 8h18s-3-1-3-8" />
+                <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+              </svg>
+              <span id="notificationsBadge" class="notifications-badge" aria-hidden="true" hidden></span>
+            </button>
+            <section id="notificationsPanel" class="notifications-panel" aria-label="Notifikace" hidden>
+              <div class="notifications-head">
+                <span class="rail-eyebrow">Notifikace</span>
+                <button id="notificationsMarkAll" type="button" class="notifications-mark-all">Označit vše jako přečtené</button>
+              </div>
+              <div class="notifications-filters" role="tablist" aria-label="Filtr notifikací">
+                <button id="notificationsFilterAll" type="button" class="notifications-filter is-active" role="tab" aria-selected="true">
+                  Vše <span id="notificationsCountAll" class="notifications-filter-count">0</span>
+                </button>
+                <button id="notificationsFilterUnread" type="button" class="notifications-filter" role="tab" aria-selected="false">
+                  Nepřečtené <span id="notificationsCountUnread" class="notifications-filter-count">0</span>
+                </button>
+              </div>
+              <div id="notificationsList" class="notifications-list"></div>
+            </section>
+          </div>
           <button
             id="drawerToggle"
             type="button"
             class="icon-btn"
-            title="Panely — stav prostoru, poslední změny, nejčastější, detail"
+            title="Panely — stav prostoru, nejčastější, detail"
             aria-label="Panely"
             aria-expanded="false"
           >
@@ -206,12 +238,6 @@
             </div>
             <div id="organizationGitStatus" class="organization-git-status"></div>
           </section>
-          <section id="recentChangesPanel" class="side-panel" aria-label="Poslední změny">
-            <div class="side-panel-head">
-              <span class="rail-eyebrow">Poslední změny</span>
-            </div>
-            <div id="recentModules" class="recent-modules"></div>
-          </section>
         </aside>
 
         <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
@@ -237,23 +263,6 @@
         </aside>
       </div>
     </main>
-
-    <dialog id="recentModuleModal" class="recent-module-modal">
-      <form method="dialog" class="recent-module-modal-inner">
-        <div class="recent-module-modal-head">
-          <div>
-            <h2 id="recentModuleTitle">Modul</h2>
-            <p id="recentModuleSubtitle" class="recent-module-modal-sub"></p>
-          </div>
-          <button type="submit" class="icon-btn" aria-label="Zavřít">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M18 6 6 18" /><path d="m6 6 12 12" />
-            </svg>
-          </button>
-        </div>
-        <div id="recentModuleCommits" class="recent-module-commits"></div>
-      </form>
-    </dialog>
 
     <div id="toastRoot" class="toast-root" aria-live="polite" aria-atomic="true"></div>
 

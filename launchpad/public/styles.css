@@ -3280,13 +3280,11 @@ button.runtime-stage.is-available:hover {
   font-size: 0.76rem;
 }
 
-.recent-modules,
 .most-used {
   display: grid;
   gap: 0.4rem;
 }
 
-.recent-module-item,
 .quick-app {
   display: flex;
   align-items: center;
@@ -3301,9 +3299,7 @@ button.runtime-stage.is-available:hover {
   cursor: pointer;
   transition: border-color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
 }
-.recent-module-item:hover,
 .quick-app:hover,
-.recent-module-item:focus-visible,
 .quick-app:focus-visible {
   border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
   transform: translateY(-1px);
@@ -3313,17 +3309,14 @@ button.runtime-stage.is-available:hover {
   opacity: 0.75;
   transform: none;
 }
-.recent-module-icon,
 .quick-app-mark {
   width: 2rem;
   height: 2rem;
 }
-.recent-module-icon svg,
 .quick-app-mark svg {
   width: 18px;
   height: 18px;
 }
-.recent-module-copy,
 .quick-app-text {
   display: flex;
   flex-direction: column;
@@ -3331,7 +3324,6 @@ button.runtime-stage.is-available:hover {
   min-width: 0;
   flex: 1 1 auto;
 }
-.recent-module-name,
 .quick-app-text strong {
   font-size: 0.86rem;
   font-weight: 700;
@@ -3339,7 +3331,6 @@ button.runtime-stage.is-available:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.recent-module-meta,
 .quick-app-text small {
   color: var(--text-muted);
   font-size: 0.72rem;
@@ -3351,85 +3342,253 @@ button.runtime-stage.is-available:hover {
   font-weight: 700;
 }
 
-/* ---------- Modal Poslední změny detail ---------- */
-.recent-module-modal {
-  border: none;
+/* =========================================================
+   Notifikace (CAC-0095)
+   Zvoneček v headeru + overlay panel. Nahradily panel „Poslední změny":
+   jednotka je jedna změna, ne modul, a autor je vidět hned v seznamu.
+   Barevnost je záměrně střídmá — akcent nese jen nepřečtený stav a akce,
+   payload zůstává na neutrální ploše.
+   ========================================================= */
+.notifications-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.notifications-badge {
+  position: absolute;
+  top: -0.3rem;
+  right: -0.3rem;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  padding: 0 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--surface);
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 0.58rem;
+  font-weight: 850;
+  line-height: 1;
+}
+.notifications-badge[hidden] {
+  display: none;
+}
+
+.notifications-panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 60;
+  width: min(24rem, calc(100vw - 2rem));
+  max-height: min(30rem, calc(100vh - 6rem));
+  display: flex;
+  flex-direction: column;
+  /* Launchpad nemá stíny — panel se od plochy odděluje silnější linkou
+     a plnou plochou, ne vrstvením. */
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-md);
-  padding: 0;
-  max-width: min(560px, 92vw);
-  width: 100%;
   background: var(--surface);
+}
+.notifications-panel[hidden] {
+  display: none;
+}
+
+.notifications-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.75rem 0.85rem 0.5rem;
+}
+.notifications-mark-all {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.notifications-mark-all:hover {
+  text-decoration: underline;
+}
+
+.notifications-filters {
+  display: flex;
+  gap: 0.3rem;
+  padding: 0 0.85rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+}
+.notifications-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.notifications-filter.is-active {
+  background: var(--bg-subtle);
+  border-color: var(--line);
   color: var(--text);
 }
-.recent-module-modal::backdrop {
-  background: color-mix(in srgb, #0b0e14 55%, transparent);
+.notifications-filter-count {
+  color: var(--text-subtle);
+  font-size: 0.7rem;
+  font-weight: 800;
 }
-.recent-module-modal-inner {
+
+.notifications-list {
   display: grid;
-  gap: 0.9rem;
-  padding: 1.2rem;
-  max-height: 80vh;
-  overflow: auto;
+  gap: 0.15rem;
+  padding: 0.4rem;
+  overflow-y: auto;
 }
-.recent-module-modal-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.8rem;
-}
-.recent-module-modal-head h2 {
-  margin: 0;
-  font-size: 1.1rem;
-}
-.recent-module-modal-sub {
-  margin: 0.2rem 0 0;
-  color: var(--text-muted);
-  font-size: 0.8rem;
-}
-.recent-module-commits {
+
+.notification-item {
   display: grid;
-  gap: 0.5rem;
-}
-.module-commit-item {
-  border: 1px solid var(--line);
+  grid-template-columns: auto 1fr auto;
+  gap: 0.6rem;
+  align-items: start;
+  padding: 0.55rem 0.5rem;
   border-radius: var(--r-sm);
-  overflow: hidden;
 }
-.module-commit-toggle {
+.notification-item[data-read="false"] {
+  background: var(--bg-muted);
+}
+
+/* Iniciály místo fotky: Launchpad zná jen autora commitu, ne profil Kolegy. */
+.notification-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: var(--r-pill);
+  background: var(--bg-subtle);
+  border: 1px solid var(--line);
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+/* Agent má obrys, ne jinou barvu — druhá barevná rampa by šla proti identitě. */
+.notification-avatar[data-kind="agent"] {
+  border-style: dashed;
+  border-color: var(--line-strong);
+}
+
+.notification-body {
   display: grid;
   gap: 0.2rem;
+  min-width: 0;
+}
+.notification-headline {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--text);
+}
+.notification-actor-tag {
+  display: inline-block;
+  padding: 0 0.3rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  color: var(--text-subtle);
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.notification-meta {
+  margin: 0;
+  color: var(--text-subtle);
+  font-size: 0.7rem;
+}
+
+.notification-payload-toggle {
+  display: grid;
+  gap: 0.1rem;
   width: 100%;
   text-align: left;
-  padding: 0.6rem 0.7rem;
-  border: none;
-  background: var(--bg-muted);
+  margin-top: 0.15rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-subtle);
   color: inherit;
   cursor: pointer;
 }
-.module-commit-toggle strong {
-  font-size: 0.88rem;
+.notification-payload-toggle:hover,
+.notification-payload-toggle:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
 }
-.module-commit-toggle span {
-  color: var(--text-muted);
-  font-size: 0.74rem;
+.notification-subject {
+  font-size: 0.8rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.module-commit-detail {
+.notification-scale {
+  color: var(--text-subtle);
+  font-size: 0.68rem;
+}
+
+.notification-payload-detail {
   display: grid;
-  gap: 0.4rem;
-  padding: 0.7rem;
-  border-top: 1px solid var(--line);
+  gap: 0.35rem;
+  padding: 0.5rem 0.5rem 0.2rem;
 }
-.module-commit-description {
+.notification-description {
   margin: 0;
-  font-size: 0.82rem;
   color: var(--text-muted);
+  font-size: 0.78rem;
   white-space: pre-wrap;
 }
-.module-commit-full-hash {
+.notification-files {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.1rem;
+  color: var(--text-muted);
   font-family: var(--font-mono, monospace);
-  font-size: 0.72rem;
-  color: var(--text-subtle);
+  font-size: 0.7rem;
   word-break: break-all;
+}
+.notification-files-rest {
+  list-style: none;
+  margin-left: -1rem;
+  color: var(--text-subtle);
+  font-family: inherit;
+}
+.notification-coauthors {
+  margin: 0;
+  color: var(--text-subtle);
+  font-size: 0.72rem;
+}
+.notification-hash {
+  color: var(--text-subtle);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.68rem;
+  word-break: break-all;
+}
+
+.notification-unread-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-top: 0.55rem;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+}
+.notification-unread-dot[hidden] {
+  display: none;
 }
 
 /* =========================================================

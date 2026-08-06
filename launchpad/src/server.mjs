@@ -27,6 +27,7 @@ import { createGitStatusService } from "./git-status-lib.mjs";
 import { performRootUpdate, readRootUpdateStatus } from "./update-lib.mjs";
 import { WorktreeActionError, createWorktreeFromPlan, publishWorktreeDraft } from "./worktree-actions-lib.mjs";
 import { buildRecentModuleChanges } from "./recent-changes-lib.mjs";
+import { buildNotifications } from "./notifications-lib.mjs";
 import { buildMostUsedApps } from "./usage-lib.mjs";
 import {
   buildPersonalspaceResponse,
@@ -279,6 +280,15 @@ async function buildRecentChangesResponse(company = null) {
   const appsResponse = await buildAppsResponse();
   const apps = company ? appsResponse.apps.filter((app) => app.company === company) : appsResponse.apps;
   return buildRecentModuleChanges({ companiesRoot, apps });
+}
+
+// Notifikace (CAC-0095): nástupce panelu „Poslední změny" — jedna změna =
+// jedna položka s actorem, scope a payloadem. Company filtr je stejný jako
+// u ostatních panelů: notifikace nikdy nepřekročí vybranou Organizaci.
+async function buildNotificationsResponse(company = null) {
+  const appsResponse = await buildAppsResponse();
+  const apps = company ? appsResponse.apps.filter((app) => app.company === company) : appsResponse.apps;
+  return buildNotifications({ companiesRoot, apps });
 }
 
 // Panel „Nejčastější" (CAC-0044, step-007): lokální usage tracking mimo Git.
@@ -799,6 +809,7 @@ function startServer(startPort) {
         }
         if (url.pathname === "/api/doctor") return jsonResponse(await buildDoctorReport());
         if (url.pathname === "/api/recent-changes") return jsonResponse(await buildRecentChangesResponse(url.searchParams.get("company")));
+        if (url.pathname === "/api/notifications") return jsonResponse(await buildNotificationsResponse(url.searchParams.get("company")));
         if (url.pathname === "/api/most-used") return jsonResponse(await buildMostUsedResponse(url.searchParams.get("company")));
         if (url.pathname === "/health") return jsonResponse({ status: "ok" });
         return serveStatic(url.pathname);

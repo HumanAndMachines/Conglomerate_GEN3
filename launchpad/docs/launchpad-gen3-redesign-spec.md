@@ -649,11 +649,29 @@ klasifikaci chyb do lidského jazyka (`classifyOpenError`).
 
 ### 13.4 Pravé panely
 
+- **Notifikace** (`src/notifications-lib.mjs`, `/api/notifications`, CAC-0095):
+  zvoneček v headeru s počtem nepřečtených a overlay panel pod ním. **Nahradily
+  pravý panel „Poslední změny".** Jednotka není modul, ale **jedna změna**
+  popsaná trojicí `actor / scope / payload` — kdo, v jakém modulu a co je
+  obsahem změny. Autor je proto vidět rovnou v seznamu, ne až po rozkliknutí;
+  payload nese předmět commitu, rozsah (soubory, +/−), popis, dotčené cesty
+  a spoluautory z `Co-Authored-By`. Zdroj je stejný bounded, read-only
+  `git log` v neinteraktivním git prostředí, obohacený o `--numstat`.
+  - **Typ actora je odhad, ne evidence.** `actor.kind` (`human` / `agent`) se
+    odvozuje z podpisu commitu (`kind_source: "heuristic"`) a heuristika je
+    schválně úzká — skrytý GitHub e-mail z Kolegy Agenta nedělá. Přesná
+    persona podle rosteru Organizace je otevřená otázka plánu CAC-0095.
+  - **Stav přečtení je klientský**, per Principál a per mašina
+    (`localStorage`, klíč `launchpad.notifications.read`). Server nevede nic
+    o tom, kdo co četl.
+  - **Izolace platí beze změny.** V Personalspace se zvoneček skrývá celý
+    (stejně jako pravé panely) a v Organizaci se filtruje na vybranou
+    Organizaci; notifikace nikdy nepřekročí hranici prostoru.
 - **Poslední změny** (`src/recent-changes-lib.mjs`, `/api/recent-changes`):
-  per-modul poslední commity (datum, počet, rozklik detailu) z bounded,
-  read-only `git log` v neinteraktivním git prostředí. Standalone, ať rebase na
-  git read model z CAC-0042 bolí minimálně — kontrakt `recent_modules`
-  zůstane stejný, i když se implementace přepíše nad git-inventory-lib.
+  per-modul poslední commity z bounded, read-only `git log`. **UI panel už
+  neexistuje** — nahradily ho notifikace. Kontrakt `recent_modules` a endpoint
+  ale zůstávají vědomě zachované jako předchůdce `notifications.v1`; ruší se
+  teprve tehdy, až je přestanou používat všechny povrchy.
 - **Nejčastější** (`src/usage-lib.mjs`, `/api/most-used`): lokální usage
   tracking otevření aplikací v `launchpad/runtime/usage.json` — **mimo Git**
   (runtime/ je gitignored), per mašina, **žádná PII** (jen app id + agregát

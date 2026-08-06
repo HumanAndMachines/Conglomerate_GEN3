@@ -26,7 +26,10 @@ const RECORD_SEP = "\x1e";
 // Modul = jeden git repo. Discovery apps nesou cwd/module/organization; jeden
 // modul může mít víc app variant (v1/v2) v různých app podsložkách —
 // deduplikujeme podle identity Organizace + modulu, ne podle cwd varianty.
-function moduleReposFromApps(apps, companiesRoot) {
+// Exportované, protože stejnou derivaci scope potřebuje notifications-lib
+// (CAC-0095) — dvě kopie by se rozešly a notifikace by ukazovaly jiný modul
+// než zbytek Launchpadu.
+export function moduleReposFromApps(apps, companiesRoot) {
   const byModule = new Map();
   for (const app of apps) {
     const cwd = app.cwd;
