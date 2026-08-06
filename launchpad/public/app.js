@@ -1770,6 +1770,12 @@ function renderNotifications() {
   renderNotificationsCounts();
   syncNotificationsFilterButtons();
 
+  // Seznam se překresluje i z tichého 15s pollu. Bez zachování rozbalených
+  // položek a scrollu by se detail zavřel přímo pod rukama Principálce, která
+  // si ho zrovna čte — a to bez jakékoli její akce.
+  const expandedIds = expandedNotificationIds(mount);
+  const scrollTop = mount.scrollTop;
+
   const visible = state.notificationsFilter === "unread" ? unread : all;
   mount.replaceChildren();
 
@@ -1784,14 +1790,27 @@ function renderNotifications() {
   }
 
   for (const item of visible) {
-    mount.append(notificationItem(item));
+    mount.append(notificationItem(item, expandedIds.has(item.id)));
   }
+  mount.scrollTop = scrollTop;
 }
 
-function notificationItem(item) {
+function expandedNotificationIds(mount) {
+  const ids = new Set();
+  for (const article of mount.querySelectorAll(".notification-item")) {
+    const toggle = article.querySelector(".notification-payload-toggle");
+    if (toggle?.getAttribute("aria-expanded") === "true" && article.dataset.id) {
+      ids.add(article.dataset.id);
+    }
+  }
+  return ids;
+}
+
+function notificationItem(item, expanded = false) {
   const read = state.readNotificationIds.has(item.id);
   const article = document.createElement("article");
   article.className = "notification-item";
+  article.dataset.id = item.id;
   article.dataset.read = read ? "true" : "false";
 
   const avatar = document.createElement("span");
@@ -1830,7 +1849,6 @@ function notificationItem(item) {
   const toggle = document.createElement("button");
   toggle.type = "button";
   toggle.className = "notification-payload-toggle";
-  toggle.setAttribute("aria-expanded", "false");
   const subject = document.createElement("span");
   subject.className = "notification-subject";
   subject.textContent = item.payload?.subject || "(bez popisu)";
@@ -1839,16 +1857,17 @@ function notificationItem(item) {
   scale.textContent = notificationScaleLabel(item.payload);
   toggle.append(subject, scale);
 
+  toggle.setAttribute("aria-expanded", String(expanded));
   const detail = document.createElement("div");
   detail.className = "notification-payload-detail";
-  detail.hidden = true;
+  detail.hidden = !expanded;
   detail.append(...notificationDetailNodes(item));
 
   toggle.addEventListener("click", () => {
-    const expanded = toggle.getAttribute("aria-expanded") === "true";
-    toggle.setAttribute("aria-expanded", expanded ? "false" : "true");
-    detail.hidden = expanded;
-    if (!expanded) markNotificationRead(item.id, article);
+    const isExpanded = toggle.getAttribute("aria-expanded") === "true";
+    toggle.setAttribute("aria-expanded", isExpanded ? "false" : "true");
+    detail.hidden = isExpanded;
+    if (!isExpanded) markNotificationRead(item.id, article);
   });
 
   body.append(headline, meta, toggle, detail);

@@ -511,6 +511,12 @@ test("CAC-0095: zvoneček nese actor, scope a payload a respektuje izolaci", asy
   expect(js).toContain("item.payload?.subject");
   expect(js).toContain("function notificationScaleLabel");
 
+  // Tichý 15s poll překresluje seznam; rozbalený detail ani scroll to nesmí
+  // sebrat pod rukama uživateli, který zrovna čte.
+  expect(js).toContain("function expandedNotificationIds");
+  expect(js).toContain("notificationItem(item, expandedIds.has(item.id))");
+  expect(js).toContain("mount.scrollTop = scrollTop");
+
   // Stav přečtení je lokální, per Principál a per mašina.
   expect(js).toContain('const NOTIFICATIONS_READ_STORAGE = "launchpad.notifications.read"');
   expect(js).toContain("function markNotificationRead");
