@@ -1,11 +1,9 @@
 import { expect, test } from "bun:test";
 import {
-  agree,
-  countLabel,
-  humanChangeSentence,
+  changeKindLabel,
+  changeOriginLabel,
   humanCommitCopy,
-  humanScopeSentence,
-  topFileKinds,
+  topicLabel,
 } from "../public/commit-copy.js";
 
 test("Conventional Commits prefix se přeloží na druh změny a zmizí z názvu", () => {
@@ -48,56 +46,56 @@ test("anglická věta autora se nepřekládá ani nepřepisuje", () => {
     "Add downloadable square logo assets.",
   );
   expect(copy.title).toBe("Design system: codify social avatars");
-  expect(copy.authorText).toBe("Design system: codify social avatars\n\nAdd downloadable square logo assets.");
-});
-
-test("věta o změně řekne druh, místo i původ", () => {
-  const copy = humanCommitCopy({ subject: "feat: něco" });
-  expect(humanChangeSentence({}, copy, "Design system")).toBe("Nová funkce v modulu Design system.");
-  const withArea = humanCommitCopy({ subject: "fix(api): něco (#7)" });
-  expect(humanChangeSentence({}, withArea, "Design system")).toBe(
-    "Oprava v části api. Přišlo přes schválený návrh #7.",
+  expect(copy.authorText).toBe(
+    "Design system: codify social avatars\n\nAdd downloadable square logo assets.",
   );
 });
 
-test("věta o rozsahu popíše počet, druh souborů i řádky", () => {
-  const sentence = humanScopeSentence({
-    files_changed: 21,
-    insertions: 111,
-    deletions: 44,
-    file_kinds: { code: 15, docs: 4, styles: 2 },
-  });
-  expect(sentence).toBe("Upraveno 21 souborů, hlavně kód a dokumentace. Přibylo 111 řádků, ubylo 44.");
+test("druh změny se pozná i z anglického slovesa za oblastí", () => {
+  // Tohle je ten podíl, který slovník sloves opravdu pokryje: 215 ze 410
+  // skutečných commitů tohohle workspace.
+  const add = humanCommitCopy({ subject: "Knowledgebase: Add Spectoda reference guidance" });
+  expect(changeKindLabel({}, add)).toBe("Přidání");
+
+  const fix = humanCommitCopy({ subject: "Website: Fix IZOLAS reference image format" });
+  expect(changeKindLabel({}, fix)).toBe("Oprava");
+
+  const std = humanCommitCopy({ subject: "Design system: standardize official logo usage" });
+  expect(changeKindLabel({}, std)).toBe("Sjednocení");
 });
 
-test("beze změny souborů se řekne důvod, ne holá nula", () => {
-  expect(humanScopeSentence({ files_changed: 0 })).toContain("sloučení práce z jiné větve");
+test("Conventional Commits prefix má přednost před slovesem", () => {
+  const copy = humanCommitCopy({ subject: "docs: refresh digital office content assets" });
+  expect(changeKindLabel({}, copy)).toBe("Dokumentace");
 });
 
-test("druhy souborů se shrnou, nevypisují", () => {
-  expect(topFileKinds({ docs: 3 })).toBe("dokumentace");
-  expect(topFileKinds({ docs: 3, code: 5 })).toBe("kód a dokumentace");
-  expect(topFileKinds({ docs: 3, code: 5, images: 1 })).toBe("hlavně kód a dokumentace");
-  expect(topFileKinds({})).toBe("");
+test("u neznámého slovesa se druh změny nevymýšlí", () => {
+  // „Commit Bun lockfile" — sloveso ve slovníku není. Radši nic než domněnka
+  // o cizí práci.
+  const copy = humanCommitCopy({ subject: "Design system app: Commit Bun lockfile" });
+  expect(changeKindLabel({}, copy)).toBeNull();
 });
 
-test("česká shoda čísla sedí pro 1, 2–4 i 5+", () => {
-  expect(countLabel(1, "soubor", "soubory", "souborů")).toBe("1 soubor");
-  expect(countLabel(3, "soubor", "soubory", "souborů")).toBe("3 soubory");
-  expect(countLabel(21, "soubor", "soubory", "souborů")).toBe("21 souborů");
+test("český commit se nechává být", () => {
+  const copy = humanCommitCopy({ subject: "Logo: Vystředit čtvercové exporty Lazuria" });
+  expect(copy.title).toBe("Logo: Vystředit čtvercové exporty Lazuria");
+  expect(changeKindLabel({}, copy)).toBeNull();
 });
 
-test("sloveso se shodne s počtem, ne jen podstatné jméno", () => {
-  const verbs = ["Upraven", "Upraveny", "Upraveno"];
-  const nouns = ["soubor", "soubory", "souborů"];
-  expect(agree(1, verbs, nouns)).toBe("Upraven 1 soubor");
-  expect(agree(3, verbs, nouns)).toBe("Upraveny 3 soubory");
-  expect(agree(21, verbs, nouns)).toBe("Upraveno 21 souborů");
+test("původ změny se řekne jen když je znám", () => {
+  expect(changeOriginLabel({ pullRequest: "15" })).toBe("přes schválený návrh #15");
+  expect(changeOriginLabel({})).toBeNull();
 });
 
-test("rozsahová věta drží shodu i u jednoho souboru a jednoho řádku", () => {
-  expect(humanScopeSentence({ files_changed: 1, insertions: 1, deletions: 0, file_kinds: { docs: 1 } }))
-    .toBe("Upraven 1 soubor, dokumentace. Přibyl 1 řádek.");
-  expect(humanScopeSentence({ files_changed: 3, insertions: 0, deletions: 2, file_kinds: { code: 3 } }))
-    .toBe("Upraveny 3 soubory, kód. Ubyly 2 řádky.");
+test("téma se bere ze složek, ne z textu commitu", () => {
+  // Přesně ten případ, na kterém ztroskotal překlad textu: „standardize
+  // official logo usage" přeložit nejde, ale `content/brand/logo/…` říká,
+  // čeho se změna týkala.
+  expect(topicLabel({ topics: ["logo"] })).toBe("logo");
+  expect(topicLabel({ topics: ["socialni-site"] })).toBe("sociální sítě");
+  expect(topicLabel({ topics: ["logo", "brand"] })).toBe("logo a značka");
+  // Neznámá složka se ukáže tak, jak se jmenuje — pořád je to slovo, ne věta.
+  expect(topicLabel({ topics: ["cenik-2026"] })).toBe("cenik 2026");
+  expect(topicLabel({ topics: [] })).toBeNull();
+  expect(topicLabel({})).toBeNull();
 });

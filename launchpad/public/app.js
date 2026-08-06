@@ -17,9 +17,10 @@ import {
 } from "./app-state.js";
 import { gitChipModel } from "./git-status-copy.js";
 import {
-  humanChangeSentence,
+  changeKindLabel,
+  changeOriginLabel,
   humanCommitCopy,
-  humanScopeSentence,
+  topicLabel,
 } from "./commit-copy.js";
 import { semanticAppIconKey } from "./app-icon-key.js";
 import {
@@ -1565,6 +1566,22 @@ function resetSpaceSelection() {
   setDrawer(false);
 }
 
+// Stabilní odstín odvozený z textu: stejné jméno = vždy stejná barva, i po
+// reloadu a na jiné mašině. Používá ho logo Organizace i monogram autora
+// v notifikacích, ať se dvě místa nerozejdou do dvou různých palet.
+//
+// Hash se násobí zlatým úhlem (137,508°), protože prosté `% 360` dávalo
+// podobným jménům podobné odstíny — „anna.prdelka" 329° a „Michael Blažíček"
+// 350° byly obě růžové a v seznamu se nedaly rozeznat. Zlatý úhel sousední
+// hodnoty hashe rozhodí po celém kruhu.
+function stringHue(value) {
+  const hash = [...String(value ?? "")].reduce(
+    (acc, character) => (Math.imul(acc, 31) + character.charCodeAt(0)) | 0,
+    2166136261,
+  );
+  return Math.round((Math.abs(hash) * 137.508) % 360);
+}
+
 function renderSpaceLogo(mount, space) {
   mount.className = `space-logo ${space.kind === "personal" ? "space-logo-personal" : "space-logo-organization"}`;
   mount.setAttribute("aria-hidden", "true");
@@ -1578,9 +1595,10 @@ function renderSpaceLogo(mount, space) {
   fallback.className = "space-logo-fallback";
   fallback.setAttribute("aria-hidden", "true");
   fallback.textContent = (space.label.trim()[0] ?? "O").toUpperCase();
-  const hue = [...String(space.organization.slug ?? space.label)]
-    .reduce((value, character) => ((value * 31) + character.charCodeAt(0)) % 360, 0);
-  mount.style.setProperty("--space-logo-hue", String(hue));
+  mount.style.setProperty(
+    "--space-logo-hue",
+    String(stringHue(space.organization.slug ?? space.label)),
+  );
   mount.append(fallback);
   if (space.organization.logo_url) {
     const image = document.createElement("img");
@@ -1821,6 +1839,9 @@ function notificationItem(item, expanded = false) {
   const avatar = document.createElement("span");
   avatar.className = "notification-avatar";
   avatar.dataset.kind = item.actor?.kind ?? "human";
+  // Každý autor má vlastní barvu kolečka, ať se lidé v seznamu rozeznají
+  // dřív, než si člověk přečte jméno.
+  avatar.style.setProperty("--avatar-hue", String(stringHue(item.actor?.name ?? "")));
   avatar.textContent = item.actor?.initials ?? "?";
   avatar.setAttribute("aria-hidden", "true");
 
@@ -1860,10 +1881,15 @@ function notificationItem(item, expanded = false) {
   const subject = document.createElement("span");
   subject.className = "notification-subject";
   subject.textContent = copy.title || "(bez popisu)";
+  const kindLabel = changeKindLabel(item.payload, copy);
+  const origin = changeOriginLabel(copy);
   const scale = document.createElement("span");
   scale.className = "notification-scale";
-  scale.textContent = notificationScaleLabel(item.payload);
+  // Druh změny a její původ — ne počty souborů a řádků. Ty Kolegovi neřeknou,
+  // co se stalo, jen kolik toho bylo.
+  scale.textContent = [kindLabel, topicLabel(item.payload), origin].filter(Boolean).join(" · ");
   toggle.append(subject, scale);
+  if (!scale.textContent) scale.remove();
 
   toggle.setAttribute("aria-expanded", String(expanded));
   const detail = document.createElement("div");
@@ -1892,12 +1918,20 @@ function notificationItem(item, expanded = false) {
 function notificationDetailNodes(item, copy) {
   const nodes = [];
 
-  // Nejdřív lidsky: co se stalo a jak velké to bylo. Tyhle dvě věty jsou
-  // odvozené ze struktury commitu, takže platí i u anglicky psaného textu.
-  const summary = document.createElement("p");
-  summary.className = "notification-human-summary";
-  summary.textContent = `${humanChangeSentence(item.payload, copy, item.scope?.name ?? "")} ${humanScopeSentence(item.payload)}`;
-  nodes.push(summary);
+  // Nejdřív česky to, co jde říct spolehlivě: druh změny a odkud přišla.
+  // Počty souborů a řádků tu schválně nejsou — neříkají, co se stalo.
+  const kindLabel = changeKindLabel(item.payload, copy);
+  const origin = changeOriginLabel(copy);
+  const topic = topicLabel(item.payload);
+  if (kindLabel || origin || topic) {
+    const summary = document.createElement("p");
+    summary.className = "notification-human-summary";
+    const where = item.scope?.name ? ` v modulu ${item.scope.name}` : "";
+    const what = topic ? ` Týká se: ${topic}.` : "";
+    const via = origin ? ` Přišlo ${origin}.` : "";
+    summary.textContent = `${kindLabel ?? "Změna"}${where}.${what}${via}`;
+    nodes.push(summary);
+  }
 
   // Teprve potom slova autora — beze změny a přiznaně jako jeho, protože
   // Launchpad je offline a neumí je přeložit ani přepsat.
@@ -1950,13 +1984,6 @@ function notificationDetailNodes(item, copy) {
   hash.textContent = `${item.scope?.relative_path ?? ""} · ${item.payload?.short_hash ?? ""}`;
   nodes.push(hash);
   return nodes;
-}
-
-function notificationScaleLabel(payload) {
-  const files = payload?.files_changed ?? 0;
-  if (files === 0) return "bez změny souborů";
-  const fileLabel = files === 1 ? "1 soubor" : files >= 2 && files <= 4 ? `${files} soubory` : `${files} souborů`;
-  return `${fileLabel} · +${payload?.insertions ?? 0} / −${payload?.deletions ?? 0}`;
 }
 
 function renderNotificationsBadge() {

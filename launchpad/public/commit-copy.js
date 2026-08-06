@@ -1,16 +1,19 @@
 // Lidské texty commitů (CAC-0095). Launchpad je builder surface pro Kolegy,
 // kteří nemusejí umět Git — commit message je ale psaný pro programátory:
-// `feat(launchpad): add bell`, `Merge pull request #15 from org/codex/...`,
-// seznam cest, `+111 / −44`. Tenhle modul z toho dělá větu v češtině.
+// `feat(launchpad): add bell`, `Merge pull request #15 from org/codex/...`.
+// Tenhle modul z toho vytáhne to, co jde říct spolehlivě.
 //
 // **Hranice, kterou tenhle modul nepřekračuje: nepřekládá a nevymýšlí.**
 // Launchpad běží lokálně a offline; není tu žádný model, který by uměl
 // anglickou větu autora převést do češtiny. Česky se proto říká jen to, co
-// jde spolehlivě odvodit ze struktury commitu — druh změny, kde, jak velká
-// a čeho se týkala. Vlastní slova autora se ukazují beze změny a označená
-// jako jeho, ne přebarvená na češtinu, která by tvrdila víc, než víme.
+// jde odvodit ze struktury: druh změny, její původ a téma podle složek, ve
+// kterých se soubory měnily. Vlastní slova autora se ukazují beze změny
+// a označená jako jeho, ne přebarvená na češtinu, která by tvrdila víc,
+// než víme.
 //
 // Čistá prezentační vrstva: žádný git, žádné IO, žádná org-specific pravda.
+
+import { TOPIC_LABELS, VERBS } from "./commit-glossary.js";
 
 // Conventional Commits prefix → co to pro člověka znamená.
 const CHANGE_KINDS = {
@@ -25,17 +28,6 @@ const CHANGE_KINDS = {
   build: "Sestavení aplikace",
   ci: "Automatické kontroly",
   revert: "Vrácení dřívější změny",
-};
-
-const FILE_KIND_LABELS = {
-  docs: "dokumentace",
-  styles: "styly",
-  images: "obrázky",
-  config: "nastavení",
-  pages: "stránky",
-  code: "kód",
-  tests: "testy",
-  other: "ostatní soubory",
 };
 
 // „Merge pull request #15 from org/branch" nikomu nic neřekne. Skutečný název
@@ -93,61 +85,32 @@ export function humanCommitCopy(payload = {}, description = "") {
   };
 }
 
-// Věta „co se stalo" — to jediné, co umíme říct česky a pravdivě.
-export function humanChangeSentence(payload = {}, copy = {}, scopeName = "") {
-  const kind = copy.kind ?? "Změna";
-  const where = copy.area ? `v části ${copy.area}` : scopeName ? `v modulu ${scopeName}` : "";
-  const via = copy.pullRequest ? ` Přišlo přes schválený návrh #${copy.pullRequest}.` : "";
-  return `${kind}${where ? " " + where : ""}.${via}`;
+// Štítek druhu změny v češtině: z Conventional Commits prefixu, jinak
+// z anglického slovesa na začátku. Když ani jedno, vrací null — vymýšlet
+// kategorii pro cizí práci je horší než žádná.
+export function changeKindLabel(payload = {}, copy = {}) {
+  if (copy.kind) return copy.kind;
+  const title = (copy.title ?? payload.subject ?? "").trim();
+  if (!title) return null;
+  const withoutArea = title.replace(/^[^:]{2,40}:\s*/, "");
+  const first = withoutArea.split(/\s+/)[0]?.toLowerCase();
+  return VERBS[first] ?? null;
 }
 
-// Věta „jak velká změna to byla" — rozsah a čeho se týkala.
-export function humanScopeSentence(payload = {}) {
-  const files = payload.files_changed ?? 0;
-  if (files === 0) {
-    return "Beze změny souborů — nejspíš jen sloučení práce z jiné větve.";
-  }
-  const kinds = topFileKinds(payload.file_kinds);
-  const kindPart = kinds ? `, ${kinds}` : "";
-  const changed = agree(files, ["Upraven", "Upraveny", "Upraveno"], ["soubor", "soubory", "souborů"]);
-  return `${changed}${kindPart}. ${linesSentence(payload)}`;
+// Odkud změna přišla — jediná další věc, kterou umíme říct spolehlivě.
+export function changeOriginLabel(copy = {}) {
+  return copy.pullRequest ? `přes schválený návrh #${copy.pullRequest}` : null;
 }
 
-// Nejvýraznější druhy souborů; víc než dva už je výčet, ne shrnutí.
-export function topFileKinds(fileKinds) {
-  const entries = Object.entries(fileKinds ?? {})
-    .filter(([, count]) => count > 0)
-    .sort((a, b) => b[1] - a[1]);
-  if (entries.length === 0) return "";
-  const labels = entries.slice(0, 2).map(([kind]) => FILE_KIND_LABELS[kind] ?? FILE_KIND_LABELS.other);
-  const prefix = entries.length > 2 ? "hlavně " : "";
-  return `${prefix}${labels.join(" a ")}`;
+// Čeho se změna týkala. Neodvozuje se z textu commitu (tam jsou vlastní jména,
+// která přeložit nejde), ale ze složek, ve kterých se soubory měnily.
+export function topicLabel(payload = {}) {
+  const topics = (payload.topics ?? []).map(humanTopic).filter(Boolean);
+  return topics.length > 0 ? topics.join(" a ") : null;
 }
 
-const ADDED_VERBS = ["Přibyl", "Přibyly", "Přibylo"];
-const REMOVED_VERBS = ["Ubyl", "Ubyly", "Ubylo"];
-const LINE_NOUNS = ["řádek", "řádky", "řádků"];
-
-function linesSentence(payload) {
-  const added = payload.insertions ?? 0;
-  const removed = payload.deletions ?? 0;
-  if (added === 0 && removed === 0) return "Počet řádků se nezměnil.";
-  if (removed === 0) return `${agree(added, ADDED_VERBS, LINE_NOUNS)}.`;
-  if (added === 0) return `${agree(removed, REMOVED_VERBS, LINE_NOUNS)}.`;
-  return `${agree(added, ADDED_VERBS, LINE_NOUNS)}, ubylo ${removed}.`;
-}
-
-// Česká shoda čísla: 1 soubor / 2–4 soubory / 5+ souborů.
-export function countLabel(count, one, few, many) {
-  if (count === 1) return `1 ${one}`;
-  if (count >= 2 && count <= 4) return `${count} ${few}`;
-  return `${count} ${many}`;
-}
-
-// Sloveso se v češtině musí shodnout se skloněným počtem: „Upraven 1 soubor",
-// „Upraveny 3 soubory", „Upraveno 21 souborů". Bez toho věta drhne.
-export function agree(count, [verbOne, verbFew, verbMany], [one, few, many]) {
-  if (count === 1) return `${verbOne} 1 ${one}`;
-  if (count >= 2 && count <= 4) return `${verbFew} ${count} ${few}`;
-  return `${verbMany} ${count} ${many}`;
+function humanTopic(segment) {
+  const key = String(segment ?? "").trim();
+  if (!key) return null;
+  return TOPIC_LABELS[key.toLowerCase()] ?? key.replace(/[-_]+/g, " ");
 }

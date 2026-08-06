@@ -7,6 +7,7 @@ import {
   buildNotifications,
   classifyActor,
   classifyFileKinds,
+  deriveTopics,
   parseCoAuthors,
   parseNumstat,
 } from "./notifications-lib.mjs";
@@ -227,4 +228,29 @@ test("numstat parser zvládne binární soubor i prázdný vstup", () => {
   expect(parsed.insertions).toBe(3);
   expect(parsed.deletions).toBe(1);
   expect(parseNumstat("")).toEqual({ files: [], insertions: 0, deletions: 0 });
+});
+
+test("téma se odvodí z nejčastější a nejkonkrétnější složky", () => {
+  // `content/brand/logo` → „logo", ne „brand": při shodě počtu vyhrává
+  // hlubší, tedy konkrétnější složka.
+  expect(
+    deriveTopics([
+      "content/brand/logo/assets.json",
+      "content/brand/logo/logo.md",
+      "content/brand/logo/pixel/symbol-16.svg",
+    ]),
+  ).toEqual(["logo"]);
+
+  // Složka pojmenovaná jako modul téma neupřesňuje — modul je vidět o řádek
+  // výš. Diakritika ani pomlčky v porovnání nevadí.
+  expect(
+    deriveTopics(["design-system/brand/logo/logo.md"], { exclude: ["Design system"] }),
+  ).toEqual(["logo"]);
+
+  // Obecné složky (app, src, pages) se za téma nepovažují.
+  expect(deriveTopics(["app/src/pages/brand/pozicovani.astro"])).toEqual(["brand"]);
+
+  // Soubory v kořeni téma nedávají — a nic se nevymýšlí.
+  expect(deriveTopics(["README.md", "AGENTS.md"])).toEqual([]);
+  expect(deriveTopics([])).toEqual([]);
 });

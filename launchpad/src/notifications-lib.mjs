@@ -138,6 +138,55 @@ export function classifyFileKinds(files) {
   return kinds;
 }
 
+// Téma změny se nedá vyčíst z anglické commit message, ale dá se z cest.
+// V tomhle workspace jsou složky pojmenované podle obsahu a často rovnou
+// česky: `content/brand/logo/`, `content/brand/socialni-site/`. Vlastní jména
+// produktů a zákazníků, na kterých ztroskotal překlad textu, tady nevadí —
+// složka `logo` je `logo` bez ohledu na to, čí značky se týká.
+const GENERIC_SEGMENTS = new Set([
+  "app", "src", "public", "dist", "build", "lib", "scripts", "content",
+  "pages", "layouts", "components", "styles", "static", "assets", "node_modules",
+  "test", "tests", "__tests__", "spec", "docs", "doc",
+  "v1", "v2", "v3", "index", "main", "data", "generated", "config",
+  "workspace", "organizations", "apps", "packages", "web", "site", "modules",
+]);
+
+function slug(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+// Jen jedno téma, ne dvě. Dvě dávala věty jako „týká se: michaelblazicek
+// a team" — druhé v pořadí je skoro vždy šum, ne upřesnění.
+export function deriveTopics(files, { limit = 1, exclude = [] } = {}) {
+  const excluded = new Set(exclude.map(slug).filter(Boolean));
+  const stats = new Map();
+  for (const file of files ?? []) {
+    const segments = String(file).split("/").slice(0, -1);
+    segments.forEach((segment, depth) => {
+      const key = segment.trim();
+      const normalized = slug(key);
+      if (!key || key.startsWith(".") || !normalized) return;
+      if (GENERIC_SEGMENTS.has(key.toLowerCase())) return;
+      // Složka pojmenovaná stejně jako modul téma neupřesňuje — modul už je
+      // napsaný v řádku nad shrnutím („…změnil·a modul Design system").
+      if (excluded.has(normalized)) return;
+      const current = stats.get(key) ?? { count: 0, depth: 0 };
+      stats.set(key, { count: current.count + 1, depth: Math.max(current.depth, depth) });
+    });
+  }
+  return [...stats.entries()]
+    // Nejčastější vyhrává; při shodě ta hlubší složka, protože je konkrétnější
+    // (`content/brand/logo` → „logo", ne „brand").
+    .sort((a, b) => b[1].count - a[1].count || b[1].depth - a[1].depth)
+    .slice(0, limit)
+    .map(([segment]) => segment);
+}
+
 async function readRepoNotifications(repo, { commitLimit }) {
   if (!existsSync(repo.absolute_path)) return [];
   const format =
@@ -209,6 +258,7 @@ function toNotification(record, repo) {
       files: files.slice(0, PAYLOAD_FILE_LIMIT),
       files_truncated: Math.max(0, files.length - PAYLOAD_FILE_LIMIT),
       file_kinds: classifyFileKinds(files),
+      topics: deriveTopics(files, { exclude: [repo.module, repo.name, repo.company] }),
       insertions,
       deletions,
     },

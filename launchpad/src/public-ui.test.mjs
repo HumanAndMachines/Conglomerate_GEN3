@@ -508,13 +508,22 @@ test("CAC-0095: zvoneček nese actor, scope a payload a respektuje izolaci", asy
   expect(js).toContain("function notificationItem");
   expect(js).toContain("item.actor?.name");
   expect(js).toContain("změnil·a modul");
-  expect(js).toContain("function notificationScaleLabel");
 
   // Commit se ukazuje nejdřív lidsky a teprve potom slovy autora.
   expect(js).toContain('from "./commit-copy.js"');
   expect(js).toContain("humanCommitCopy(item.payload, item.payload?.description)");
-  expect(js).toContain("humanChangeSentence");
-  expect(js).toContain("humanScopeSentence");
+  expect(js).toContain("changeKindLabel");
+  expect(js).toContain("changeOriginLabel");
+  // Téma změny se bere ze složek, ne z textu commitu.
+  expect(js).toContain("topicLabel(item.payload)");
+  // Monogram má barvu odvozenou ze jména autora, sdíleným helperem s logem
+  // Organizace — ne druhou kopií hashovací smyčky.
+  expect(js).toContain("function stringHue");
+  expect(js).toContain('avatar.style.setProperty("--avatar-hue"');
+  expect(css).toContain("hsl(var(--avatar-hue, 250)");
+  expect(css).toContain('[data-theme="dark"] .notification-avatar');
+  // Počty souborů a řádků v notifikaci nejsou — neříkají, co se stalo.
+  expect(js).not.toContain("notificationScaleLabel");
   expect(js).toContain("Vlastními slovy autora");
   expect(css).toContain(".notification-human-summary");
 

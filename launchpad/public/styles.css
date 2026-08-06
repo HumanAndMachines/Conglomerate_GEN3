@@ -3465,6 +3465,8 @@ button.runtime-stage.is-available:hover {
 }
 
 /* Iniciály místo fotky: Launchpad zná jen autora commitu, ne profil Kolegy. */
+/* Barva kolečka je odvozená ze jména autora (--avatar-hue), takže je pro
+   každého jiná a vždycky stejná. Stejný mechanismus jako u loga Organizace. */
 .notification-avatar {
   display: flex;
   align-items: center;
@@ -3472,11 +3474,18 @@ button.runtime-stage.is-available:hover {
   width: 1.9rem;
   height: 1.9rem;
   border-radius: var(--r-pill);
-  background: var(--bg-subtle);
-  border: 1px solid var(--line);
-  color: var(--text-muted);
+  background: hsl(var(--avatar-hue, 250) 62% 93%);
+  border: 1px solid hsl(var(--avatar-hue, 250) 45% 78%);
+  color: hsl(var(--avatar-hue, 250) 52% 32%);
   font-size: 0.68rem;
   font-weight: 800;
+}
+/* V tmavém režimu by světlá kolečka svítila; drží se stejný odstín, jen
+   obrácený kontrast. */
+[data-theme="dark"] .notification-avatar {
+  background: hsl(var(--avatar-hue, 250) 38% 24%);
+  border-color: hsl(var(--avatar-hue, 250) 35% 38%);
+  color: hsl(var(--avatar-hue, 250) 65% 86%);
 }
 /* Agent má obrys, ne jinou barvu — druhá barevná rampa by šla proti identitě. */
 .notification-avatar[data-kind="agent"] {

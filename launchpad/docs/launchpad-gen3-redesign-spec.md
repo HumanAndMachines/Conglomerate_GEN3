@@ -657,15 +657,28 @@ klasifikaci chyb do lidského jazyka (`classifyOpenError`).
   payload nese předmět commitu, rozsah (soubory, +/−), popis, dotčené cesty
   a spoluautory z `Co-Authored-By`. Zdroj je stejný bounded, read-only
   `git log` v neinteraktivním git prostředí, obohacený o `--numstat`.
-  - **Commit se ukazuje nejdřív lidsky** (`public/commit-copy.js`). Sbalený
-    řádek nese pročištěný název (bez `feat(scope):` prefixu a bez „Merge pull
-    request #15 from org/branch" — skutečný titulek merge commitu se bere
-    z jeho těla). Detail začíná dvěma českými větami odvozenými ze struktury
-    commitu: druh a místo změny, a její rozsah včetně druhu souborů
-    (`payload.file_kinds`, počítané nad úplným seznamem, ne nad oříznutou
-    pěticí). Teprve pod nimi jsou **vlastní slova autora, beze změny a jako
-    jeho** — Launchpad běží offline, nemá čím překládat, a přebarvit anglickou
-    větu na češtinu by tvrdilo víc, než víme.
+  - **Commit se ukazuje nejdřív lidsky** (`public/commit-copy.js`,
+    `public/commit-glossary.js`). Sbalený řádek nese pročištěný název (bez
+    `feat(scope):` prefixu a bez „Merge pull request #15 from org/branch" —
+    skutečný titulek merge commitu se bere z jeho těla) a pod ním český štítek
+    `druh změny · téma · původ`. Detail totéž rozvine do věty a **teprve pod ní
+    jsou vlastní slova autora, beze změny a označená jako jeho**.
+  - **Co se překládá a co ne — je to měřené.** Slovník celých frází
+    („official logo usage" → „pravidel pro používání loga") byl vyzkoušen
+    a na 410 skutečných commitech tohoto workspace trefil 9 z nich: objekty
+    jsou skoro vždy vlastní jména produktů, značek a zákazníků. Zůstalo proto
+    jen to, co je spolehlivé:
+    - **druh změny** z Conventional Commits prefixu, jinak z anglického
+      slovesa (`VERBS`, sedí u 215 ze 410),
+    - **téma** z názvů složek, ve kterých se soubory měnily
+      (`payload.topics`, `deriveTopics`) — `content/brand/logo/…` → „logo".
+      Jedno téma, ne dvě; složka pojmenovaná jako modul se vynechává.
+    - Když ani jedno nesedí, **nic se nevymýšlí** a ukáže se původní věta.
+    Kořenová příčina je jinde: `docs/language-contract.md` už dnes vyžaduje
+    české commit messages a splňuje to 38 ze 410.
+  - **Monogram autora má barvu odvozenou z jeho jména** (`stringHue`, sdílené
+    s logem Organizace). Hash se násobí zlatým úhlem — prosté `% 360` dávalo
+    podobným jménům skoro stejný odstín.
   - **Typ actora je odhad, ne evidence.** `actor.kind` (`human` / `agent`) se
     odvozuje z podpisu commitu (`kind_source: "heuristic"`) a heuristika je
     schválně úzká — skrytý GitHub e-mail z Kolegy Agenta nedělá. Přesná
