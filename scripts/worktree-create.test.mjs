@@ -70,6 +70,74 @@ test("allocation failure before ownership marker leaves the new branch for expli
   expect(state.branch).toBe(true);
 });
 
+test.each([
+  {
+    name: "exact unlinked tool-owned branch is reused",
+    marker: "worktree-create:retry-token",
+    branchHead: "0123456789012345678901234567890123456789",
+    baseHead: "0123456789012345678901234567890123456789",
+    linked: false,
+    ok: true,
+    phrase: null,
+  },
+  {
+    name: "foreign marker is rejected",
+    marker: "foreign-owner",
+    branchHead: "0123456789012345678901234567890123456789",
+    baseHead: "0123456789012345678901234567890123456789",
+    linked: false,
+    ok: false,
+    phrase: "ownership marker",
+  },
+  {
+    name: "changed branch head is rejected",
+    marker: "launchpad-worktree-create:retry-token",
+    branchHead: "1111111111111111111111111111111111111111",
+    baseHead: "0123456789012345678901234567890123456789",
+    linked: false,
+    ok: false,
+    phrase: "není přesně",
+  },
+  {
+    name: "currently attached branch is rejected",
+    marker: "worktree-create:retry-token",
+    branchHead: "0123456789012345678901234567890123456789",
+    baseHead: "0123456789012345678901234567890123456789",
+    linked: true,
+    ok: false,
+    phrase: "linked worktree",
+  },
+])("owned branch retry: $name", ({ marker, branchHead, baseHead, linked, ok, phrase }) => {
+  const calls = [];
+  const result = allocateOwnedWorktreeBranch({
+    primaryRoot: "/repo",
+    branch: "agent/CAC-0008-fixture",
+    baseRef: "origin/main",
+    git: (_cwd, args) => {
+      calls.push(args);
+      if (args[0] === "rev-parse" && args.at(-1) === "origin/main") {
+        return { status: 0, stdout: baseHead };
+      }
+      if (args[0] === "rev-parse") return { status: 0, stdout: branchHead };
+      if (args[0] === "config" && args.includes("--get")) return { status: 0, stdout: marker };
+      if (args[0] === "worktree" && args[1] === "list") {
+        return {
+          status: 0,
+          stdout: linked
+            ? `worktree /repo/.worktrees/root/CAC-0008-fixture\0branch refs/heads/agent/CAC-0008-fixture\0\0`
+            : "",
+        };
+      }
+      return { status: 0, stdout: "" };
+    },
+  });
+
+  expect(result.ok).toBe(ok);
+  if (ok) expect(result).toMatchObject({ reused: true, ownerMarker: marker, branchHead });
+  if (phrase) expect(result.message).toContain(phrase);
+  expect(calls.some((args) => args[0] === "branch")).toBe(false);
+});
+
 const primaryRoot = "/repo";
 const branch = "agent/CAC-0008-fixture";
 const branchHead = "0123456789012345678901234567890123456789";
@@ -81,7 +149,7 @@ test.each([
     name: "worktree add failed before registration",
     worktreeCreated: false,
     initial: { branch: true, registered: false, path: false, marker: ownerMarker },
-    expectBranch: false,
+    expectBranch: true,
     expectPath: false,
     phrase: "owned branch",
   },
@@ -89,7 +157,7 @@ test.each([
     name: "Windows leaves the directory after successful git removal",
     worktreeCreated: true,
     initial: { branch: true, registered: true, path: true, marker: ownerMarker },
-    expectBranch: false,
+    expectBranch: true,
     expectPath: false,
     phrase: "owned worktree vrácen",
   },
@@ -107,7 +175,7 @@ test.each([
     initial: { branch: true, registered: true, path: false, marker: ownerMarker },
     expectBranch: true,
     expectPath: false,
-    phrase: "stále ji používá linked worktree",
+    phrase: "používá ji linked worktree",
   },
 ])("rollback table: $name", ({ worktreeCreated, initial, expectBranch, expectPath, phrase }) => {
   const state = { ...initial };
@@ -164,47 +232,29 @@ test.each([
   expect(report).toContain(phrase);
   expect(state.branch).toBe(expectBranch);
   expect(state.path).toBe(expectPath);
-  if (!expectBranch) {
-    expect(calls).toContainEqual(["update-ref", "-d", `refs/heads/${branch}`, branchHead]);
-    expect(calls).toContainEqual([
-      "config",
-      "--local",
-      "--fixed-value",
-      "--unset-all",
-      `branch.${branch}.description`,
-      ownerMarker,
-    ]);
-  }
+  expect(calls.some((args) => args[0] === "update-ref")).toBe(false);
+  expect(calls.some((args) => args[0] === "config" && args.includes("--unset-all"))).toBe(false);
 });
 
-test("marker cleanup cannot remove a replacement written after the ownership read", () => {
+test("rollback cannot delete a branch attached after the ownership scan", () => {
   const state = {
     branch: true,
     marker: ownerMarker,
-    markerReads: 0,
+    registered: false,
   };
   const calls = [];
   const git = (_cwd, args) => {
     calls.push(args);
-    if (args[0] === "config" && args.includes("--get")) {
-      state.markerReads += 1;
-      const observed = state.marker;
-      if (state.markerReads === 3) state.marker = "replacement-owner";
-      return { status: 0, stdout: observed };
-    }
-    if (args[0] === "config" && args.includes("--unset-all")) {
-      const exactValue = args.at(-1);
-      if (state.marker !== exactValue) return { status: 5, stdout: "" };
-      state.marker = null;
-      return { status: 0, stdout: "" };
-    }
+    if (args[0] === "config" && args.includes("--get")) return { status: 0, stdout: state.marker };
     if (args[0] === "rev-parse") {
       return { status: state.branch ? 0 : 1, stdout: state.branch ? branchHead : "" };
     }
-    if (args[0] === "worktree" && args[1] === "list") return { status: 0, stdout: "" };
-    if (args[0] === "update-ref" && args[1] === "-d") {
-      state.branch = false;
-      return { status: 0, stdout: "" };
+    if (args[0] === "worktree" && args[1] === "list") {
+      const stdout = state.registered
+        ? `worktree /other\0branch refs/heads/${branch}\0\0`
+        : "";
+      state.registered = true;
+      return { status: 0, stdout };
     }
     return { status: 0, stdout: "" };
   };
@@ -221,16 +271,11 @@ test("marker cleanup cannot remove a replacement written after the ownership rea
   });
 
   expect(report).toContain("owned branch");
-  expect(state.branch).toBe(false);
-  expect(state.marker).toBe("replacement-owner");
-  expect(calls).toContainEqual([
-    "config",
-    "--local",
-    "--fixed-value",
-    "--unset-all",
-    `branch.${branch}.description`,
-    ownerMarker,
-  ]);
+  expect(state.branch).toBe(true);
+  expect(state.marker).toBe(ownerMarker);
+  expect(state.registered).toBe(true);
+  expect(calls.some((args) => args[0] === "update-ref")).toBe(false);
+  expect(calls.some((args) => args[0] === "config" && args.includes("--unset-all"))).toBe(false);
 });
 
 test("rollback never removes a symlinked or noncanonical worktree path", () => {
@@ -264,7 +309,6 @@ test("Windows rollback canonicalizes Git forward slashes before exact path compa
   let branchPresent = true;
   const git = (_cwd, args) => {
     if (args[0] === "config" && args.includes("--get")) return { status: 0, stdout: ownerMarker };
-    if (args[0] === "config" && args.includes("--unset-all")) return { status: 0, stdout: "" };
     if (args[0] === "rev-parse") {
       return { status: branchPresent ? 0 : 1, stdout: branchPresent ? branchHead : "" };
     }
@@ -278,10 +322,6 @@ test("Windows rollback canonicalizes Git forward slashes before exact path compa
     }
     if (args[0] === "worktree" && args[1] === "remove") {
       registered = false;
-      return { status: 0, stdout: "" };
-    }
-    if (args[0] === "update-ref") {
-      branchPresent = false;
       return { status: 0, stdout: "" };
     }
     return { status: 0, stdout: "" };
@@ -303,5 +343,5 @@ test("Windows rollback canonicalizes Git forward slashes before exact path compa
 
   expect(report).toContain("owned worktree vrácen");
   expect(pathPresent).toBe(false);
-  expect(branchPresent).toBe(false);
+  expect(branchPresent).toBe(true);
 });
