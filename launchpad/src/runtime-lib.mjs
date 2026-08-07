@@ -300,6 +300,8 @@ export function createRuntimeManager({
       stopFinalizationReady: false,
       stopFinalizationOptions: null,
       stopFinalizationPromise: null,
+      ownerProofCaptured: false,
+      ownerProof: null,
       outputPipes: [],
     };
     managedProcesses.set(runtimeKey, record);
@@ -717,7 +719,7 @@ export function createRuntimeManager({
     record.stopping = true;
     resetStopAttempt(record);
     if (record.ownerProofWritePromise) {
-      await record.ownerProofWritePromise;
+      await Promise.allSettled([record.ownerProofWritePromise]);
     }
     try {
       await writeState(runtimeKey, {
@@ -731,6 +733,7 @@ export function createRuntimeManager({
         started_at: record.startedAt,
         updated_at: new Date().toISOString(),
         log_path: relativeRuntimePath(record.logPath),
+        ...windowsRuntimeOwnerProofState(record.ownerProof),
       });
       await appendLog(record.logPath, `[launchpad] ${new Date().toISOString()} stop ${app.id}\n`);
     } catch (error) {
@@ -905,6 +908,7 @@ export function createRuntimeManager({
         log_path: relativeRuntimePath(record.logPath),
         last_error: error?.message ?? String(error),
         failure_kind: failureKind,
+        ...windowsRuntimeOwnerProofState(record.ownerProof),
       });
     } catch {
       // Původní Stop chyba je pro volajícího směrodatná. Managed record se
@@ -1071,6 +1075,7 @@ export function createRuntimeManager({
       stop_instance_id: instanceId,
       updated_at: new Date().toISOString(),
       log_path: relativeRuntimePath(logPath),
+      ...windowsRuntimeOwnerProofState(persistedState?.owner_proof),
     });
     await appendLog(logPath, `[launchpad] ${new Date().toISOString()} stop adopted ${app.id} pid=${expectedPid} port=${app.port}\n`);
 
@@ -1554,7 +1559,7 @@ export function createRuntimeManager({
       || state.app_id !== app.id
       || state.runtime_key !== runtimeKeyForApp(app)
       || state.port !== app.port
-      || !["starting", "healthy", "stopping"].includes(state.status)
+      || !stateAllowsWindowsRuntimeOwnerProof(state)
     ) {
       return owner;
     }
@@ -1663,6 +1668,7 @@ export function createRuntimeManager({
     // Mezi posledním guardem a přiřazením promise nesmí přibýt await: Stop i
     // exit handler pak spolehlivě počkají na tento už rozběhnutý zápis a jejich
     // terminální stav ho vždy přepíše až potom.
+    record.ownerProof = ownerProof;
     const proofWritePromise = writeState(record.runtimeKey, {
       ...state,
       updated_at: capturedAt,
@@ -2252,6 +2258,16 @@ function validWindowsRuntimeOwnerProof(proof) {
     }
   }
   return true;
+}
+
+function windowsRuntimeOwnerProofState(proof) {
+  return validWindowsRuntimeOwnerProof(proof) ? { owner_proof: proof } : {};
+}
+
+function stateAllowsWindowsRuntimeOwnerProof(state) {
+  if (["starting", "healthy", "stopping"].includes(state?.status)) return true;
+  return state?.status === "unhealthy"
+    && ["stop_preparation_failed", "stop_signal_failed"].includes(state?.failure_kind);
 }
 
 function normalizeWindowsProcessIdentity(identity) {
