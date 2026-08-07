@@ -125,8 +125,11 @@ export async function createWorktreeFromPlan({
       code: "worktree_already_exists",
     });
   }
-  await assertBranchDoesNotExist(repo, normalizedBranch);
-  const branchAllocation = await allocateOwnedBranch({ repo, branch: normalizedBranch });
+  const branchAllocation = await allocateOwnedBranch({
+    repo,
+    branch: normalizedBranch,
+    baseRef: repo.expected_branch ?? "main",
+  });
   if (!branchAllocation.ok) {
     throw new WorktreeActionError(
       `Git branch allocation selhala: ${branchAllocation.message}. Nic se neuklízí bez důkazu vlastnictví.`,
@@ -144,12 +147,11 @@ export async function createWorktreeFromPlan({
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
   if (!added.ok) {
-    const rollback = await rollbackOwnedBranch({
+    const rollback = await preserveOwnedBranchForRetry({
       repo,
       branch: normalizedBranch,
       ownerMarker: branchAllocation.ownerMarker,
       branchHead: branchAllocation.branchHead,
-      worktreePath: paths.absoluteWorktreePath,
     });
     const residualPath = existsSync(paths.absoluteWorktreePath)
       ? `neověřená cesta ${paths.absoluteWorktreePath} zůstala nedotčena`
@@ -415,9 +417,50 @@ function ownedSidecarStagingPath(sidecarPath, error) {
     : null;
 }
 
-async function allocateOwnedBranch({ repo, branch }) {
+async function allocateOwnedBranch({ repo, branch, baseRef }) {
+  const existingHead = await runGit(["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], {
+    cwd: repo.absolute_path,
+    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+  });
+  if (existingHead.ok) {
+    const [marker, baseHead, linked] = await Promise.all([
+      runGit(["config", "--local", "--get", `branch.${branch}.description`], {
+        cwd: repo.absolute_path,
+        timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+      }),
+      runGit(["rev-parse", "--verify", baseRef], {
+        cwd: repo.absolute_path,
+        timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+      }),
+      runGit(["worktree", "list", "--porcelain", "-z"], {
+        cwd: repo.absolute_path,
+        timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+      }),
+    ]);
+    const ownerMarker = marker.stdout.trim();
+    const branchHead = existingHead.stdout.trim();
+    if (!marker.ok || !isCreateLaneOwnerMarker(ownerMarker)) {
+      return { ok: false, message: "existující branch nemá platný worktree-create ownership marker" };
+    }
+    if (!baseHead.ok || branchHead !== baseHead.stdout.trim()) {
+      return { ok: false, message: `existující owned branch není přesně na ${baseRef}` };
+    }
+    if (!linked.ok) {
+      return { ok: false, message: "existující owned branch nelze ověřit proti linked worktrees" };
+    }
+    if (registeredWorktreeUsesBranch(linked.stdout, branch)) {
+      return { ok: false, message: "existující owned branch už používá linked worktree" };
+    }
+    return { ok: true, ownerMarker, branchHead, reused: true };
+  }
+  if (existingHead.exitCode !== 1) {
+    return {
+      ok: false,
+      message: `existenci branche nelze bezpečně ověřit (${existingHead.stderr || existingHead.error || existingHead.stdout})`,
+    };
+  }
   const ownerMarker = `launchpad-worktree-create:${randomUUID()}`;
-  const created = await runGit(["branch", "--no-track", branch], {
+  const created = await runGit(["branch", "--no-track", branch, baseRef], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
@@ -444,7 +487,11 @@ async function allocateOwnedBranch({ repo, branch }) {
       message: `ownership marker nelze zapsat: ${marked.stderr || marked.error || marked.stdout}; branch ${branch}@${branchHead} zůstává pro vědomý recovery handoff, protože ji mohl převzít jiný linked worktree`,
     };
   }
-  return { ok: true, ownerMarker, branchHead };
+  return { ok: true, ownerMarker, branchHead, reused: false };
+}
+
+function isCreateLaneOwnerMarker(value) {
+  return /^(?:worktree-create|launchpad-worktree-create):[A-Za-z0-9._-]+$/.test(value ?? "");
 }
 
 async function ownedBranchStatus({ repo, branch, ownerMarker, branchHead }) {
@@ -463,53 +510,18 @@ async function ownedBranchStatus({ repo, branch, ownerMarker, branchHead }) {
   return { owned: true };
 }
 
-async function rollbackOwnedBranch({ repo, branch, ownerMarker, branchHead, worktreePath = null }) {
+async function preserveOwnedBranchForRetry({ repo, branch, ownerMarker, branchHead }) {
   const ownership = await ownedBranchStatus({ repo, branch, ownerMarker, branchHead });
-  if (!ownership.owned) return `branch se nemaže: ${ownership.reason}`;
+  if (!ownership.owned) return `branch zůstává nedotčená: ${ownership.reason}`;
   const listed = await runGit(["worktree", "list", "--porcelain", "-z"], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
-  if (!listed.ok) return "branch se nemaže: linked worktrees nelze ověřit";
+  if (!listed.ok) return "owned branch zůstává zachována; linked worktrees nelze ověřit";
   if (registeredWorktreeUsesBranch(listed.stdout, branch)) {
-    return "branch se nemaže: stále ji používá linked worktree";
+    return "owned branch zůstává zachována: používá ji linked worktree";
   }
-  if (worktreePath && existsSync(worktreePath)) {
-    return `branch se nemaže: worktree cesta ${worktreePath} stále existuje`;
-  }
-  const deleted = await runGit(["update-ref", "-d", `refs/heads/${branch}`, branchHead], {
-    cwd: repo.absolute_path,
-    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
-  });
-  if (!deleted.ok) {
-    return `branch se nemaže: exact compare-and-delete selhal (${deleted.stderr || deleted.error || deleted.stdout})`;
-  }
-  const verified = await runGit(["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], {
-    cwd: repo.absolute_path,
-    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
-  });
-  if (verified.ok) return "branch se nemaže: exact ref po compare-and-delete stále existuje";
-  const marker = await runGit(["config", "--local", "--get", `branch.${branch}.description`], {
-    cwd: repo.absolute_path,
-    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
-  });
-  if (marker.ok && marker.stdout.trim() !== ownerMarker) {
-    return `owned branch ${branch}@${branchHead} vrácena; změněný ownership marker zůstává nedotčený`;
-  }
-  const markerCleanup = await runGit([
-    "config",
-    "--local",
-    "--fixed-value",
-    "--unset-all",
-    `branch.${branch}.description`,
-    ownerMarker,
-  ], {
-    cwd: repo.absolute_path,
-    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
-  });
-  return markerCleanup.ok || markerCleanup.exitCode === 5
-    ? `owned branch ${branch}@${branchHead} vrácena`
-    : `owned branch ${branch}@${branchHead} vrácena; ownership marker nelze odstranit`;
+  return `owned branch ${branch}@${branchHead} zůstává zachována pro bezpečný retry`;
 }
 
 async function canonicalOwnedWorktreePath(worktreePath) {
@@ -606,24 +618,13 @@ async function rollbackOwnedWorktreeCreate({ repo, worktreePath, branch, ownerMa
     }
     await rm(worktreePath, { recursive: true, force: true });
   }
-  const branchRollback = await rollbackOwnedBranch({
+  const branchRollback = await preserveOwnedBranchForRetry({
     repo,
     branch,
     ownerMarker,
     branchHead,
-    worktreePath,
   });
   return `${existsSync(worktreePath) ? "worktree path zůstal" : "owned worktree vrácen"}; ${branchRollback}`;
-}
-
-async function assertBranchDoesNotExist(repo, branch) {
-  const local = await runGit(["show-ref", "--verify", `refs/heads/${branch}`], {
-    cwd: repo.absolute_path,
-    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
-  });
-  if (local.ok) {
-    throw new WorktreeActionError(`Branch už existuje: ${branch}`, { status: 409, code: "branch_already_exists" });
-  }
 }
 
 async function findWorktree(companiesRoot, repo, slug) {
