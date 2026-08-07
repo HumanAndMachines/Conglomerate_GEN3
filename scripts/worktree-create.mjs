@@ -9,14 +9,17 @@
 //     [--created-by <id>] [--dry-run]
 
 import { existsSync } from "node:fs";
-import { mkdir, readdir, writeFile } from "node:fs/promises";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { hostname, userInfo } from "node:os";
 import {
   parseWorktreeCreateArgs,
   PLAN_CODE_PATTERN,
 } from "./worktree-create-contract.mjs";
+import {
+  validateCanonicalMissionControlPlan,
+} from "../.agents/skills/worktree-development-discipline/scripts/worktree-inventory.mjs";
 
 function fail(message) {
   console.error(`fail - worktrees:create: ${message}`);
@@ -55,22 +58,38 @@ async function findPlanFile(authorityRoot, planCode) {
     join(authorityRoot, "mission-control", "db", "data", "mission-control", "plans"),
     join(authorityRoot, "mission-control", "plans"),
   ];
+  const matches = [];
   for (const planRoot of planRoots) {
     if (!existsSync(planRoot)) continue;
     const stack = [planRoot];
     while (stack.length > 0) {
       const current = stack.pop();
-      for (const entry of await readdir(current, { withFileTypes: true })) {
+      const entries = await readdir(current, { withFileTypes: true });
+      entries.sort((left, right) => left.name.localeCompare(right.name));
+      for (const entry of entries) {
         const entryPath = join(current, entry.name);
         if (entry.isDirectory()) {
           stack.push(entryPath);
-        } else if (entry.name.startsWith(`${planCode}-`) && entry.name.endsWith(".yaml")) {
-          return { path: entryPath, relative: relative(authorityRoot, entryPath) };
+        } else if (
+          entry.name.endsWith(".yaml")
+          && (entry.name === `${planCode}.yaml` || entry.name.startsWith(`${planCode}-`))
+        ) {
+          matches.push(entryPath);
         }
       }
     }
   }
-  return null;
+  matches.sort((left, right) => left.localeCompare(right));
+  if (matches.length > 1) {
+    throw new Error(
+      `plán ${planCode} má více kanonických kandidátů: ${matches.join(", ")}`,
+    );
+  }
+  if (matches.length === 0) return null;
+  return {
+    path: matches[0],
+    relative: relative(authorityRoot, matches[0]).split(sep).join("/"),
+  };
 }
 
 async function main() {
@@ -94,12 +113,40 @@ async function main() {
   }
 
   const authorityRoot = resolveAuthorityRoot(primaryRoot);
-  const plan = await findPlanFile(authorityRoot, planCode);
+  let plan;
+  try {
+    plan = await findPlanFile(authorityRoot, planCode);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
   if (!plan) {
     fail(
       `plán ${planCode} nebyl nalezen v authority checkoutu ${authorityRoot}; `
       + "worktree bez vlastnického Mission Control plánu je orphan/invalid (decision 0049).",
     );
+  }
+  let planSource;
+  let planData;
+  try {
+    planSource = await readFile(plan.path, "utf8");
+    planData = Bun.YAML.parse(planSource);
+  } catch (error) {
+    fail(`plán ${plan.relative} nejde načíst: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!planData || typeof planData !== "object" || Array.isArray(planData)) {
+    fail(`plán ${plan.relative} nemá objektový YAML kořen.`);
+  }
+  const planValidation = await validateCanonicalMissionControlPlan(
+    authorityRoot,
+    plan.path,
+    planSource,
+    planData,
+  );
+  if (!planValidation.valid) {
+    fail(`plán ${plan.relative} neprošel kanonickou validací: ${planValidation.error}`);
+  }
+  if (planData.dev_code !== planCode) {
+    fail(`plán ${plan.relative} deklaruje dev_code ${String(planData.dev_code)}, očekáváno ${planCode}.`);
   }
   const planBasename = basename(plan.path, ".yaml");
   const worktreePath = join(primaryRoot, ".worktrees", "root", planBasename);
@@ -198,4 +245,4 @@ async function main() {
   console.log("next - ověř `bun run worktrees:check`; pracuj podle skillu worktree-development-discipline.");
 }
 
-await main();
+if (import.meta.main) await main();
