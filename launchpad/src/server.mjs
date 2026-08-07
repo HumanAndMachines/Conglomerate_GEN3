@@ -36,6 +36,7 @@ import {
   resolveSpaceGbrainVault,
 } from "./personalspace-runtime-lib.mjs";
 import { GbrainAccessError, gbrainFile, gbrainSearch, gbrainTree } from "./gbrain-lib.mjs";
+import { createGenerationSafeResponseCache } from "./apps-response-cache-lib.mjs";
 import { readOrganizationLaunchpadTheme } from "./organization-theme-lib.mjs";
 import { ModuleFolderActionError, createModuleFolderOpener } from "./module-folder-lib.mjs";
 import {
@@ -61,6 +62,9 @@ const principalEmail = resolvePrincipalEmail();
 const runtimeManager = createRuntimeManager({ companiesRoot, launchpadRoot });
 const moduleFolderOpener = createModuleFolderOpener({ companiesRoot, getAppsResponse: buildAppsResponse });
 const gitStatusService = createGitStatusService();
+// Delší než jeden render burst (sync + notifications + usage), kratší než
+// 15s active-window poll: out-of-band pád runtime se nezadrží o další tick.
+const appsResponseCacheTtlMs = 10_000;
 const organizationLogoCandidates = [
   "launchpad/app/v1/web/launchpad-icon.png",
   "launchpad/app/v1/web/logo-square.png",
@@ -69,6 +73,13 @@ const organizationLogoCandidates = [
 ];
 const maxOrganizationLogoBytes = 2 * 1024 * 1024;
 let organizationLogoPaths = new Map();
+const appsResponseCache = createGenerationSafeResponseCache({
+  build: () => buildAppsResponseUncached({ includeGit: false }),
+  ttlMs: appsResponseCacheTtlMs,
+  onCommit: ({ logoPaths }) => {
+    organizationLogoPaths = logoPaths;
+  },
+});
 // Personalspace lane (CAC-0048): úplně oddělený runtime manager pro osobní
 // aplikace. Local-only (server běží jen na 127.0.0.1). Osobní data se nikdy
 // nepropisují do org /api/apps ani /api/doctor shared výstupu.
@@ -111,12 +122,18 @@ if (options.open) {
 
 setInterval(() => {}, 2_147_483_647);
 
-async function buildAppsResponse() {
+async function buildAppsResponse({ force = false } = {}) {
+  const { response } = await appsResponseCache.get({ force });
+  return response;
+}
+
+async function buildAppsResponseUncached({ includeGit = false } = {}) {
   const response = await buildLaunchpadAppsResponse({
     companiesRoot,
     launchpadRoot,
     runtimeManager,
     gitStatusService,
+    includeGit,
   });
   const nextLogoPaths = new Map();
   await Promise.all((response.organizations ?? []).map(async (organization) => {
@@ -130,8 +147,7 @@ async function buildAppsResponse() {
     }
     if (theme) organization.theme = theme;
   }));
-  organizationLogoPaths = nextLogoPaths;
-  return response;
+  return { response, logoPaths: nextLogoPaths };
 }
 
 function resolveOrganizationLogoPath(organization) {
@@ -206,10 +222,13 @@ function isMutatingApiRequest(request, url) {
 async function buildDoctorReport() {
   // Personalspace doctor check je metadata-only a osobní aplikace se nikdy
   // nemíchají do org appsResponse (CAC-0048).
-  const [appsResponse, personalspaceResponse] = await Promise.all([
-    buildAppsResponse(),
+  const [appsEnvelope, personalspaceResponse] = await Promise.all([
+    // Doctor je oddělená background lane, ne first paint: zachovává plný Git
+    // census i tehdy, když /api/apps používá levný includeGit:false snapshot.
+    buildAppsResponseUncached({ includeGit: true }),
     buildPersonalspace({ verifyRepositoryPrivacy: true }),
   ]);
+  const appsResponse = appsEnvelope.response;
   // Podřízené doctory se svolávají i v HTTP lane (decision 0118). Kdyby je
   // spouštěl jen CLI doctor, ukazoval by Launchpad jinou zelenou než terminál —
   // a jedna z těch dvou odpovědí by byla o kontrolách, které nikdo nespustil.
@@ -580,8 +599,8 @@ async function handleGitApiRoute(request, url, route) {
     if (route.kind === "create_worktree") {
       if (request.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
       const payload = await jsonRequestPayload(request, "worktree_create_request");
-      return jsonResponse(
-        await createWorktreeFromPlan({
+      return jsonResponse(await appsResponseCache.runMutation(() =>
+        createWorktreeFromPlan({
           companiesRoot,
           repoKey: route.repoKey,
           planPath: payload.planPath,
@@ -589,42 +608,44 @@ async function handleGitApiRoute(request, url, route) {
           createdBy: payload.createdBy,
           conversationOrigin: payload.conversationOrigin,
           recoveryHandoff: payload.recoveryHandoff,
-        }),
-      );
+        })));
     }
     if (route.kind === "publish_worktree") {
       if (request.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
       const payload = await jsonRequestPayload(request, "worktree_publish_request");
-      return jsonResponse(
-        await publishWorktreeDraft({
+      return jsonResponse(await appsResponseCache.runMutation(() =>
+        publishWorktreeDraft({
           companiesRoot,
           repoKey: route.repoKey,
           slug: route.slug,
           commitMessage: payload.commitMessage,
           publisher: payload.publisher,
           conversationOrigin: payload.conversationOrigin,
-        }),
-      );
+        })));
     }
     if (route.kind === "repo_pull") {
       if (request.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
-      return jsonResponse(await gitStatusService.withRemoteRefreshPaused(() =>
-        buildRepoPullResponse({ companiesRoot, repoKey: route.repoKey, statusService: gitStatusService })));
+      return jsonResponse(await appsResponseCache.runMutation(() =>
+        gitStatusService.withRemoteRefreshPaused(() =>
+          buildRepoPullResponse({ companiesRoot, repoKey: route.repoKey, statusService: gitStatusService }))));
     }
     if (route.kind === "repo_autostash_pull") {
       if (request.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
-      return jsonResponse(await gitStatusService.withRemoteRefreshPaused(() =>
-        buildRepoAutostashPullResponse({ companiesRoot, repoKey: route.repoKey, statusService: gitStatusService })));
+      return jsonResponse(await appsResponseCache.runMutation(() =>
+        gitStatusService.withRemoteRefreshPaused(() =>
+          buildRepoAutostashPullResponse({ companiesRoot, repoKey: route.repoKey, statusService: gitStatusService }))));
     }
     if (route.kind === "repo_rebase_abort") {
       if (request.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
-      return jsonResponse(await gitStatusService.withRemoteRefreshPaused(() =>
-        buildRepoRebaseAbortResponse({ companiesRoot, repoKey: route.repoKey, statusService: gitStatusService })));
+      return jsonResponse(await appsResponseCache.runMutation(() =>
+        gitStatusService.withRemoteRefreshPaused(() =>
+          buildRepoRebaseAbortResponse({ companiesRoot, repoKey: route.repoKey, statusService: gitStatusService }))));
     }
     if (route.kind === "pull_all") {
       if (request.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
-      return jsonResponse(await gitStatusService.withRemoteRefreshPaused(() =>
-        buildPullAllResponse({ companiesRoot, statusService: gitStatusService })));
+      return jsonResponse(await appsResponseCache.runMutation(() =>
+        gitStatusService.withRemoteRefreshPaused(() =>
+          buildPullAllResponse({ companiesRoot, statusService: gitStatusService }))));
     }
     if (request.method !== "GET") return jsonResponse({ error: "method_not_allowed" }, 405);
     if (route.kind === "repos") {
@@ -697,23 +718,24 @@ async function handleRuntimeRoute(request, route) {
       return jsonResponse(await runtimeManager.logs(route.appId));
     }
     if ((route.action === "install" || route.action === "repair") && request.method === "POST") {
-      return jsonResponse(await runtimeManager.install(route.appId, { action: route.action, ...runtimeOptions }));
+      return jsonResponse(await appsResponseCache.runMutation(() =>
+        runtimeManager.install(route.appId, { action: route.action, ...runtimeOptions })));
     }
     if (route.action === "start" && request.method === "POST") {
-      return jsonResponse(await runtimeManager.start(route.appId, runtimeOptions));
+      return jsonResponse(await appsResponseCache.runMutation(() => runtimeManager.start(route.appId, runtimeOptions)));
     }
     if (route.action === "switch" && request.method === "POST") {
-      return jsonResponse(await runtimeManager.switchApp(route.appId, runtimeOptions));
+      return jsonResponse(await appsResponseCache.runMutation(() => runtimeManager.switchApp(route.appId, runtimeOptions)));
     }
     // One-click builder chain (CAC-0044): ensure install → ensure start → URL.
     if (route.action === "open" && request.method === "POST") {
-      return jsonResponse(await runtimeManager.open(route.appId, runtimeOptions));
+      return jsonResponse(await appsResponseCache.runMutation(() => runtimeManager.open(route.appId, runtimeOptions)));
     }
     if (route.action === "stop" && request.method === "POST") {
-      return jsonResponse(await runtimeManager.stop(route.appId, runtimeOptions));
+      return jsonResponse(await appsResponseCache.runMutation(() => runtimeManager.stop(route.appId, runtimeOptions)));
     }
     if (route.action === "restart" && request.method === "POST") {
-      return jsonResponse(await runtimeManager.restart(route.appId, runtimeOptions));
+      return jsonResponse(await appsResponseCache.runMutation(() => runtimeManager.restart(route.appId, runtimeOptions)));
     }
     return jsonResponse({ error: "method_not_allowed" }, 405);
   } catch (error) {
@@ -797,8 +819,9 @@ function startServer(startPort) {
         }
         if (url.pathname === "/api/update" && request.method === "POST") {
           const payload = await request.json().catch(() => ({}));
-          const result = await gitStatusService.withRemoteRefreshPaused(() =>
-            performRootUpdate({ rootPath: companiesRoot, mode: payload?.mode ?? "ff_only" }));
+          const result = await appsResponseCache.runMutation(() =>
+            gitStatusService.withRemoteRefreshPaused(() =>
+              performRootUpdate({ rootPath: companiesRoot, mode: payload?.mode ?? "ff_only" })));
           return jsonResponse(result, result.ok ? 200 : 409);
         }
         if (url.pathname === "/api/apps") return jsonResponse(await buildAppsResponse());
@@ -806,7 +829,7 @@ function startServer(startPort) {
         // organizations/*/company.gen3.json bez ruční editace root manifestu.
         // Nový lokální mount (git clone / doctor sync) se objeví bez restartu.
         if (url.pathname === "/api/sync" && request.method === "POST") {
-          const response = await buildAppsResponse();
+          const response = await buildAppsResponse({ force: true });
           return jsonResponse({
             action: "sync",
             synced_at: response.generated_at,

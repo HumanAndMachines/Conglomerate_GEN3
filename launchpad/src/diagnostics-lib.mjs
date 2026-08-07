@@ -62,6 +62,7 @@ export async function buildLaunchpadAppsResponse({
   runtimeManager = createRuntimeManager({ companiesRoot, launchpadRoot }),
   gitStatusService = null,
   allowMissingOrganizations = false,
+  includeGit = true,
 } = {}) {
   const discovery = await discoverLaunchpadApps(companiesRoot, { allowMissingOrganizations });
   const companiesConfig = await readCompaniesConfig(companiesRoot);
@@ -157,11 +158,15 @@ export async function buildLaunchpadAppsResponse({
     runtime_status: "stopped",
   }));
   const visibleApps = [...apps, ...invalidApps];
-  const gitContext = await buildGitContext({ companiesRoot, gitStatusService });
-  const appsWithGit = visibleApps.map((app) => ({
-    ...app,
-    git: compactGitSummaryForApp(gitContext.reposByKey.get(gitRepoKeyForApp(app))),
-  }));
+  const gitContext = includeGit
+    ? await buildGitContext({ companiesRoot, gitStatusService })
+    : { reposByKey: new Map(), warnings: [] };
+  const publicApps = includeGit
+    ? visibleApps.map((app) => ({
+        ...app,
+        git: compactGitSummaryForApp(gitContext.reposByKey.get(gitRepoKeyForApp(app))),
+      }))
+    : visibleApps;
   // Template mounty (organization_kind=template) jsou validované, ale vyloučené z
   // runtime akcí, business přehledů i org počtů. Drží se v oddělených polích, aby
   // je žádný konzument organizations/apps nezapočítal; Doctor je jen označí.
@@ -201,7 +206,7 @@ export async function buildLaunchpadAppsResponse({
     templates,
     template_mounts: templateMounts,
     template_apps: templateApps,
-    apps: appsWithGit,
+    apps: publicApps,
     port_overlaps: discovery.port_overlaps ?? [],
     failures: discovery.failures,
     warnings: [...(discovery.warnings ?? []), ...gitContext.warnings],

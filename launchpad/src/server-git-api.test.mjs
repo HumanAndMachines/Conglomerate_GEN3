@@ -103,6 +103,51 @@ test("identity endpoint is local-only and a foreign root cannot reuse the port",
   expect(await new Response(otherRootLauncher.stderr).text()).toContain("EADDRINUSE");
 });
 
+test("apps cache keeps first paint Git-free and invalidates on force sync and failed mutation", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  await createPackageApp({
+    root,
+    packagePath: "organizations/BetaCo_GEN3/workspace/deals/app/v1",
+    app: { id: "cache-deals-v1", title: "Cache Deals", company: "BetaCo", module: "deals", port: 5411 },
+  });
+  const { port } = await startLaunchpadServer(root);
+
+  const first = await getJson(port, "/api/apps");
+  expect(first.apps.map((app) => app.id)).toContain("cache-deals-v1");
+  expect(first.apps.every((app) => app.git === undefined)).toBe(true);
+
+  await createPackageApp({
+    root,
+    packagePath: "organizations/BetaCo_GEN3/workspace/knowledgebase/app/v1",
+    app: {
+      id: "cache-knowledgebase-v1",
+      title: "Cache Knowledgebase",
+      company: "BetaCo",
+      module: "knowledgebase",
+      port: 5412,
+    },
+  });
+  expect((await getJson(port, "/api/apps")).apps.map((app) => app.id)).not.toContain("cache-knowledgebase-v1");
+
+  const forced = await postJson(port, "/api/sync", {});
+  expect(forced.apps.map((app) => app.id)).toContain("cache-knowledgebase-v1");
+  expect((await getJson(port, "/api/apps")).generated_at).toBe(forced.generated_at);
+
+  await createPackageApp({
+    root,
+    packagePath: "organizations/OmegaCo_GEN3/workspace/studio/app/v1",
+    app: { id: "cache-studio-v1", title: "Cache Studio", company: "OmegaCo", module: "studio", port: 5413 },
+  });
+  const failedMutation = await fetch(`http://127.0.0.1:${port}/api/apps/not-an-app/start`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  expect(failedMutation.ok).toBe(false);
+  expect((await getJson(port, "/api/apps")).apps.map((app) => app.id)).toContain("cache-studio-v1");
+});
+
 test("Launchpad server exposes a guarded rebase abort only for a live module rebase", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);

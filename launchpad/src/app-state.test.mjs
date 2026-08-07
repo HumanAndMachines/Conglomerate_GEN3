@@ -3,6 +3,7 @@ import {
   appBaseTitle,
   appVersionLabel,
   computeSpaceHeroState,
+  createLatestDataLoadCoordinator,
   familyTitle,
   filterApps,
   groupAppFamilies,
@@ -13,6 +14,7 @@ import {
   replacePersonalspaceResponse,
   reconcileSelectedAppId,
   runtimeStagesForApp,
+  sidePanelResponseIsCurrent,
   summarizeOrganizationSpaceHealth,
   variantMenuLabel,
   variantTag,
@@ -59,6 +61,106 @@ test("partial-failure Personalspace odpověď odstraní revokovaný prostor i so
   expect(replacePersonalspaceResponse(previous, incoming)).toBe(incoming);
   expect(JSON.stringify(replacePersonalspaceResponse(previous, incoming))).not.toContain("PRIVATE-TASK");
   expect(JSON.stringify(replacePersonalspaceResponse(previous, incoming))).not.toContain("personal--revoked_GEN3--notes");
+});
+
+test("A→B→A side-panel race accepts only the newest request generation", () => {
+  const activeA = {
+    requestedScope: "org",
+    requestedCompany: "Alpha",
+    activeScope: "org",
+    activeCompany: "Alpha",
+    latestRequestId: 3,
+  };
+
+  expect(sidePanelResponseIsCurrent({ ...activeA, requestId: 1 })).toBe(false);
+  expect(sidePanelResponseIsCurrent({ ...activeA, requestId: 2, requestedCompany: "Beta" })).toBe(false);
+  expect(sidePanelResponseIsCurrent({ ...activeA, requestId: 3 })).toBe(true);
+  expect(sidePanelResponseIsCurrent({ ...activeA, requestId: 3, activeScope: "future" })).toBe(false);
+});
+
+test("failed partial mutation rejects a pre-mutation poll and queues exactly one fresh read", async () => {
+  const requests = [];
+  const committed = [];
+  const coordinator = createLatestDataLoadCoordinator({
+    run: async ({ isCurrent }) => {
+      let resolve;
+      const response = new Promise((resolvePromise) => {
+        resolve = resolvePromise;
+      });
+      requests.push({ resolve });
+      const snapshot = await response;
+      if (isCurrent()) committed.push(snapshot);
+      return snapshot;
+    },
+  });
+
+  const stalePoll = coordinator.load({ quiet: true });
+  expect(requests).toHaveLength(1);
+
+  let rejectMutation;
+  const mutationRequest = new Promise((_, rejectPromise) => {
+    rejectMutation = rejectPromise;
+  });
+  const failedMutation = (async () => {
+    try {
+      await mutationRequest;
+    } catch {
+      // Server mohl změnit část stavu před chybou. Fresh read patří do finally.
+    } finally {
+      await coordinator.load({ quiet: true, fresh: true });
+    }
+  })();
+  rejectMutation(new Error("partial mutation failed"));
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(requests).toHaveLength(1);
+
+  requests[0].resolve("pre-mutation");
+  await stalePoll;
+  expect(requests).toHaveLength(2);
+  expect(committed).toEqual([]);
+
+  requests[1].resolve("post-mutation");
+  await failedMutation;
+  expect(requests).toHaveLength(2);
+  expect(committed).toEqual(["post-mutation"]);
+});
+
+test("fresh callers coalesce after a rejected poll and preserve the strongest non-quiet lane", async () => {
+  const requests = [];
+  const committed = [];
+  const coordinator = createLatestDataLoadCoordinator({
+    run: async ({ quiet, isCurrent }) => {
+      let resolve;
+      let reject;
+      const response = new Promise((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+      });
+      requests.push({ quiet, resolve, reject });
+      const snapshot = await response;
+      if (isCurrent()) committed.push(snapshot);
+      return snapshot;
+    },
+  });
+
+  const stalePoll = coordinator.load({ quiet: true });
+  const freshQuiet = coordinator.load({ quiet: true, fresh: true });
+  const freshStrong = coordinator.load({ quiet: false, fresh: true });
+  expect(freshStrong).toBe(freshQuiet);
+  expect(requests).toHaveLength(1);
+
+  requests[0].reject(new Error("old poll failed"));
+  expect(await stalePoll.catch((error) => error.message)).toBe("old poll failed");
+  expect(requests).toHaveLength(2);
+  expect(requests[1].quiet).toBe(false);
+  expect(committed).toEqual([]);
+
+  requests[1].resolve("fresh strong snapshot");
+  expect(await freshQuiet).toBe("fresh strong snapshot");
+  expect(await freshStrong).toBe("fresh strong snapshot");
+  expect(requests).toHaveLength(2);
+  expect(committed).toEqual(["fresh strong snapshot"]);
 });
 
 test("Launchpad search query narrows apps by title, id, company, module and tags", () => {

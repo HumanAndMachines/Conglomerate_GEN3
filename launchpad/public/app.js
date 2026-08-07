@@ -2,6 +2,7 @@ import {
   appBaseTitle,
   appVersionLabel,
   computeSpaceHeroState,
+  createLatestDataLoadCoordinator,
   familyTitle,
   filterApps,
   groupAppFamilies,
@@ -11,6 +12,7 @@ import {
   replacePersonalspaceResponse,
   reconcileSelectedAppId,
   runtimeStagesForApp,
+  sidePanelResponseIsCurrent,
   summarizeOrganizationSpaceHealth,
   variantMenuLabel,
   variantTag,
@@ -95,7 +97,10 @@ const state = {
 // Where the hero CTA should jump. Updated on every renderHero so the single
 // click handler stays in sync with the computed verdict.
 let heroAction = "reload";
-let loadDataInFlight = null;
+let doctorLoadInFlight = null;
+let doctorReloadRequested = false;
+let sidePanelRequestGeneration = 0;
+const dataLoadCoordinator = createLatestDataLoadCoordinator({ run: runLoadData });
 let quietPollTimer = null;
 let restoreSpaceMenuFocusOnClose = false;
 let drawerReturnFocus = null;
@@ -284,7 +289,7 @@ initNotifications();
 // osobní runtime akce vypadají stejně jako firemní.
 initPersonalspace({
   onToast: (message, tone, timeout) => toast(message, tone, timeout),
-  onReload: () => loadData({ quiet: true }),
+  onReload: () => loadData({ quiet: true, fresh: true }),
 });
 
 elements.reloadButton.addEventListener("click", () => {
@@ -587,13 +592,49 @@ function toast(message, tone = "info", timeout = 4200) {
    Data loading
    ========================================================= */
 
-async function loadData({ quiet = false } = {}) {
-  if (loadDataInFlight) return loadDataInFlight;
-  loadDataInFlight = runLoadData({ quiet });
+function loadData(options = {}) {
+  return dataLoadCoordinator.load(options);
+}
+
+async function loadDoctorInBackground() {
+  if (doctorLoadInFlight) {
+    // Non-quiet sync proběhl během staršího Doctora. Ten doběhne, ale jeho
+    // snapshot se nesmí commitnout; po něm se spustí Doctor nad novou generací.
+    doctorReloadRequested = true;
+    return doctorLoadInFlight;
+  }
+  state.doctorRunState = "running";
+  renderDoctorStatus();
+  doctorLoadInFlight = fetchJson("/api/doctor");
   try {
-    return await loadDataInFlight;
+    const doctor = await doctorLoadInFlight;
+    if (!doctorReloadRequested) {
+      state.doctor = doctor;
+      state.doctorRunState = "complete";
+    }
+  } catch (error) {
+    if (!doctorReloadRequested) {
+      state.doctorRunState = "unavailable";
+      if (!state.doctor) {
+        state.doctor = {
+          summary: { status: "fail", fail: 1, warn: 0, ok: 0 },
+          checks: [
+            {
+              id: "launchpad.ui.doctor_fetch",
+              status: "fail",
+              message: error.message,
+              details: [],
+            },
+          ],
+        };
+      }
+    }
   } finally {
-    loadDataInFlight = null;
+    const rerun = doctorReloadRequested;
+    doctorReloadRequested = false;
+    doctorLoadInFlight = null;
+    if (rerun) void loadDoctorInBackground();
+    else render();
   }
 }
 
@@ -644,7 +685,7 @@ function scheduleQuietPoll({ immediate = false } = {}) {
   }, immediate ? 0 : ACTIVE_POLL_INTERVAL_MS);
 }
 
-async function runLoadData({ quiet = false } = {}) {
+async function runLoadData({ quiet = false, isCurrent = () => true } = {}) {
   const firstSuccessfulScopeLoad = !launchpadScopeDataReady;
   if (!quiet) {
     state.doctorRunState = "running";
@@ -654,22 +695,25 @@ async function runLoadData({ quiet = false } = {}) {
   }
   try {
     // Uživatelská akce je Synchronizovat (decision 0042): POST /api/sync znovu
-    // projede lokální auto-discovery a Doctor. Tiché 15s pozadí je lehké:
+    // projede lokální auto-discovery; Doctor se spustí odděleně po prvním
+    // paintu. Tiché 15s pozadí je lehké:
     // nevolá Doctor, běží jen v aktivním okně a nepřekrývá se s dalším loadem,
     // aby neucpalo runtime akce.
-    const [appsResponse, doctorResponse, personalspaceResponse] = await Promise.all(
+    const [appsResponse, personalspaceResponse] = await Promise.all(
       quiet
         ? [
             fetchJson("/api/apps"),
-            Promise.resolve(null),
             fetchPersonalspaceSafe(),
           ]
         : [
             fetchJson("/api/sync", { method: "POST" }),
-            fetchJson("/api/doctor"),
             fetchPersonalspaceSafe(),
-          ],
+      ],
     );
+    // Forced post-mutation refresh může přijít, zatímco starý quiet poll čeká
+    // na odpověď. Coordinator ho nechá doběhnout, ale tento pre-mutation
+    // snapshot už nesmí změnit UI; přesně jeden fresh read je za ním ve frontě.
+    if (!isCurrent()) return;
     state.apps = appsResponse.apps ?? [];
     state.companies = appsResponse.companies ?? [];
     state.failures = appsResponse.failures ?? [];
@@ -682,10 +726,6 @@ async function runLoadData({ quiet = false } = {}) {
       state.personalspaceError = personalspaceResponse.error;
     } else {
       state.personalspaceError = personalspaceResponse.error;
-    }
-    if (doctorResponse) {
-      state.doctor = doctorResponse;
-      state.doctorRunState = "complete";
     }
     state.loaded = true;
     launchpadScopeDataReady = true;
@@ -702,7 +742,9 @@ async function runLoadData({ quiet = false } = {}) {
     // Panely Poslední změny / Nejčastější + git read model se načítají zvlášť a
     // best-effort — pomalejší git nesmí blokovat hlavní mřížku aplikací.
     void loadSidePanels();
+    if (!quiet) void loadDoctorInBackground();
   } catch (error) {
+    if (!isCurrent()) return;
     // Přechodný poll výpadek nesmí zahodit poslední úspěšně objevené prostory
     // ani přepnout uživatele z vybrané Organizace na personalspace.
     if (!state.loaded) {
@@ -782,13 +824,15 @@ async function fetchJsonSafe(path, options = {}) {
 // CAC-0042; dokud read model není dostupný, endpoint vrátí 404 → gitReposByModule
 // zůstane prázdná a git chip se na kartách graceful nevykreslí.
 async function loadSidePanels() {
-  if (state.filters.scope === "personal" || state.filters.company === "all") {
+  const requestId = ++sidePanelRequestGeneration;
+  const requestedScope = state.filters.scope;
+  const requestedCompany = state.filters.company;
+  if (requestedScope === "personal" || requestedCompany === "all") {
     state.notifications = [];
     state.mostUsed = [];
     state.coldStartUsage = true;
     return;
   }
-  const requestedCompany = state.filters.company;
   const companyQuery = `?company=${encodeURIComponent(requestedCompany)}`;
   const [notifications, mostUsed, git] = await Promise.all([
     fetchJsonSafe(`/api/notifications${companyQuery}`),
@@ -797,7 +841,14 @@ async function loadSidePanels() {
   ]);
   // Pomalejší odpověď předchozí Organizace nesmí přepsat panely prostoru,
   // který uživatel mezitím nově vybral.
-  if (state.filters.scope !== "org" || state.filters.company !== requestedCompany) return;
+  if (!sidePanelResponseIsCurrent({
+    requestId,
+    latestRequestId: sidePanelRequestGeneration,
+    requestedScope,
+    requestedCompany,
+    activeScope: state.filters.scope,
+    activeCompany: state.filters.company,
+  })) return;
   state.notifications = notifications?.notifications ?? [];
   state.mostUsed = mostUsed?.most_used ?? [];
   state.coldStartUsage = mostUsed ? mostUsed.cold_start !== false && (mostUsed.most_used ?? []).length === 0 : true;
@@ -3179,13 +3230,13 @@ async function openAppChain(app, { feedback } = {}) {
           ?? "Launchpad nedostal URL běžící aplikace.",
       );
     }
-    await loadData({ quiet: true });
   } catch (error) {
     closeReservedTab(reservedTab);
     const message = error instanceof Error ? error.message : String(error);
     writeCardProgress(feedback, classifyOpenError(message));
     toast(`${appBaseTitle(app)}: ${classifyOpenError(message)}`, "error", 6000);
   } finally {
+    await loadData({ quiet: true, fresh: true });
     state.openingApps.delete(app.id);
     render();
   }
@@ -4311,7 +4362,6 @@ async function pullGitRepository({ git, label, autostash = false, pendingKey = `
     state.gitRecoveryByRepo.delete(git.key);
     const stashNote = payload.stash_preserved ? " Bezpečnostní kopie zůstala ve stash stacku." : "";
     toast(`${label}: novější verze stažená (${payload.after?.head?.short_sha ?? "aktuální"}).${stashNote}`, "success", 7000);
-    await loadData({ quiet: true });
   } catch (error) {
     state.gitRecoveryByRepo.set(git.key, {
       code: error.code,
@@ -4320,6 +4370,7 @@ async function pullGitRepository({ git, label, autostash = false, pendingKey = `
     });
     toast(`${label}: ${error.message}`, "error", 9000);
   } finally {
+    await loadData({ quiet: true, fresh: true });
     state.pendingAction = null;
     render();
   }
@@ -4333,7 +4384,6 @@ async function abortGitRebase({ git, label, pendingKey = `git-rebase-abort:${git
     const payload = await fetchJson(`/api/git/repos/${encodeURIComponent(git.key)}/rebase-abort`, { method: "POST" });
     state.gitRecoveryByRepo.delete(git.key);
     toast(`${label}: rebase byl bezpečně abortnut.`, "success", 7000);
-    if (payload.after) await loadData({ quiet: true });
   } catch (error) {
     state.gitRecoveryByRepo.set(git.key, {
       code: error.code,
@@ -4342,6 +4392,7 @@ async function abortGitRebase({ git, label, pendingKey = `git-rebase-abort:${git
     });
     toast(`${label}: ${error.message}`, "error", 9000);
   } finally {
+    await loadData({ quiet: true, fresh: true });
     state.pendingAction = null;
     render();
   }
@@ -4474,6 +4525,7 @@ async function runRootUpdate() {
     toast(`Aktualizace selhala: ${error.message}`, "error", 12_000);
   } finally {
     if (!reloading) {
+      await loadData({ quiet: true, fresh: true });
       state.updatePending = false;
       renderUpdatePill();
       loadUpdateStatus();
@@ -4504,10 +4556,10 @@ async function pullAllRepositories() {
       attention > 0 ? `${attention} vyžaduje pomoc` : null,
     ].filter(Boolean).join(" · ");
     toast(`Pullnout vše: ${message}.`, attention > 0 ? "error" : "success", 10_000);
-    await loadData({ quiet: true });
   } catch (error) {
     toast(`Pullnout vše: ${error.message}`, "error", 10_000);
   } finally {
+    await loadData({ quiet: true, fresh: true });
     state.pendingAction = null;
     render();
   }
@@ -4665,10 +4717,10 @@ async function createWorktreeForPlan(app, git, { defaultPlan, defaultBranch }) {
     });
     state.runtimeSourcesByApp.set(app.id, { type: "worktree", slug: payload.worktree?.slug });
     toast(`${appBaseTitle(app)}: worktree vytvořený (${payload.worktree?.slug ?? branch}).`, "success");
-    await loadData({ quiet: true });
   } catch (error) {
     toast(`${appBaseTitle(app)}: ${error.message}`, "error", 7000);
   } finally {
+    await loadData({ quiet: true, fresh: true });
     state.pendingAction = null;
     render();
   }
@@ -4686,10 +4738,10 @@ async function publishSelectedWorktreeDraft(app, git, worktree) {
       body: JSON.stringify({ commitMessage, publisher: "launchpad-builder" }),
     });
     toast(`${appBaseTitle(app)}: draft pushnutý (${payload.commit?.short_sha ?? payload.commit?.sha ?? "commit"}). Otevři PR jako samostatný krok.`, "success", 7000);
-    await loadData({ quiet: true });
   } catch (error) {
     toast(`${appBaseTitle(app)}: ${error.message}`, "error", 7000);
   } finally {
+    await loadData({ quiet: true, fresh: true });
     state.pendingAction = null;
     render();
   }
@@ -5128,7 +5180,6 @@ async function runRuntimeAction(app, action) {
       message: `${app.title}: ${action} dokončeno.`,
     };
     toast(`${app.title}: ${action} dokončeno.`, "ok");
-    await loadData({ quiet: true });
   } catch (error) {
     state.actionMessage = {
       type: "fail",
@@ -5137,6 +5188,7 @@ async function runRuntimeAction(app, action) {
     toast(`${app.title}: ${error.message}`, "fail", 6000);
     render();
   } finally {
+    await loadData({ quiet: true, fresh: true });
     state.pendingAction = null;
     render();
   }
@@ -5167,7 +5219,6 @@ async function switchRuntimeApp(app, peer) {
       message: `${appBaseTitle(peer)} zastavena; ${appBaseTitle(app)} se spouští.`,
     };
     toast(`${appBaseTitle(app)}: přepnutí dokončeno.`, "ok");
-    await loadData({ quiet: true });
   } catch (error) {
     state.actionMessage = {
       type: "fail",
@@ -5175,6 +5226,7 @@ async function switchRuntimeApp(app, peer) {
     };
     toast(`${appBaseTitle(app)}: ${error.message}`, "fail", 6000);
   } finally {
+    await loadData({ quiet: true, fresh: true });
     state.pendingAction = null;
     render();
   }
