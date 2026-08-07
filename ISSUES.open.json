@@ -176,6 +176,83 @@
           "path": "organizations/Filmbase_GEN3/mission-control/plans/2026/07/FB-0002-filmbase-knowledgebase.yaml"
         }
       ]
+    },
+    {
+      "id": "issue-2026-08-07-002",
+      "title": "Zpevnit macOS Bun subprocess test gate pro GEN2 preservation",
+      "status": "investigation_required",
+      "severity": "high",
+      "owner": "Conglomerate root testing agent",
+      "created_at": "2026-08-07",
+      "updated_at": "2026-08-07",
+      "tags": [
+        "bun",
+        "macos",
+        "tests",
+        "subprocess",
+        "gen2-gen3",
+        "preservation",
+        "CAC-0035"
+      ],
+      "question": "Proč Bun 1.3.14 na aktuálním macOS hostu uvnitř `bun test` intermitentně vrací podprocesům prázdné stdout/stderr a občas EFAULT, přestože stejné příkazy mimo test runner a stejný commit v Linux/Windows CI procházejí?",
+      "impact": "Jednotlivý červený `bun run check` z původně silně zatíženého founder Macu není sám o sobě věrohodný důkaz regrese Spectoda GEN2 -> GEN3 nástrojů. Read-only inventory a forward-port klasifikace mohou pokračovat, protože skutečné CLI cesty fungují, ale final migration/cutover/archive gate vyžaduje opakovatelný zelený běh na zklidněném Macu nebo opravu macOS Bun test runneru. GitHub CI intermitentní macOS problém neodhalí, protože současná matrix pokrývá Ubuntu a Windows, ne macOS.",
+      "diagnosis": "Na čistém Conglomerate mainu `3580eb36673f1554431d192b7fde2296f5c5eae8` se chyba reprodukovala ve více nezávislých subprocessových testech, nejen v preservation kódu. Stejný podproces mimo `bun test` prošel 50/50 přes Node i 50/50 přes Bun; skutečný Node preservation verifier vyřešil exact Git head a přímý Spectoda sync inventory prošel. Dva souběžné cizí validační běhy a silný tlak na prostředky byly při prvním měření přítomné, cílený test selhal ještě krátce po jejich skončení, ale pozdější celý `bun run check` prošel se 481 pass, 3 skip a 0 fail. Dosavadní důkazy proto ukazují na intermitentní lokální stav Bun test runneru nebo macOS hostu, ne na potvrzenou regresi migračních skriptů; resource pressure je vedoucí hypotéza, nikoli prokázaná příčina, a přesný spouštěč zůstává k reprodukci v řízené zátěži.",
+      "reproduction": [
+        "`bun test scripts/gen2-gen3-sync-inventory.test.mjs` -> 0 pass, 2 fail; child stdout/stderr jsou prázdné.",
+        "`bun test scripts/gen2-local-preservation.test.mjs` -> 2 pass, 30 fail; mezi symptomy jsou prázdné stdout/stderr, `cannot resolve exact verifier Git head` a `fs.rm` EFAULT.",
+        "`bun test scripts/worktree-inventory.contract.test.mjs --test-name-pattern 'accepts an authority' --max-concurrency 1` a subprocessová část agent-skills testu selžou také.",
+        "`bun test scripts/gen2-gen3-sync-inventory.test.mjs --test-name-pattern 'refuses implicit' --max-concurrency 1` selhal znovu po skončení dvou souběžných cizích `bun run check` běhů."
+      ],
+      "evidence": [
+        "Host: Bun 1.3.14 (`0d9b296a`), Darwin 25.6.0 arm64.",
+        "GitHub Actions run 31203983028 prošel na exact headu `3580eb36673f1554431d192b7fde2296f5c5eae8` s Bun 1.3.14 na Ubuntu a Windows.",
+        "Padesát přímých `spawnSync` běhů stejného inventory child procesu prošlo přes Node bez chyby a dalších padesát přes Bun bez chyby.",
+        "`node --input-type=module -e` nad `committedVerifierIdentity()` vrátil Git head `3580eb36673f1554431d192b7fde2296f5c5eae8` a verifier SHA-256 `1ee3b7b1eee7b683fd6c132c7b3b5de98344715b8f525756214c47add7c0d1e8`.",
+        "Přímý Spectoda GEN2 -> GEN3 inventory dokončil read-only běh se summary: 38 manual-review, 161 port-candidate, 471 gen3-only a 28 same.",
+        "Při nejvyšší zátěži měl host přibližně 795 procesů, 7860 vláken, load average 47.7, 142 MB fyzicky volné paměti a přibližně 8 GB komprimované paměti; Data volume mělo 4.7 GiB volného místa.",
+        "Pozdější celý `bun run check` po dalším poklesu zátěže prošel: 481 pass, 3 skip, 0 fail; preservation 34/34, worktree-inventory 12/12 a agent-skills 14/14."
+      ],
+      "acceptance_criteria": [
+        "Zopakovat minimální child-process reprodukci na zklidněném macOS hostu a zaznamenat `status`, `signal` a `error` dřív, než test začne parsovat stdout nebo stderr.",
+        "Porovnat Bun 1.3.14 s aktuální stabilní a canary verzí na stejném hostu; pokud zůstane minimální reprodukce, založit upstream Bun issue s redigovaným samostatným fixturem.",
+        "Doplnit macOS CI lane minimálně pro subprocessové inventory/preservation testy, nebo zdokumentovat ekvivalentní povinný macOS release gate s dohledatelným výsledkem.",
+        "Cílené inventory, preservation, worktree-inventory a agent-skills subprocess testy projdou třikrát po sobě na macOS bez prázdného stdio, EFAULT nebo visícího workeru.",
+        "Celý `bun run check` projde na macOS a skutečný preservation verifier stále failuje zavřeně při identitním nebo datovém driftu."
+      ],
+      "next_action": "V úzkém diagnostickém worktree pod CAC-0035 reprodukovat závadu v řízené zátěži, získat přesný `spawnSync`/`Bun.spawnSync` error objekt, porovnat Bun verze a teprve podle výsledku navrhnout test-runner fix nebo upstream hlášení. Do té doby nepoužívat izolovaný lokální červený běh jako důkaz regrese GEN2 nástrojů ani jeden pozdější zelený běh jako dostatečný cutover gate.",
+      "verification": [
+        "bun test scripts/gen2-gen3-sync-inventory.test.mjs --max-concurrency 1",
+        "bun test scripts/gen2-local-preservation.test.mjs --max-concurrency 1",
+        "bun test scripts/worktree-inventory.contract.test.mjs --max-concurrency 1",
+        "bun test scripts/agent-skills-entrypoint.test.mjs --max-concurrency 1",
+        "bun run check"
+      ],
+      "links": [
+        {
+          "label": "Exact-head GitHub Actions run",
+          "url": "https://github.com/HumanAndMachines/Conglomerate_GEN3/actions/runs/31203983028"
+        },
+        {
+          "label": "Current CI matrix",
+          "path": ".github/workflows/checks.yml"
+        },
+        {
+          "label": "GEN2 local preservation verifier",
+          "path": "scripts/gen2-local-preservation.mjs"
+        },
+        {
+          "label": "GEN2 to GEN3 sync inventory",
+          "path": "scripts/gen2-gen3-sync-inventory.mjs"
+        },
+        {
+          "label": "GEN2 to GEN3 migration gate",
+          "path": "manual/gen2-to-gen3-migration.md"
+        },
+        {
+          "label": "Spectoda migration dogfood authority",
+          "path": "../HumanAndMachines/mission-control/plans/2026/06/CAC-0035-spectoda-gen3-migration-dogfood.yaml"
+        }
+      ]
     }
   ]
 }
