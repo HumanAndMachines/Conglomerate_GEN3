@@ -20,7 +20,7 @@ Codex, Desktop agenti). Kanonický standard:
    brokery třetích stran jsou zakázané vždy. Konektor, který už je
    nainstalovaný, klidně použij k práci — nové ale nezřizuj: když MCP/CLI
    cesta chybí, použij browser fallback a chybějící MCP zapiš jako issue/PR
-   živého standardu (krok 6); zřízení nového konektoru je rozhodnutí
+   živého standardu (krok 8); zřízení nového konektoru je rozhodnutí
    Principála, ne automatický fallback agenta. Chtěný stav: každá mašina má
    vlastní, samostatně revokovatelná napojení pro svou Organizaci; identita
    a subscription harnessu se sdílet smí, přístupy k externím aplikacím ne.
@@ -41,9 +41,19 @@ Codex, Desktop agenti). Kanonický standard:
    Connector, GCP OAuth client) vypiš do PR jako checklist.
 5. **Aktivace per mašina:** jména `<org_slug>_<provider>`; secret hodnoty a
    env soubor do custody cest podle `manual/security/local-secret-custody.md`;
-   OAuth consent a výběr účtu dokončuje Principál v prohlížeči; scopes
-   uděluj defaultně read i write (LinkedIn zůstává post-only výjimka).
-6. **Write je Draft, ne Publikace.** Co v externí aplikaci vytvoříš, musí
+   OAuth consent a výběr účtu dokončuje Principál v prohlížeči. Před
+   consentem mu ukaž přesný seznam scopes; defaultně žádej potřebné read i
+   write scopes (LinkedIn zůstává post-only výjimka). Udělený OAuth grant je
+   schopnost mašiny, ne souhlas s libovolnou konkrétní operací.
+6. **Přihlášení musí přežít běžný restart.** U HTTP OAuth ověř persistentní
+   credential store harnessu (preferovaně systémový keyring), u STDIO serveru
+   jeho vlastní persistentní credentials directory. Dočasná cesta,
+   memory-only/stateless backend ani pouhé zapamatování agentem nejsou
+   persistence. Ověř restart serveru, harnessu nebo nový task; provider může
+   refresh token přesto později legitimně zneplatnit. Provider-specifické
+   limity, například sedmidenní Google OAuth `External / Testing`, patří do
+   příslušného runbooku.
+7. **Write je Draft, ne Publikace.** Co v externí aplikaci vytvoříš, musí
    být vratné a editovatelné Principálem — draft zprávy místo odeslání,
    nový soubor místo přepisu ostrého, testovací kanál místo ostrého.
    Nevratný krok (odeslat, zveřejnit, smazat, přepsat ostrý obsah, změnit
@@ -55,14 +65,14 @@ Codex, Desktop agenti). Kanonický standard:
    proto hlavní hranice, ne pojistka. Tabulky Draft/Publikace, gate per
    cesta a pravidlo vratného smoke cíle jsou v
    `manual/external-app-integrations.md`.
-7. **Zaseknutí nebo zastaralý manuál = povinný upstream PR.** Runbooky jsou
+8. **Zaseknutí nebo zastaralý manuál = povinný upstream PR.** Runbooky jsou
    živý komunitní standard; nikdo je denně nepřetestovává. Když se Kolega
    při instalaci zasekne nebo realita poskytovatele neodpovídá runbooku,
    oprav manuál/runbook a pošli PR na `HumanAndMachines/Conglomerate_GEN3`;
    bez známého řešení zapiš aspoň issue do root `ISSUES.open.json` (také
    PR). Org-specifika patří do `INTEGRATIONS.md` dané Organizace; upstream
    jde jen generalizované, anonymizované poučení bez secrets.
-8. **Closeout metadata-only:** název serveru, scope, owner, datum, výsledek
+9. **Closeout metadata-only:** název serveru, scope, owner, datum, výsledek
    smoke testu. Nikdy token, OAuth URL/kód ani obsah credential souboru.
 
 ## Ověření
@@ -80,4 +90,7 @@ Codex, Desktop agenti). Kanonický standard:
 - Katalog Organizace obsahuje integraci včetně env jmen a admin kroků;
   žádný secret v Gitu (`git grep` na jméno env souboru a provider).
 - Env soubor a token cache mají módy `0600`/`0700` v custody cestě.
+- Přihlášení přežilo restart MCP procesu a nový task nebo restart harnessu;
+  closeout rozlišuje okamžitě ověřený restart smoke od provider expirace,
+  kterou lze prokázat až po uplynutí příslušného intervalu.
 - V handoffu je PR URL katalogové změny, nebo důvod, proč nebyla potřeba.

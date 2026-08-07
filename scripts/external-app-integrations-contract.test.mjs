@@ -7,7 +7,9 @@ function repoPath(relativePath) {
 }
 
 const manualPath = repoPath("../manual/external-app-integrations.md");
+const codexManualPath = repoPath("../manual/codex-manual-mcp-integrations.md");
 const googleRunbookPath = repoPath("../manual/integrations/google-workspace.md");
+const integrationSkillPath = repoPath("../.agents/skills/external-app-integrations/SKILL.md");
 const smokeInstructionPaths = [
   "../manual/integrations/slack.md",
   "../manual/integrations/google-workspace.md",
@@ -59,6 +61,45 @@ test("Google smoke eviduje a schvaluje každý cleanupovaný write cíl", async 
   expect(google).toMatch(/Drive\s+scratch cestu i jmenovitý Gmail draft cíl/);
   expect(google).toMatch(/schválil každý použitý jmenovitý smoke cíl/);
   expect(google).toMatch(/každý artefakt vytvořil tento konkrétní smoke/);
+});
+
+test("Google OAuth kontrakt drží sedmidenní provider gate a persistentní cache", async () => {
+  const [google, codex, skill] = await Promise.all([
+    readPolicy(googleRunbookPath),
+    readPolicy(codexManualPath),
+    readPolicy(integrationSkillPath),
+  ]);
+
+  expect(google).toContain("publishing statusem `Testing`");
+  expect(google).toContain("audience `Internal`");
+  expect(google).toMatch(/`Trusted` ale samo nemění GCP[\s\S]*expiraci režimu `External \/ Testing`[\s\S]*\*\*neruší\*\*/);
+  expect(google).toContain("`In production`");
+  expect(google).toContain("WORKSPACE_MCP_CREDENTIALS_DIR");
+  expect(google).toMatch(
+    /"WORKSPACE_MCP_CREDENTIALS_DIR": "\$\{<ORG_SLUG>_GOOGLE_MCP_CREDENTIALS_DIR\}",[\s\S]*"GOOGLE_MCP_CREDENTIALS_DIR": "\$\{<ORG_SLUG>_GOOGLE_MCP_CREDENTIALS_DIR\}"/,
+  );
+  expect(google).toContain("memory-only OAuth backend");
+  expect(google).toMatch(/kontrola po více než sedmi dnech/);
+  expect(codex).toMatch(/Codex keyring jeho interní cache\s+nenahrazuje/);
+  expect(codex).toMatch(/Google OAuth se opakuje přibližně po sedmi dnech/);
+  expect(codex).toMatch(
+    /export WORKSPACE_MCP_CREDENTIALS_DIR="\/custody\/cesta\/google\/tokens"\s+export GOOGLE_MCP_CREDENTIALS_DIR="\/custody\/cesta\/google\/tokens"/,
+  );
+  expect(skill).toMatch(/Přihlášení musí přežít běžný restart/);
+});
+
+test("OAuth write scope zůstává schopností, ne souhlasem s publikací", async () => {
+  const [manual, google, skill] = await Promise.all([
+    readPolicy(manualPath),
+    readPolicy(googleRunbookPath),
+    readPolicy(integrationSkillPath),
+  ]);
+
+  expect(manual).toMatch(/Souhlas s OAuth grantem zpřístupní\s+schopnost mašině/);
+  expect(manual).toContain("write agenta je Draft, ne Publikace");
+  expect(google).toMatch(/Udělený OAuth grant je schopnost mašiny, ne souhlas/);
+  expect(google).toContain("approval mode harnessu");
+  expect(skill).toMatch(/Udělený OAuth grant je\s+schopnost mašiny, ne souhlas/);
 });
 
 test("kontraktní text se čte shodně z Windows CRLF checkoutu", () => {
