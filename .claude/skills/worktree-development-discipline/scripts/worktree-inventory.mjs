@@ -663,7 +663,7 @@ async function resolveRepositoryIdentity(primaryRoot) {
   };
 }
 
-async function validateCanonicalMissionControlPlan(
+export async function validateCanonicalMissionControlPlan(
   authorityRoot,
   planPath,
   planSource,

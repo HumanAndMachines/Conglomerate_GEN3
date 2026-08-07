@@ -42,6 +42,12 @@ zabrané); canonical repo rootu je `HumanAndMachines/Conglomerate_GEN3`.
 
 ## Model spolupráce: Principál a Agenti
 
+<!-- Kanonický blok Modelu spolupráce. Zdroj pravdy: HumanAndMachines/AGENTS.md.
+Do Conglomerate se propaguje přímým root PR; mechanismus per cíl drží
+docs/principle-propagation-contract.md v authority repu. Tento soubor edituj
+normálně přes PR na Conglomerate; změnu znění kanonického bloku navrhni
+v HumanAndMachines. -->
+
 Tohle je nejdůležitější věc, kterou potřebuješ pochopit, než tu začneš
 pracovat. Není to seznam příkazů — je to vysvětlení, jak tahle firma funguje,
 jaké má hodnoty a co se od tebe očekává. Hranice a hodnoty jsou pevné; detaily
