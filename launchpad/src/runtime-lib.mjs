@@ -293,6 +293,7 @@ export function createRuntimeManager({
       startedAt,
       logPath,
       stopping: false,
+      exitFinalizing: false,
       finalizeStopOnExit: false,
       finalizeStopForced: false,
       stopExitConfirmed: false,
@@ -324,6 +325,18 @@ export function createRuntimeManager({
     });
 
     if (platform === "win32") {
+      // Launcher identity se začne číst hned po spawnu. Když wrapper předá
+      // listener potomkovi a sám skončí, pozdější CIM už jeho PID nemusí znát;
+      // capture-time ancestry proto smí poslední článek svázat s touto časnou,
+      // creation-time-bound identitou místo s právě reuse-nutým PID.
+      // Injektovaný command adapter bez identity resolveru může být úzce
+      // určený jen pro taskkill; neposíláme mu nový PowerShell kontrakt potají.
+      record.launcherIdentityPromise = resolveProcessIdentityFn || runSystemCommandFn === runCommand
+        ? Promise.resolve()
+            .then(() => processIdentityResolver(record.pid))
+            .then(normalizeWindowsProcessIdentity)
+            .catch(() => null)
+        : Promise.resolve(null);
       record.ownerProofPromise = persistWindowsRuntimeOwnerProofWhenHealthy(app, record).catch(async (error) => {
         try {
           await appendLog(logPath, `[launchpad] Windows owner proof capture failed ${app.id}: ${error.message}\n`);
@@ -331,7 +344,7 @@ export function createRuntimeManager({
       });
     }
 
-    child.exited.then(async (exitCode) => {
+    const finalizeLauncherExit = async (exitCode, { early = false } = {}) => {
       if (record.stopping) {
         record.stopExitConfirmed = true;
         record.stopExitCode = exitCode;
@@ -345,21 +358,38 @@ export function createRuntimeManager({
             forced: record.finalizeStopForced,
           });
         }
-        return;
+        return { survivingListenerProof: null, failure: null, log_excerpt: "" };
       }
+      record.exitFinalizing = true;
+      const survivingListenerProof = await windowsProofForSurvivingListener(app, record);
       const currentRecord = managedProcesses.get(runtimeKey);
       if (currentRecord === record) {
         managedProcesses.delete(runtimeKey);
       }
       if (record.ownerProofWritePromise) {
-        await record.ownerProofWritePromise;
+        await Promise.allSettled([record.ownerProofWritePromise]);
       }
       await Promise.allSettled(record.outputPipes);
       await appendLog(logPath, `[launchpad] ${new Date().toISOString()} exit ${app.id} source=${runtimeSource.type} code=${exitCode}\n`);
       const log_excerpt = await logTail(logPath, errorTailBytes);
-      const failure = exitCode === 0 ? null : startFailure(app, exitCode, log_excerpt);
-      await writeState(runtimeKey, {
-        status: exitCode === 0 ? "stopped" : "unhealthy",
+      const failure = early || exitCode !== 0 ? startFailure(app, exitCode, log_excerpt) : null;
+      const updatedAt = new Date().toISOString();
+      await writeState(runtimeKey, survivingListenerProof ? {
+        status: "healthy",
+        app_id: app.id,
+        runtime_key: runtimeKey,
+        runtime_source: runtimeSource,
+        port: app.port,
+        pid: survivingListenerProof.listener_pid,
+        launcher_pid: child.pid,
+        launcher_exit_code: exitCode,
+        instance_id: instanceId,
+        started_at: startedAt,
+        updated_at: updatedAt,
+        log_path: relativeRuntimePath(logPath),
+        owner_proof: survivingListenerProof,
+      } : {
+        status: failure ? "unhealthy" : "stopped",
         app_id: app.id,
         runtime_key: runtimeKey,
         runtime_source: runtimeSource,
@@ -367,49 +397,35 @@ export function createRuntimeManager({
         pid: child.pid,
         instance_id: instanceId,
         started_at: startedAt,
-        stopped_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        stopped_at: updatedAt,
+        updated_at: updatedAt,
         exit_code: exitCode,
         log_path: relativeRuntimePath(logPath),
         ...(failure ? { last_error: failure.message, failure_kind: failure.kind, log_excerpt } : {}),
       });
-    }).catch(async (error) => {
-      await appendLog(logPath, `[launchpad] exit finalization failed ${app.id}: ${error.message}\n`);
-    });
+      return { survivingListenerProof, failure, log_excerpt };
+    };
 
     const earlyExit = await waitForEarlyExit(child, startEarlyExitProbeMs);
     if (earlyExit !== null) {
-      record.stopping = true;
-      managedProcesses.delete(runtimeKey);
-      if (record.ownerProofWritePromise) {
-        await record.ownerProofWritePromise;
+      const finalization = await finalizeLauncherExit(earlyExit, { early: true });
+      if (!finalization.survivingListenerProof) {
+        throw new RuntimeActionError(500, "app_start_failed", finalization.failure.message, [
+          finalization.log_excerpt,
+        ].filter(Boolean), {
+          failure_kind: finalization.failure.kind,
+          exit_code: earlyExit,
+          log_path: relativeRuntimePath(logPath),
+          log_excerpt: finalization.log_excerpt,
+        });
       }
-      await Promise.allSettled(record.outputPipes);
-      const log_excerpt = await logTail(logPath, errorTailBytes);
-      const failure = startFailure(app, earlyExit, log_excerpt);
-      await writeState(runtimeKey, {
-        status: "unhealthy",
-        app_id: app.id,
-        runtime_key: runtimeKey,
-        runtime_source: runtimeSource,
-        port: app.port,
-        pid: child.pid,
-        instance_id: instanceId,
-        started_at: startedAt,
-        stopped_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        exit_code: earlyExit,
-        log_path: relativeRuntimePath(logPath),
-        last_error: failure.message,
-        failure_kind: failure.kind,
-        log_excerpt,
-      });
-      throw new RuntimeActionError(500, "app_start_failed", failure.message, [log_excerpt].filter(Boolean), {
-        failure_kind: failure.kind,
-        exit_code: earlyExit,
-        log_path: relativeRuntimePath(logPath),
-        log_excerpt,
-      });
+    } else {
+      record.exitFinalizationPromise = child.exited
+        .then((exitCode) => finalizeLauncherExit(exitCode))
+        .catch(async (error) => {
+          record.exitFinalizing = false;
+          await appendLog(logPath, `[launchpad] exit finalization failed ${app.id}: ${error.message}\n`);
+        });
     }
 
     return {
@@ -690,8 +706,8 @@ export function createRuntimeManager({
       });
     }
 
-    if (record.stopping) {
-      if (record.stopFinalizationReady && record.stopFinalizationOptions) {
+    if (record.stopping || record.exitFinalizing) {
+      if (record.stopping && record.stopFinalizationReady && record.stopFinalizationOptions) {
         await finalizeManagedStop(
           app,
           record,
@@ -1580,6 +1596,57 @@ export function createRuntimeManager({
     };
   }
 
+  async function windowsProofForSurvivingListener(app, record) {
+    if (
+      platform !== "win32"
+      || record.stopping
+      || managedProcesses.get(record.runtimeKey) !== record
+    ) {
+      return null;
+    }
+    const initialProbe = await probeHealth(app);
+    if (!initialProbe.reachable || !initialProbe.ok) return null;
+
+    // Launcher může korektně předat port potomkovi a skončit dřív, než
+    // background capture dopíše proof. Managed slot proto držíme až do konce
+    // bounded capture lane; jinak její guard uvidí smazaný record a bezpečně,
+    // ale nevratně, přeživší listener opustí.
+    if (record.ownerProofPromise) {
+      await record.ownerProofPromise;
+    }
+    if (record.ownerProofWritePromise) {
+      await Promise.allSettled([record.ownerProofWritePromise]);
+    }
+    if (
+      record.stopping
+      || managedProcesses.get(record.runtimeKey) !== record
+      || !record.ownerProofCaptured
+      || !validWindowsRuntimeOwnerProof(record.ownerProof)
+    ) {
+      return null;
+    }
+
+    const expectedCwd = join(
+      companiesRoot,
+      app.cwd ?? dirname(app.package_path ?? "package.json"),
+    );
+    const confirmedOwner = await resolveVerifiedPortOwner(app, {
+      status: "healthy",
+      app_id: app.id,
+      runtime_key: record.runtimeKey,
+      port: app.port,
+      owner_proof: record.ownerProof,
+    }, expectedCwd);
+    if (
+      confirmedOwner?.pid !== record.ownerProof.listener_pid
+      || confirmedOwner.cwd_matches !== true
+    ) {
+      return null;
+    }
+    const finalProbe = await probeHealth(app);
+    return finalProbe.reachable && finalProbe.ok ? record.ownerProof : null;
+  }
+
   async function persistWindowsRuntimeOwnerProofWhenHealthy(app, record) {
     const deadline = Date.now() + startGraceMs;
     let captureAttempts = 0;
@@ -1626,7 +1693,13 @@ export function createRuntimeManager({
       return false;
     }
 
-    const ancestry = await captureWindowsProcessAncestry(owner.pid, record.pid, processIdentityResolver);
+    const knownLauncherIdentity = await record.launcherIdentityPromise;
+    const ancestry = await captureWindowsProcessAncestry(
+      owner.pid,
+      record.pid,
+      processIdentityResolver,
+      knownLauncherIdentity,
+    );
     if (!ancestry) return false;
     const state = await readState(record.runtimeKey);
     if (
@@ -2181,7 +2254,12 @@ async function resolveProcessIdentity(pid, { platform = process.platform, runCom
   return result.ok ? parseWindowsProcessIdentity(result.stdout) : null;
 }
 
-async function captureWindowsProcessAncestry(listenerPid, launcherPid, resolveIdentity) {
+async function captureWindowsProcessAncestry(
+  listenerPid,
+  launcherPid,
+  resolveIdentity,
+  knownLauncherIdentity = null,
+) {
   if (
     !Number.isInteger(listenerPid)
     || listenerPid <= 0
@@ -2197,9 +2275,14 @@ async function captureWindowsProcessAncestry(listenerPid, launcherPid, resolveId
     if (seen.has(currentPid)) return null;
     seen.add(currentPid);
     let identity = null;
-    try {
-      identity = normalizeWindowsProcessIdentity(await resolveIdentity(currentPid));
-    } catch {}
+    if (currentPid === launcherPid) {
+      identity = normalizeWindowsProcessIdentity(knownLauncherIdentity);
+    }
+    if (!identity) {
+      try {
+        identity = normalizeWindowsProcessIdentity(await resolveIdentity(currentPid));
+      } catch {}
+    }
     if (!identity || identity.pid !== currentPid) return null;
     ancestry.push(identity);
     if (identity.pid === launcherPid) return ancestry;

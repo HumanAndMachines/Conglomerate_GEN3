@@ -1180,6 +1180,120 @@ test("Windows standalone Start doplní owner proof, i když listener začne být
   }
 }, platformTestTimeout(10_000));
 
+test("Windows launcher exit před proof write zachová přeživší listener pro restart", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port });
+  const statePath = join(root, "launchpad", "runtime", "apps", "test-company-demo-v1.json");
+  const launcherPid = 42_424;
+  let listener = null;
+  let listenerExited = false;
+  let reportLauncherExit;
+  const launcherExited = new Promise((resolve) => {
+    reportLauncherExit = resolve;
+  });
+  let releaseProofCapture = () => {};
+  let reportProofCaptureStarted;
+  const proofCaptureStarted = new Promise((resolve) => {
+    reportProofCaptureStarted = resolve;
+  });
+  const proofCaptureRelease = new Promise((resolve) => {
+    releaseProofCapture = resolve;
+  });
+  const listenerIdentity = () => ({
+    pid: listener.pid,
+    parent_pid: launcherPid,
+    created_at: "2026-07-27T08:00:01.000Z",
+    executable_path: "C:\\Tools\\bun.exe",
+  });
+  const launcherIdentity = {
+    pid: launcherPid,
+    parent_pid: process.pid,
+    created_at: "2026-07-27T08:00:00.000Z",
+    executable_path: "C:\\Tools\\bun.exe",
+  };
+  let launcherIdentityProbeCount = 0;
+  const resolveOwner = async () => listener && !listenerExited
+    ? { pid: listener.pid, cwd_matches: null }
+    : null;
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "windows-launcher-handoff",
+    platform: "win32",
+    bunExecutable: process.execPath,
+    spawnProcess: (_command, options) => {
+      listener = Bun.spawn([process.execPath, "server.mjs"], options);
+      void listener.exited.then(() => { listenerExited = true; });
+      return {
+        pid: launcherPid,
+        stdout: new Response("").body,
+        stderr: new Response("").body,
+        exited: launcherExited,
+        kill: () => {},
+      };
+    },
+    resolvePortOwnerFn: resolveOwner,
+    resolveProcessIdentityFn: async (pid) => {
+      if (pid === listener?.pid) {
+        reportProofCaptureStarted();
+        await proofCaptureRelease;
+        return listenerIdentity();
+      }
+      if (pid === launcherPid) {
+        launcherIdentityProbeCount += 1;
+        return launcherIdentityProbeCount === 1 ? launcherIdentity : null;
+      }
+      return null;
+    },
+  });
+
+  try {
+    const startPromise = runtime.start("test-company-demo-v1");
+    await proofCaptureStarted;
+    reportLauncherExit(0);
+    releaseProofCapture();
+    expect((await startPromise).runtime).toMatchObject({
+      status: "healthy",
+      owner: "adopted-port",
+    });
+
+    const handedOffState = await waitForJson(
+      statePath,
+      (state) => state.status !== "starting",
+    );
+    expect(handedOffState).toMatchObject({
+      status: "healthy",
+      launcher_exit_code: 0,
+      owner_proof: {
+        launcher_pid: launcherPid,
+        listener_pid: listener.pid,
+      },
+    });
+    expect(launcherIdentityProbeCount).toBe(1);
+
+    const restartedRuntime = createRuntimeManager({
+      companiesRoot: root,
+      launchpadRoot: join(root, "launchpad"),
+      instanceId: "windows-after-launcher-handoff",
+      platform: "win32",
+      resolvePortOwnerFn: resolveOwner,
+      resolveProcessIdentityFn: async (pid) => pid === listener?.pid ? listenerIdentity() : null,
+    });
+    expect(await restartedRuntime.health("test-company-demo-v1")).toMatchObject({
+      status: "healthy",
+      owner: "adopted-port",
+      port_owner: { verified_by: "runtime-owner-proof" },
+    });
+    expect((await restartedRuntime.stop("test-company-demo-v1")).runtime.status).toBe("stopped");
+  } finally {
+    reportLauncherExit(0);
+    releaseProofCapture();
+    try {
+      listener?.kill("SIGKILL");
+    } catch {}
+  }
+}, platformTestTimeout(10_000));
+
 test("Windows owner proof přežije restart Launchpadu mezi stopping zápisem a signálem", async () => {
   const port = await findFreePort();
   const root = await createCompaniesWorkspaceFixture({ port });
@@ -1356,13 +1470,13 @@ test("Windows owner proof capture je bounded a health hot path ho neopakuje", as
 
   try {
     await runtime.start("test-company-demo-v1");
-    for (let attempt = 0; attempt < 20 && identityProbeCount < 3; attempt += 1) {
+    for (let attempt = 0; attempt < 20 && identityProbeCount < 4; attempt += 1) {
       await sleep(100);
     }
-    expect(identityProbeCount).toBe(3);
+    expect(identityProbeCount).toBe(4);
     await runtime.health("test-company-demo-v1");
     await runtime.health("test-company-demo-v1");
-    expect(identityProbeCount).toBe(3);
+    expect(identityProbeCount).toBe(4);
   } finally {
     try {
       child?.kill("SIGKILL");
