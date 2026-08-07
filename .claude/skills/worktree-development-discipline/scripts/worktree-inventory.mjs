@@ -65,7 +65,10 @@ export async function auditRepository(startPath = process.cwd(), options = {}) {
       ? await runGit(["status", "--porcelain=v1", "--untracked-files=all"], record.path)
       : { ok: false, stdout: "", stderr: "missing path", timedOut: false };
     const remote = exists && record.branch
-      ? await inspectRemoteState(record.path)
+      ? await inspectRemoteState(record.path, {
+          allowFreshUnpublished: pathClass === "canonical" && sidecar.valid,
+          baseRef: "origin/main",
+        })
       : {
           upstream: null,
           ahead: null,
@@ -77,6 +80,7 @@ export async function auditRepository(startPath = process.cwd(), options = {}) {
           remoteHeadMatches: null,
           verified: false,
           preserved: false,
+          freshUnpublished: false,
           error: null,
         };
     const disk = includeDisk && exists && pathClass !== "primary"
@@ -106,6 +110,7 @@ export async function auditRepository(startPath = process.cwd(), options = {}) {
       remote_head: remote.remoteHead,
       remote_head_matches: remote.remoteHeadMatches,
       remote_verified: remote.verified,
+      fresh_unpublished: remote.freshUnpublished,
       remote_error: remote.error,
       remote_preserved: remote.preserved,
       disk_bytes: disk.bytes,
@@ -169,7 +174,12 @@ export async function auditRepository(startPath = process.cwd(), options = {}) {
     if (worktree.path_class === "canonical" && !worktree.branch) {
       violations.push(`canonical worktree is detached: ${worktree.path}`);
     }
-    if (worktree.path_class === "canonical" && worktree.branch && !worktree.upstream) {
+    if (
+      worktree.path_class === "canonical"
+      && worktree.branch
+      && !worktree.upstream
+      && !worktree.fresh_unpublished
+    ) {
       violations.push(`canonical worktree branch has no upstream: ${worktree.path}`);
     }
     if (worktree.path_class === "canonical" && (worktree.ahead ?? 0) > 0) {
@@ -224,6 +234,9 @@ export async function auditRepository(startPath = process.cwd(), options = {}) {
       ),
       no_upstream: enriched.filter(
         (item) => item.path_class === "canonical" && item.branch && !item.upstream,
+      ).length,
+      fresh_unpublished: enriched.filter(
+        (item) => item.path_class === "canonical" && item.fresh_unpublished,
       ).length,
       local_only_commits: enriched
         .filter((item) => item.path_class === "canonical")
@@ -898,12 +911,19 @@ async function isLinkedToCommonDir(worktreePath, commonDir) {
   return isWithin(commonDir, gitDir);
 }
 
-async function inspectRemoteState(worktreePath) {
+async function inspectRemoteState(
+  worktreePath,
+  { allowFreshUnpublished = false, baseRef = "origin/main" } = {},
+) {
   const upstream = await runGit(
     ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
     worktreePath,
   );
   if (!upstream.ok) {
+    const fresh = allowFreshUnpublished
+      ? await inspectFreshUnpublishedState(worktreePath, baseRef)
+      : null;
+    if (fresh) return fresh;
     return {
       upstream: null,
       ahead: null,
@@ -915,6 +935,7 @@ async function inspectRemoteState(worktreePath) {
       remoteHeadMatches: null,
       verified: false,
       preserved: false,
+      freshUnpublished: false,
       error: upstream.timedOut
         ? "upstream lookup timed out"
         : upstream.stderr.trim() || "upstream lookup failed",
@@ -1086,7 +1107,43 @@ async function inspectRemoteState(worktreePath) {
     remoteHeadMatches,
     verified: true,
     preserved: remoteHeadMatches,
+    freshUnpublished: false,
     error: remoteHeadMatches ? null : "live remote HEAD differs from local HEAD",
+  };
+}
+
+async function inspectFreshUnpublishedState(worktreePath, baseRef) {
+  const [branch, localHead, baseHead] = await Promise.all([
+    runGit(["symbolic-ref", "--quiet", "--short", "HEAD"], worktreePath),
+    runGit(["rev-parse", "HEAD"], worktreePath),
+    runGit(["rev-parse", "--verify", baseRef], worktreePath),
+  ]);
+  if (!branch.ok || !localHead.ok || !baseHead.ok) return null;
+  if (localHead.stdout.trim() !== baseHead.stdout.trim()) return null;
+
+  const slash = baseRef.indexOf("/");
+  if (slash <= 0 || slash === baseRef.length - 1) return null;
+  const remoteName = baseRef.slice(0, slash);
+  const branchName = branch.stdout.trim();
+  const liveBranch = await runGit(
+    ["ls-remote", "--exit-code", "--heads", remoteName, `refs/heads/${branchName}`],
+    worktreePath,
+  );
+  if (liveBranch.ok || liveBranch.exitCode !== 2) return null;
+
+  return {
+    upstream: null,
+    ahead: 0,
+    behind: 0,
+    remoteName,
+    remoteRef: null,
+    remoteBranchExists: false,
+    remoteHead: null,
+    remoteHeadMatches: null,
+    verified: true,
+    preserved: true,
+    freshUnpublished: true,
+    error: null,
   };
 }
 
@@ -1250,7 +1307,13 @@ export function formatHuman(report) {
       worktree.dirty === true ? "dirty" : worktree.dirty === false ? "clean" : "unknown",
       worktree.sidecar_path && !worktree.sidecar_exists ? "missing-sidecar" : null,
       worktree.sidecar_exists && worktree.sidecar_valid === false ? "invalid-sidecar" : null,
-      worktree.upstream ? `upstream:${worktree.upstream}` : worktree.branch ? "no-upstream" : null,
+      worktree.fresh_unpublished
+        ? "fresh-unpublished"
+        : worktree.upstream
+        ? `upstream:${worktree.upstream}`
+        : worktree.branch
+        ? "no-upstream"
+        : null,
       (worktree.ahead ?? 0) > 0 ? `ahead:${worktree.ahead}` : null,
       (worktree.behind ?? 0) > 0 ? `behind:${worktree.behind}` : null,
       worktree.conversation_origin

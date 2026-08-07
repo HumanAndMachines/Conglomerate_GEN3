@@ -241,6 +241,54 @@ test("verifies live remote preservation in a SHA-256 repository", async () => {
   });
 });
 
+test("accepts a pristine create-lane worktree before its first push", async () => {
+  const fixture = await createFixture({
+    authorityAvailable: true,
+    planAvailable: true,
+    publishFeatureBranch: false,
+  });
+  const report = await auditRepository(fixture.root, {
+    authorityRoot: fixture.authorityRoot,
+  });
+  expect(canonicalWorktree(report)).toMatchObject({
+    lifecycle: "active",
+    upstream: null,
+    ahead: 0,
+    behind: 0,
+    fresh_unpublished: true,
+    remote_verified: true,
+    remote_preserved: true,
+    remote_error: null,
+  });
+  expect(report.violations.join("\n")).not.toContain(
+    "canonical worktree branch has no upstream",
+  );
+});
+
+test("fails closed when an unpublished worktree has diverged from its base", async () => {
+  const fixture = await createFixture({
+    authorityAvailable: true,
+    planAvailable: true,
+    publishFeatureBranch: false,
+  });
+  await writeFile(join(fixture.canonical, "draft.txt"), "local-only\n");
+  git(fixture.canonical, ["add", "draft.txt"]);
+  git(fixture.canonical, ["commit", "-m", "local-only draft"]);
+
+  const report = await auditRepository(fixture.root, {
+    authorityRoot: fixture.authorityRoot,
+  });
+  expect(canonicalWorktree(report)).toMatchObject({
+    lifecycle: "needs_attention",
+    upstream: null,
+    fresh_unpublished: false,
+    remote_preserved: false,
+  });
+  expect(report.violations.join("\n")).toContain(
+    "canonical worktree branch has no upstream",
+  );
+});
+
 test("fails closed when the authority exists but the exact plan is missing", async () => {
   const fixture = await createFixture({
     authorityAvailable: true,
@@ -378,6 +426,7 @@ async function createFixture({
   planContents = validPlanContents,
   objectFormat = "sha1",
   sidecarOverrides = {},
+  publishFeatureBranch = true,
 }) {
   const sandbox = await mkdtemp(join(tmpdir(), "worktree contract "));
   cleanupPaths.push(sandbox);
@@ -430,7 +479,9 @@ async function createFixture({
   const basename = "CAC-0007-contract";
   const canonical = join(root, ".worktrees", "root", basename);
   git(root, ["worktree", "add", "-b", `codex/${basename}`, canonical, "main"]);
-  git(canonical, ["push", "-u", "origin", `codex/${basename}`]);
+  if (publishFeatureBranch) {
+    git(canonical, ["push", "-u", "origin", `codex/${basename}`]);
+  }
   await writeFile(
     join(root, ".worktrees", "root", `${basename}.worktree.json`),
     `${JSON.stringify({

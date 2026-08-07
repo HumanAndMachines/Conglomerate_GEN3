@@ -300,7 +300,8 @@ Root upravuj jen když se mění:
   pointer `manual/desktop-execution-agent-collaboration.md`
 - Worktree create/inventura/předávka/cleanup — consumer skill
   `.agents/skills/worktree-development-discipline/SKILL.md`; autorita
-  HumanAndMachines decision 0049 a shaping manual `manual/worktree-management.md`
+  decision 0049 (`manual/decision-register.md`) a shaping manual
+  `manual/worktree-management.md`
 - Základní agentní skill balíček: `.agents/skills/` (registry
   `manifest.json`); `.claude/skills` je Git-tracked byte-for-byte mirror
   aktivních skillů (decision 0104 v manual/decision-register.md) —

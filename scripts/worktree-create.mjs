@@ -13,8 +13,10 @@ import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { hostname, userInfo } from "node:os";
-
-const PLAN_CODE_PATTERN = /^[A-Z]{2,5}-[0-9]{4}$/;
+import {
+  parseWorktreeCreateArgs,
+  PLAN_CODE_PATTERN,
+} from "./worktree-create-contract.mjs";
 
 function fail(message) {
   console.error(`fail - worktrees:create: ${message}`);
@@ -27,25 +29,6 @@ function git(cwd, args, { allowFail = false } = {}) {
     fail(`git ${args.join(" ")} selhalo: ${(result.stderr || "").trim()}`);
   }
   return { status: result.status, stdout: (result.stdout || "").trim() };
-}
-
-function parseArgs(argv) {
-  const options = { dryRun: false };
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === "--dry-run") {
-      options.dryRun = true;
-      continue;
-    }
-    const key = arg.replace(/^--/, "");
-    const value = argv[index + 1];
-    if (!arg.startsWith("--") || value === undefined) {
-      fail(`neznámý nebo neúplný argument: ${arg}`);
-    }
-    options[key] = value;
-    index += 1;
-  }
-  return options;
 }
 
 function resolveAuthorityRoot(primaryRoot) {
@@ -91,7 +74,12 @@ async function findPlanFile(authorityRoot, planCode) {
 }
 
 async function main() {
-  const options = parseArgs(process.argv.slice(2));
+  let options;
+  try {
+    options = parseWorktreeCreateArgs(process.argv.slice(2));
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
   const planCode = options.plan;
   if (!planCode || !PLAN_CODE_PATTERN.test(planCode)) {
     fail("--plan <KOD-XXXX> je povinný (kód vlastnického Mission Control plánu).");

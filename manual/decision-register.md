@@ -13,12 +13,12 @@ frameworku se sem nepřenášejí).
 | --- | --- |
 | 0013 | Launchpad root je workstation/control-plane pattern: právě jeden root na mašinu; Organizace dynamicky načítá a spouští, ale nedrží jejich business pravdu. |
 | 0018 | Každá Organizace má vlastní doctor; diagnostika je per-Organizace, ne globální. |
-| 0031 | Org mounty `organizations/<org>/` jsou gitignored Doctor-managed vnořená repa, ne git submoduly; root config je folder-driven. |
 | 0021 | Team je pojmenovaná skupina uvnitř Organizace; hosted vzor aplikací je `<modul>.<team>.<doména>`. |
 | 0023 | Team může být tým lidí i značka/venture; příslušnost modulů deklaruje manifest. |
 | 0024 | Historický CEO-first koncept Launchpadu; revidováno decision 0047 (builder-first). |
 | 0026 | Kanonický layout Organizace GEN3 (company.gen3.json, plochý workspace, manifesty). |
 | 0030 | Conglomerate root je direct-pull klon jediného sdíleného upstreamu; vylepšení jdou zpět PR-em, ne fork-syncem. |
+| 0031 | Org mounty `organizations/<org>/` jsou gitignored Doctor-managed vnořená repa, ne git submoduly; root config je folder-driven. |
 | 0033 | Migrace GEN2 → GEN3 je fork-based a paralelní; stará generace zůstává rollback linkou. |
 | 0034 | Mission Control ↔ template roadmap loop: plánovací vrstva se propaguje template cestou. |
 | 0035 | Datové v3 aplikace rozlišují Draft a Publikaci dat nad repository-db; chráněné cesty jdou flow draft → approve → publish. Rozsah approval sleduje progresivní zamykání (viz 0102). |
