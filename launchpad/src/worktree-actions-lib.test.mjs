@@ -251,8 +251,17 @@ test("guarded create rolls back its allocation when sidecar publication fails", 
 
   expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish"))).toBe(false);
   expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish.worktree.json"))).toBe(false);
-  expect(runGit(["branch", "--list", "CAC-0042-deals-publish"], dealsRepo)).toContain("CAC-0042-deals-publish");
+  expect(runGit(["branch", "--list", "CAC-0042-deals-publish"], dealsRepo)).toBe("");
   expect(existsSync(join(orgRoot, ".worktrees", ".worktree-create.lock"))).toBe(false);
+
+  const retry = await createWorktreeFromPlan({
+    companiesRoot: root,
+    repoKey: "BetaCo::deals",
+    planPath: "mission-control/plans/2026/07/CAC-0042-deals-publish.yaml",
+    branch: "CAC-0042-deals-publish",
+    createdBy: "test-agent",
+  });
+  expect(retry).toMatchObject({ action: "create_worktree" });
 });
 
 test("guarded create preserves artefacts when the branch ownership marker changes before rollback", async () => {
@@ -401,7 +410,7 @@ test("guarded create leaves failed atomic staging file for conscious cleanup", a
   expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish"))).toBe(false);
   expect(existsSync(finalPath)).toBe(false);
   expect(existsSync(stagingPath)).toBe(true);
-  expect(runGit(["branch", "--list", "CAC-0042-deals-publish"], dealsRepo)).toContain("CAC-0042-deals-publish");
+  expect(runGit(["branch", "--list", "CAC-0042-deals-publish"], dealsRepo)).toBe("");
   expect(existsSync(join(orgRoot, ".worktrees", ".worktree-create.lock"))).toBe(false);
 });
 
