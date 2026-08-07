@@ -16,6 +16,8 @@ const startEarlyExitProbeMs = 1_000;
 const openHealthyWaitMs = 20_000;
 const openHealthyPollMs = 250;
 const openHealthyStabilityMs = 1_000;
+const windowsOwnerProofCaptureAttempts = 3;
+const windowsProcessIdentityTimeoutMs = 5_000;
 const stopTimeoutMs = 5_000;
 const stopPollMs = 100;
 const stopKillWaitMs = 2_000;
@@ -55,6 +57,7 @@ export function createRuntimeManager({
   platform = process.platform,
   spawnProcess = Bun.spawn,
   runSystemCommandFn = runCommand,
+  resolveProcessIdentityFn = null,
   writeRuntimeStateFile = writeFile,
   bunExecutable = null,
 }) {
@@ -64,6 +67,8 @@ export function createRuntimeManager({
   const runtimeRoot = join(launchpadRoot, "runtime");
   const appStateRoot = join(runtimeRoot, "apps");
   const logsRoot = join(launchpadRoot, "logs", "apps");
+  const processIdentityResolver = resolveProcessIdentityFn
+    ?? ((pid) => resolveProcessIdentity(pid, { platform, runCommandFn: runSystemCommandFn }));
 
   async function appsWithRuntime(apps) {
     return Promise.all(
@@ -143,9 +148,12 @@ export function createRuntimeManager({
       healthForApp(replaced),
     ]);
     const targetPid = targetRuntime.port_owner?.pid ?? targetRuntime.pid;
-    const replacedOwner = await resolvePortOwnerFn(replaced.port, {
-      expectedCwd: join(companiesRoot, replaced.cwd ?? dirname(replaced.package_path ?? "package.json")),
-    });
+    const replacedExpectedCwd = join(companiesRoot, replaced.cwd ?? dirname(replaced.package_path ?? "package.json"));
+    const replacedOwner = await resolveVerifiedPortOwner(
+      replaced,
+      await readState(runtimeKeyForApp(replaced)),
+      replacedExpectedCwd,
+    );
     if (
       !["current-instance", "adopted-port"].includes(replacedRuntime.owner)
       || targetRuntime.owner !== "foreign-port"
@@ -313,6 +321,14 @@ export function createRuntimeManager({
       log_path: relativeRuntimePath(logPath),
     });
 
+    if (platform === "win32") {
+      record.ownerProofPromise = persistWindowsRuntimeOwnerProofWhenHealthy(app, record).catch(async (error) => {
+        try {
+          await appendLog(logPath, `[launchpad] Windows owner proof capture failed ${app.id}: ${error.message}\n`);
+        } catch {}
+      });
+    }
+
     child.exited.then(async (exitCode) => {
       if (record.stopping) {
         record.stopExitConfirmed = true;
@@ -332,6 +348,9 @@ export function createRuntimeManager({
       const currentRecord = managedProcesses.get(runtimeKey);
       if (currentRecord === record) {
         managedProcesses.delete(runtimeKey);
+      }
+      if (record.ownerProofWritePromise) {
+        await record.ownerProofWritePromise;
       }
       await Promise.allSettled(record.outputPipes);
       await appendLog(logPath, `[launchpad] ${new Date().toISOString()} exit ${app.id} source=${runtimeSource.type} code=${exitCode}\n`);
@@ -360,6 +379,9 @@ export function createRuntimeManager({
     if (earlyExit !== null) {
       record.stopping = true;
       managedProcesses.delete(runtimeKey);
+      if (record.ownerProofWritePromise) {
+        await record.ownerProofWritePromise;
+      }
       await Promise.allSettled(record.outputPipes);
       const log_excerpt = await logTail(logPath, errorTailBytes);
       const failure = startFailure(app, earlyExit, log_excerpt);
@@ -694,6 +716,9 @@ export function createRuntimeManager({
 
     record.stopping = true;
     resetStopAttempt(record);
+    if (record.ownerProofWritePromise) {
+      await record.ownerProofWritePromise;
+    }
     try {
       await writeState(runtimeKey, {
         status: "stopping",
@@ -1016,7 +1041,8 @@ export function createRuntimeManager({
     const expectedPid = current.port_owner.pid;
     const logPath = logPathForApp(runtimeKey);
     const expectedCwd = join(companiesRoot, app.cwd ?? dirname(app.package_path ?? "package.json"));
-    const confirmedOwner = await resolvePortOwnerFn(app.port, { expectedCwd });
+    const persistedState = await readState(runtimeKey);
+    const confirmedOwner = await resolveVerifiedPortOwner(app, persistedState, expectedCwd);
 
     if (!confirmedOwner) {
       return {
@@ -1054,7 +1080,7 @@ export function createRuntimeManager({
 
     if (outcome.owner?.pid === expectedPid) {
       // PID/port vazbu ověřujeme znovu těsně před nevratným SIGKILL.
-      const ownerBeforeKill = await resolvePortOwnerFn(app.port, { expectedCwd });
+      const ownerBeforeKill = await resolveVerifiedPortOwner(app, persistedState, expectedCwd);
       if (!ownerBeforeKill) {
         outcome = { owner: null };
       } else {
@@ -1387,7 +1413,7 @@ export function createRuntimeManager({
     const dependencies = await dependencyForApp(app);
     const probe = await probeHealth(app);
     const expectedCwd = join(companiesRoot, app.cwd ?? dirname(app.package_path ?? "package.json"));
-    const portOwner = record ? null : await resolvePortOwnerFn(app.port, { expectedCwd });
+    const portOwner = record ? null : await resolveVerifiedPortOwner(app, state, expectedCwd);
     // Adoption is destructive authority: only a positively verified canonical
     // cwd match may become managed. Unknown lookup (including Windows) stays
     // fail-closed and cannot expose Stop/Restart.
@@ -1514,6 +1540,144 @@ export function createRuntimeManager({
           ? `Poslední managed proces skončil s kódem ${state.exit_code}. Otevři Logs pro detail.`
           : "Aplikace neběží."),
     };
+  }
+
+  async function resolveVerifiedPortOwner(app, state, expectedCwd) {
+    const owner = await resolvePortOwnerFn(app.port, { expectedCwd });
+    if (!owner || owner.cwd_matches === true || owner.cwd_matches === false || platform !== "win32") {
+      return owner;
+    }
+    const proof = state?.owner_proof;
+    if (
+      !validWindowsRuntimeOwnerProof(proof)
+      || proof.listener_pid !== owner.pid
+      || state.app_id !== app.id
+      || state.runtime_key !== runtimeKeyForApp(app)
+      || state.port !== app.port
+      || !["starting", "healthy", "stopping"].includes(state.status)
+    ) {
+      return owner;
+    }
+
+    const canonicalExpectedCwd = await canonicalPath(expectedCwd);
+    const canonicalProofCwd = await canonicalPath(proof.expected_cwd);
+    if (canonicalExpectedCwd !== canonicalProofCwd) return owner;
+
+    let currentIdentity = null;
+    try {
+      currentIdentity = normalizeWindowsProcessIdentity(await processIdentityResolver(owner.pid));
+    } catch {}
+    if (!sameWindowsProcessIdentity(proof.listener_identity, currentIdentity)) return owner;
+    return {
+      ...owner,
+      cwd_matches: true,
+      verified_by: "runtime-owner-proof",
+    };
+  }
+
+  async function persistWindowsRuntimeOwnerProofWhenHealthy(app, record) {
+    const deadline = Date.now() + startGraceMs;
+    let captureAttempts = 0;
+    while (
+      managedProcesses.get(record.runtimeKey) === record
+      && !record.stopping
+      && Date.now() < deadline
+    ) {
+      const probe = await probeHealth(app);
+      if (probe.reachable && probe.ok) {
+        captureAttempts += 1;
+        if (await captureWindowsRuntimeOwnerProof(app, record)) return;
+        if (captureAttempts >= windowsOwnerProofCaptureAttempts) {
+          await appendLog(
+            record.logPath,
+            `[launchpad] Windows owner proof unavailable ${app.id} after ${captureAttempts} verified-health attempts\n`,
+          );
+          return;
+        }
+      }
+      await sleep(openHealthyPollMs);
+    }
+  }
+
+  async function captureWindowsRuntimeOwnerProof(app, record, expectedCwd = null) {
+    if (
+      platform !== "win32"
+      || !record
+      || record.ownerProofCaptured
+      || record.stopping
+      || managedProcesses.get(record.runtimeKey) !== record
+    ) {
+      return false;
+    }
+
+    const appExpectedCwd = expectedCwd
+      ?? join(companiesRoot, app.cwd ?? dirname(app.package_path ?? "package.json"));
+    const owner = await resolvePortOwnerFn(app.port, { expectedCwd: appExpectedCwd });
+    if (
+      !Number.isInteger(owner?.pid)
+      || owner.pid <= 0
+      || owner.cwd_matches === false
+    ) {
+      return false;
+    }
+
+    const ancestry = await captureWindowsProcessAncestry(owner.pid, record.pid, processIdentityResolver);
+    if (!ancestry) return false;
+    const state = await readState(record.runtimeKey);
+    if (
+      !state
+      || state.pid !== record.pid
+      || state.instance_id !== instanceId
+      || state.app_id !== app.id
+      || state.runtime_key !== record.runtimeKey
+      || state.port !== app.port
+      || !["starting", "healthy"].includes(state.status)
+      || record.stopping
+      || managedProcesses.get(record.runtimeKey) !== record
+    ) {
+      return false;
+    }
+
+    const canonicalExpectedCwd = await canonicalPath(appExpectedCwd);
+    const capturedAt = new Date().toISOString();
+    const listenerIdentity = ancestry[0];
+    const launcherIdentity = ancestry.at(-1);
+    const ownerProof = {
+      schema_version: "companiesascode.launchpad.runtime_owner_proof.v1",
+      platform: "win32",
+      launcher_pid: record.pid,
+      launcher_identity: launcherIdentity,
+      listener_pid: owner.pid,
+      listener_identity: listenerIdentity,
+      ancestry,
+      expected_cwd: canonicalExpectedCwd,
+      captured_at: capturedAt,
+    };
+    if (
+      !validWindowsRuntimeOwnerProof(ownerProof)
+      || record.stopping
+      || managedProcesses.get(record.runtimeKey) !== record
+    ) {
+      return false;
+    }
+    // Mezi posledním guardem a přiřazením promise nesmí přibýt await: Stop i
+    // exit handler pak spolehlivě počkají na tento už rozběhnutý zápis a jejich
+    // terminální stav ho vždy přepíše až potom.
+    const proofWritePromise = writeState(record.runtimeKey, {
+      ...state,
+      updated_at: capturedAt,
+      owner_proof: ownerProof,
+    });
+    record.ownerProofWritePromise = proofWritePromise;
+    try {
+      await proofWritePromise;
+      record.ownerProofCaptured = true;
+      return true;
+    } finally {
+      if (record.ownerProofWritePromise === proofWritePromise) {
+        record.ownerProofWritePromise = null;
+      }
+    }
   }
 
   async function dependencyForApp(app) {
@@ -1979,6 +2143,152 @@ export function windowsPowerShellExecutable(env = process.env) {
     : "powershell.exe";
 }
 
+export function windowsProcessIdentityCommand(pid, env = process.env) {
+  if (!Number.isInteger(pid) || pid <= 0) throw new Error(`Invalid Windows process id: ${pid}`);
+  const script = [
+    `$process = Get-CimInstance -ClassName Win32_Process -Filter 'ProcessId = ${pid}' -ErrorAction SilentlyContinue`,
+    "if ($null -eq $process) { exit 3 }",
+    "[ordered]@{ pid = [int]$process.ProcessId; parent_pid = [int]$process.ParentProcessId; created_at = $process.CreationDate.ToUniversalTime().ToString('o'); executable_path = [string]$process.ExecutablePath } | ConvertTo-Json -Compress",
+  ].join("; ");
+  return [
+    windowsPowerShellExecutable(env),
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    script,
+  ];
+}
+
+export function parseWindowsProcessIdentity(output) {
+  try {
+    return normalizeWindowsProcessIdentity(JSON.parse(String(output ?? "").trim()));
+  } catch {
+    return null;
+  }
+}
+
+async function resolveProcessIdentity(pid, { platform = process.platform, runCommandFn = runCommand } = {}) {
+  if (platform !== "win32") return null;
+  const result = await runCommandFn(windowsProcessIdentityCommand(pid), {
+    timeoutMs: windowsProcessIdentityTimeoutMs,
+  });
+  return result.ok ? parseWindowsProcessIdentity(result.stdout) : null;
+}
+
+async function captureWindowsProcessAncestry(listenerPid, launcherPid, resolveIdentity) {
+  if (
+    !Number.isInteger(listenerPid)
+    || listenerPid <= 0
+    || !Number.isInteger(launcherPid)
+    || launcherPid <= 0
+  ) {
+    return null;
+  }
+  const ancestry = [];
+  const seen = new Set();
+  let currentPid = listenerPid;
+  for (let depth = 0; depth < 8; depth += 1) {
+    if (seen.has(currentPid)) return null;
+    seen.add(currentPid);
+    let identity = null;
+    try {
+      identity = normalizeWindowsProcessIdentity(await resolveIdentity(currentPid));
+    } catch {}
+    if (!identity || identity.pid !== currentPid) return null;
+    ancestry.push(identity);
+    if (identity.pid === launcherPid) return ancestry;
+    if (!Number.isInteger(identity.parent_pid) || identity.parent_pid <= 0) return null;
+    currentPid = identity.parent_pid;
+  }
+  return null;
+}
+
+function validWindowsRuntimeOwnerProof(proof) {
+  if (
+    !proof
+    || proof.schema_version !== "companiesascode.launchpad.runtime_owner_proof.v1"
+    || proof.platform !== "win32"
+    || !Number.isInteger(proof.launcher_pid)
+    || proof.launcher_pid <= 0
+    || !Number.isInteger(proof.listener_pid)
+    || proof.listener_pid <= 0
+    || typeof proof.expected_cwd !== "string"
+    || proof.expected_cwd.trim() === ""
+    || typeof proof.captured_at !== "string"
+    || !Number.isFinite(Date.parse(proof.captured_at))
+    || !Array.isArray(proof.ancestry)
+    || proof.ancestry.length < 1
+    || proof.ancestry.length > 8
+  ) {
+    return false;
+  }
+  const ancestry = proof.ancestry.map(normalizeWindowsProcessIdentity);
+  if (ancestry.some((identity) => !identity)) return false;
+  const listenerIdentity = normalizeWindowsProcessIdentity(proof.listener_identity);
+  const launcherIdentity = normalizeWindowsProcessIdentity(proof.launcher_identity ?? ancestry.at(-1));
+  if (
+    !listenerIdentity
+    || !launcherIdentity
+    || proof.listener_pid !== listenerIdentity.pid
+    || proof.launcher_pid !== launcherIdentity.pid
+    || !sameWindowsProcessIdentity(listenerIdentity, ancestry[0])
+    || !sameWindowsProcessIdentity(launcherIdentity, ancestry.at(-1))
+  ) {
+    return false;
+  }
+  const seen = new Set();
+  for (let index = 0; index < ancestry.length; index += 1) {
+    const identity = ancestry[index];
+    if (seen.has(identity.pid)) return false;
+    seen.add(identity.pid);
+    if (index < ancestry.length - 1) {
+      const parentIdentity = ancestry[index + 1];
+      if (
+        identity.parent_pid !== parentIdentity.pid
+        || Date.parse(parentIdentity.created_at) > Date.parse(identity.created_at)
+      ) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+function normalizeWindowsProcessIdentity(identity) {
+  if (
+    !Number.isInteger(identity?.pid)
+    || identity.pid <= 0
+    || !Number.isInteger(identity?.parent_pid)
+    || identity.parent_pid < 0
+    || typeof identity?.created_at !== "string"
+    || !Number.isFinite(Date.parse(identity.created_at))
+    || typeof identity?.executable_path !== "string"
+    || identity.executable_path.trim() === ""
+  ) {
+    return null;
+  }
+  return {
+    pid: identity.pid,
+    parent_pid: identity.parent_pid,
+    created_at: new Date(identity.created_at).toISOString(),
+    executable_path: identity.executable_path,
+  };
+}
+
+function sameWindowsProcessIdentity(expected, actual) {
+  const left = normalizeWindowsProcessIdentity(expected);
+  const right = normalizeWindowsProcessIdentity(actual);
+  return Boolean(
+    left
+    && right
+    && left.pid === right.pid
+    && left.parent_pid === right.parent_pid
+    && left.created_at === right.created_at
+    && win32.normalize(left.executable_path).toLowerCase()
+      === win32.normalize(right.executable_path).toLowerCase(),
+  );
+}
+
 export function windowsNetstatCommand(env = process.env) {
   const executable = env.SystemRoot
     ? win32.join(env.SystemRoot, "System32", "netstat.exe")
@@ -2098,19 +2408,44 @@ async function resolvePortOwnerWindows(port) {
   return result.ok ? parseWindowsListeningPid(result.stdout, port) : null;
 }
 
-async function runCommand(command) {
+async function runCommand(command, { timeoutMs = null } = {}) {
   try {
-    const process = Bun.spawn(command, {
+    const child = Bun.spawn(command, {
       stdout: "pipe",
       stderr: "pipe",
       windowsHide: true,
     });
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(process.stdout).text(),
-      new Response(process.stderr).text(),
-      process.exited,
-    ]);
-    return { ok: exitCode === 0, exitCode, stdout, stderr };
+    const readStream = (stream) => new Response(stream).text()
+      .then((value) => ({ value, error: null }))
+      .catch((error) => ({ value: "", error }));
+    const stdoutPromise = readStream(child.stdout);
+    const stderrPromise = readStream(child.stderr);
+    const timeoutToken = Symbol("command-timeout");
+    let timeoutId = null;
+    const exitCode = Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? await Promise.race([
+          child.exited,
+          new Promise((resolveTimeout) => {
+            timeoutId = setTimeout(() => resolveTimeout(timeoutToken), timeoutMs);
+          }),
+        ])
+      : await child.exited;
+    if (timeoutId !== null) clearTimeout(timeoutId);
+    if (exitCode === timeoutToken) {
+      try {
+        child.kill("SIGKILL");
+      } catch {}
+      return { ok: false, exitCode: null, stdout: "", stderr: "", error: `timeout after ${timeoutMs}ms` };
+    }
+    const [stdoutResult, stderrResult] = await Promise.all([stdoutPromise, stderrPromise]);
+    const streamError = stdoutResult.error ?? stderrResult.error;
+    return {
+      ok: exitCode === 0 && !streamError,
+      exitCode,
+      stdout: stdoutResult.value,
+      stderr: stderrResult.value,
+      ...(streamError ? { error: `stream read failed: ${streamError.message}` } : {}),
+    };
   } catch (error) {
     return { ok: false, exitCode: null, stdout: "", stderr: "", error: error.message };
   }
