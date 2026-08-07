@@ -142,6 +142,7 @@ Minimální document-native layout:
 modules/<module>/
 ├── app/v2/
 ├── data/v2/**/*.{md,mdx}
+├── migrations/v2/
 ├── README.md
 ├── ARCHITECTURE.md
 └── AGENTS.md
