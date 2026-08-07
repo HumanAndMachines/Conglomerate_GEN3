@@ -110,6 +110,72 @@
           "path": "launchpad/src/diagnostics-lib.test.mjs"
         }
       ]
+    },
+    {
+      "id": "issue-2026-08-07-001",
+      "title": "Rozhodnout kanonický kontrakt Filmbase in-tree transition modulů",
+      "status": "decision_needed",
+      "severity": "high",
+      "owner": "founder",
+      "created_at": "2026-08-07",
+      "updated_at": "2026-08-07",
+      "tags": [
+        "launchpad",
+        "discovery",
+        "nested-repos",
+        "filmbase",
+        "migration",
+        "CAC-0015"
+      ],
+      "question": "Mají se čtyři Filmbase workspace moduly z dočasného statusu in_tree_transition převést na samostatné Filmbase Git repozitáře, nebo má HumanAndMachines formálně zavést a bezpečnostně ohraničit podporovaný embedded/in-tree modulový kontrakt?",
+      "impact": "Filmbase strict Organization check a compiler procházejí bez warningů a hlásí changed: 0, ale aktuální Conglomerate discovery po zavedení CAC-0015 materializace správně vyžaduje u každého aktivního materializovaného workspace slotu konkrétní Git URL. Čtyři starší in_tree_transition sloty ji nemají, takže discovery, root Doctor a runtime diagnostika jsou fail-closed zablokované pro celý lokální Launchpad. Doplnit vymyšlené URL nebo oslabit gate bez rozhodnutí by vytvořilo nepravdivý access a ownership kontrakt.",
+      "options": [
+        {
+          "label": "Samostatné Filmbase module repos",
+          "summary": "Založit Filmbase-owned repozitáře pro knowledgebase, deals, website a content, bezpečně zachovat historii a do manifestu doplnit ověřené git.url a git.branch.",
+          "tradeoff": "Odpovídá aktuálnímu nested-repo modelu a GitHub access autoritě, ale vyžaduje samostatný migrační plán, repo provisioning a zvláštní schválení přesunu business obsahu."
+        },
+        {
+          "label": "Formální embedded modul",
+          "summary": "Novelizovat HumanAndMachines kontrakt a zavést explicitní, testovaný a read-only-safe status pro modul vlastněný Organization root repem.",
+          "tradeoff": "Zachová dnešní Filmbase layout bez přesunu dat, ale přidává druhý podporovaný ownership model a musí přesně vymezit materializaci, sync, worktrees a access hranice."
+        },
+        {
+          "label": "Dočasně vyřadit Filmbase z discovery",
+          "summary": "Odstranit nebo deaktivovat Organization marker, dokud nebude migrace rozhodnutá.",
+          "tradeoff": "Rychle odblokuje ostatní Organizace, ale skryje skutečně namountovanou Organizaci, poruší scan-first očekávání a problém pouze odloží."
+        }
+      ],
+      "decision_needed_for": [
+        "obnovení zeleného Launchpad discovery a runtime diagnostiky",
+        "Filmbase workspace module ownership a GitHub access hranice",
+        "CAC-0015 Doctor/materialization kontrakt pro přechodové Organizace"
+      ],
+      "next_action": "Founder vybere samostatné module repos nebo formální embedded kontrakt; poté vznikne samostatný implementační plán a PR bez publikace Filmbase business dat v této změně.",
+      "verification": [
+        "organizations/Filmbase_GEN3/company/scripts/doctor.sh check: PASS",
+        "Filmbase Organization compiler dry-run: changed 0",
+        "Launchpad discovery probe: FAIL na čtyřech Filmbase slotech bez Git URL",
+        "bun run doctor: launchpad.discovery FAIL a runtime diagnostika blocked"
+      ],
+      "links": [
+        {
+          "label": "Launchpad nested-repo discovery gate",
+          "path": "launchpad/src/discovery-lib.mjs"
+        },
+        {
+          "label": "Launchpad discovery contract",
+          "path": "launchpad/README.md"
+        },
+        {
+          "label": "CAC-0015 authority plan",
+          "path": "../HumanAndMachines/mission-control/plans/2026/06/CAC-0015-doctor-managed-nested-repos.yaml"
+        },
+        {
+          "label": "Filmbase FB-0002 transition decision",
+          "path": "organizations/Filmbase_GEN3/mission-control/plans/2026/07/FB-0002-filmbase-knowledgebase.yaml"
+        }
+      ]
     }
   ]
 }
