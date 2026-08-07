@@ -105,8 +105,10 @@ V2 má dva profily. **Record-native** je standard pro strukturované business
 entity a používá YAML, schema a společný writer. **Document-native** podle
 HumanAndMachines decision 0124 je úzký profil pro doménu, jejíž kanonický
 záznam je samotný Markdown/MDX dokument; app jej čte přímo a authoring probíhá
-přes Git branch + PR. Document-native profil nesmí obcházet strukturované
-schema ani ACL hranici, kterou doména skutečně potřebuje.
+přes Git branch + PR. Document-native profil se nesmí použít jako zkratka pro
+doménu se strukturovanými entitami, pro UI/CLI/MCP vyžadující jeden společný
+validovaný writer ani pro oddělenou ACL hranici, kterou doména skutečně
+potřebuje.
 
 Minimální record-native layout:
 
@@ -137,7 +139,7 @@ Minimální document-native layout:
 ```text
 modules/<module>/
 ├── app/v2/
-├── data/v2/**/*.md
+├── data/v2/**/*.{md,mdx}
 ├── README.md
 ├── ARCHITECTURE.md
 └── AGENTS.md
@@ -159,7 +161,13 @@ Příklady:
 - Warehouse v2: `data/v2/items`, `movements`, `suppliers`, `purchase-orders`, append-only movement writer a movement proposals.
 - Deals v2: `data/v2`, `generated/v2`, writer/proposal a výkonové patterny, ze kterých se následně vytěžil v3 pilot.
 
-**Gate do v3:** app/data boundary musí být dost jasná, aby se data dala vyjmout do samostatného data repa. Musí existovat import v2→v3, parity report, schema contract, writer contract, generated policy a rollback/archive plán.
+**Gate do v3:** document-native modul zůstává ve v2, dokud není samostatně
+doložená a schválená skutečná potřeba odděleného data lifecycle, jiné GitHub
+ACL hranice nebo non-Git authoring povrchu. Teprve pak na něj dopadne níže
+popsaný repository-db kontrakt. Každý modul vstupující do v3 musí mít app/data
+boundary dost jasnou pro vyjmutí dat do samostatného repa, import v2→v3,
+parity report, schema contract, writer contract, generated policy a
+rollback/archive plán.
 
 ### `v3` — repository-db data repo + explicit draft/publish
 
@@ -279,6 +287,11 @@ Bez inventáře nevzniká migrační PR.
    rollback marker; v1 odstav až po readbacku nové generace.
 
 ### 3. Migrace `v2 → v3`
+
+U document-native modulu tento postup začíná až po samostatném schválení v3
+use case podle výše uvedeného gate; samotný počet namespaces ani jejich
+uspořádání takovou potřebu nevytváří. Potom pro něj platí stejný
+repository-db migrační kontrakt:
 
 1. Vytvoř plán a označ v2 jako reference/rollback po dobu migrace.
 2. Vytvoř data repo `<module>-data` s default branchí `v3`.
