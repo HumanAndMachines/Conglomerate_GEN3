@@ -62,7 +62,9 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(js).toContain("function visibleMostUsed");
   expect(js).toContain('?company=${encodeURIComponent(requestedCompany)}');
   expect(js).toContain("const requestedCompany = state.filters.company");
-  expect(js).toContain('state.filters.company !== requestedCompany) return');
+  expect(js).toContain("let sidePanelRequestGeneration = 0;");
+  expect(js).toContain("const requestId = ++sidePanelRequestGeneration;");
+  expect(js).toContain("sidePanelResponseIsCurrent({");
   expect(js).toContain("return filtered(state.apps)");
   expect(js).toContain("--space-logo-hue");
   expect(js).toContain("space.organization.logo_url");
@@ -334,21 +336,51 @@ test("Daily surface hides diagnostics until the hero action requests them", asyn
 
 test("Launchpad quiet refresh is lightweight and non-overlapping", async () => {
   const js = await readFile(join(publicRoot, "app.js"), "utf8");
+  const stateLib = await readFile(join(publicRoot, "app-state.js"), "utf8");
+  const server = await readFile(join(import.meta.dirname, "server.mjs"), "utf8");
   const loadDataBlock = js.slice(
-    js.indexOf("async function loadData"),
+    js.indexOf("function loadData"),
     js.indexOf("async function fetchJson"),
   );
 
-  expect(js).toContain("let loadDataInFlight = null;");
-  expect(loadDataBlock).toContain("if (loadDataInFlight) return loadDataInFlight;");
-  expect(loadDataBlock).toContain("runLoadData({ quiet })");
+  expect(js).toContain("createLatestDataLoadCoordinator({ run: runLoadData })");
+  expect(loadDataBlock).toContain("dataLoadCoordinator.load(options)");
+  expect(stateLib).toContain("if (!fresh) return inFlight.promise;");
+  expect(stateLib).toContain("return queueFresh({ quiet });");
+  expect(stateLib).toContain("isCurrent: () => requestGeneration === generation");
+  expect(loadDataBlock).toContain("if (!isCurrent()) return;");
+  expect(js).toContain("loadData({ quiet: true, fresh: true })");
+  for (const [name, nextName] of [
+    ["openAppChain", "openWorkspaceModuleFolder"],
+    ["pullGitRepository", "abortGitRebase"],
+    ["abortGitRebase", "loadUpdateStatus"],
+    ["runRootUpdate", "pullAllRepositories"],
+    ["pullAllRepositories", "selectedRuntimeSourceForApp"],
+    ["createWorktreeForPlan", "publishSelectedWorktreeDraft"],
+    ["publishSelectedWorktreeDraft", "firstPlanPathForGit"],
+    ["runRuntimeAction", "switchRuntimeApp"],
+    ["switchRuntimeApp", "loadLogs"],
+  ]) {
+    const actionBlock = js.slice(
+      js.indexOf(`async function ${name}`),
+      js.indexOf(`function ${nextName}`),
+    );
+    const finallyBlock = actionBlock.slice(actionBlock.lastIndexOf("} finally {"));
+    expect(finallyBlock).toContain("loadData({ quiet: true, fresh: true })");
+  }
   expect(loadDataBlock).toContain("quiet");
   expect(loadDataBlock).toContain('fetchJson("/api/apps")');
-  expect(loadDataBlock).toContain('Promise.resolve(null)');
   expect(loadDataBlock).toContain('fetchJson("/api/sync", { method: "POST" })');
+  expect(js).toContain("let doctorLoadInFlight = null;");
+  expect(js).toContain("let doctorReloadRequested = false;");
+  expect(loadDataBlock).toContain("if (doctorLoadInFlight) {");
   expect(loadDataBlock).toContain('fetchJson("/api/doctor")');
-  expect(loadDataBlock).toContain("if (doctorResponse) {");
+  expect(loadDataBlock).toContain("if (!quiet) void loadDoctorInBackground();");
+  expect(loadDataBlock).toContain("if (rerun) void loadDoctorInBackground();");
+  expect(loadDataBlock).not.toContain("doctorResponse");
   expect(loadDataBlock).toContain('state.doctorRunState = "complete"');
+  expect(server).toContain("buildAppsResponseUncached({ includeGit: true })");
+  expect(server).toContain("build: () => buildAppsResponseUncached({ includeGit: false })");
   expect(loadDataBlock).toContain("if (!state.loaded)");
   expect(loadDataBlock).toContain("if (!quiet || !state.doctor)");
   expect(loadDataBlock).not.toContain("state.companies = [];\n    state.failures");

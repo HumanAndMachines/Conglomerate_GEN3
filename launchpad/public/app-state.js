@@ -33,6 +33,82 @@ export function reconcileSelectedAppId(apps, filters, selectedAppId) {
   return visibleApps[0]?.id ?? null;
 }
 
+export function createLatestDataLoadCoordinator({ run } = {}) {
+  if (typeof run !== "function") throw new TypeError("data load coordinator requires a run function");
+
+  let generation = 0;
+  let inFlight = null;
+  let queuedFresh = null;
+
+  function start({ quiet }) {
+    const requestGeneration = generation;
+    const entry = { quiet, promise: null };
+    inFlight = entry;
+    try {
+      entry.promise = Promise.resolve(run({
+        quiet,
+        requestGeneration,
+        isCurrent: () => requestGeneration === generation,
+      }));
+    } catch (error) {
+      entry.promise = Promise.reject(error);
+    }
+    const settle = () => {
+      if (inFlight !== entry) return;
+      inFlight = null;
+      const queued = queuedFresh;
+      queuedFresh = null;
+      if (!queued) return;
+      const next = start({ quiet: queued.quiet });
+      next.then(queued.resolve, queued.reject);
+    };
+    entry.promise.then(settle, settle);
+    return entry.promise;
+  }
+
+  function queueFresh({ quiet }) {
+    if (!queuedFresh) {
+      let resolve;
+      let reject;
+      const promise = new Promise((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+      });
+      // Když supersedujeme ruční sync, zachováme silnější non-quiet lane
+      // včetně forced /api/sync a následného Doctora.
+      queuedFresh = { quiet: quiet && inFlight.quiet, promise, resolve, reject };
+    } else {
+      queuedFresh.quiet = queuedFresh.quiet && quiet;
+    }
+    return queuedFresh.promise;
+  }
+
+  function load({ quiet = false, fresh = !quiet } = {}) {
+    if (fresh) generation += 1;
+    if (inFlight) {
+      if (!fresh) return inFlight.promise;
+      return queueFresh({ quiet });
+    }
+    return start({ quiet });
+  }
+
+  return { load };
+}
+
+export function sidePanelResponseIsCurrent({
+  requestId,
+  latestRequestId,
+  requestedScope,
+  requestedCompany,
+  activeScope,
+  activeCompany,
+}) {
+  return activeScope === "org"
+    && requestId === latestRequestId
+    && requestedScope === activeScope
+    && requestedCompany === activeCompany;
+}
+
 export function replacePersonalspaceResponse(_previous, incoming) {
   // Úspěšná HTTP odpověď je autorita i tehdy, když payload nese ok:false kvůli
   // jedné nevalidní montáži. Dřívější prostory se nesmějí přimíchat zpět:

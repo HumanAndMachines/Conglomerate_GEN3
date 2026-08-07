@@ -66,6 +66,24 @@ test("Doctor drží foreign-port jako hard failure i při dependency warningu", 
   })).toBe("fail");
 });
 
+test("first-paint apps response can skip the global Git census", async () => {
+  const root = await createCompaniesWorkspaceFixture();
+  const response = await buildLaunchpadAppsResponse({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+    gitStatusService: {
+      readStatuses() {
+        throw new Error("Git census must not run during first paint");
+      },
+    },
+    includeGit: false,
+  });
+
+  expect(response.apps.every((app) => app.git === undefined)).toBe(true);
+  expect(response.warnings.some((warning) => warning.startsWith("git:"))).toBe(false);
+});
+
 test("Doctor reportuje deklarovaný port overlap owner-aware bez konfiguračního failure", () => {
   const report = buildDoctorReportFromAppsResponse({
     launchpad_root: { display_name: "Test root" },
