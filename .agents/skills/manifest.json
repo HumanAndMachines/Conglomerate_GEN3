@@ -12,6 +12,18 @@
   },
   "skills": [
     {
+      "slug": "agent-builder",
+      "path": ".agents/skills/agent-builder/SKILL.md",
+      "applies_to": [
+        "agent-design",
+        "agent-workflows",
+        "agent-evals",
+        "agent-governance",
+        "agent-packaging"
+      ],
+      "required": false
+    },
+    {
       "slug": "desktop-execution-agent-collaboration",
       "path": ".agents/skills/desktop-execution-agent-collaboration/SKILL.md",
       "applies_to": [
