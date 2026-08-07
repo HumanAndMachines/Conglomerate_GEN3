@@ -104,7 +104,9 @@ Definice z katalogu se na mašině stává funkční až lokální aktivací:
    (mód `0600`); launcher nebo shell profil ho načítá před startem harnessu.
 2. OAuth consent dokončuje **Principál v prohlížeči na té mašině** — agent
    připraví konfiguraci a diagnostiku, ale výběr účtu a souhlas je lidský
-   krok (viz Human-action boundary v custody standardu).
+   krok (viz Human-action boundary v custody standardu). Před consentem agent
+   ukáže přesný účet, účel a seznam scopes. Souhlas s OAuth grantem zpřístupní
+   schopnost mašině; není to blanketní souhlas s každou budoucí akcí agenta.
 3. Scopes uděluj defaultně **read i write** pro služby, které workflow
    Organizace potřebuje. Read-only start je volitelné zpřísnění pro
    mimořádně citlivé zdroje, ne default; LinkedIn zůstává post-only výjimka
@@ -113,10 +115,15 @@ Definice z katalogu se na mašině stává funkční až lokální aktivací:
    harnessu a formy integrace — konkrétní nastavení a jejich meze drží
    sekce „Draft a Publikace ve write operacích" níže; nastav je při
    aktivaci a ověř je ve smoke testu.
-4. Token cache zůstává lokální (keyring harnessu, případně custody cesta
-   serveru). Tool-runtime cesty (`~/.google_workspace_mcp/…`,
-   `~/.gmail-mcp/…`) nejsou custody source; runbook musí umět cache z
-   custody obnovit a bezpečně rotovat.
+4. Token cache zůstává lokální a persistentní: u HTTP OAuth ji drží
+   credential store harnessu (preferovaně systémový keyring), u STDIO
+   integrace vlastní credentials directory serveru v custody. Tool-runtime
+   cesty (`~/.google_workspace_mcp/…`, `~/.gmail-mcp/…`) nejsou custody
+   source; runbook musí umět cache z custody obnovit a bezpečně rotovat.
+   Dočasná cesta, memory-only/stateless backend ani agentní „zapamatování"
+   přihlášení nenahrazují. Správná aktivace přežije restart MCP procesu,
+   harnessu i mašiny a krátkodobý access token obnovuje refresh tokenem;
+   provider však může refresh token legitimně zneplatnit podle své policy.
 5. Mezi mašinami se nikdy nepřenáší token cache, client secrety ani celé
    uživatelské configy harnessu. Každá mašina = vlastní OAuth grant,
    revokovatelný u poskytovatele samostatně.
@@ -276,8 +283,8 @@ nepoužívají; personalspace izolace má přednost.
 | [integrations/linkedin.md](integrations/linkedin.md) | LinkedIn (post-only + browser fallback) |
 | [integrations/canva.md](integrations/canva.md) | Canva |
 
-Stav ekosystému v runboocích odpovídá ověření k 2026-07-24; před instalací
-zkontroluj aktuální dokumentaci poskytovatele.
+Stav každého runbooku odpovídá datu uvedenému v jeho úvodní hlavičce; před
+instalací zkontroluj aktuální dokumentaci poskytovatele.
 
 ## Živý standard: zpětná vazba z instalací je povinná
 

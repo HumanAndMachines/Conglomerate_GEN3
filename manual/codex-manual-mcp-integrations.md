@@ -98,6 +98,13 @@ token nevkládej do TOMLu. Pro statický bearer token použij
 `bearer_token_env_var`, tedy jméno lokální environment proměnné, ne její
 hodnotu.
 
+Toto nastavení řeší OAuth, který u Streamable HTTP serveru obsluhuje Codex.
+U lokálního STDIO serveru, jenž se sám přihlašuje k providerovi (například
+`workspace-mcp` ke Googlu), drží refresh token tento server ve vlastní
+persistentní credentials directory. Codex keyring jeho interní cache
+nenahrazuje. V obou případech musí běžný restart serveru, Codexu i mašiny
+přihlášení zachovat; krátkodobý access token se obnovuje refresh tokenem.
+
 ## Per-machine onboarding Organizace
 
 Každý Kolega nastavuje integrace ve svém uživatelském profilu Codexu. Agent smí
@@ -200,7 +207,11 @@ Server vyžaduje Python a lokální runtime (například izolovaný `venv`); Doc
 není potřeba.
 
 1. V Google Cloud vytvoř OAuth client pro desktop aplikaci a povol jen potřebná
-   API. Stažený client JSON ulož do custody cesty, nikoli do repozitáře serveru.
+   API. Pro interní Organization použití preferuj Organization-owned projekt
+   a audience `Internal`; `External / Testing` s Workspace scopes ukončuje
+   autorizaci test usera po sedmi dnech. Přesnou diagnostiku a variantu
+   `In production` drží [Google Workspace runbook](integrations/google-workspace.md#google-oauth-persistence).
+   Stažený client JSON ulož do custody cesty, nikoli do repozitáře serveru.
 2. Server spouštěj z lokálního izolovaného prostředí a ukotvi ho na reviewovanou
    verzi. Aktuální upstream používá příkaz `workspace-mcp` a podporuje `uvx`;
    před nasazením nahraď `<reviewed-version>` konkrétní ověřenou verzí.
@@ -214,7 +225,7 @@ Příklad osobního `~/.codex/config.toml`:
 [mcp_servers.example_org_google_workspace]
 command = "/ABSOLUTNI/LOKALNI/CESTA/bin/uvx"
 args = ["--from", "workspace-mcp==<reviewed-version>", "workspace-mcp", "--single-user", "--tool-tier", "core"]
-env_vars = ["GOOGLE_CLIENT_SECRET_PATH", "GOOGLE_MCP_CREDENTIALS_DIR"]
+env_vars = ["GOOGLE_CLIENT_SECRET_PATH", "WORKSPACE_MCP_CREDENTIALS_DIR", "GOOGLE_MCP_CREDENTIALS_DIR"]
 default_tools_approval_mode = "writes"
 startup_timeout_sec = 30
 tool_timeout_sec = 90
@@ -225,16 +236,29 @@ Před spuštěním Codexu nastav v lokálním shellu nebo machine-local launcher
 
 ```sh
 export GOOGLE_CLIENT_SECRET_PATH="/custody/cesta/google/client.json"
+export WORKSPACE_MCP_CREDENTIALS_DIR="/custody/cesta/google/tokens"
 export GOOGLE_MCP_CREDENTIALS_DIR="/custody/cesta/google/tokens"
 ```
 
 Tyto ukázkové cesty nahraď skutečnými absolutními cestami. Launcher se secret
 hodnotami musí zůstat mimo Git a mít lokální custody oprávnění. Nepřebírej
 vývojové nastavení `OAUTHLIB_INSECURE_TRANSPORT=1` do běžného provozu.
+Credentials directory nesmí být v `/tmp`, ephemeral containeru ani
+memory-only/stateless backendu. Adresář drž v módu `0700`, credential soubory
+v módu `0600`. Současný upstream dokumentuje obě credentials env jména, ale
+připnutá reviewovaná verze může podporovat jen jedno. Proto je exportuj na
+tutéž custody cestu a ve sdíleném příkladu žádné nemaž; uvedení obou jmen v
+`env_vars` i v prostředí drží bezpečný přechod bez tichého pádu do defaultní
+runtime cesty.
 
 První browser consent dokonči ručně a pak v `/mcp` ověř nástroje nejdřív
 čtecím dotazem; write tools jsou od začátku povolené a per-action je
 potvrzuje approval mode.
+
+Potom ukonči STDIO proces, restartuj Codex nebo otevři nový task a zopakuj
+metadata-only identitu + read smoke. Restart smoke prokazuje lokální
+persistenci; odstranění sedmidenní Google provider expirace potvrdí až
+kontrola po více než sedmi dnech.
 
 ## Odebrání, rotace a incident
 
@@ -262,8 +286,15 @@ token na straně poskytovatele nemusí zneplatnit.
 
 - **Server se po přidání nezobrazuje:** restartuj Codex/IDE, ověř
   `codex mcp get <name>` a zda projektová konfigurace leží v trusted projektu.
-- **OAuth se opakuje:** ověř systémový keyring, lokální oprávnění cache a
-  přesnou redirect/callback konfiguraci poskytovatele. Neloguj callback URL.
+- **OAuth se opakuje po restartu:** nejdřív urči transport. U HTTP OAuth ověř
+  systémový keyring Codexu; u STDIO ověř persistentní credentials directory
+  serveru, její načtení launcherem a oprávnění `0700`/`0600`. Neloguj callback
+  URL ani obsah cache.
+- **Google OAuth se opakuje přibližně po sedmi dnech:** ověř audience a
+  publishing status GCP OAuth projektu. `External / Testing` s Gmail/Drive
+  scopes má sedmidenní refresh token; postup pro `Internal` nebo
+  `In production` drží provider runbook. Admin stav `Trusted` řeší app-access
+  policy, ale tuto expiraci neruší. Pouhé další přihlášení příčinu neřeší.
 - **Server nenastartuje:** spusť executable mimo Codex jen s `--help`, ověř
   absolutní cestu, pin verze a názvy environment proměnných. Secret hodnoty
   nevypisuj.

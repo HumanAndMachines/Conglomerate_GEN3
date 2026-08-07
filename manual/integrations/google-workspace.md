@@ -1,6 +1,6 @@
 # Google Workspace: Gmail, Drive, Docs, Sheets, Slides, Meet
 
-Jeden provider pokrývá šest služeb. Stav ověřen 2026-07-24.
+Jeden provider pokrývá šest služeb. Stav ověřen 2026-08-07.
 
 ## Možnosti
 
@@ -34,9 +34,17 @@ agregátory (broker drží tokeny — zakázáno standardem).
 2. Vytvoř OAuth client (Desktop pro lokální STDIO/CLI, Web pro remote MCP
    dle dokumentace); client JSON ulož do custody cesty Organizace, nikdy do
    repa.
-3. Scopes uděluj defaultně read i write pro používané služby
-   (`gmail.modify`/`gmail.send`, `drive`, `spreadsheets`… dle workflow);
-   per-action ochranu write tools drží approval mode harnessu.
+3. Před consentem ukaž Principálovi přesný účet, účel a seznam scopes. Pro
+   používané služby žádej potřebnou read i write schopnost
+   (`gmail.modify`/`gmail.send`, `drive.readonly` + `drive.file`,
+   `spreadsheets`… dle workflow). Plný `drive` přidej jen když schválený
+   workflow opravdu upravuje libovolný existující obsah, ne pouze čte
+   existující a zapisuje app-created/user-selected soubory. Skutečný přesný
+   seznam převezmi z reviewované implementace; vynech nepotřebné admin,
+   permission-management a destructive scopes.
+   Udělený OAuth grant je schopnost mašiny, ne souhlas s konkrétní write
+   operací; per-action ochranu drží approval mode harnessu a kontrakt
+   Draft → Publikace.
 
 ## Per-machine aktivace
 
@@ -50,6 +58,7 @@ Katalogový zápis v org `.mcp.json` (Claude Code), OSS varianta:
       "args": ["--from", "workspace-mcp==<reviewed-version>", "workspace-mcp", "--single-user", "--tool-tier", "core"],
       "env": {
         "GOOGLE_CLIENT_SECRET_PATH": "${<ORG_SLUG>_GOOGLE_CLIENT_SECRET_PATH}",
+        "WORKSPACE_MCP_CREDENTIALS_DIR": "${<ORG_SLUG>_GOOGLE_MCP_CREDENTIALS_DIR}",
         "GOOGLE_MCP_CREDENTIALS_DIR": "${<ORG_SLUG>_GOOGLE_MCP_CREDENTIALS_DIR}"
       }
     }
@@ -61,9 +70,72 @@ Codex ekvivalent viz příklad B v
 [codex-manual-mcp-integrations.md](../codex-manual-mcp-integrations.md).
 Env hodnoty patří do machine-local `integrations.env` v custody; OAuth
 consent dokončuje Principál v prohlížeči a ověří správný org účet.
+Současná [upstream reference](https://github.com/taylorwilsdon/google_workspace_mcp#credential-store-system)
+dokumentuje `WORKSPACE_MCP_CREDENTIALS_DIR` i zpětně kompatibilní
+`GOOGLE_MCP_CREDENTIALS_DIR`. Katalog předává obě jména na tutéž cestu,
+protože připnutá reviewovaná verze může podporovat jen jedno z nich.
+Machine-local custody jméno
+`<ORG_SLUG>_GOOGLE_MCP_CREDENTIALS_DIR` zůstává stabilní, takže již aktivované
+mašiny nepotřebují migraci `integrations.env` a server nespadne tiše do
+výchozí runtime cesty. Ve sdíleném příkladu žádné z těchto jmen neodstraňuj;
+na konkrétní mašině lze konfiguraci zjednodušit jen po kontrole zdroje a
+readbacku připnuté verze.
 
 CLI aktivace: `gog auth credentials <cesta-k-client-json>` +
 `gog auth add <ucet-organizace>`; credentials custody platí stejně.
+
+<a id="google-oauth-persistence"></a>
+
+## Dlouhodobě obnovitelné přihlášení
+
+Access token je krátkodobý; normální dlouhodobý provoz stojí na refresh tokenu
+uloženém v persistentním credential store. „Nikdy se neodhlásí" proto není
+správný acceptance slib. Správný slib je: běžný restart MCP procesu, harnessu
+nebo mašiny nové přihlášení nevyžaduje a access token se obnovuje automaticky;
+reautentizace nastane jen při provider policy, revokaci nebo incidentu.
+
+Nejčastější opakovaný problém je Google OAuth projekt s audience `External`
+a publishing statusem `Testing`. U scopes Gmailu, Drivu a dalších Workspace
+API Google ukončí autorizaci test usera včetně refresh tokenu po sedmi dnech;
+profilové OIDC scopes jsou úzká výjimka, která Workspace MCP nepokrývá. Stav
+ověř v Google Auth Platform → Audience a zapisuj jen metadata, nikdy token ani
+OAuth URL.
+
+Pro integraci používanou pouze účty jedné Google Workspace Organizace:
+
+1. preferuj GCP projekt vlastněný touto Organizací a audience `Internal`;
+2. pokud `Internal` nejde použít, přepni externí aplikaci z `Testing` do
+   `In production`; podle scopes může být nutná Google verification;
+3. Workspace Admin může OAuth klienta po review označit jako `Trusted`, pokud
+   to vyžaduje organizační app-access policy. `Trusted` ale samo nemění GCP
+   publishing status a sedmidenní expiraci režimu `External / Testing`
+   **neruší**.
+
+Změna audience, publishing statusu, admin trustu nebo scopes je provider-side
+admin operace. Agent ji neprovede jen proto, že diagnostikoval příčinu: ukáže
+současný a cílový stav a vyžádá si explicitní souhlas oprávněného Principála.
+Kanonické reference: [Google OAuth audience a sedmidenní limit](https://support.google.com/cloud/answer/15549945),
+[Workspace Admin app-access policy](https://support.google.com/a/answer/7281227)
+a [důvody zneplatnění refresh tokenu](https://developers.google.com/identity/protocols/oauth2#expiration).
+
+### Persistence podle transportu
+
+- **Oficiální remote MCP / Streamable HTTP:** OAuth token drží MCP klient;
+  v Codexu preferuj systémový keyring a ověř `codex mcp get <server>` bez
+  výpisu secretů.
+- **Lokální STDIO `workspace-mcp`:** Google token drží server, ne Codex.
+  Nastav explicitní `WORKSPACE_MCP_CREDENTIALS_DIR` do persistentní custody
+  cesty, adresář `0700`, credential soubory `0600`. Nepoužívej `/tmp`,
+  ephemeral container, stateless mode ani memory-only OAuth backend.
+- **CLI:** ověř persistentní credential store konkrétního CLI a samostatný
+  grant každé mašiny; token cache mezi mašinami nekopíruj.
+
+Po aktivaci ukonči MCP proces, spusť jej znovu, otevři nový task nebo restartuj
+harness a zopakuj metadata-only identitu + read smoke. Tento test prokazuje
+lokální persistenci; odstranění sedmidenní provider expirace definitivně
+potvrdí až kontrola po více než sedmi dnech. Pokud přihlášení selhává v jiném
+rytmu, ověř persistentní cestu a oprávnění cache, změnu hesla u Gmail scopes,
+revokaci, admin policy a počet živých refresh tokenů stejného OAuth klienta.
 
 ## Smoke test
 
@@ -80,7 +152,8 @@ vyžádej si samostatný explicitní pokyn Principála.
 ## Custody a rizika
 
 - Token cache OSS serveru (`~/.google_workspace_mcp/credentials/`) je
-  plaintext — drž módy `0600`, cache je runtime, ne custody source.
+  plaintext — drž adresář `0700` a soubory `0600`; cache je runtime, ne
+  custody source.
 - Write tools (send mail, create file) jsou exfiltrační kanál při prompt
   injection — per-action je potvrzuje approval mode harnessu; u citlivých
   workflow zúžíš sadu přes `enabled_tools`.
