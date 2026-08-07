@@ -8,7 +8,10 @@ Founder chce, aby se migrace modulů nedělala ad hoc. Ověřený lifecycle vzni
 
 - `v0` je první MVP splácané dohromady, bez stabilní datové hranice.
 - `v1` je první použitelná aplikace napojená na externí/Firebase/Firestore/Sheet zdroj.
-- `v2` odděluje aplikační kód od datové složky v témže modulovém repu: `app/v2`, `data/v2`, `generated/v2`, YAML records, writer a Git diff.
+- `v2` odděluje aplikační kód od datové složky v témže modulovém repu:
+  `app/v2` + `data/v2`. Record-native business modul typicky přidává YAML,
+  `generated/v2` a writer; document-native modul drží Markdown/MDX, přímý
+  reader a Git branch + PR.
 - `v3` odděluje app/code repo a data repo: aplikace běží nad repository-db checkoutem `db/`, data mají vlastní `<module>-data` repo a branch `v3`, změny vznikají jako lokální draft a publikují se explicitním commit/push flow.
 
 Tenhle lifecycle je primárně určený pro:
@@ -37,8 +40,13 @@ Tyto věci platí bez ohledu na generaci:
 3. **Data mají vlastníka.** Modul vlastní jen svoji doménu. `pricebook` nevlastní produktovou identitu ani warehouse ledger; `warehouse` nevlastní prodejní cenu; `deals` nevlastní Pricebook ani ClickUp koordinaci.
 4. **Generated není source of truth.** `generated/` je deklarovaný, deterministický read model; ruční změna generated souboru je drift.
 5. **Migrace má parity gate.** Každý přechod musí pojmenovat old SOT, new SOT, transform, parity check, cutover, rollback/archive a downstream dopad.
-6. **Writer je jedna pravda.** UI, CLI, MCP a agentní migrace nesmí validovat jinak. Povrchy se mohou lišit oprávněním, ne pravdou.
-7. **Template nikdy nedostane firemní data.** Z template se přenáší layout, schema, writer/publish contract, fixture data a anonymizované examples; ne reálná data žádné Organizace ani klientů.
+6. **Write path je jedna pravda.** U record-native modulu UI, CLI, MCP a
+   agentní migrace používají společný validovaný writer. U document-native
+   modulu podle HumanAndMachines decision 0124 je jedinou write/publish cestou
+   Git branch + PR; druhý writer nevzniká bez doloženého non-Git authoringu.
+7. **Template nikdy nedostane firemní data.** Z template se přenáší layout,
+   podle profilu schema a writer/publish contract, fixture data a
+   anonymizované examples; ne reálná data žádné Organizace ani klientů.
 8. **Agent hlásí verzi explicitně.** Handoff vždy říká `Pricebook v2`, `Deals v3`, `warehouse-data@v3` apod., ne jen „appka“.
 
 ## Definice verzí
@@ -80,15 +88,27 @@ Příklady:
 - Warehouse v1: starý `app/v1` smazaný po cutoffu, dohledatelný v git historii; Firebase/Google Sheets `SKLAD_V1` zůstávají read-only audit.
 - Deals v1/Firebase/HubSpot vrstvy: archivní/reference vrstva, ne nový authoring.
 
-**Gate do v2:** víme, které kolekce patří modulu, jak vypadají canonical records, jak se validují, jak se generují read modely, a umíme v1/mirror stav deterministicky importovat do Git-native YAML.
+**Gate do v2:** známe kanonickou jednotku domény a umíme v1/mirror stav
+deterministicky importovat s úplnou source mapou, parity a rollbackem. Pro
+record-native modul navíc známe kolekce, schema, read modely a writer; pro
+document-native modul je kanonickou jednotkou samotný dokument a známe jeho
+frontmatter, route/link kontrakt a Git PR authoring flow.
 
 ### `v2` — Git filesystem DB v modulovém repu
 
 `v2` je první standardní Workspace modulová generace. App code a data jsou pořád v jednom modulovém repu, ale jsou jasně oddělené.
 
-**Univerzální koncept:** Git-readable data pro lidi i agenty, reviewovatelný diff a modulový writer.
+**Univerzální koncept:** Git-readable data pro lidi i agenty, reviewovatelný
+diff a jedna explicitní write/publish cesta.
 
-Minimální layout:
+V2 má dva profily. **Record-native** je standard pro strukturované business
+entity a používá YAML, schema a společný writer. **Document-native** podle
+HumanAndMachines decision 0124 je úzký profil pro doménu, jejíž kanonický
+záznam je samotný Markdown/MDX dokument; app jej čte přímo a authoring probíhá
+přes Git branch + PR. Document-native profil nesmí obcházet strukturované
+schema ani ACL hranici, kterou doména skutečně potřebuje.
+
+Minimální record-native layout:
 
 ```text
 modules/<module>/
@@ -103,7 +123,7 @@ modules/<module>/
 └── AGENTS.md
 ```
 
-Povinné vlastnosti:
+Povinné vlastnosti record-native profilu:
 
 - canonical data jsou YAML v `data/v2`;
 - generated/read modely jsou v `generated/v2` a lze je znovu vytvořit;
@@ -111,6 +131,27 @@ Povinné vlastnosti:
 - writer/proposal flow zapisuje YAML, regeneruje generated, validuje a dává Git diff;
 - citlivé změny mohou jít přes proposal/approval queue;
 - historická v1/mirror parita je audit gate, ne nový live sync.
+
+Minimální document-native layout:
+
+```text
+modules/<module>/
+├── app/v2/
+├── data/v2/**/*.md
+├── README.md
+├── ARCHITECTURE.md
+└── AGENTS.md
+```
+
+Povinné vlastnosti document-native profilu:
+
+- kanonický Markdown/MDX s YAML frontmatterem žije v `data/v2`;
+- `app/v2` čte dokumenty přímo a build/cache/index output je gitignored;
+- `generated/v2`, schema envelope, writer ani proposal queue nevznikají bez
+  skutečného dalšího read modelu nebo non-Git authoring use case;
+- Git branch + PR je jediný authoring/publish flow;
+- migrace připíná immutable source objekty, úplnou old-to-new mapu s checksumy,
+  route/link parity a rollback marker.
 
 Příklady:
 
@@ -215,7 +256,7 @@ Agent nejdřív sepíše:
 
 Bez inventáře nevzniká migrační PR.
 
-### 2. Migrace `v1 → v2`
+### 2. Migrace `v1 → v2` pro record-native modul
 
 1. Zamraz v1/external baseline nebo ho označ jako audit snapshot.
 2. Definuj v2 kolekce a YAML envelope (`schemaVersion`, `id`, `record`, audit metadata).
@@ -225,6 +266,17 @@ Bez inventáře nevzniká migrační PR.
 6. Vytvoř `app/v2` a module-owned writer/proposal flow.
 7. Přepiš AGENTS/README/ARCHITECTURE tak, aby v1 bylo archive/audit, ne authoring.
 8. Po cutoveru nech rollback window; v1 maž nebo archivuj až po samostatném archive gate.
+
+### 2b. Migrace `v1 → v2` pro document-native modul
+
+1. Připni immutable source commity a úplnou old-to-new mapu s checksumy.
+2. Přesuň kanonické Markdown/MDX dokumenty do `data/v2` a zachovej
+   frontmatter, provenance, interní odkazy a route/redirect kontrakt.
+3. Vytvoř `app/v2`, která dokumenty čte přímo; nevytvářej prázdné
+   `generated/v2`, schema envelope ani writer.
+4. Použij Git branch + PR jako jediný authoring/publish flow.
+5. Ověř unikátní target paths, fyzickou content parity, linky, build a
+   rollback marker; v1 odstav až po readbacku nové generace.
 
 ### 3. Migrace `v2 → v3`
 
