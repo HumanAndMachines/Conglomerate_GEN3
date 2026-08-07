@@ -649,11 +649,51 @@ klasifikaci chyb do lidského jazyka (`classifyOpenError`).
 
 ### 13.4 Pravé panely
 
+- **Notifikace** (`src/notifications-lib.mjs`, `/api/notifications`, CAC-0095):
+  zvoneček v headeru s počtem nepřečtených a overlay panel pod ním. **Nahradily
+  pravý panel „Poslední změny".** Jednotka není modul, ale **jedna změna**
+  popsaná trojicí `actor / scope / payload` — kdo, v jakém modulu a co je
+  obsahem změny. Autor je proto vidět rovnou v seznamu, ne až po rozkliknutí;
+  payload nese předmět commitu, rozsah (soubory, +/−), popis, dotčené cesty
+  a spoluautory z `Co-Authored-By`. Zdroj je stejný bounded, read-only
+  `git log` v neinteraktivním git prostředí, obohacený o `--numstat`.
+  - **Commit se ukazuje nejdřív lidsky** (`public/commit-copy.js`,
+    `public/commit-glossary.js`). Sbalený řádek nese pročištěný název (bez
+    `feat(scope):` prefixu a bez „Merge pull request #15 from org/branch" —
+    skutečný titulek merge commitu se bere z jeho těla) a pod ním český štítek
+    `druh změny · téma · původ`. Detail totéž rozvine do věty a **teprve pod ní
+    jsou vlastní slova autora, beze změny a označená jako jeho**.
+  - **Co se překládá a co ne — je to měřené.** Slovník celých frází
+    („official logo usage" → „pravidel pro používání loga") byl vyzkoušen
+    a na 410 skutečných commitech tohoto workspace trefil 9 z nich: objekty
+    jsou skoro vždy vlastní jména produktů, značek a zákazníků. Zůstalo proto
+    jen to, co je spolehlivé:
+    - **druh změny** z Conventional Commits prefixu, jinak z anglického
+      slovesa (`VERBS`, sedí u 215 ze 410),
+    - **téma** z názvů složek, ve kterých se soubory měnily
+      (`payload.topics`, `deriveTopics`) — `content/brand/logo/…` → „logo".
+      Jedno téma, ne dvě; složka pojmenovaná jako modul se vynechává.
+    - Když ani jedno nesedí, **nic se nevymýšlí** a ukáže se původní věta.
+    Kořenová příčina je jinde: `docs/language-contract.md` už dnes vyžaduje
+    české commit messages a splňuje to 38 ze 410.
+  - **Monogram autora má barvu odvozenou z jeho jména** (`stringHue`, sdílené
+    s logem Organizace). Hash se násobí zlatým úhlem — prosté `% 360` dávalo
+    podobným jménům skoro stejný odstín.
+  - **Typ actora je odhad, ne evidence.** `actor.kind` (`human` / `agent`) se
+    odvozuje z podpisu commitu (`kind_source: "heuristic"`) a heuristika je
+    schválně úzká — skrytý GitHub e-mail z Kolegy Agenta nedělá. Přesná
+    persona podle rosteru Organizace je otevřená otázka plánu CAC-0095.
+  - **Stav přečtení je klientský**, per Principál a per mašina
+    (`localStorage`, klíč `launchpad.notifications.read`). Server nevede nic
+    o tom, kdo co četl.
+  - **Izolace platí beze změny.** V Personalspace se zvoneček skrývá celý
+    (stejně jako pravé panely) a v Organizaci se filtruje na vybranou
+    Organizaci; notifikace nikdy nepřekročí hranici prostoru.
 - **Poslední změny** (`src/recent-changes-lib.mjs`, `/api/recent-changes`):
-  per-modul poslední commity (datum, počet, rozklik detailu) z bounded,
-  read-only `git log` v neinteraktivním git prostředí. Standalone, ať rebase na
-  git read model z CAC-0042 bolí minimálně — kontrakt `recent_modules`
-  zůstane stejný, i když se implementace přepíše nad git-inventory-lib.
+  per-modul poslední commity z bounded, read-only `git log`. **UI panel už
+  neexistuje** — nahradily ho notifikace. Kontrakt `recent_modules` a endpoint
+  ale zůstávají vědomě zachované jako předchůdce `notifications.v1`; ruší se
+  teprve tehdy, až je přestanou používat všechny povrchy.
 - **Nejčastější** (`src/usage-lib.mjs`, `/api/most-used`): lokální usage
   tracking otevření aplikací v `launchpad/runtime/usage.json` — **mimo Git**
   (runtime/ je gitignored), per mašina, **žádná PII** (jen app id + agregát

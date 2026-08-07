@@ -1,0 +1,303 @@
+// Notifikace (CAC-0095): nástupce panelu „Poslední změny". Stejný bounded,
+// read-only `git log`, ale jiná jednotka — ne modul, nýbrž **jedna změna**
+// popsaná trojicí, kterou zadala Principálka: kdo (actor), v jakém modulu
+// (scope) a co je jejím obsahem (payload).
+//
+// Kontrakt `recent_modules` zůstává vedle tohohle beze změny (spec 13.4);
+// tohle je vědomě verzovaný nástupce `notifications.v1`, ne jeho přepis.
+//
+// Stav přečtení tady nežije. Je per Principál a per mašina, drží ho klient
+// v localStorage — server o tom, co kdo četl, nic nevede.
+
+import { existsSync } from "fs";
+import {
+  GIT_COMMAND_CONCURRENCY,
+  GIT_LOCAL_TIMEOUT_MS,
+  mapWithConcurrency,
+  resolveGitExecutable,
+  runGit,
+  safeGitRemoteEnv,
+} from "./git-lib.mjs";
+import { moduleReposFromApps } from "./recent-changes-lib.mjs";
+
+const DEFAULT_COMMIT_LIMIT = 10;
+const DEFAULT_NOTIFICATION_LIMIT = 40;
+// Kolik cest ze změny ukázat v payloadu. Zbytek se shrne do počtu — dlouhý
+// výpis souborů je v notifikaci šum, ne informace.
+const PAYLOAD_FILE_LIMIT = 5;
+
+// Stejné oddělovače jako recent-changes-lib: US mezi poli, RS mezi commity.
+// RS je tady na *začátku* formátu, aby `--numstat` řádky spadly do záznamu
+// svého commitu, ne do začátku toho následujícího.
+const FIELD_SEP = "\x1f";
+const RECORD_SEP = "\x1e";
+
+// Podpisy, které bezpečně poznají Agenta. Držíme je úzké schválně: špatná
+// atribuce („Kolega udělal změnu", kterou udělal Agent, nebo naopak) je horší
+// než přiznané „nevím". Cokoli mimo tenhle seznam je člověk.
+// Pozn.: `@users.noreply.github.com` tu schválně není. Používají ji i lidé,
+// kteří si schovávají e-mail, takže by z nich udělala Agenty.
+const AGENT_EMAIL_PATTERNS = [
+  /^bot@/i,
+  /^agent@/i,
+  /noreply@anthropic\.com$/i,
+  /\+bot@/i,
+];
+const AGENT_NAME_PATTERNS = [
+  /\[bot\]$/i,
+  /^codex\b/i,
+  /^claude\b/i,
+  /\bcopilot\b/i,
+  /\bcursor agent\b/i,
+  /\bai\b.*\bagent\b/i,
+  /\bagent\b/i,
+];
+
+export function classifyActor(name, email) {
+  const safeName = (name ?? "").trim();
+  const safeEmail = (email ?? "").trim();
+  const emailLooksAutomated = AGENT_EMAIL_PATTERNS.some((pattern) => pattern.test(safeEmail));
+  const nameLooksAutomated = AGENT_NAME_PATTERNS.some((pattern) => pattern.test(safeName));
+  return emailLooksAutomated || nameLooksAutomated ? "agent" : "human";
+}
+
+export function actorInitials(name) {
+  const words = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+}
+
+// Co-Authored-By trailer je jediné místo, kde je vidět, že člověk publikoval
+// práci Agenta (nebo naopak). Bez něj by notifikace tvrdila, že to celé napsal
+// ten, kdo commitoval.
+export function parseCoAuthors(body) {
+  const matches = (body ?? "").matchAll(/^\s*Co-Authored-By:\s*(.+?)\s*<([^>]*)>\s*$/gim);
+  const seen = new Set();
+  const coAuthors = [];
+  for (const match of matches) {
+    const name = match[1].trim();
+    if (!name || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    coAuthors.push({ name, kind: classifyActor(name, match[2]) });
+  }
+  return coAuthors;
+}
+
+// Tělo commitu bez trailerů — ty se ukazují zvlášť jako co-authors.
+function stripTrailers(body) {
+  return (body ?? "")
+    .split("\n")
+    .filter((line) => !/^\s*Co-Authored-By:/i.test(line))
+    .join("\n")
+    .trim();
+}
+
+// `--numstat` řádky: "<přidáno>\t<smazáno>\t<cesta>". U binárních souborů je
+// místo čísel "-", u přejmenování nese cesta šipkovou notaci; obojí necháváme
+// tak, jak je — je to text pro člověka, ne strojový diff.
+export function parseNumstat(tail) {
+  const files = [];
+  let insertions = 0;
+  let deletions = 0;
+  for (const line of (tail ?? "").split("\n")) {
+    const match = line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/);
+    if (!match) continue;
+    const added = match[1] === "-" ? 0 : Number(match[1]);
+    const removed = match[2] === "-" ? 0 : Number(match[2]);
+    insertions += added;
+    deletions += removed;
+    files.push(match[3]);
+  }
+  return { files, insertions, deletions };
+}
+
+// Do payloadu se vejde jen pár cest, ale lidská věta „hlavně dokumentace
+// a nastavení" potřebuje vědět o všech. Proto se druh souborů počítá tady,
+// nad úplným seznamem; UI dostane jen agregát, ne celý diff.
+const FILE_KIND_PATTERNS = [
+  ["docs", /\.(md|mdx|txt|adoc)$/i],
+  ["styles", /\.(css|scss|sass|less)$/i],
+  ["images", /\.(png|jpe?g|gif|svg|webp|avif|ico)$/i],
+  ["config", /\.(json|ya?ml|toml|ini|env|lock)$/i],
+  ["pages", /\.(html|astro|vue|svelte)$/i],
+  ["code", /\.(m?[jt]sx?|py|rs|go|rb|php|sh|mjs|cjs)$/i],
+];
+
+export function classifyFileKinds(files) {
+  const kinds = {};
+  for (const file of files ?? []) {
+    const path = String(file);
+    // Testy poznáme dřív než kód — jinak by `foo.test.mjs` spadlo do „kódu"
+    // a mizel by rozdíl mezi novou funkcí a novým testem.
+    const kind = /(^|\/)(tests?|__tests__)\//i.test(path) || /\.(test|spec)\./i.test(path)
+      ? "tests"
+      : (FILE_KIND_PATTERNS.find(([, pattern]) => pattern.test(path))?.[0] ?? "other");
+    kinds[kind] = (kinds[kind] ?? 0) + 1;
+  }
+  return kinds;
+}
+
+// Téma změny se nedá vyčíst z anglické commit message, ale dá se z cest.
+// V tomhle workspace jsou složky pojmenované podle obsahu a často rovnou
+// česky: `content/brand/logo/`, `content/brand/socialni-site/`. Vlastní jména
+// produktů a zákazníků, na kterých ztroskotal překlad textu, tady nevadí —
+// složka `logo` je `logo` bez ohledu na to, čí značky se týká.
+const GENERIC_SEGMENTS = new Set([
+  "app", "src", "public", "dist", "build", "lib", "scripts", "content",
+  "pages", "layouts", "components", "styles", "static", "assets", "node_modules",
+  "test", "tests", "__tests__", "spec", "docs", "doc",
+  "v1", "v2", "v3", "index", "main", "data", "generated", "config",
+  "workspace", "organizations", "apps", "packages", "web", "site", "modules",
+]);
+
+function slug(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+// Jen jedno téma, ne dvě. Dvě dávala věty jako „týká se: michaelblazicek
+// a team" — druhé v pořadí je skoro vždy šum, ne upřesnění.
+export function deriveTopics(files, { limit = 1, exclude = [] } = {}) {
+  const excluded = new Set(exclude.map(slug).filter(Boolean));
+  const stats = new Map();
+  for (const file of files ?? []) {
+    const segments = String(file).split("/").slice(0, -1);
+    segments.forEach((segment, depth) => {
+      const key = segment.trim();
+      const normalized = slug(key);
+      if (!key || key.startsWith(".") || !normalized) return;
+      if (GENERIC_SEGMENTS.has(key.toLowerCase())) return;
+      // Složka pojmenovaná stejně jako modul téma neupřesňuje — modul už je
+      // napsaný v řádku nad shrnutím („…změnil·a modul Design system").
+      if (excluded.has(normalized)) return;
+      const current = stats.get(key) ?? { count: 0, depth: 0 };
+      stats.set(key, { count: current.count + 1, depth: Math.max(current.depth, depth) });
+    });
+  }
+  return [...stats.entries()]
+    // Nejčastější vyhrává; při shodě ta hlubší složka, protože je konkrétnější
+    // (`content/brand/logo` → „logo", ne „brand").
+    .sort((a, b) => b[1].count - a[1].count || b[1].depth - a[1].depth)
+    .slice(0, limit)
+    .map(([segment]) => segment);
+}
+
+async function readRepoNotifications(repo, { commitLimit }) {
+  if (!existsSync(repo.absolute_path)) return [];
+  const format =
+    RECORD_SEP + ["%H", "%h", "%an", "%ae", "%aI", "%s", "%b"].join(FIELD_SEP) + FIELD_SEP;
+  // `--first-parent -m` je tady podstatné, ne kosmetika:
+  //   --first-parent … jedna notifikace = jeden mergnutý PR, ne třicet
+  //                    interních commitů z jeho větve,
+  //   -m             … bez něj git u merge commitu nevypíše žádný --numstat
+  //                    a payload by u každého mergnutého PR tvrdil
+  //                    „bez změny souborů".
+  const result = await runGit(
+    [
+      "log",
+      `-${commitLimit}`,
+      "--first-parent",
+      "-m",
+      "--numstat",
+      `--pretty=format:${format}`,
+      "--no-color",
+    ],
+    {
+      cwd: repo.absolute_path,
+      timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+      env: safeGitRemoteEnv(),
+    },
+  );
+  if (!result.ok || result.stdout.trim() === "") return [];
+
+  return result.stdout
+    .split(RECORD_SEP)
+    .filter((record) => record.trim() !== "")
+    .map((record) => toNotification(record, repo))
+    .filter(Boolean);
+}
+
+function toNotification(record, repo) {
+  const parts = record.split(FIELD_SEP);
+  const [hash, shortHash, authorName, authorEmail, committedAt, subject, body] = parts;
+  if (!hash) return null;
+  const { files, insertions, deletions } = parseNumstat(parts[7] ?? "");
+  const description = stripTrailers(body);
+  return {
+    id: `${repo.id}@${hash}`,
+    occurred_at: committedAt ?? null,
+    occurred_at_unix: committedAt ? Math.floor(Date.parse(committedAt) / 1000) : 0,
+    actor: {
+      name: authorName ?? "Neznámý autor",
+      kind: classifyActor(authorName, authorEmail),
+      kind_source: "heuristic",
+      initials: actorInitials(authorName),
+    },
+    scope: {
+      kind: "module",
+      id: repo.id,
+      name: repo.name,
+      module: repo.module,
+      company: repo.company,
+      company_display_name: repo.company_display_name,
+      icon: repo.icon,
+      relative_path: repo.relative_path,
+    },
+    payload: {
+      subject: subject ?? "",
+      description,
+      co_authors: parseCoAuthors(body),
+      hash,
+      short_hash: shortHash ?? "",
+      files_changed: files.length,
+      files: files.slice(0, PAYLOAD_FILE_LIMIT),
+      files_truncated: Math.max(0, files.length - PAYLOAD_FILE_LIMIT),
+      file_kinds: classifyFileKinds(files),
+      topics: deriveTopics(files, { exclude: [repo.module, repo.name, repo.company] }),
+      insertions,
+      deletions,
+    },
+  };
+}
+
+export async function buildNotifications({
+  companiesRoot,
+  apps,
+  commitLimit = DEFAULT_COMMIT_LIMIT,
+  notificationLimit = DEFAULT_NOTIFICATION_LIMIT,
+} = {}) {
+  const gitAvailable = Boolean(await resolveGitExecutable());
+  if (!gitAvailable) {
+    return {
+      schema_version: "companiesascode.launchpad.notifications.v1",
+      generated_at: new Date().toISOString(),
+      git_available: false,
+      notifications: [],
+    };
+  }
+
+  // Repa se neořezávají dopředu: seznam se řadí podle času změny, takže
+  // useknutí podle pořadí discovery by mohlo zahodit zrovna ten modul, kde se
+  // něco stalo před minutou. Strop drží `commitLimit` a `notificationLimit`.
+  const repos = moduleReposFromApps(apps ?? [], companiesRoot);
+  const perRepo = await mapWithConcurrency(repos, GIT_COMMAND_CONCURRENCY, (repo) =>
+    readRepoNotifications(repo, { commitLimit }),
+  );
+
+  const notifications = perRepo
+    .flat()
+    .sort((a, b) => b.occurred_at_unix - a.occurred_at_unix)
+    .slice(0, notificationLimit);
+
+  return {
+    schema_version: "companiesascode.launchpad.notifications.v1",
+    generated_at: new Date().toISOString(),
+    git_available: true,
+    notifications,
+  };
+}

@@ -58,7 +58,7 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(js).toContain("organizationHash(state.filters.company)");
   expect(js).toContain("personalspaceHash()");
   expect(js).toContain("suppressNextDrawerOpen");
-  expect(js).toContain("function visibleRecentModules");
+  expect(js).toContain("function visibleNotifications");
   expect(js).toContain("function visibleMostUsed");
   expect(js).toContain('?company=${encodeURIComponent(requestedCompany)}');
   expect(js).toContain("const requestedCompany = state.filters.company");
@@ -447,25 +447,24 @@ test("CAC-0044: technická diagnostika nerozbíjí mřížku karet", async () =>
   expect(css).toContain("grid-template-columns: auto minmax(0, 1fr) auto");
 });
 
-test("CAC-0044: pravé panely Poslední změny + Nejčastější a git chip", async () => {
+test("CAC-0044/0095: pravé panely, notifikace pod zvonečkem a git chip", async () => {
   const [html, js, css] = await Promise.all([
     readFile(join(publicRoot, "index.html"), "utf8"),
     readFile(join(publicRoot, "app.js"), "utf8"),
     readFile(join(publicRoot, "styles.css"), "utf8"),
   ]);
 
-  // Panel mounty a modal.
-  expect(html).toContain('id="recentModules"');
+  // Panel mounty.
   expect(html).toContain('id="recentChangesSidebar"');
   expect(html).toContain('id="mostUsed"');
-  expect(html).toContain('id="recentModuleModal"');
+  // CAC-0095: panel „Poslední změny" je nahrazený, ne zdvojený.
+  expect(html).not.toContain('id="recentModules"');
+  expect(html).not.toContain('id="recentModuleModal"');
+  expect(js).not.toContain("function renderRecentModules");
   // Render funkce + data loading.
-  expect(js).toContain("function renderRecentModules");
   expect(js).toContain("function renderMostUsed");
   expect(js).toContain('state.drawerView = "detail"');
   expect(js).toContain('elements.mostUsedPanel?.toggleAttribute("hidden", detailOpen)');
-  expect(js).toContain("function openRecentModuleModal");
-  expect(js).toContain("/api/recent-changes");
   expect(js).toContain("/api/most-used");
   // Nejčastější má cold-start fallback.
   expect(js).toContain("function coldStartMostUsed");
@@ -476,9 +475,78 @@ test("CAC-0044: pravé panely Poslední změny + Nejčastější a git chip", as
   expect(css).toContain(".side-panel");
   expect(css).toContain(".recent-changes-sidebar");
   expect(css).toContain("grid-template-columns: minmax(0, 1fr) minmax(250px, 300px)");
-  expect(css).toContain(".recent-module-item");
   expect(css).toContain(".quick-app");
   expect(js).toContain('elements.recentChangesSidebar.classList.toggle("hidden", personal)');
+});
+
+test("CAC-0095: zvoneček nese actor, scope a payload a respektuje izolaci", async () => {
+  const [html, js, css, server] = await Promise.all([
+    readFile(join(publicRoot, "index.html"), "utf8"),
+    readFile(join(publicRoot, "app.js"), "utf8"),
+    readFile(join(publicRoot, "styles.css"), "utf8"),
+    readFile(join(import.meta.dirname, "server.mjs"), "utf8"),
+  ]);
+
+  // Zvoneček v headeru s počtem nepřečtených a panelem pod ním.
+  expect(html).toContain('id="notificationsToggle"');
+  expect(html).toContain('id="notificationsBadge"');
+  expect(html).toContain('id="notificationsPanel"');
+  expect(html).toContain('id="notificationsList"');
+  // Filtr Vše / Nepřečtené s počtem u filtru, ne u každé položky.
+  expect(html).toContain('id="notificationsFilterUnread"');
+  expect(html).toContain('id="notificationsCountUnread"');
+  expect(html).toContain('id="notificationsMarkAll"');
+
+  // Endpoint a jeho verzovaný kontrakt vedle zachovaného recent_modules.
+  expect(server).toContain('url.pathname === "/api/notifications"');
+  expect(server).toContain("buildNotificationsResponse");
+  expect(server).toContain('url.pathname === "/api/recent-changes"');
+  expect(js).toContain("/api/notifications");
+
+  // Anatomie položky: kdo, kde, co.
+  expect(js).toContain("function renderNotifications");
+  expect(js).toContain("function notificationItem");
+  expect(js).toContain("item.actor?.name");
+  expect(js).toContain("změnil·a modul");
+
+  // Commit se ukazuje nejdřív lidsky a teprve potom slovy autora.
+  expect(js).toContain('from "./commit-copy.js"');
+  expect(js).toContain("humanCommitCopy(item.payload, item.payload?.description)");
+  expect(js).toContain("changeKindLabel");
+  expect(js).toContain("changeOriginLabel");
+  // Téma změny se bere ze složek, ne z textu commitu.
+  expect(js).toContain("topicLabel(item.payload)");
+  // Monogram má barvu odvozenou ze jména autora, sdíleným helperem s logem
+  // Organizace — ne druhou kopií hashovací smyčky.
+  expect(js).toContain("function stringHue");
+  expect(js).toContain('avatar.style.setProperty("--avatar-hue"');
+  expect(css).toContain("hsl(var(--avatar-hue, 250)");
+  expect(css).toContain('[data-theme="dark"] .notification-avatar');
+  // Počty souborů a řádků v notifikaci nejsou — neříkají, co se stalo.
+  expect(js).not.toContain("notificationScaleLabel");
+  expect(js).toContain("Vlastními slovy autora");
+  expect(css).toContain(".notification-human-summary");
+
+  // Tichý 15s poll překresluje seznam; rozbalený detail ani scroll to nesmí
+  // sebrat pod rukama uživateli, který zrovna čte.
+  expect(js).toContain("function expandedNotificationIds");
+  expect(js).toContain("notificationItem(item, expandedIds.has(item.id))");
+  expect(js).toContain("mount.scrollTop = scrollTop");
+
+  // Stav přečtení je lokální, per Principál a per mašina.
+  expect(js).toContain('const NOTIFICATIONS_READ_STORAGE = "launchpad.notifications.read"');
+  expect(js).toContain("function markNotificationRead");
+  expect(js).toContain("function persistReadNotifications");
+
+  // Izolace: Personalspace zvoneček nedostane a notifikace nepřekročí Organizaci.
+  expect(js).toContain('if (state.filters.scope === "personal") return []');
+  expect(js).toContain('elements.notificationsToggle?.classList.toggle("hidden", personal)');
+  expect(js).toContain("item.scope?.company === state.filters.company");
+
+  expect(css).toContain(".notifications-panel");
+  expect(css).toContain(".notification-item");
+  expect(css).toContain(".notification-unread-dot");
+  expect(css).toContain('.notification-avatar[data-kind="agent"]');
 });
 
 test("CAC-0044: git stavy mají lidský text a vstupují do kontrolního togglu", async () => {
