@@ -70,7 +70,7 @@ Codex ekvivalent viz příklad B v
 [codex-manual-mcp-integrations.md](../codex-manual-mcp-integrations.md).
 Env hodnoty patří do machine-local `integrations.env` v custody; OAuth
 consent dokončuje Principál v prohlížeči a ověří správný org účet.
-Současná [upstream reference](https://github.com/taylorwilsdon/google_workspace_mcp#credential-store-system)
+Současná [upstream reference](https://workspacemcp.com/docs/deployment#credential-store-backends)
 dokumentuje `WORKSPACE_MCP_CREDENTIALS_DIR` i zpětně kompatibilní
 `GOOGLE_MCP_CREDENTIALS_DIR`. Katalog předává obě jména na tutéž cestu,
 protože připnutá reviewovaná verze může podporovat jen jedno z nich.
