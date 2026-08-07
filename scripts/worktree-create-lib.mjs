@@ -51,6 +51,41 @@ export async function writeSidecarAtomically({
 }
 
 export function allocateOwnedWorktreeBranch({ git, primaryRoot, branch, baseRef, createId = randomUUID }) {
+  const existingHead = git(
+    primaryRoot,
+    ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`],
+    { allowFail: true },
+  );
+  if (existingHead.status === 0) {
+    const marker = git(
+      primaryRoot,
+      ["config", "--local", "--get", `branch.${branch}.description`],
+      { allowFail: true },
+    );
+    const baseHead = git(primaryRoot, ["rev-parse", "--verify", baseRef], { allowFail: true });
+    const linked = git(primaryRoot, ["worktree", "list", "--porcelain", "-z"], { allowFail: true });
+    const ownerMarker = marker.stdout?.trim();
+    const branchHead = existingHead.stdout?.trim();
+    if (marker.status !== 0 || !isCreateLaneOwnerMarker(ownerMarker)) {
+      return { ok: false, message: "existující branch nemá platný worktree-create ownership marker" };
+    }
+    if (baseHead.status !== 0 || !branchHead || branchHead !== baseHead.stdout.trim()) {
+      return { ok: false, message: `existující owned branch není přesně na ${baseRef}` };
+    }
+    if (linked.status !== 0) {
+      return { ok: false, message: "existující owned branch nelze ověřit proti linked worktrees" };
+    }
+    if (registeredWorktreeUsesBranch(linked.stdout, branch)) {
+      return { ok: false, message: "existující owned branch už používá linked worktree" };
+    }
+    return { ok: true, ownerMarker, branchHead, reused: true };
+  }
+  if (existingHead.status !== 1) {
+    return {
+      ok: false,
+      message: `existenci branche nelze bezpečně ověřit (${existingHead.stderr || "bez stderr"})`,
+    };
+  }
   const ownerMarker = `worktree-create:${createId()}`;
   const created = git(primaryRoot, ["branch", "--no-track", branch, baseRef], { allowFail: true });
   if (created.status !== 0) {
@@ -68,7 +103,11 @@ export function allocateOwnedWorktreeBranch({ git, primaryRoot, branch, baseRef,
       message: `ownership marker nelze zapsat: ${marked.stderr || "bez stderr"}; branch ${branch}@${branchHead} zůstává pro vědomý recovery handoff, protože ji mohl převzít jiný linked worktree`,
     };
   }
-  return { ok: true, ownerMarker, branchHead };
+  return { ok: true, ownerMarker, branchHead, reused: false };
+}
+
+function isCreateLaneOwnerMarker(value) {
+  return /^(?:worktree-create|launchpad-worktree-create):[A-Za-z0-9._-]+$/.test(value ?? "");
 }
 
 function ownedBranchStatus({ git, primaryRoot, branch, ownerMarker, branchHead }) {
@@ -141,64 +180,21 @@ function canonicalRollbackPath(primaryRoot, worktreePath, canonicalWorktreePath,
   return posix.dirname(requested) === expectedParent && requested === canonical;
 }
 
-function rollbackOwnedBranch({
+function preserveOwnedBranchForRetry({
   git,
   primaryRoot,
   branch,
   ownerMarker,
   branchHead,
-  worktreePath,
-  pathExists,
 }) {
   const ownership = ownedBranchStatus({ git, primaryRoot, branch, ownerMarker, branchHead });
-  if (!ownership.owned) return `branch se nemaže: ${ownership.reason}`;
+  if (!ownership.owned) return `branch zůstává nedotčená: ${ownership.reason}`;
   const listed = git(primaryRoot, ["worktree", "list", "--porcelain", "-z"], { allowFail: true });
-  if (listed.status !== 0) return "branch se nemaže: linked worktrees nelze ověřit";
+  if (listed.status !== 0) return "owned branch zůstává zachována; linked worktrees nelze ověřit";
   if (registeredWorktreeUsesBranch(listed.stdout, branch)) {
-    return "branch se nemaže: stále ji používá linked worktree";
+    return "owned branch zůstává zachována: používá ji linked worktree";
   }
-  if (worktreePath && pathExists(worktreePath)) {
-    return `branch se nemaže: worktree cesta ${worktreePath} stále existuje`;
-  }
-  const deleted = git(
-    primaryRoot,
-    ["update-ref", "-d", `refs/heads/${branch}`, branchHead],
-    { allowFail: true },
-  );
-  if (deleted.status !== 0) {
-    return `branch se nemaže: exact compare-and-delete selhal (${deleted.stderr || "bez stderr"})`;
-  }
-  const verifiedAbsent = git(
-    primaryRoot,
-    ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`],
-    { allowFail: true },
-  );
-  if (verifiedAbsent.status === 0) {
-    return `branch se nemaže: exact ref po compare-and-delete stále existuje`;
-  }
-  const currentMarker = git(
-    primaryRoot,
-    ["config", "--local", "--get", `branch.${branch}.description`],
-    { allowFail: true },
-  );
-  if (currentMarker.status === 0 && currentMarker.stdout.trim() !== ownerMarker) {
-    return `owned branch ${branch}@${branchHead} vrácena; změněný ownership marker zůstává nedotčený`;
-  }
-  const markerCleanup = git(
-    primaryRoot,
-    [
-      "config",
-      "--local",
-      "--fixed-value",
-      "--unset-all",
-      `branch.${branch}.description`,
-      ownerMarker,
-    ],
-    { allowFail: true },
-  );
-  return markerCleanup.status === 0 || markerCleanup.status === 5
-    ? `owned branch ${branch}@${branchHead} vrácena`
-    : `owned branch ${branch}@${branchHead} vrácena; ownership marker nelze odstranit (${markerCleanup.stderr || "bez stderr"})`;
+  return `owned branch ${branch}@${branchHead} zůstává zachována pro bezpečný retry`;
 }
 
 export function rollbackCreatedWorktree({
@@ -223,18 +219,15 @@ export function rollbackCreatedWorktree({
   }
 
   if (!worktreeCreated) {
-    const branchReport = rollbackOwnedBranch({
+    const branchReport = preserveOwnedBranchForRetry({
       git,
       primaryRoot,
       branch,
       ownerMarker,
       branchHead,
-      worktreePath,
-      pathExists,
     });
     const leftovers = [
       ...(pathExists(worktreePath) ? [`worktree cesta ${worktreePath}`] : []),
-      ...(git(primaryRoot, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], { allowFail: true }).status === 0 ? [`branch ${branch}`] : []),
     ];
     return leftovers.length === 0
       ? branchReport
@@ -288,18 +281,15 @@ export function rollbackCreatedWorktree({
       directoryCleanupError = error;
     }
   }
-  const branchReport = rollbackOwnedBranch({
+  const branchReport = preserveOwnedBranchForRetry({
     git,
     primaryRoot,
     branch,
     ownerMarker,
     branchHead,
-    worktreePath,
-    pathExists,
   });
   const leftovers = [
     ...(stillRegisteredWorktree || pathExists(worktreePath) ? [`worktree ${worktreePath}`] : []),
-    ...(git(primaryRoot, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], { allowFail: true }).status === 0 ? [`branch ${branch}`] : []),
     ...(stagingCleanupError ? [`staging sidecar ${stagingPath}`] : []),
     ...(directoryCleanupError ? [`worktree directory cleanup (${directoryCleanupError.message})`] : []),
   ];

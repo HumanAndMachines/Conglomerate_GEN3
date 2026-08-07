@@ -231,7 +231,7 @@ test("guarded create serializes with the canonical Organization create lock", as
   expect(runGit(["branch", "--list", "CAC-0042-deals-publish"], dealsRepo)).toBe("");
 });
 
-test("guarded create rolls back its allocation when sidecar publication fails", async () => {
+test("guarded create removes the failed worktree and reuses its owned branch on retry", async () => {
   const { root, orgRoot, dealsRepo } = await setupDealsRepoWithPlan();
 
   await expect(
@@ -251,7 +251,9 @@ test("guarded create rolls back its allocation when sidecar publication fails", 
 
   expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish"))).toBe(false);
   expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish.worktree.json"))).toBe(false);
-  expect(runGit(["branch", "--list", "CAC-0042-deals-publish"], dealsRepo)).toBe("");
+  expect(runGit(["branch", "--list", "CAC-0042-deals-publish"], dealsRepo)).toContain("CAC-0042-deals-publish");
+  expect(runGit(["config", "--local", "--get", "branch.CAC-0042-deals-publish.description"], dealsRepo))
+    .toMatch(/^launchpad-worktree-create:/);
   expect(existsSync(join(orgRoot, ".worktrees", ".worktree-create.lock"))).toBe(false);
 
   const retry = await createWorktreeFromPlan({
@@ -262,6 +264,10 @@ test("guarded create rolls back its allocation when sidecar publication fails", 
     createdBy: "test-agent",
   });
   expect(retry).toMatchObject({ action: "create_worktree" });
+  expect(runGit(
+    ["branch", "--show-current"],
+    join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish"),
+  )).toBe("CAC-0042-deals-publish");
 });
 
 test("guarded create preserves artefacts when the branch ownership marker changes before rollback", async () => {
@@ -410,7 +416,7 @@ test("guarded create leaves failed atomic staging file for conscious cleanup", a
   expect(existsSync(join(orgRoot, ".worktrees", "workspace", "deals", "CAC-0042-deals-publish"))).toBe(false);
   expect(existsSync(finalPath)).toBe(false);
   expect(existsSync(stagingPath)).toBe(true);
-  expect(runGit(["branch", "--list", "CAC-0042-deals-publish"], dealsRepo)).toBe("");
+  expect(runGit(["branch", "--list", "CAC-0042-deals-publish"], dealsRepo)).toContain("CAC-0042-deals-publish");
   expect(existsSync(join(orgRoot, ".worktrees", ".worktree-create.lock"))).toBe(false);
 });
 

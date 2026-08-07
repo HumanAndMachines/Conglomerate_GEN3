@@ -239,10 +239,6 @@ async function main() {
   // Osiřelý sidecar bez worktree může nést recovery handoff přerušené práce —
   // nikdy ho tiše nepřepisuj.
   if (existsSync(sidecarPath)) fail(`sidecar už existuje: ${sidecarPath}; zkontroluj jeho recovery_handoff a odstraň ho vědomě.`);
-  if (git(primaryRoot, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], { allowFail: true }).status === 0) {
-    fail(`branch ${branch} už existuje.`);
-  }
-
   const identity = resolveRepositoryIdentity(primaryRoot);
   const transportOverrides = checkoutTransportOverrideKeys(primaryRoot);
   if (transportOverrides.length > 0) {
@@ -351,8 +347,10 @@ async function main() {
       );
     }
   } catch (error) {
-    // Bez sidecaru by worktree zůstal orphan a blokoval čistý retry —
-    // čerstvý worktree i branch (== origin/main, bez commitů) vrať zpět.
+    // Bez sidecaru by worktree zůstal orphan a blokoval čistý retry.
+    // Prokázaný worktree vrať zpět; owned branch zachovej a příští create ji
+    // idempotentně reuse-ne. Ref deletion nelze atomicky svázat s Git worktree
+    // registry a mohl by smazat branch právě připojenou jiným aktérem.
     const rollbackReport = rollbackCreatedWorktree({
       git,
       primaryRoot,
