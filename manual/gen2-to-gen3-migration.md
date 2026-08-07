@@ -17,19 +17,20 @@ trvalá součást názvu nového repozitáře a mountu. Interní identita firmy 
 ## Autorita a závazné invarianty
 
 Při konfliktu platí decision records před tímto manuálem. Runbook je
-self-contained provedení těchto rozhodnutí z repozitáře HumanAndMachines:
+self-contained provedení rozhodnutí shrnutých v lokálním
+`manual/decision-register.md`:
 
 | Rozhodnutí | Co tento runbook vynucuje |
 |---|---|
-| `manual/decision-register.md0026-canonical-gen3-organization-layout.md` | Organizace nemá vlastní Launchpad runtime; má jednu root `mission-control/` vrstvu, `manual/`, `workspace/`, `productionspace/`, `infra/`, company vrstvu a appky deklarované v `package.json`. |
-| `manual/decision-register.md0033-fork-based-generational-migration.md` | Existující GEN2 firma se migruje přes nové repo a paralelní běh, ne in-place přepis. |
-| `manual/decision-register.md0036-mission-control-legacy-yaml-cutover-gates.md` | Legacy Mission Control pravda se nevypne bez parity, validace, rollbacku, credential authority, approvalu a monitoringu. |
-| `manual/decision-register.md0037-mission-control-v3-at-gen3-migration-boundary.md` | Mission Control v3 není GEN2 prerequisite; jeho app/data hranice se řeší až v cílové Organizaci GEN3. |
-| `manual/decision-register.md0041-flat-workspace-folder-and-manifest-grouping.md` | Workspace moduly fyzicky žijí v jedné `workspace/`; příslušnost ke Workspace určuje manifest, ne cesta. Productionspace je rezervovaná org-level hranice. |
-| `manual/decision-register.md0042-auto-discovery-first-launchpad.md` | Přítomná Organizace se objevuje skenem `organizations/*/company.gen3.json`; root registry není allowlist. |
-| `manual/decision-register.md0043-launchpad-invalid-manifest-isolation.md` | Vadný app manifest se izoluje; port je unikátní uvnitř Organizace, cross-Organization overlap je povolený a listener bez známé vazby zůstává tvrdý blokátor. |
-| `manual/decision-register.md0045-genn-permanent-generation-marker.md` | Repo a mount si `_GEN3` nechávají i po cutoveru; `company.slug`, brand a app company suffix nenesou. |
-| `manual/decision-register.md0049-worktree-runtime-contract.md` | Každá migrační změna vzniká v Mission-Control-owned worktree s kanonickou cestou a sidecarem; hlavní checkout zůstává na `main`. |
+| decision 0026 (`manual/decision-register.md`) | Organizace nemá vlastní Launchpad runtime; má jednu root `mission-control/` vrstvu, `manual/`, `workspace/`, `productionspace/`, `infra/`, company vrstvu a appky deklarované v `package.json`. |
+| decision 0033 (`manual/decision-register.md`) | Existující GEN2 firma se migruje přes nové repo a paralelní běh, ne in-place přepis. |
+| decision 0036 (`manual/decision-register.md`) | Legacy Mission Control pravda se nevypne bez parity, validace, rollbacku, credential authority, approvalu a monitoringu. |
+| decision 0037 (`manual/decision-register.md`) | Mission Control v3 není GEN2 prerequisite; jeho app/data hranice se řeší až v cílové Organizaci GEN3. |
+| decision 0041 (`manual/decision-register.md`) | Workspace moduly fyzicky žijí v jedné `workspace/`; příslušnost ke Workspace určuje manifest, ne cesta. Productionspace je rezervovaná org-level hranice. |
+| decision 0042 (`manual/decision-register.md`) | Přítomná Organizace se objevuje skenem `organizations/*/company.gen3.json`; root registry není allowlist. |
+| decision 0043 (`manual/decision-register.md`) | Vadný app manifest se izoluje; port je unikátní uvnitř Organizace, cross-Organization overlap je povolený a listener bez známé vazby zůstává tvrdý blokátor. |
+| decision 0045 (`manual/decision-register.md`) | Repo a mount si `_GEN3` nechávají i po cutoveru; `company.slug`, brand a app company suffix nenesou. |
+| decision 0049 (`manual/decision-register.md`) | Každá migrační změna vzniká v Mission-Control-owned worktree s kanonickou cestou a sidecarem; hlavní checkout zůstává na `main`. |
 
 Z těchto rozhodnutí plynou nepřekročitelné hranice:
 
