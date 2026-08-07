@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "fs";
 import { lstat, mkdir, readFile, realpath, rm, writeFile } from "fs/promises";
-import { basename, dirname, join, posix, relative } from "path";
+import { basename, dirname, join, posix, relative, resolve, win32 } from "path";
 import { writeSidecarAtomically } from "../../scripts/worktree-create-lib.mjs";
+import { acquireCreateLock, releaseCreateLock } from "../../scripts/worktree-create-lock.mjs";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
 import { GIT_LOCAL_TIMEOUT_MS, runGit, safeGitRemoteEnv } from "./git-lib.mjs";
 import { readGitRepoStatus } from "./git-status-lib.mjs";
@@ -20,24 +21,28 @@ export class WorktreeActionError extends Error {
   }
 }
 
-async function withWorktreeCreateLock(organizationRoot, operation) {
+async function withWorktreeCreateLock(organizationRoot, { branch, planCode }, operation) {
   const lockPath = join(organizationRoot, ".worktrees", ".worktree-create.lock");
   await mkdir(dirname(lockPath), { recursive: true });
-  try {
-    await mkdir(lockPath);
-  } catch (error) {
-    if (error?.code === "EEXIST") {
-      throw new WorktreeActionError("Jiná worktree create operace právě drží canonical create lock.", {
-        status: 409,
-        code: "worktree_create_in_progress",
-      });
-    }
-    throw error;
+  const acquired = await acquireCreateLock({
+    lockPath,
+    primaryRoot: organizationRoot,
+    branch,
+    planCode,
+  });
+  if (!acquired.ok) {
+    throw new WorktreeActionError(`Jiná worktree create operace blokuje canonical create lock: ${acquired.message}.`, {
+      status: 409,
+      code: "worktree_create_in_progress",
+    });
   }
   try {
     return await operation();
   } finally {
-    await rm(lockPath, { recursive: true, force: true });
+    const released = await releaseCreateLock(acquired.lock);
+    if (!released.released) {
+      console.error(`warn - Launchpad create lock nelze bezpečně uvolnit: ${released.reason}`);
+    }
   }
 }
 
@@ -104,7 +109,10 @@ export async function createWorktreeFromPlan({
     paths: [paths.absoluteWorktreePath, paths.absoluteSidecarPath],
     allowMissingTarget: true,
   });
-  return withWorktreeCreateLock(join(companiesRoot, repo.organization_path), async () => {
+  return withWorktreeCreateLock(
+    join(companiesRoot, repo.organization_path),
+    { branch: normalizedBranch, planCode: plan.code },
+    async () => {
     await assertWorktreePathsInsideOrganization({
       companiesRoot,
       repo,
@@ -141,6 +149,7 @@ export async function createWorktreeFromPlan({
       branch: normalizedBranch,
       ownerMarker: branchAllocation.ownerMarker,
       branchHead: branchAllocation.branchHead,
+      worktreePath: paths.absoluteWorktreePath,
     });
     const residualPath = existsSync(paths.absoluteWorktreePath)
       ? `neověřená cesta ${paths.absoluteWorktreePath} zůstala nedotčena`
@@ -225,7 +234,8 @@ export async function createWorktreeFromPlan({
       },
     );
   }
-  });
+    },
+  );
 }
 
 export async function publishWorktreeDraft({
@@ -453,11 +463,46 @@ async function ownedBranchStatus({ repo, branch, ownerMarker, branchHead }) {
   return { owned: true };
 }
 
-async function rollbackOwnedBranch({ repo, branch, ownerMarker, branchHead }) {
+async function rollbackOwnedBranch({ repo, branch, ownerMarker, branchHead, worktreePath = null }) {
   const ownership = await ownedBranchStatus({ repo, branch, ownerMarker, branchHead });
   if (!ownership.owned) return `branch se nemaže: ${ownership.reason}`;
-
-  return `owned branch ${branch}@${branchHead} zůstává pro vědomý recovery handoff; automatické mazání refu není bezpečné vůči cizím linked worktree`;
+  const listed = await runGit(["worktree", "list", "--porcelain", "-z"], {
+    cwd: repo.absolute_path,
+    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+  });
+  if (!listed.ok) return "branch se nemaže: linked worktrees nelze ověřit";
+  if (registeredWorktreeUsesBranch(listed.stdout, branch)) {
+    return "branch se nemaže: stále ji používá linked worktree";
+  }
+  if (worktreePath && existsSync(worktreePath)) {
+    return `branch se nemaže: worktree cesta ${worktreePath} stále existuje`;
+  }
+  const deleted = await runGit(["update-ref", "-d", `refs/heads/${branch}`, branchHead], {
+    cwd: repo.absolute_path,
+    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+  });
+  if (!deleted.ok) {
+    return `branch se nemaže: exact compare-and-delete selhal (${deleted.stderr || deleted.error || deleted.stdout})`;
+  }
+  const verified = await runGit(["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], {
+    cwd: repo.absolute_path,
+    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+  });
+  if (verified.ok) return "branch se nemaže: exact ref po compare-and-delete stále existuje";
+  const marker = await runGit(["config", "--local", "--get", `branch.${branch}.description`], {
+    cwd: repo.absolute_path,
+    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+  });
+  if (marker.ok && marker.stdout.trim() !== ownerMarker) {
+    return `owned branch ${branch}@${branchHead} vrácena; změněný ownership marker zůstává nedotčený`;
+  }
+  const markerCleanup = await runGit(["config", "--local", "--unset-all", `branch.${branch}.description`], {
+    cwd: repo.absolute_path,
+    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+  });
+  return markerCleanup.ok || markerCleanup.exitCode === 5
+    ? `owned branch ${branch}@${branchHead} vrácena`
+    : `owned branch ${branch}@${branchHead} vrácena; ownership marker nelze odstranit`;
 }
 
 async function canonicalOwnedWorktreePath(worktreePath) {
@@ -470,19 +515,55 @@ async function canonicalOwnedWorktreePath(worktreePath) {
   }
 }
 
-function registeredWorktreeMatchesBranch(porcelain, canonicalWorktreePath, branch) {
-  return porcelain.split("\n\n").some((block) => {
-    const lines = block.split("\n");
-    return lines.includes(`worktree ${canonicalWorktreePath}`)
-      && lines.includes(`branch refs/heads/${branch}`);
-  });
+function parseWorktreePorcelain(porcelain) {
+  if (!porcelain.includes("\0")) {
+    return porcelain.split("\n\n").filter(Boolean).map((block) => block.split("\n"));
+  }
+  const records = [];
+  let current = [];
+  for (const field of porcelain.split("\0")) {
+    if (field === "") {
+      if (current.length > 0) records.push(current);
+      current = [];
+    } else {
+      current.push(field);
+    }
+  }
+  if (current.length > 0) records.push(current);
+  return records;
+}
+
+function registeredWorktreeUsesBranch(porcelain, branch) {
+  return parseWorktreePorcelain(porcelain).some((fields) => (
+    fields.includes(`branch refs/heads/${branch}`)
+  ));
+}
+
+function pathKey(path) {
+  if (process.platform === "win32") {
+    return win32.resolve(path.replaceAll("/", "\\")).replaceAll("\\", "/").toLowerCase();
+  }
+  return resolve(path).replaceAll("\\", "/");
+}
+
+async function registeredWorktreeMatchesBranch(porcelain, canonicalWorktreePath, branch) {
+  const expectedPath = pathKey(canonicalWorktreePath);
+  for (const fields of parseWorktreePorcelain(porcelain)) {
+    const worktreeField = fields.find((field) => field.startsWith("worktree "));
+    if (!worktreeField || !fields.includes(`branch refs/heads/${branch}`)) continue;
+    try {
+      const reportedRealPath = await realpath(worktreeField.slice("worktree ".length));
+      if (pathKey(reportedRealPath) === expectedPath) return true;
+    } catch {}
+  }
+  return false;
 }
 
 async function rollbackOwnedWorktreeCreate({ repo, worktreePath, branch, ownerMarker, branchHead }) {
   const ownership = await ownedBranchStatus({ repo, branch, ownerMarker, branchHead });
   if (!ownership.owned) return `worktree ani branch se nemažou: ${ownership.reason}`;
 
-  const registered = await runGit(["worktree", "list", "--porcelain"], {
+  const registered = await runGit(["worktree", "list", "--porcelain", "-z"], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
@@ -490,7 +571,7 @@ async function rollbackOwnedWorktreeCreate({ repo, worktreePath, branch, ownerMa
   if (
     !registered.ok
     || !canonicalWorktreePath
-    || !registeredWorktreeMatchesBranch(registered.stdout, canonicalWorktreePath, branch)
+    || !await registeredWorktreeMatchesBranch(registered.stdout, canonicalWorktreePath, branch)
   ) {
     return "worktree ani branch se nemažou: exact cesta není registrovaný owned worktree";
   }
@@ -500,7 +581,31 @@ async function rollbackOwnedWorktreeCreate({ repo, worktreePath, branch, ownerMa
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });
   if (!removed.ok) return `owned worktree nelze odstranit: ${removed.stderr || removed.error || removed.stdout}`;
-  const branchRollback = await rollbackOwnedBranch({ repo, branch, ownerMarker, branchHead });
+  await runGit(["worktree", "prune", "--expire", "now"], {
+    cwd: repo.absolute_path,
+    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+  });
+  const listedAfter = await runGit(["worktree", "list", "--porcelain", "-z"], {
+    cwd: repo.absolute_path,
+    timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+  });
+  if (!listedAfter.ok || registeredWorktreeUsesBranch(listedAfter.stdout, branch)) {
+    return "owned worktree remove proběhl, ale branch je stále registrovaná; branch se nemaže";
+  }
+  if (existsSync(worktreePath)) {
+    const residualCanonical = await canonicalOwnedWorktreePath(worktreePath);
+    if (!residualCanonical || pathKey(residualCanonical) !== pathKey(canonicalWorktreePath)) {
+      return "owned worktree remove proběhl, ale zbylá cesta už nemá ověřenou exact identitu; branch se nemaže";
+    }
+    await rm(worktreePath, { recursive: true, force: true });
+  }
+  const branchRollback = await rollbackOwnedBranch({
+    repo,
+    branch,
+    ownerMarker,
+    branchHead,
+    worktreePath,
+  });
   return `${existsSync(worktreePath) ? "worktree path zůstal" : "owned worktree vrácen"}; ${branchRollback}`;
 }
 

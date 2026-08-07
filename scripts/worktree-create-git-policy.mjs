@@ -1,5 +1,7 @@
 import { safeGitCommandEnv } from "../launchpad/src/git-lib.mjs";
 
+export const CHECKOUT_TRANSPORT_OVERRIDE_PATTERN = "^(url\\..*\\.insteadof|http(\\..*)?\\.proxy|credential(\\..*)?\\.helper|remote\\.origin\\.proxy|core\\.(gitproxy|sshcommand))$";
+
 function nullDevice(platform) {
   return platform === "win32" ? "NUL" : "/dev/null";
 }
@@ -12,43 +14,25 @@ function windowsSystemRoot(base) {
   return candidate.replace(/\/+$/, "");
 }
 
-function trustedSshCommand(platform, base) {
-  if (platform === "win32") {
-    return `${windowsSystemRoot(base)}/System32/OpenSSH/ssh.exe -F NUL -o ProxyCommand=none`;
-  }
-  return "/usr/bin/ssh -F /dev/null -o ProxyCommand=none";
-}
-
-function emptyHome(platform) {
-  return platform === "win32" ? "C:/__hermes-empty-home__" : "/nonexistent";
+function trustedSshExecutable(platform, base) {
+  return platform === "win32"
+    ? `${windowsSystemRoot(base)}/System32/OpenSSH/ssh.exe`
+    : "/usr/bin/ssh";
 }
 
 export function safeWorktreeGitEnvironment(platform = process.platform, base = process.env) {
-  const isolatedHome = emptyHome(platform);
-  return {
-    ...safeGitCommandEnv(platform, base),
-    // Globální Git/XDG config i ~/.ssh config nesmí měnit runtime transport.
-    HOME: isolatedHome,
-    USERPROFILE: isolatedHome,
-    HOMEDRIVE: platform === "win32" ? "C:" : "",
-    HOMEPATH: platform === "win32" ? "/__hermes-empty-home__" : "",
-    XDG_CONFIG_HOME: isolatedHome,
-    XDG_CONFIG_DIRS: isolatedHome,
-    GIT_CONFIG_NOSYSTEM: "1",
-    GIT_CONFIG_GLOBAL: nullDevice(platform),
-    NO_PROXY: "*",
-    no_proxy: "*",
-  };
+  // Odstraň checkout-context a command-injection Git proměnné, ale zachovej
+  // běžné per-user credential helpers, SSH agent/config a enterprise proxy.
+  // Nebezpečné checkout-local transport keys se kontrolují explicitně zvlášť.
+  return safeGitCommandEnv(platform, base);
 }
 
 export function safeWorktreeGitConfig(platform = process.platform, base = process.env) {
   return [
     "-c", `core.hooksPath=${nullDevice(platform)}`,
     "-c", "core.fsmonitor=false",
-    "-c", `core.sshCommand=${trustedSshCommand(platform, base)}`,
+    "-c", `core.sshCommand=${trustedSshExecutable(platform, base)}`,
     "-c", "core.gitProxy=",
-    "-c", "credential.helper=",
-    "-c", "http.proxy=",
     "-c", "protocol.ext.allow=never",
   ];
 }

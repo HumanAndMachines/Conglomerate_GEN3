@@ -8,7 +8,7 @@
 //     [--purpose "..."] [--surface claude-code] [--agent-label "Claude Code"]
 //     [--created-by <id>] [--dry-run]
 
-import { existsSync, lstatSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, lstatSync, realpathSync } from "node:fs";
 import { mkdir, readFile, readdir } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -24,25 +24,19 @@ import {
   writeSidecarAtomically,
 } from "./worktree-create-lib.mjs";
 import {
+  CHECKOUT_TRANSPORT_OVERRIDE_PATTERN,
   SAFE_WORKTREE_GIT_CONFIG,
   safeWorktreeGitEnvironment,
 } from "./worktree-create-git-policy.mjs";
 import {
+  acquireCreateLock,
+  releaseCreateLock,
+} from "./worktree-create-lock.mjs";
+import {
   validateCanonicalMissionControlPlan,
 } from "../.agents/skills/worktree-development-discipline/scripts/worktree-inventory.mjs";
 
-let activeCreateLockPath = null;
-
-function releaseCreateLock() {
-  if (!activeCreateLockPath) return;
-  const lockPath = activeCreateLockPath;
-  activeCreateLockPath = null;
-  try {
-    rmSync(lockPath, { recursive: true, force: true });
-  } catch (error) {
-    console.error(`warn - worktrees:create: nelze uvolnit námi vlastněný create lock ${lockPath}: ${error.message}`);
-  }
-}
+let activeCreateLock = null;
 
 function canonicalOwnedWorktreePath(path) {
   try {
@@ -54,9 +48,7 @@ function canonicalOwnedWorktreePath(path) {
 }
 
 function fail(message) {
-  releaseCreateLock();
-  console.error(`fail - worktrees:create: ${message}`);
-  process.exit(1);
+  throw new Error(message);
 }
 
 function git(cwd, args, { allowFail = false, useSafetyConfig = true } = {}) {
@@ -89,7 +81,7 @@ function resolveAuthorityRoot(primaryRoot) {
 function resolveRepositoryIdentity(primaryRoot) {
   // Čti deklarovaný remote bez `insteadOf` expanze: identita repozitáře je
   // kontrakt checkoutu, ne výsledek lokální transportní optimalizace.
-  const remote = git(primaryRoot, ["config", "--get", "remote.origin.url"]);
+  const remote = git(primaryRoot, ["config", "--local", "--get", "remote.origin.url"]);
   const normalized = remote.stdout.replaceAll("\\", "/");
   const match = normalized.match(/github\.com(?::|\/)([^/]+)\/([^/]+?)(?:\.git)?$/i);
   if (!match) fail(`origin remote nejde rozparsovat na identitu: ${normalized}`);
@@ -100,20 +92,31 @@ function resolveRepositoryIdentity(primaryRoot) {
   };
 }
 
-const CHECKOUT_TRANSPORT_OVERRIDE_PATTERN = "^(url\\..*\\.insteadof|http\\..*\\.proxy|credential(\\..*)?\\.helper|remote\\.origin\\.proxy|core\\.gitproxy)$";
-
 function checkoutTransportOverrideKeys(primaryRoot) {
-  const overrides = git(primaryRoot, [
-    "config",
-    "--name-only",
-    "--get-regexp",
-    CHECKOUT_TRANSPORT_OVERRIDE_PATTERN,
-  ], { allowFail: true, useSafetyConfig: false });
-  if (overrides.status === 1) return [];
-  if (overrides.status !== 0) {
-    fail(`checkout-local transportní konfiguraci nelze bezpečně ověřit: ${overrides.stderr}`);
+  const keys = [];
+  const worktreeConfig = git(
+    primaryRoot,
+    ["config", "--local", "--get", "extensions.worktreeConfig"],
+    { allowFail: true, useSafetyConfig: false },
+  );
+  const scopes = ["--local"];
+  if (worktreeConfig.status === 0 && worktreeConfig.stdout.toLowerCase() === "true") {
+    scopes.push("--worktree");
   }
-  return overrides.stdout.split("\n").filter(Boolean);
+  for (const scope of scopes) {
+    const overrides = git(primaryRoot, [
+      "config", scope,
+      "--name-only",
+      "--get-regexp",
+      CHECKOUT_TRANSPORT_OVERRIDE_PATTERN,
+    ], { allowFail: true, useSafetyConfig: false });
+    if (overrides.status === 1) continue;
+    if (overrides.status !== 0) {
+      fail(`${scope} transportní konfiguraci nelze bezpečně ověřit: ${overrides.stderr}`);
+    }
+    keys.push(...overrides.stdout.split("\n").filter(Boolean));
+  }
+  return [...new Set(keys)];
 }
 
 async function findPlanFile(authorityRoot, planCode) {
@@ -221,15 +224,16 @@ async function main() {
 
   const createLockPath = join(primaryRoot, ".worktrees", ".worktree-create.lock");
   await mkdir(dirname(createLockPath), { recursive: true });
-  try {
-    await mkdir(createLockPath);
-    activeCreateLockPath = createLockPath;
-  } catch (error) {
-    if (error?.code === "EEXIST") {
-      fail(`jiná worktree create operace drží lock ${createLockPath}; počkej na její dokončení, nebo ověř stale lock před vědomým úklidem.`);
-    }
-    throw error;
+  const acquiredLock = await acquireCreateLock({
+    lockPath: createLockPath,
+    primaryRoot,
+    branch,
+    planCode,
+  });
+  if (!acquiredLock.ok) {
+    fail(`jiná worktree create operace blokuje create lane: ${acquiredLock.message}.`);
   }
+  activeCreateLock = acquiredLock.lock;
 
   if (existsSync(worktreePath)) fail(`worktree už existuje: ${worktreePath}`);
   // Osiřelý sidecar bez worktree může nést recovery handoff přerušené práce —
@@ -245,6 +249,13 @@ async function main() {
     fail(
       "checkout-local transportní konfigurace je zakázaná pro worktree create: "
       + `${transportOverrides.join(", ")}. Odstraň ji vědomě před spuštěním.`,
+    );
+  }
+  const resolvedRemote = git(primaryRoot, ["ls-remote", "--get-url", identity.remoteUrl]);
+  if (resolvedRemote.stdout !== identity.remoteUrl) {
+    fail(
+      `origin URL přepisuje globální url.*.insteadOf (${identity.remoteUrl} -> ${resolvedRemote.stdout}); `
+      + "create lane vyžaduje exact endpoint, credential helper a proxy zůstávají podporované.",
     );
   }
   const now = new Date().toISOString();
@@ -295,7 +306,6 @@ async function main() {
     console.log(`ok - dry-run: worktree ${worktreePath}`);
     console.log(`ok - dry-run: branch ${branch} z origin/main`);
     console.log(`ok - dry-run: sidecar ${sidecarPath}`);
-    releaseCreateLock();
     return;
   }
 
@@ -361,7 +371,6 @@ async function main() {
   console.log(`ok - worktree: ${worktreePath}`);
   console.log(`ok - branch: ${branch} (base origin/main)`);
   console.log(`ok - sidecar: ${sidecarPath}`);
-  releaseCreateLock();
   console.log("next - ověř `bun run worktrees:check`; pracuj podle skillu worktree-development-discipline.");
 }
 
@@ -369,8 +378,15 @@ if (import.meta.main) {
   try {
     await main();
   } catch (error) {
-    releaseCreateLock();
     console.error(`fail - worktrees:create: ${error instanceof Error ? error.message : error}`);
-    process.exit(1);
+    process.exitCode = 1;
+  } finally {
+    const released = await releaseCreateLock(activeCreateLock);
+    if (activeCreateLock && !released.released) {
+      console.error(
+        `warn - worktrees:create: námi vlastněný create lock nelze bezpečně uvolnit (${released.reason}).`,
+      );
+    }
+    activeCreateLock = null;
   }
 }

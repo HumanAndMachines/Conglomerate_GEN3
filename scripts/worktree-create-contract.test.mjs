@@ -66,7 +66,7 @@ test("dry-run accepts a unique exact-code plan only after canonical validation",
     plans: [["CAC-0007.yaml", validPlan]],
   });
   const result = runCreateLane(fixture);
-  expect(result.status).toBe(0);
+  expect({ status: result.status, stderr: result.stderr }).toMatchObject({ status: 0 });
   expect(result.stdout).toContain("ok - dry-run: plán mission-control/plans/CAC-0007.yaml");
 });
 
