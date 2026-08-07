@@ -5,6 +5,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import {
   attachLiveRepositoryPrivacy,
   buildPersonalspaceResponse,
+  discoverGitHubCliExecutable,
+  githubCliExecutableCandidates,
   inspectGitHubRepository,
   personalspaceDoctorCheck,
   resolveSpaceGbrainVault,
@@ -255,6 +257,7 @@ test("live GitHub privacy probe používá bounded shell-free gh příkaz", asyn
   let observed;
   const info = await inspectGitHubRepository("exampleuser/exampleuser-gbrain", {
     cwd: "/tmp/example",
+    ghExecutable: "gh",
     spawnSync: (command, options) => {
       observed = { command, options };
       return {
@@ -281,6 +284,98 @@ test("live GitHub privacy probe používá bounded shell-free gh příkaz", asyn
     windowsHide: true,
   });
   expect(observed.options.env.GH_PROMPT_DISABLED).toBe("1");
+});
+
+test("Windows scheduled privacy probe hledá gh.exe v deterministickém PATH, Program Files a LOCALAPPDATA pořadí", () => {
+  const env = {
+    ProgramW6432: "C:\\Program Files",
+    ProgramFiles: "C:\\Program Files",
+    "ProgramFiles(x86)": "C:\\Program Files (x86)",
+    LOCALAPPDATA: "C:\\Users\\builder\\AppData\\Local",
+  };
+  const fallbackCandidates = githubCliExecutableCandidates({ platform: "win32", env });
+  expect(fallbackCandidates).toEqual([
+    "C:\\Program Files\\GitHub CLI\\gh.exe",
+    "C:\\Program Files (x86)\\GitHub CLI\\gh.exe",
+    "C:\\Users\\builder\\AppData\\Local\\Programs\\GitHub CLI\\bin\\gh.exe",
+    "C:\\Users\\builder\\AppData\\Local\\Programs\\GitHub CLI\\gh.exe",
+  ]);
+
+  const pathExecutable = "C:\\Tools\\GitHub CLI\\gh.exe";
+  const pathFirst = discoverGitHubCliExecutable({
+    platform: "win32",
+    env,
+    which: (command) => command === "gh.exe" ? pathExecutable : null,
+    pathExists: () => true,
+  });
+  expect(pathFirst.executable).toBe(pathExecutable);
+  expect(pathFirst.source).toBe("PATH");
+
+  const stalePathFallsBack = discoverGitHubCliExecutable({
+    platform: "win32",
+    env,
+    which: () => "C:\\Removed\\gh.exe",
+    pathExists: (candidate) => candidate === fallbackCandidates[0],
+  });
+  expect(stalePathFallsBack).toMatchObject({
+    executable: fallbackCandidates[0],
+    source: "Program Files",
+  });
+
+  const localExecutable = fallbackCandidates[2];
+  const installedFallback = discoverGitHubCliExecutable({
+    platform: "win32",
+    env,
+    which: () => null,
+    pathExists: (candidate) => candidate === localExecutable,
+  });
+  expect(installedFallback.executable).toBe(localExecutable);
+  expect(installedFallback.source).toBe("LOCALAPPDATA");
+  expect(installedFallback.searched).toEqual([
+    "PATH:gh.exe",
+    "PATH:gh",
+    ...fallbackCandidates,
+  ]);
+
+  const trailingLocalRoot = discoverGitHubCliExecutable({
+    platform: "win32",
+    env: { LOCALAPPDATA: `${env.LOCALAPPDATA}\\` },
+    which: () => null,
+    pathExists: (candidate) => candidate.endsWith("\\bin\\gh.exe"),
+  });
+  expect(trailingLocalRoot.source).toBe("LOCALAPPDATA");
+});
+
+test("Windows scheduled privacy probe hlásí bounded diagnostiku, když gh.exe chybí", async () => {
+  const discovery = discoverGitHubCliExecutable({
+    platform: "win32",
+    env: {
+      ProgramFiles: "C:\\Program Files",
+      LOCALAPPDATA: "C:\\Users\\builder\\AppData\\Local",
+    },
+    which: () => null,
+    pathExists: () => false,
+  });
+
+  expect(discovery.executable).toBeNull();
+  await expect(inspectGitHubRepository("exampleuser/exampleuser-gbrain", {
+    ghDiscovery: discovery,
+  })).rejects.toThrow("PATH:gh.exe");
+  await expect(inspectGitHubRepository("exampleuser/exampleuser-gbrain", {
+    ghDiscovery: discovery,
+  })).rejects.toThrow("C:\\Program Files\\GitHub CLI\\gh.exe");
+});
+
+test("POSIX privacy probe zachová shell-free PATH spawn i bez Bun.which", () => {
+  expect(discoverGitHubCliExecutable({
+    platform: "linux",
+    which: () => null,
+    pathExists: () => false,
+  })).toEqual({
+    executable: "gh",
+    source: "PATH-fallback",
+    searched: ["PATH:gh"],
+  });
 });
 
 test("Doctor nikdy nečte privátní Buddy presentation warnings", () => {

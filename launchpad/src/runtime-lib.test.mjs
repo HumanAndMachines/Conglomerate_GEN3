@@ -7,10 +7,12 @@ import {
   RuntimeActionError,
   bunExecutableCandidates,
   createRuntimeManager,
+  parseWindowsProcessIdentity,
   parseWindowsListeningPid,
   resolveBunExecutable,
   runtimeHostsShareListener,
   windowsNetstatCommand,
+  windowsProcessIdentityCommand,
   windowsPowerShellExecutable,
   windowsTaskkillCommand,
 } from "./runtime-lib.mjs";
@@ -120,6 +122,30 @@ test("Windows port ownership používá rychlý systémový netstat a ne lokaliz
   expect(parseWindowsListeningPid([
     "  TCP    127.0.0.1:5799       127.0.0.1:64000  ESTABLISHED     4314",
   ].join("\r\n"), 5799)).toBeNull();
+});
+
+test("Windows process identity command a parser drží PID, parent, creation time a executable", () => {
+  const command = windowsProcessIdentityCommand(4242, { SystemRoot: "C:\\Windows" });
+  expect(command[0]).toBe("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+  expect(command.join(" ")).toContain("ProcessId = 4242");
+  expect(parseWindowsProcessIdentity(JSON.stringify({
+    pid: 4242,
+    parent_pid: 3131,
+    created_at: "2026-07-27T08:00:00.000Z",
+    executable_path: "C:\\Tools\\bun.exe",
+  }))).toEqual({
+    pid: 4242,
+    parent_pid: 3131,
+    created_at: "2026-07-27T08:00:00.000Z",
+    executable_path: "C:\\Tools\\bun.exe",
+  });
+  expect(parseWindowsProcessIdentity("{}")).toBeNull();
+  expect(parseWindowsProcessIdentity(JSON.stringify({
+    pid: 4242,
+    parent_pid: 3131,
+    created_at: "2026-07-27T08:00:00.000Z",
+    executable_path: "",
+  }))).toBeNull();
 });
 
 test("Windows managed Stop používá taskkill jen nad známým PID a celým stromem", async () => {
@@ -929,6 +955,268 @@ test("runtime manager fail-closed neadoptuje zdravý port při neznámém CWD (W
   }
 });
 
+test("Windows po restartu adoptuje jen listener s platným capture-time owner proof", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port });
+  const appRoot = join(root, "organizations", "TestCompany", "modules", "demo", "app", "v1");
+  const ownedProcess = Bun.spawn([process.execPath, "server.mjs"], {
+    cwd: appRoot,
+    env: { ...process.env, HOST: "127.0.0.1", PORT: String(port) },
+    stdout: "ignore",
+    stderr: "ignore",
+  });
+  const identity = {
+    pid: ownedProcess.pid,
+    parent_pid: process.pid,
+    created_at: "2026-07-27T08:00:00.000Z",
+    executable_path: "C:\\Tools\\bun.exe",
+  };
+  const statePath = join(root, "launchpad", "runtime", "apps", "test-company-demo-v1.json");
+  await mkdir(join(root, "launchpad", "runtime", "apps"), { recursive: true });
+  const validProof = {
+    schema_version: "companiesascode.launchpad.runtime_owner_proof.v1",
+    platform: "win32",
+    launcher_pid: ownedProcess.pid,
+    listener_pid: ownedProcess.pid,
+    listener_identity: identity,
+    ancestry: [identity],
+    expected_cwd: appRoot,
+    captured_at: "2026-07-27T08:00:01.000Z",
+  };
+  const writeProof = async (ownerProof, stateOverrides = {}) => writeJson(statePath, {
+    status: "healthy",
+    app_id: "test-company-demo-v1",
+    runtime_key: "test-company-demo-v1",
+    runtime_source: { type: "main" },
+    port,
+    pid: ownedProcess.pid,
+    instance_id: "previous-launchpad-instance",
+    owner_proof: ownerProof,
+    ...stateOverrides,
+  });
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "new-launchpad-instance",
+    platform: "win32",
+    resolvePortOwnerFn: async () => ({ pid: ownedProcess.pid, cwd_matches: null }),
+    resolveProcessIdentityFn: async () => identity,
+  });
+
+  try {
+    await waitForFetch(`http://127.0.0.1:${port}/health`);
+    await writeProof(validProof);
+    expect(await runtime.health("test-company-demo-v1")).toMatchObject({
+      status: "healthy",
+      owner: "adopted-port",
+      managed: true,
+      port_owner: {
+        pid: ownedProcess.pid,
+        cwd_matches: true,
+        verified_by: "runtime-owner-proof",
+      },
+    });
+
+    const invalidProofs = [
+      ["PID", { ...validProof, listener_pid: ownedProcess.pid + 1 }],
+      ["creation time", {
+        ...validProof,
+        listener_identity: { ...identity, created_at: "2026-07-27T08:00:02.000Z" },
+        ancestry: [{ ...identity, created_at: "2026-07-27T08:00:02.000Z" }],
+      }],
+      ["executable", {
+        ...validProof,
+        listener_identity: { ...identity, executable_path: "C:\\Other\\bun.exe" },
+        ancestry: [{ ...identity, executable_path: "C:\\Other\\bun.exe" }],
+      }],
+      ["expected CWD", { ...validProof, expected_cwd: join(root, "other-checkout") }],
+      ["capture-time ancestry", { ...validProof, launcher_pid: ownedProcess.pid + 10 }],
+    ];
+    for (const [reason, proof] of invalidProofs) {
+      await writeProof(proof);
+      expect(await runtime.health("test-company-demo-v1"), reason).toMatchObject({
+        status: "unhealthy",
+        owner: "unknown-port",
+        managed: false,
+        failure_kind: "port_owner_cwd_unknown",
+      });
+    }
+
+    const invalidStateBindings = [
+      ["app id", { app_id: "other-app" }],
+      ["runtime key", { runtime_key: "other-runtime" }],
+      ["port", { port: port + 1 }],
+      ["status", { status: "stopped" }],
+    ];
+    for (const [reason, stateOverrides] of invalidStateBindings) {
+      await writeProof(validProof, stateOverrides);
+      expect(await runtime.health("test-company-demo-v1"), reason).toMatchObject({
+        owner: "unknown-port",
+        managed: false,
+        failure_kind: "port_owner_cwd_unknown",
+      });
+    }
+
+    await writeProof(validProof);
+    for (const resolveProcessIdentityFn of [
+      async () => null,
+      async () => { throw new Error("CIM denied"); },
+    ]) {
+      const identityUnavailableRuntime = createRuntimeManager({
+        companiesRoot: root,
+        launchpadRoot: join(root, "launchpad"),
+        instanceId: "identity-unavailable",
+        platform: "win32",
+        resolvePortOwnerFn: async () => ({ pid: ownedProcess.pid, cwd_matches: null }),
+        resolveProcessIdentityFn,
+      });
+      expect(await identityUnavailableRuntime.health("test-company-demo-v1")).toMatchObject({
+        owner: "unknown-port",
+        managed: false,
+        failure_kind: "port_owner_cwd_unknown",
+      });
+    }
+
+    const posixRuntime = createRuntimeManager({
+      companiesRoot: root,
+      launchpadRoot: join(root, "launchpad"),
+      instanceId: "posix-proof-rejection",
+      platform: "darwin",
+      resolvePortOwnerFn: async () => ({ pid: ownedProcess.pid, cwd_matches: null }),
+      resolveProcessIdentityFn: async () => identity,
+    });
+    expect(await posixRuntime.health("test-company-demo-v1")).toMatchObject({
+      owner: "unknown-port",
+      managed: false,
+      failure_kind: "port_owner_cwd_unknown",
+    });
+  } finally {
+    try {
+      ownedProcess.kill("SIGKILL");
+    } catch {}
+  }
+});
+
+test("Windows standalone Start doplní owner proof, i když listener začne být zdravý pomalu", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({
+    port,
+    serverSource: [
+      "await Bun.sleep(1400);",
+      "const server = Bun.serve({",
+      "  hostname: process.env.HOST,",
+      "  port: Number(process.env.PORT),",
+      "  fetch(request) {",
+      "    const url = new URL(request.url);",
+      "    if (url.pathname === '/health') return Response.json({ status: 'ok' });",
+      "    return new Response('ok');",
+      "  },",
+      "});",
+      "setInterval(() => {}, 2147483647);",
+      "",
+    ].join("\n"),
+  });
+  let child = null;
+  const startedAt = Date.now();
+  const identityFor = (pid) => ({
+    pid,
+    parent_pid: process.pid,
+    created_at: "2026-07-27T08:00:00.000Z",
+    executable_path: "C:\\Tools\\bun.exe",
+  });
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "windows-slow-start",
+    platform: "win32",
+    bunExecutable: process.execPath,
+    spawnProcess: (command, options) => {
+      child = Bun.spawn(command, options);
+      return child;
+    },
+    resolvePortOwnerFn: async () => child && Date.now() - startedAt >= 1200
+      ? { pid: child.pid, cwd_matches: null }
+      : null,
+    resolveProcessIdentityFn: async (pid) => child && pid === child.pid ? identityFor(pid) : null,
+  });
+
+  try {
+    const started = await runtime.start("test-company-demo-v1");
+    expect(started.runtime.status).toBe("starting");
+    const statePath = join(root, "launchpad", "runtime", "apps", "test-company-demo-v1.json");
+    const state = await waitForJson(statePath, (value) => value.owner_proof);
+    expect(state).toMatchObject({
+      status: "starting",
+      owner_proof: {
+        listener_pid: child.pid,
+        ancestry: [{ pid: child.pid }],
+      },
+    });
+    expect(state.owner_proof.expected_cwd.endsWith(
+      join("organizations", "TestCompany", "modules", "demo", "app", "v1"),
+    )).toBe(true);
+    const restartedRuntime = createRuntimeManager({
+      companiesRoot: root,
+      launchpadRoot: join(root, "launchpad"),
+      instanceId: "windows-after-slow-start",
+      platform: "win32",
+      resolvePortOwnerFn: async () => ({ pid: child.pid, cwd_matches: null }),
+      resolveProcessIdentityFn: async (pid) => pid === child.pid ? identityFor(pid) : null,
+    });
+    expect(await restartedRuntime.health("test-company-demo-v1")).toMatchObject({
+      status: "healthy",
+      owner: "adopted-port",
+      managed: true,
+      port_owner: {
+        pid: child.pid,
+        verified_by: "runtime-owner-proof",
+      },
+    });
+  } finally {
+    try {
+      child?.kill("SIGKILL");
+    } catch {}
+  }
+}, platformTestTimeout(10_000));
+
+test("Windows owner proof capture je bounded a health hot path ho neopakuje", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port });
+  let child = null;
+  let identityProbeCount = 0;
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "windows-bounded-proof",
+    platform: "win32",
+    bunExecutable: process.execPath,
+    spawnProcess: (command, options) => {
+      child = Bun.spawn(command, options);
+      return child;
+    },
+    resolvePortOwnerFn: async () => child ? { pid: child.pid, cwd_matches: null } : null,
+    resolveProcessIdentityFn: async () => {
+      identityProbeCount += 1;
+      return null;
+    },
+  });
+
+  try {
+    await runtime.start("test-company-demo-v1");
+    for (let attempt = 0; attempt < 20 && identityProbeCount < 3; attempt += 1) {
+      await sleep(100);
+    }
+    expect(identityProbeCount).toBe(3);
+    await runtime.health("test-company-demo-v1");
+    await runtime.health("test-company-demo-v1");
+    expect(identityProbeCount).toBe(3);
+  } finally {
+    try {
+      child?.kill("SIGKILL");
+    } catch {}
+  }
+}, platformTestTimeout(10_000));
+
 test("adopted Stop odmítne signál, když opakované CWD ověření přejde na unknown", async () => {
   const port = await findFreePort();
   const root = await createCompaniesWorkspaceFixture({ port });
@@ -1632,6 +1920,18 @@ async function waitForStatus(readStatus, expectedStatus) {
     await sleep(100);
   }
   throw new Error(`Čekal jsem status ${expectedStatus}, poslední byl ${lastStatus?.status}`);
+}
+
+async function waitForJson(path, predicate) {
+  let lastValue = null;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      lastValue = JSON.parse(await readFile(path, "utf8"));
+      if (predicate(lastValue)) return lastValue;
+    } catch {}
+    await sleep(100);
+  }
+  throw new Error(`Čekal jsem na runtime state predicate, poslední state: ${JSON.stringify(lastValue)}`);
 }
 
 async function waitForFetch(url) {

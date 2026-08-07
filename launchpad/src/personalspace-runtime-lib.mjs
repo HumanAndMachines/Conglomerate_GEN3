@@ -10,7 +10,8 @@
 // nesmí propsat do org discovery (/api/apps), doctor shared reportu ani templates.
 // Doctor personalspace check reportuje jen METADATA (počty, validitu), nikdy obsah.
 
-import { join } from "path";
+import { existsSync } from "fs";
+import { join, win32 } from "path";
 import { discoverPersonalspace } from "./personalspace-lib.mjs";
 import { GbrainAccessError } from "./gbrain-lib.mjs";
 import { createRuntimeManager } from "./runtime-lib.mjs";
@@ -167,14 +168,97 @@ export async function buildPersonalspaceResponse({
   };
 }
 
-export async function inspectGitHubRepository(repo, { cwd = process.cwd(), spawnSync = Bun.spawnSync } = {}) {
+export function githubCliExecutableCandidates({
+  platform = process.platform,
+  env = process.env,
+} = {}) {
+  if (platform !== "win32") return [];
+  const candidates = [];
+  for (const root of [env.ProgramW6432, env.ProgramFiles, env["ProgramFiles(x86)"]]) {
+    if (typeof root === "string" && root.trim() !== "") {
+      candidates.push(win32.join(root, "GitHub CLI", "gh.exe"));
+    }
+  }
+  if (typeof env.LOCALAPPDATA === "string" && env.LOCALAPPDATA.trim() !== "") {
+    candidates.push(
+      win32.join(env.LOCALAPPDATA, "Programs", "GitHub CLI", "bin", "gh.exe"),
+      win32.join(env.LOCALAPPDATA, "Programs", "GitHub CLI", "gh.exe"),
+    );
+  }
+  const seen = new Set();
+  return candidates.filter((candidate) => {
+    const key = win32.normalize(candidate).toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function discoverGitHubCliExecutable({
+  platform = process.platform,
+  env = process.env,
+  which = defaultWhich,
+  pathExists = existsSync,
+} = {}) {
+  const pathCommands = platform === "win32" ? ["gh.exe", "gh"] : ["gh"];
+  const searched = pathCommands.map((command) => `PATH:${command}`);
+  for (const command of pathCommands) {
+    const executable = safeWhich(which, command);
+    if (executable && safePathExists(pathExists, executable)) {
+      return { executable, source: "PATH", searched };
+    }
+  }
+  if (platform !== "win32") {
+    // Zachováme původní POSIX spawn kontrakt i v nepravděpodobném runtime,
+    // kde Bun.which chybí nebo selže; exec vyřeší PATH bez shellu.
+    return { executable: "gh", source: "PATH-fallback", searched };
+  }
+
+  const installedCandidates = githubCliExecutableCandidates({ platform, env });
+  searched.push(...installedCandidates);
+  for (const candidate of installedCandidates) {
+    if (!safePathExists(pathExists, candidate)) continue;
+    const localRoot = typeof env.LOCALAPPDATA === "string"
+      ? win32.normalize(env.LOCALAPPDATA).replace(/[\\/]+$/, "").toLowerCase()
+      : null;
+    const normalizedCandidate = win32.normalize(candidate).toLowerCase();
+    return {
+      executable: candidate,
+      source: localRoot && normalizedCandidate.startsWith(`${localRoot}\\`)
+        ? "LOCALAPPDATA"
+        : "Program Files",
+      searched,
+    };
+  }
+  return { executable: null, source: null, searched };
+}
+
+export async function inspectGitHubRepository(
+  repo,
+  {
+    cwd = process.cwd(),
+    spawnSync = Bun.spawnSync,
+    ghExecutable = null,
+    ghDiscovery = null,
+  } = {},
+) {
   if (typeof repo !== "string" || !githubRepositoryPattern.test(repo)) {
     throw new Error("Neplatná GitHub repository identita.");
+  }
+  const discovery = ghDiscovery ?? (ghExecutable
+    ? { executable: ghExecutable, source: "injected", searched: [] }
+    : discoverGitHubCliExecutable());
+  const executable = ghExecutable ?? discovery.executable;
+  if (!executable) {
+    const searched = Array.isArray(discovery.searched) && discovery.searched.length > 0
+      ? discovery.searched.join(", ")
+      : "PATH:gh";
+    throw new Error(`GitHub CLI nebylo nalezeno. Prohledáno: ${searched}.`);
   }
   let result;
   try {
     result = spawnSync(
-      ["gh", "repo", "view", repo, "--json", "nameWithOwner,visibility"],
+      [executable, "repo", "view", repo, "--json", "nameWithOwner,visibility"],
       {
         cwd,
         stdout: "pipe",
@@ -201,6 +285,31 @@ export async function inspectGitHubRepository(repo, { cwd = process.cwd(), spawn
     throw new Error(`GitHub repo ${repo} nevrátil validní metadata.`);
   }
   return info;
+}
+
+function defaultWhich(command) {
+  try {
+    return typeof Bun.which === "function" ? Bun.which(command) : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeWhich(which, command) {
+  try {
+    const executable = which(command);
+    return typeof executable === "string" && executable.trim() !== "" ? executable : null;
+  } catch {
+    return null;
+  }
+}
+
+function safePathExists(pathExists, path) {
+  try {
+    return pathExists(path) === true;
+  } catch {
+    return false;
+  }
 }
 
 export async function attachLiveRepositoryPrivacy(
