@@ -43,7 +43,9 @@ Tyto věci platí bez ohledu na generaci:
 6. **Write path je jedna pravda.** U record-native modulu UI, CLI, MCP a
    agentní migrace používají společný validovaný writer. U document-native
    modulu podle HumanAndMachines decision 0124 je jedinou write/publish cestou
-   Git branch + PR; druhý writer nevzniká bez doloženého non-Git authoringu.
+   Git branch + PR; druhý writer ve v2 nevzniká a samostatně doložený a
+   schválený non-Git authoring use case aktivuje níže uvedený v3 gate. Povrchy
+   se mohou lišit oprávněním, ne doménovou pravdou.
 7. **Template nikdy nedostane firemní data.** Z template se přenáší layout,
    podle profilu schema a writer/publish contract, fixture data a
    anonymizované examples; ne reálná data žádné Organizace ani klientů.
@@ -149,9 +151,10 @@ Povinné vlastnosti document-native profilu:
 
 - kanonický Markdown/MDX s YAML frontmatterem žije v `data/v2`;
 - `app/v2` čte dokumenty přímo a build/cache/index output je gitignored;
-- `generated/v2`, schema envelope, writer ani proposal queue nevznikají bez
-  skutečného dalšího read modelu nebo non-Git authoring use case;
-- Git branch + PR je jediný authoring/publish flow;
+- `generated/v2` nevzniká bez skutečného dalšího read modelu; schema envelope,
+  writer ani proposal queue do document-native v2 nepatří a samostatně
+  schválený non-Git authoring use case aktivuje níže uvedený v3 gate;
+- do té doby je Git branch + PR jediný authoring/publish flow;
 - migrace připíná immutable source objekty, úplnou old-to-new mapu s checksumy,
   route/link parity a rollback marker.
 
