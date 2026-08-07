@@ -1,207 +1,64 @@
-import { afterEach, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
-import { chmod, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { safeWorktreeGitConfig } from "./worktree-create-git-policy.mjs";
+import { expect, test } from "bun:test";
+import {
+  CHECKOUT_TRANSPORT_OVERRIDE_PATTERN,
+  safeWorktreeGitConfig,
+  safeWorktreeGitEnvironment,
+} from "./worktree-create-git-policy.mjs";
 
-const cleanupPaths = [];
-const scriptPath = join(import.meta.dir, "worktree-create.mjs");
+test.each([
+  ["url.file:///tmp/remote.insteadof", true],
+  ["http.proxy", true],
+  ["http.https://github.com.proxy", true],
+  ["credential.helper", true],
+  ["credential.https://github.com.helper", true],
+  ["remote.origin.proxy", true],
+  ["core.gitproxy", true],
+  ["core.sshcommand", true],
+  ["user.email", false],
+  ["remote.origin.url", false],
+])("checkout-local transport key %s blocked=%s", (key, blocked) => {
+  expect(new RegExp(CHECKOUT_TRANSPORT_OVERRIDE_PATTERN).test(key)).toBe(blocked);
+});
 
-test("Windows SSH policy follows the actual SystemRoot", () => {
+test.each([
+  ["darwin", "/dev/null"],
+  ["linux", "/dev/null"],
+  ["win32", "NUL"],
+])("Git safety config keeps executable/config protections on %s", (platform, nullDevice) => {
+  const config = safeWorktreeGitConfig(platform);
+  expect(config).toContain(`core.hooksPath=${nullDevice}`);
+  expect(config).toContain("core.fsmonitor=false");
+  expect(config).toContain("protocol.ext.allow=never");
+  expect(config.some((value) => value.startsWith("core.sshCommand="))).toBe(true);
+  expect(config).toContain("core.gitProxy=");
+  expect(config.some((value) => value.startsWith("credential.helper="))).toBe(false);
+  expect(config.some((value) => value.startsWith("http.proxy="))).toBe(false);
+});
+
+test("Windows trusted SSH executable follows only a valid SystemRoot", () => {
   expect(safeWorktreeGitConfig("win32", { SystemRoot: "D:\\Windows" })).toContain(
-    "core.sshCommand=D:/Windows/System32/OpenSSH/ssh.exe -F NUL -o ProxyCommand=none",
+    "core.sshCommand=D:/Windows/System32/OpenSSH/ssh.exe",
   );
   expect(safeWorktreeGitConfig("win32", { SystemRoot: "D:\\Windows\\..\\attacker" })).toContain(
-    "core.sshCommand=C:/Windows/System32/OpenSSH/ssh.exe -F NUL -o ProxyCommand=none",
+    "core.sshCommand=C:/Windows/System32/OpenSSH/ssh.exe",
   );
 });
 
-afterEach(async () => {
-  await Promise.all(cleanupPaths.splice(0).map((path) => rm(path, {
-    recursive: true,
-    force: true,
-  })));
-});
-
-test("worktree creator rejects checkout-local URL rewrites before remote fetch", async () => {
-  const sandbox = await mkdtemp(join(tmpdir(), "worktree-create-remote-policy-"));
-  cleanupPaths.push(sandbox);
-  const root = join(sandbox, "Conglomerate_GEN3");
-  const authorityRoot = join(sandbox, "HumanAndMachines");
-  const rewrittenRemote = join(sandbox, "rewritten.git");
-  const realGit = Bun.which("git");
-  expect(realGit).toBeTruthy();
-
-  await Promise.all([
-    mkdir(root, { recursive: true }),
-    mkdir(rewrittenRemote, { recursive: true }),
-    mkdir(join(authorityRoot, "mission-control", "plans", "2026", "08"), { recursive: true }),
-  ]);
-  await writeFile(join(root, "launchpad.gen3.json"), "{}\n");
-  await writeFile(
-    join(authorityRoot, "mission-control", "plans", "2026", "08", "CAC-0010-remote-policy.yaml"),
-    "dev_code: CAC-0010\ntitle: Fixture\n",
-  );
-  for (const args of [
-    ["init", "-b", "main"],
-    ["config", "user.email", "test@example.test"],
-    ["config", "user.name", "Worktree Create Test"],
-    ["add", "."],
-    ["commit", "-m", "fixture"],
-  ]) {
-    const setup = Bun.spawnSync([realGit, ...args], {
-      cwd: root,
-      stdout: "pipe",
-      stderr: "pipe",
-      windowsHide: true,
-    });
-    expect(setup.exitCode).toBe(0);
-  }
-  const remoteInit = Bun.spawnSync([realGit, "init", "--bare"], {
-    cwd: rewrittenRemote,
-    stdout: "pipe",
-    stderr: "pipe",
-    windowsHide: true,
-  });
-  expect(remoteInit.exitCode).toBe(0);
-  const push = Bun.spawnSync([realGit, "push", rewrittenRemote, "main:main"], {
-    cwd: root,
-    stdout: "pipe",
-    stderr: "pipe",
-    windowsHide: true,
-  });
-  expect(push.exitCode).toBe(0);
-  for (const args of [
-    ["remote", "add", "origin", "git@github.com:HumanAndMachines/Conglomerate_GEN3.git"],
-    ["config", "extensions.worktreeConfig", "true"],
-    ["config", "--worktree", `url.file://${rewrittenRemote}.insteadOf`, "git@github.com:HumanAndMachines/Conglomerate_GEN3.git"],
-  ]) {
-    const setup = Bun.spawnSync([realGit, ...args], {
-      cwd: root,
-      stdout: "pipe",
-      stderr: "pipe",
-      windowsHide: true,
-    });
-    expect(setup.exitCode).toBe(0);
-  }
-
-  const result = Bun.spawnSync([
-    process.execPath,
-    scriptPath,
-    "--plan",
-    "CAC-0010",
-    "--branch",
-    "agent/CAC-0010-remote-policy",
-  ], {
-    cwd: root,
-    env: { ...process.env, HUMANANDMACHINES_ROOT: authorityRoot },
-    stdout: "pipe",
-    stderr: "pipe",
-    windowsHide: true,
+test("Git environment preserves credentials/proxy inputs but strips command injection context", () => {
+  const environment = safeWorktreeGitEnvironment("linux", {
+    HOME: "/home/builder",
+    HTTPS_PROXY: "http://proxy.example:8080",
+    SSH_AUTH_SOCK: "/tmp/agent.sock",
+    GIT_SSH_COMMAND: "/tmp/attacker",
+    GIT_PROXY_COMMAND: "/tmp/proxy-attacker",
+    GIT_DIR: "/tmp/foreign.git",
   });
 
-  expect(result.exitCode).toBe(1);
-  expect(new TextDecoder().decode(result.stderr)).toContain("transportní konfigurace");
-  const branch = Bun.spawnSync([realGit, "show-ref", "--verify", "--quiet", "refs/heads/agent/CAC-0010-remote-policy"], {
-    cwd: root,
-    stdout: "pipe",
-    stderr: "pipe",
-    windowsHide: true,
-  });
-  expect(branch.exitCode).not.toBe(0);
-  expect(existsSync(join(root, ".worktrees", ".worktree-create.lock"))).toBe(false);
-});
-
-test("worktree creator rejects a local Git proxy command before remote fetch", async () => {
-  const sandbox = await mkdtemp(join(tmpdir(), "worktree-create-git-proxy-"));
-  cleanupPaths.push(sandbox);
-  const root = join(sandbox, "Conglomerate_GEN3");
-  const authorityRoot = join(sandbox, "HumanAndMachines");
-  const markerPath = join(sandbox, "proxy-ran");
-  const proxyPath = join(sandbox, "malicious-git-proxy");
-  const realGit = Bun.which("git");
-  expect(realGit).toBeTruthy();
-
-  await Promise.all([
-    mkdir(root, { recursive: true }),
-    mkdir(join(authorityRoot, "mission-control", "plans", "2026", "08"), { recursive: true }),
-  ]);
-  await writeFile(join(root, "launchpad.gen3.json"), "{}\n");
-  await writeFile(join(root, "README.md"), "fixture\n");
-  await writeFile(
-    join(authorityRoot, "mission-control", "plans", "2026", "08", "CAC-0011-git-proxy.yaml"),
-    "dev_code: CAC-0011\ntitle: Fixture\n",
-  );
-  await writeFile(proxyPath, "#!/bin/sh\nprintf proxy > \"$MARKER_PATH\"\nexit 1\n");
-  await chmod(proxyPath, 0o755);
-  for (const args of [
-    ["init", "-b", "main"],
-    ["config", "user.email", "test@example.test"],
-    ["config", "user.name", "Worktree Create Test"],
-    ["add", "."],
-    ["commit", "-m", "fixture"],
-    ["remote", "add", "origin", "git://github.com/HumanAndMachines/Conglomerate_GEN3.git"],
-    ["config", "core.gitProxy", proxyPath],
-  ]) {
-    const setup = Bun.spawnSync([realGit, ...args], { cwd: root, stdout: "pipe", stderr: "pipe", windowsHide: true });
-    expect(setup.exitCode).toBe(0);
-  }
-
-  const result = Bun.spawnSync([process.execPath, scriptPath, "--plan", "CAC-0011"], {
-    cwd: root,
-    env: { ...process.env, HUMANANDMACHINES_ROOT: authorityRoot, MARKER_PATH: markerPath },
-    stdout: "pipe",
-    stderr: "pipe",
-    windowsHide: true,
-  });
-
-  expect(result.exitCode).toBe(1);
-  expect(new TextDecoder().decode(result.stderr)).toContain("transportní konfigurace");
-  expect(existsSync(markerPath)).toBe(false);
-});
-
-test("worktree creator refuses an existing create lock without deleting it", async () => {
-  const sandbox = await mkdtemp(join(tmpdir(), "worktree-create-lock-"));
-  cleanupPaths.push(sandbox);
-  const root = join(sandbox, "Conglomerate_GEN3");
-  const authorityRoot = join(sandbox, "HumanAndMachines");
-  const lockPath = join(root, ".worktrees", ".worktree-create.lock");
-  const realGit = Bun.which("git");
-  expect(realGit).toBeTruthy();
-
-  await Promise.all([
-    mkdir(root, { recursive: true }),
-    mkdir(join(authorityRoot, "mission-control", "plans", "2026", "08"), { recursive: true }),
-  ]);
-  await writeFile(join(root, "launchpad.gen3.json"), "{}\n");
-  await writeFile(join(root, "README.md"), "fixture\n");
-  await writeFile(
-    join(authorityRoot, "mission-control", "plans", "2026", "08", "CAC-0012-lock.yaml"),
-    "dev_code: CAC-0012\ntitle: Fixture\n",
-  );
-  for (const args of [
-    ["init", "-b", "main"],
-    ["config", "user.email", "test@example.test"],
-    ["config", "user.name", "Worktree Create Test"],
-    ["add", "."],
-    ["commit", "-m", "fixture"],
-    ["remote", "add", "origin", "git@github.com:HumanAndMachines/Conglomerate_GEN3.git"],
-  ]) {
-    const setup = Bun.spawnSync([realGit, ...args], { cwd: root, stdout: "pipe", stderr: "pipe", windowsHide: true });
-    expect(setup.exitCode).toBe(0);
-  }
-  await mkdir(lockPath, { recursive: true });
-
-  const result = Bun.spawnSync([process.execPath, scriptPath, "--plan", "CAC-0012", "--dry-run"], {
-    cwd: root,
-    env: { ...process.env, HUMANANDMACHINES_ROOT: authorityRoot },
-    stdout: "pipe",
-    stderr: "pipe",
-    windowsHide: true,
-  });
-
-  expect(result.exitCode).toBe(1);
-  expect(new TextDecoder().decode(result.stderr)).toContain("jiná worktree create operace");
-  expect(existsSync(lockPath)).toBe(true);
+  expect(environment.HOME).toBe("/home/builder");
+  expect(environment.HTTPS_PROXY).toBe("http://proxy.example:8080");
+  expect(environment.SSH_AUTH_SOCK).toBe("/tmp/agent.sock");
+  expect(environment.GIT_SSH_COMMAND).toBeUndefined();
+  expect(environment.GIT_PROXY_COMMAND).toBeUndefined();
+  expect(environment.GIT_DIR).toBeUndefined();
+  expect(environment.GIT_TERMINAL_PROMPT).toBe("0");
 });

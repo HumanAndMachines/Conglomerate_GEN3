@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { realpathSync, rmSync } from "node:fs";
 import { link, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, posix, resolve, win32 } from "node:path";
 
 function temporarySidecarPath(sidecarPath, createId) {
   return join(
@@ -79,18 +80,118 @@ function ownedBranchStatus({ git, primaryRoot, branch, ownerMarker, branchHead }
   return { owned: true };
 }
 
-function rollbackOwnedBranch({ git, primaryRoot, branch, ownerMarker, branchHead }) {
-  const ownership = ownedBranchStatus({ git, primaryRoot, branch, ownerMarker, branchHead });
-  if (!ownership.owned) return `branch se nemaže: ${ownership.reason}`;
-  return `owned branch ${branch}@${branchHead} zůstává pro vědomý recovery handoff; automatické mazání refu není bezpečné vůči cizím linked worktree`;
+function parseWorktreePorcelain(porcelain) {
+  if (!porcelain.includes("\0")) {
+    return porcelain.split("\n\n").filter(Boolean).map((block) => block.split("\n"));
+  }
+  const records = [];
+  let current = [];
+  for (const field of porcelain.split("\0")) {
+    if (field === "") {
+      if (current.length > 0) records.push(current);
+      current = [];
+    } else {
+      current.push(field);
+    }
+  }
+  if (current.length > 0) records.push(current);
+  return records;
 }
 
-function registeredWorktreeMatchesBranch(porcelain, canonicalWorktreePath, branch) {
-  return porcelain.split("\n\n").some((block) => {
-    const lines = block.split("\n");
-    return lines.includes(`worktree ${canonicalWorktreePath}`)
-      && lines.includes(`branch refs/heads/${branch}`);
+function pathKey(value, platform) {
+  if (platform === "win32") {
+    return win32.resolve(value.replaceAll("/", "\\")).replaceAll("\\", "/").toLowerCase();
+  }
+  const normalized = resolve(value).replaceAll("\\", "/");
+  return normalized;
+}
+
+function registeredWorktreeMatchesBranch(
+  porcelain,
+  canonicalWorktreePath,
+  branch,
+  platform,
+  canonicalizePath,
+) {
+  const expectedPath = pathKey(canonicalWorktreePath, platform);
+  return parseWorktreePorcelain(porcelain).some((fields) => {
+    const worktreeField = fields.find((field) => field.startsWith("worktree "));
+    if (!worktreeField || !fields.includes(`branch refs/heads/${branch}`)) return false;
+    const reportedPath = worktreeField.slice("worktree ".length);
+    try {
+      return pathKey(canonicalizePath(reportedPath), platform) === expectedPath;
+    } catch {
+      return false;
+    }
   });
+}
+
+function registeredWorktreeUsesBranch(porcelain, branch) {
+  return parseWorktreePorcelain(porcelain).some((fields) => (
+    fields.includes(`branch refs/heads/${branch}`)
+  ));
+}
+
+function canonicalRollbackPath(primaryRoot, worktreePath, canonicalWorktreePath, platform) {
+  if (!canonicalWorktreePath) return false;
+  const joinPath = platform === "win32" ? win32.join : join;
+  const expectedParent = pathKey(joinPath(primaryRoot, ".worktrees", "root"), platform);
+  const requested = pathKey(worktreePath, platform);
+  const canonical = pathKey(canonicalWorktreePath, platform);
+  return posix.dirname(requested) === expectedParent && requested === canonical;
+}
+
+function rollbackOwnedBranch({
+  git,
+  primaryRoot,
+  branch,
+  ownerMarker,
+  branchHead,
+  worktreePath,
+  pathExists,
+}) {
+  const ownership = ownedBranchStatus({ git, primaryRoot, branch, ownerMarker, branchHead });
+  if (!ownership.owned) return `branch se nemaže: ${ownership.reason}`;
+  const listed = git(primaryRoot, ["worktree", "list", "--porcelain", "-z"], { allowFail: true });
+  if (listed.status !== 0) return "branch se nemaže: linked worktrees nelze ověřit";
+  if (registeredWorktreeUsesBranch(listed.stdout, branch)) {
+    return "branch se nemaže: stále ji používá linked worktree";
+  }
+  if (worktreePath && pathExists(worktreePath)) {
+    return `branch se nemaže: worktree cesta ${worktreePath} stále existuje`;
+  }
+  const deleted = git(
+    primaryRoot,
+    ["update-ref", "-d", `refs/heads/${branch}`, branchHead],
+    { allowFail: true },
+  );
+  if (deleted.status !== 0) {
+    return `branch se nemaže: exact compare-and-delete selhal (${deleted.stderr || "bez stderr"})`;
+  }
+  const verifiedAbsent = git(
+    primaryRoot,
+    ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`],
+    { allowFail: true },
+  );
+  if (verifiedAbsent.status === 0) {
+    return `branch se nemaže: exact ref po compare-and-delete stále existuje`;
+  }
+  const currentMarker = git(
+    primaryRoot,
+    ["config", "--local", "--get", `branch.${branch}.description`],
+    { allowFail: true },
+  );
+  if (currentMarker.status === 0 && currentMarker.stdout.trim() !== ownerMarker) {
+    return `owned branch ${branch}@${branchHead} vrácena; změněný ownership marker zůstává nedotčený`;
+  }
+  const markerCleanup = git(
+    primaryRoot,
+    ["config", "--local", "--unset-all", `branch.${branch}.description`],
+    { allowFail: true },
+  );
+  return markerCleanup.status === 0 || markerCleanup.status === 5
+    ? `owned branch ${branch}@${branchHead} vrácena`
+    : `owned branch ${branch}@${branchHead} vrácena; ownership marker nelze odstranit (${markerCleanup.stderr || "bez stderr"})`;
 }
 
 export function rollbackCreatedWorktree({
@@ -105,6 +206,9 @@ export function rollbackCreatedWorktree({
   branchHead,
   canonicalWorktreePath = worktreePath,
   worktreeCreated = true,
+  platform = process.platform,
+  removeDirectory = (path) => rmSync(path, { recursive: true, force: true }),
+  canonicalizePath = realpathSync,
 }) {
   const ownership = ownedBranchStatus({ git, primaryRoot, branch, ownerMarker, branchHead });
   if (!ownership.owned) {
@@ -112,7 +216,15 @@ export function rollbackCreatedWorktree({
   }
 
   if (!worktreeCreated) {
-    const branchReport = rollbackOwnedBranch({ git, primaryRoot, branch, ownerMarker, branchHead });
+    const branchReport = rollbackOwnedBranch({
+      git,
+      primaryRoot,
+      branch,
+      ownerMarker,
+      branchHead,
+      worktreePath,
+      pathExists,
+    });
     const leftovers = [
       ...(pathExists(worktreePath) ? [`worktree cesta ${worktreePath}`] : []),
       ...(git(primaryRoot, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], { allowFail: true }).status === 0 ? [`branch ${branch}`] : []),
@@ -124,11 +236,16 @@ export function rollbackCreatedWorktree({
   if (!canonicalWorktreePath) {
     return "worktree ani branch se nemažou: worktree cesta není ověřený běžný adresář; dokonči úklid vědomě po ověření vlastníka";
   }
+  if (!canonicalRollbackPath(primaryRoot, worktreePath, canonicalWorktreePath, platform)) {
+    return "worktree ani branch se nemažou: worktree cesta není přesný kanonický child .worktrees/root; dokonči úklid vědomě";
+  }
 
   const registeredWorktree = registeredWorktreeMatchesBranch(
-    git(primaryRoot, ["worktree", "list", "--porcelain"], { allowFail: true }).stdout,
+    git(primaryRoot, ["worktree", "list", "--porcelain", "-z"], { allowFail: true }).stdout,
     canonicalWorktreePath,
     branch,
+    platform,
+    canonicalizePath,
   );
   if (!registeredWorktree) {
     return "worktree ani branch se nemažou: exact cesta není registrovaný owned worktree";
@@ -137,16 +254,47 @@ export function rollbackCreatedWorktree({
   const worktreeReport = removed.status === 0
     ? "owned worktree vrácen"
     : `owned worktree nelze odstranit: ${removed.stderr || "bez stderr"}`;
-  const branchReport = rollbackOwnedBranch({ git, primaryRoot, branch, ownerMarker, branchHead });
-  const stillRegisteredWorktree = registeredWorktreeMatchesBranch(
-    git(primaryRoot, ["worktree", "list", "--porcelain"], { allowFail: true }).stdout,
+  let listedAfter = git(primaryRoot, ["worktree", "list", "--porcelain", "-z"], { allowFail: true });
+  let stillRegisteredWorktree = listedAfter.status !== 0 || registeredWorktreeMatchesBranch(
+    listedAfter.stdout,
     canonicalWorktreePath,
     branch,
+    platform,
+    canonicalizePath,
   );
+  if (stillRegisteredWorktree) {
+    git(primaryRoot, ["worktree", "prune", "--expire", "now"], { allowFail: true });
+    listedAfter = git(primaryRoot, ["worktree", "list", "--porcelain", "-z"], { allowFail: true });
+    stillRegisteredWorktree = listedAfter.status !== 0 || registeredWorktreeMatchesBranch(
+      listedAfter.stdout,
+      canonicalWorktreePath,
+      branch,
+      platform,
+      canonicalizePath,
+    );
+  }
+  let directoryCleanupError = null;
+  if (!stillRegisteredWorktree && pathExists(worktreePath)) {
+    try {
+      removeDirectory(worktreePath);
+    } catch (error) {
+      directoryCleanupError = error;
+    }
+  }
+  const branchReport = rollbackOwnedBranch({
+    git,
+    primaryRoot,
+    branch,
+    ownerMarker,
+    branchHead,
+    worktreePath,
+    pathExists,
+  });
   const leftovers = [
     ...(stillRegisteredWorktree || pathExists(worktreePath) ? [`worktree ${worktreePath}`] : []),
     ...(git(primaryRoot, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], { allowFail: true }).status === 0 ? [`branch ${branch}`] : []),
     ...(stagingCleanupError ? [`staging sidecar ${stagingPath}`] : []),
+    ...(directoryCleanupError ? [`worktree directory cleanup (${directoryCleanupError.message})`] : []),
   ];
   return leftovers.length === 0
     ? `${worktreeReport}; ${branchReport}`
