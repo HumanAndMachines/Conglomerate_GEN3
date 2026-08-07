@@ -1047,6 +1047,7 @@ test("Windows po restartu adoptuje jen listener s platným capture-time owner pr
       ["runtime key", { runtime_key: "other-runtime" }],
       ["port", { port: port + 1 }],
       ["status", { status: "stopped" }],
+      ["unrelated unhealthy state", { status: "unhealthy", failure_kind: "start_failed" }],
     ];
     for (const [reason, stateOverrides] of invalidStateBindings) {
       await writeProof(validProof, stateOverrides);
@@ -1172,6 +1173,158 @@ test("Windows standalone Start doplní owner proof, i když listener začne být
         verified_by: "runtime-owner-proof",
       },
     });
+  } finally {
+    try {
+      child?.kill("SIGKILL");
+    } catch {}
+  }
+}, platformTestTimeout(10_000));
+
+test("Windows owner proof přežije restart Launchpadu mezi stopping zápisem a signálem", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port });
+  const statePath = join(root, "launchpad", "runtime", "apps", "test-company-demo-v1.json");
+  let child = null;
+  let childExited = false;
+  let releaseManagedSignal = () => {};
+  let reportManagedSignalStarted;
+  const managedSignalStarted = new Promise((resolve) => {
+    reportManagedSignalStarted = resolve;
+  });
+  const managedSignalRelease = new Promise((resolve) => {
+    releaseManagedSignal = resolve;
+  });
+  const identityFor = (pid) => ({
+    pid,
+    parent_pid: process.pid,
+    created_at: "2026-07-27T08:00:00.000Z",
+    executable_path: "C:\\Tools\\bun.exe",
+  });
+  const resolveOwner = async () => child && !childExited
+    ? { pid: child.pid, cwd_matches: null }
+    : null;
+  const firstRuntime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "windows-before-stopping-restart",
+    platform: "win32",
+    bunExecutable: process.execPath,
+    spawnProcess: (command, options) => {
+      child = Bun.spawn(command, options);
+      void child.exited.then(() => { childExited = true; });
+      return child;
+    },
+    resolvePortOwnerFn: resolveOwner,
+    resolveProcessIdentityFn: async (pid) => pid === child?.pid ? identityFor(pid) : null,
+    runSystemCommandFn: async () => {
+      reportManagedSignalStarted();
+      await managedSignalRelease;
+      return { ok: true, exitCode: 0, stdout: "", stderr: "" };
+    },
+  });
+
+  try {
+    await firstRuntime.start("test-company-demo-v1");
+    await waitForJson(statePath, (state) => state.owner_proof);
+    const firstStop = firstRuntime.stop("test-company-demo-v1");
+    await managedSignalStarted;
+
+    const stoppingState = JSON.parse(await readFile(statePath, "utf8"));
+    expect(stoppingState).toMatchObject({
+      status: "stopping",
+      owner_proof: { listener_pid: child.pid },
+    });
+
+    const restartedRuntime = createRuntimeManager({
+      companiesRoot: root,
+      launchpadRoot: join(root, "launchpad"),
+      instanceId: "windows-after-stopping-restart",
+      platform: "win32",
+      resolvePortOwnerFn: resolveOwner,
+      resolveProcessIdentityFn: async (pid) => pid === child?.pid ? identityFor(pid) : null,
+    });
+    expect(await restartedRuntime.health("test-company-demo-v1")).toMatchObject({
+      status: "healthy",
+      owner: "adopted-port",
+      port_owner: { verified_by: "runtime-owner-proof" },
+    });
+
+    const stopped = await restartedRuntime.stop("test-company-demo-v1");
+    expect(stopped.runtime.status).toBe("stopped");
+    releaseManagedSignal();
+    await firstStop;
+  } finally {
+    releaseManagedSignal();
+    try {
+      child?.kill("SIGKILL");
+    } catch {}
+  }
+}, platformTestTimeout(10_000));
+
+test("Windows owner proof přežije stop failure a po restartu dovolí bezpečný retry", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port });
+  const statePath = join(root, "launchpad", "runtime", "apps", "test-company-demo-v1.json");
+  let child = null;
+  let childExited = false;
+  const identityFor = (pid) => ({
+    pid,
+    parent_pid: process.pid,
+    created_at: "2026-07-27T08:00:00.000Z",
+    executable_path: "C:\\Tools\\bun.exe",
+  });
+  const resolveOwner = async () => child && !childExited
+    ? { pid: child.pid, cwd_matches: null }
+    : null;
+  const firstRuntime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "windows-before-stop-failure",
+    platform: "win32",
+    bunExecutable: process.execPath,
+    spawnProcess: (command, options) => {
+      child = Bun.spawn(command, options);
+      void child.exited.then(() => { childExited = true; });
+      return child;
+    },
+    resolvePortOwnerFn: resolveOwner,
+    resolveProcessIdentityFn: async (pid) => pid === child?.pid ? identityFor(pid) : null,
+    runSystemCommandFn: async () => ({
+      ok: false,
+      exitCode: 5,
+      stdout: "",
+      stderr: "Access is denied.",
+    }),
+  });
+
+  try {
+    await firstRuntime.start("test-company-demo-v1");
+    await waitForJson(statePath, (state) => state.owner_proof);
+    await expect(firstRuntime.stop("test-company-demo-v1")).rejects.toMatchObject({
+      code: "app_stop_failed",
+      metadata: { failure_kind: "stop_signal_failed" },
+    });
+    expect(JSON.parse(await readFile(statePath, "utf8"))).toMatchObject({
+      status: "unhealthy",
+      failure_kind: "stop_signal_failed",
+      owner_proof: { listener_pid: child.pid },
+    });
+
+    const restartedRuntime = createRuntimeManager({
+      companiesRoot: root,
+      launchpadRoot: join(root, "launchpad"),
+      instanceId: "windows-after-stop-failure",
+      platform: "win32",
+      resolvePortOwnerFn: resolveOwner,
+      resolveProcessIdentityFn: async (pid) => pid === child?.pid ? identityFor(pid) : null,
+    });
+    expect(await restartedRuntime.health("test-company-demo-v1")).toMatchObject({
+      status: "healthy",
+      owner: "adopted-port",
+      port_owner: { verified_by: "runtime-owner-proof" },
+    });
+    const stopped = await restartedRuntime.stop("test-company-demo-v1");
+    expect(stopped.runtime.status).toBe("stopped");
   } finally {
     try {
       child?.kill("SIGKILL");
