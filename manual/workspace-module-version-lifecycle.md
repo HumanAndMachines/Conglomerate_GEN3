@@ -12,7 +12,10 @@ Founder chce, aby se migrace modulů nedělala ad hoc. Ověřený lifecycle vzni
   `app/v2` + `data/v2`. Record-native business modul typicky přidává YAML,
   `generated/v2` a writer; document-native modul drží Markdown/MDX, přímý
   reader a Git branch + PR.
-- `v3` odděluje app/code repo a data repo: aplikace běží nad repository-db checkoutem `db/`, data mají vlastní `<module>-data` repo a branch `v3`, změny vznikají jako lokální draft a publikují se explicitním commit/push flow.
+- `v3` odděluje app/code repo a data repo. Níže popsaný record-native profil
+  běží nad repository-db checkoutem `db/`; pro případný document-native v3
+  profil se musí nejdřív samostatně schválit vlastní read/write/publish
+  kontrakt.
 
 Tenhle lifecycle je primárně určený pro:
 
@@ -167,15 +170,18 @@ Příklady:
 
 **Gate do v3:** document-native modul zůstává ve v2, dokud není samostatně
 doložená a schválená skutečná potřeba odděleného data lifecycle, jiné GitHub
-ACL hranice nebo non-Git authoring povrchu. Teprve pak na něj dopadne níže
-popsaný repository-db kontrakt. Každý modul vstupující do v3 musí mít app/data
-boundary dost jasnou pro vyjmutí dat do samostatného repa, import v2→v3,
-parity report, schema contract, writer contract, generated policy a
-rollback/archive plán.
+ACL hranice nebo non-Git authoring povrchu. Ani potom na něj automaticky
+nedopadne record-native writer, schema nebo generated machinery popsaná níže:
+nejdřív musí samostatné rozhodnutí schválit jeho document-native v3
+read/write/publish kontrakt. Do té doby do v3 nevstupuje. Record-native modul
+vstupující do v3 musí mít app/data boundary dost jasnou pro vyjmutí dat do
+samostatného repa, import v2→v3, parity report, schema contract, writer
+contract, generated policy a rollback/archive plán.
 
 ### `v3` — repository-db data repo + explicit draft/publish
 
-`v3` je současný cílový standard pro standardní Workspace business aplikace.
+`v3` je současný cílový standard pro standardní record-native Workspace
+business aplikace.
 
 **Univerzální koncept:** app code je přenosný template pattern, data patří konkrétní Organizaci/klientovi ve vlastním data repu. Změny jsou lokální drafty, publish je explicitní auditovaný Git commit.
 
@@ -290,12 +296,12 @@ Bez inventáře nevzniká migrační PR.
 5. Ověř unikátní target paths, fyzickou content parity, linky, build a
    rollback marker; v1 odstav až po readbacku nové generace.
 
-### 3. Migrace `v2 → v3`
+### 3. Migrace `v2 → v3` pro record-native modul
 
-U document-native modulu tento postup začíná až po samostatném schválení v3
-use case podle výše uvedeného gate; samotný počet namespaces ani jejich
-uspořádání takovou potřebu nevytváří. Potom pro něj platí stejný
-repository-db migrační kontrakt:
+Následující repository-db postup platí pro record-native modul. Document-native
+modul se jím neřídí: po samostatném schválení v3 use case podle výše uvedeného
+gate musí nejdřív dostat vlastní schválený v3 kontrakt; samotný počet namespaces
+ani jejich uspořádání takovou potřebu nevytváří.
 
 1. Vytvoř plán a označ v2 jako reference/rollback po dobu migrace.
 2. Vytvoř data repo `<module>-data` s default branchí `v3`.
@@ -313,7 +319,8 @@ repository-db migrační kontrakt:
 
 ## Repository-db writer contract pro v3
 
-Každý v3 modul musí implementovat nebo napojit tyto vrstvy:
+Každý record-native v3 modul pod tímto profilem musí implementovat nebo napojit
+tyto vrstvy:
 
 | Vrstva | Povinnost |
 |---|---|
@@ -398,9 +405,10 @@ Minimální v3 parity:
 - Nepřepisovat v2 na místě.
 - Nepřeskočit destructive-sync guard, pokud bude v2→v3 import opakovatelný.
 
-## Validation matrix pro v3 migraci
+## Validation matrix pro record-native v3 migraci
 
-Každý v3 upgrade musí skončit reportem v tomto tvaru:
+Každý record-native v3 upgrade pod tímto profilem musí skončit reportem v tomto
+tvaru:
 
 ```text
 Status: PASS | FAIL | BLOCKED
