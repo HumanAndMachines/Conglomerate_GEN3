@@ -496,7 +496,14 @@ async function rollbackOwnedBranch({ repo, branch, ownerMarker, branchHead, work
   if (marker.ok && marker.stdout.trim() !== ownerMarker) {
     return `owned branch ${branch}@${branchHead} vrácena; změněný ownership marker zůstává nedotčený`;
   }
-  const markerCleanup = await runGit(["config", "--local", "--unset-all", `branch.${branch}.description`], {
+  const markerCleanup = await runGit([
+    "config",
+    "--local",
+    "--fixed-value",
+    "--unset-all",
+    `branch.${branch}.description`,
+    ownerMarker,
+  ], {
     cwd: repo.absolute_path,
     timeoutMs: GIT_LOCAL_TIMEOUT_MS,
   });

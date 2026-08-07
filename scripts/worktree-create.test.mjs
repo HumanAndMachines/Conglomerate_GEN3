@@ -118,6 +118,8 @@ test.each([
       return { status: 0, stdout: state.marker };
     }
     if (args[0] === "config" && args.includes("--unset-all")) {
+      const exactValue = args.at(-1);
+      if (state.marker !== exactValue) return { status: 5, stdout: "" };
       state.marker = null;
       return { status: 0, stdout: "" };
     }
@@ -164,7 +166,71 @@ test.each([
   expect(state.path).toBe(expectPath);
   if (!expectBranch) {
     expect(calls).toContainEqual(["update-ref", "-d", `refs/heads/${branch}`, branchHead]);
+    expect(calls).toContainEqual([
+      "config",
+      "--local",
+      "--fixed-value",
+      "--unset-all",
+      `branch.${branch}.description`,
+      ownerMarker,
+    ]);
   }
+});
+
+test("marker cleanup cannot remove a replacement written after the ownership read", () => {
+  const state = {
+    branch: true,
+    marker: ownerMarker,
+    markerReads: 0,
+  };
+  const calls = [];
+  const git = (_cwd, args) => {
+    calls.push(args);
+    if (args[0] === "config" && args.includes("--get")) {
+      state.markerReads += 1;
+      const observed = state.marker;
+      if (state.markerReads === 3) state.marker = "replacement-owner";
+      return { status: 0, stdout: observed };
+    }
+    if (args[0] === "config" && args.includes("--unset-all")) {
+      const exactValue = args.at(-1);
+      if (state.marker !== exactValue) return { status: 5, stdout: "" };
+      state.marker = null;
+      return { status: 0, stdout: "" };
+    }
+    if (args[0] === "rev-parse") {
+      return { status: state.branch ? 0 : 1, stdout: state.branch ? branchHead : "" };
+    }
+    if (args[0] === "worktree" && args[1] === "list") return { status: 0, stdout: "" };
+    if (args[0] === "update-ref" && args[1] === "-d") {
+      state.branch = false;
+      return { status: 0, stdout: "" };
+    }
+    return { status: 0, stdout: "" };
+  };
+
+  const report = rollbackCreatedWorktree({
+    git,
+    primaryRoot,
+    worktreePath,
+    worktreeCreated: false,
+    branch,
+    ownerMarker,
+    branchHead,
+    pathExists: () => false,
+  });
+
+  expect(report).toContain("owned branch");
+  expect(state.branch).toBe(false);
+  expect(state.marker).toBe("replacement-owner");
+  expect(calls).toContainEqual([
+    "config",
+    "--local",
+    "--fixed-value",
+    "--unset-all",
+    `branch.${branch}.description`,
+    ownerMarker,
+  ]);
 });
 
 test("rollback never removes a symlinked or noncanonical worktree path", () => {

@@ -186,7 +186,14 @@ function rollbackOwnedBranch({
   }
   const markerCleanup = git(
     primaryRoot,
-    ["config", "--local", "--unset-all", `branch.${branch}.description`],
+    [
+      "config",
+      "--local",
+      "--fixed-value",
+      "--unset-all",
+      `branch.${branch}.description`,
+      ownerMarker,
+    ],
     { allowFail: true },
   );
   return markerCleanup.status === 0 || markerCleanup.status === 5
