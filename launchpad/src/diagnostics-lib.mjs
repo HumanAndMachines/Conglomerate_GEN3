@@ -1143,6 +1143,10 @@ function rootSlotContractIssues(manifest, config, organizationRoot) {
 // GitHub přístup nebo zatím nespuštěný doctor sync), planned_slot = slot bez
 // repo deklarace.
 function moduleSlotStatus(organizationRoot, slot) {
+  if (isOrganizationRootSlotPath(slot.path)) {
+    if (existsSync(join(organizationRoot, slot.path, ".git"))) return "available";
+    return slot.repo ? "missing_access" : "planned_slot";
+  }
   if (existsSync(join(organizationRoot, slot.path))) return "available";
   return slot.repo ? "missing_access" : "planned_slot";
 }

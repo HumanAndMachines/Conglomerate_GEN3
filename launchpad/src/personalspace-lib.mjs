@@ -145,9 +145,6 @@ export function validatePersonalConfig(personal, schema, label) {
         if (personal.buddy[key] === undefined) failures.push(`${label}: chybí buddy.${key}`);
       }
       checkString(personal.buddy, "slug", "buddy.slug", { required: true });
-      if (typeof personal.buddy.slug === "string" && !/^[a-z0-9][a-z0-9-]*$/.test(personal.buddy.slug)) {
-        failures.push(`${label}: buddy.slug musí být lowercase ASCII slug (a-z, 0-9, pomlčka)`);
-      }
       checkConst(personal.buddy, "gbrain_path", buddySpec.properties?.gbrain_path, "buddy.gbrain_path");
       if (!legacyCustody) {
         checkConst(personal.buddy, "path", buddySpec.properties?.path, "buddy.path");
@@ -306,6 +303,25 @@ export function validatePersonalConfig(personal, schema, label) {
     if (personal.secrets?.[key] === undefined) failures.push(`${label}: chybí secrets.${key}`);
   }
   checkConst(personal.secrets, "path", secretsSpec.properties?.path, "secrets.path");
+  checkPattern(
+    personal.secrets,
+    "custody_pattern",
+    secretsSpec.properties?.custody_pattern,
+    "secrets.custody_pattern",
+  );
+  const ownerCustodyPattern = typeof personal.owner?.github_username === "string"
+    ? `personalspace/${personal.owner.github_username}_GEN3/secrets/<provider>/<scope>/<purpose>`
+    : null;
+  const acceptedCustodyPatterns = new Set([
+    "personalspace/<owner>_GEN3/secrets/<provider>/<scope>/<purpose>",
+    ownerCustodyPattern,
+  ].filter(Boolean));
+  if (
+    typeof personal.secrets?.custody_pattern === "string"
+    && !acceptedCustodyPatterns.has(personal.secrets.custody_pattern)
+  ) {
+    failures.push(`${label}: secrets.custody_pattern musí být šablonový nebo vázaný na owner.github_username`);
+  }
   checkConst(personal.secrets, "git", secretsSpec.properties?.git, "secrets.git");
 
   return failures;

@@ -587,14 +587,13 @@ test("Mission Control app/code a data jsou root sloty mimo Team dlaždice", asyn
     organization_generation: "gen3",
     company: { slug: "OmegaCo", display_name: "OmegaCo" },
     workspaces: [{ slug: "workspace", display_name: "OmegaCo Workspace", default: true }],
-    layers: [{ path: "mission-control", kind: "root-docs", ownership: "manual" }],
+    layers: [{ path: "mission-control", kind: "mission-control", ownership: "manual" }],
   });
   await writeJson(join(companyRoot, "modules.manifest.json"), {
     organization_generation: "gen3",
     company: "OmegaCo",
     module_slots: [
-      // Physical root placement is sufficient; manifest need not repeat space.
-      { path: "mission-control", git: { url: "git@github.com:OmegaCo/mission-control.git", branch: "main" } },
+      { path: "mission-control", space: "root", git: { url: "git@github.com:OmegaCo/mission-control.git", branch: "main" } },
       { path: "mission-control/db", space: "root", category: "planning-data", git: { url: "git@github.com:OmegaCo/mission-control-data.git", branch: "v3" } },
       { path: "workspace/wiki", space: "workspace", workspace: "workspace" },
     ],
@@ -604,6 +603,7 @@ test("Mission Control app/code a data jsou root sloty mimo Team dlaždice", asyn
   await writeJson(join(companyRoot, "ISSUES.open.json"), {});
   const missionControlApp = join(companyRoot, "mission-control", "app", "v3");
   await mkdir(missionControlApp, { recursive: true });
+  await writeFile(join(companyRoot, "mission-control", ".git"), "gitdir: ../.git/worktrees/mission-control\n");
   await writeJson(join(missionControlApp, "package.json"), {
     name: "omegaco-mission-control-v3",
     private: true,
@@ -1107,6 +1107,9 @@ test("planned root slot nemá git a smí zůstat planned jen dokud není materia
   await writeJson(manifestPath, manifest);
   const compatibilityDirectoryCheck = await doctor();
   expect(compatibilityDirectoryCheck?.status).toBe("ok");
+  expect(compatibilityDirectoryCheck?.details).toContain(
+    "module slots: available 0, missing_access 0, planned_slot 1",
+  );
 
   await writeFile(join(companyRoot, "design-system", ".git"), "gitdir: ../.git/worktrees/design-system\n");
   const materializedWithCoordinatesCheck = await doctor();
