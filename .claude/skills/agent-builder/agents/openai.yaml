@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent Builder"
+  short_description: "Navrhne a ověří bezpečný agentní kompetenční balíček"
+  default_prompt: "Navrhni scoped agenta s jasnou autoritou, nástroji, evaly a publikačními branami."

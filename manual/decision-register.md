@@ -36,6 +36,7 @@ frameworku se sem nepřenášejí).
 | 0048 | Produktové plány Free/Solo/Team/Enterprise a hosting režimy (localhost/hosted/selfhosted). |
 | 0049 | Worktree runtime kontrakt: plan-owned worktrees v `.worktrees/`, sidecar metadata, Launchpad spouští aplikace z worktrees. |
 | 0051 | Struktura Personalspace: privátní repo `<login>/<login>_GEN3` mimo firemní organizace, `personal.gen3.json`, plochá `workspace/`, gbrain jako root vrstva. |
+| 0052 | AI Architekt je placená platformní služba admin vrstvy: navrhuje změny výhradně přes Dashboard apply plány se schválením Organization Admin, nikdy nezapisuje přímo do zákaznického Gitu a nenahrazuje BYOS builder agenty. |
 | 0059 | Distribuce má dvě oddělené osy: root checkout se bezpečně fast-forwarduje na cíl kanálu Nightly (`origin/main`) nebo Stable (nejvyšší tag); aktualizace Launchpad binárky je samostatný mechanismus. Stable Release smí vytvořit jen identita s odpovídajícími GitHub právy. |
 | 0060 | Role určuje footprint na mašině: Organization User je zero-install (žádný lokální root, přístup přes produkční aplikace a MCP). |
 | 0061 | BYOS: agentní runtime a subscription zůstávají na stroji buildera; platforma nedodává LLM účet ani skrytou autonomii. |
