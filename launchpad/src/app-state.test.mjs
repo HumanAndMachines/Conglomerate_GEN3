@@ -7,7 +7,8 @@ import {
   familyTitle,
   filterApps,
   groupAppFamilies,
-  groupFamiliesByWorkspace,
+  groupFamiliesBySpace,
+  groupWorkspaceFamiliesByTeam,
   matchesQuery,
   offersMoreThanLocalRun,
   productionUrl,
@@ -236,28 +237,25 @@ test("One module = one tile: versions AND named sub-apps collapse by company+mod
   expect(appVersionLabel(apps[2])).toBe("");
 });
 
-test("Module tiles split across the workspaces they belong to, preserving order", () => {
+test("Module tiles split by physical boundary and Workspace modules project N:M into Teams", () => {
   const apps = [
-    { id: "kb", company: "AlfaCo", module: "knowledgebase", title: "Knowledgebase", workspace: "workspace" },
-    { id: "mela", company: "AlfaCo", module: "sidebrand", title: "SideBrand", workspace: "sidebrand" },
-    { id: "ds", company: "AlfaCo", module: "design-system", title: "Design system", workspace: "sidebrand" },
-    { id: "content", company: "AlfaCo", module: "content", title: "Content", workspace: "workspace" },
+    { id: "kb", company: "AlfaCo", module: "knowledgebase", title: "Knowledgebase", space: "workspace", teams: ["core", "content"] },
+    { id: "mela", company: "AlfaCo", module: "sidebrand", title: "SideBrand", space: "workspace", teams: ["content"] },
+    { id: "ds", company: "AlfaCo", module: "design-system", title: "Design system", space: "root", teams: [] },
+    { id: "prod", company: "AlfaCo", module: "firmware", title: "Firmware", space: "productionspace", teams: [] },
   ];
-  const sections = groupFamiliesByWorkspace(groupAppFamilies(apps));
+  const families = groupAppFamilies(apps);
+  const sections = groupFamiliesBySpace(families);
 
-  expect(sections.map((section) => section.workspace)).toEqual(["workspace", "sidebrand"]);
-  expect(sections[0].families.map((family) => family.module)).toEqual(["knowledgebase", "content"]);
-  expect(sections[1].families.map((family) => family.module)).toEqual(["sidebrand", "design-system"]);
+  expect(sections.map((section) => section.space)).toEqual(["root", "workspace", "productionspace"]);
+  expect(sections[0].families.map((family) => family.module)).toEqual(["design-system"]);
+  expect(sections[1].families.map((family) => family.module)).toEqual(["knowledgebase", "sidebrand"]);
+  expect(sections[2].families.map((family) => family.module)).toEqual(["firmware"]);
 
-  // Apps without an explicit workspace fall into the default "workspace".
-  const fallback = groupFamiliesByWorkspace(groupAppFamilies([{ id: "x", company: "A", module: "m", title: "X" }]));
-  expect(fallback).toEqual([{ workspace: "workspace", families: fallback[0].families }]);
-  expect(fallback[0].workspace).toBe("workspace");
-
-  const root = groupFamiliesByWorkspace(groupAppFamilies([
-    { id: "mc", company: "A", module: "mission-control", title: "Mission Control", workspace: null },
-  ]));
-  expect(root).toEqual([{ workspace: null, families: root[0].families }]);
+  const teams = groupWorkspaceFamiliesByTeam(sections[1].families, [{ slug: "core" }, { slug: "content" }]);
+  expect(teams.map((section) => section.team)).toEqual(["core", "content"]);
+  expect(teams[0].families.map((family) => family.module)).toEqual(["knowledgebase"]);
+  expect(teams[1].families.map((family) => family.module)).toEqual(["knowledgebase", "sidebrand"]);
 });
 
 test("Organization-root a Team app stejného modulu zůstávají v oddělených sekcích", () => {
@@ -267,20 +265,22 @@ test("Organization-root a Team app stejného modulu zůstávají v oddělených 
       company: "AlfaCo",
       module: "mission-control",
       title: "Mission Control v3",
-      workspace: null,
+      space: "root",
+      teams: [],
     },
     {
       id: "team-mc",
       company: "AlfaCo",
       module: "mission-control",
       title: "Mission Control helper",
-      workspace: "workspace",
+      space: "workspace",
+      teams: ["workspace"],
     },
   ]);
-  const sections = groupFamiliesByWorkspace(families);
+  const sections = groupFamiliesBySpace(families);
 
   expect(families).toHaveLength(2);
-  expect(sections.map((section) => section.workspace)).toEqual([null, "workspace"]);
+  expect(sections.map((section) => section.space)).toEqual(["root", "workspace", "productionspace"]);
   expect(sections[0].families[0].members.map((app) => app.id)).toEqual(["root-mc"]);
   expect(sections[1].families[0].members.map((app) => app.id)).toEqual(["team-mc"]);
 });

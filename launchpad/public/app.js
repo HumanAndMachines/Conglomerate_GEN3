@@ -6,7 +6,8 @@ import {
   familyTitle,
   filterApps,
   groupAppFamilies,
-  groupFamiliesByWorkspace,
+  groupFamiliesBySpace,
+  groupWorkspaceFamiliesByTeam,
   isAttentionState,
   offersMoreThanLocalRun,
   replacePersonalspaceResponse,
@@ -2291,9 +2292,29 @@ function renderAppsGrid(apps) {
   }
 
   const families = groupAppFamilies(apps);
-  const workspaceSections = sectionsWithManifestModules(groupFamiliesByWorkspace(families), families);
+  if (state.filters.company === "all") {
+    if (families.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "empty-card";
+      empty.textContent = "Žádné aplikace pro aktuální filtr.";
+      elements.appsGrid.replaceChildren(empty);
+    } else {
+      elements.appsGrid.replaceChildren(familyGridNode(families));
+    }
+    return;
+  }
+
+  const organization = state.companies.find((company) => company.slug === state.filters.company);
+  const bySpace = new Map(groupFamiliesBySpace(families).map((section) => [section.space, section.families]));
+  const rootFamilies = bySpace.get("root") ?? [];
+  const workspaceFamilies = bySpace.get("workspace") ?? [];
+  const organizationModules = organizationModulesInView(rootFamilies);
+  const teamSections = teamSectionsWithManifestModules(
+    groupWorkspaceFamiliesByTeam(workspaceFamilies, organization?.teams ?? organization?.workspaces ?? []),
+    workspaceFamilies,
+  );
   const productionspace = productionspaceInView();
-  if (apps.length === 0 && workspaceSections.length === 0 && productionspace.length === 0 && !personalNode) {
+  if (rootFamilies.length === 0 && organizationModules.length === 0 && teamSections.length === 0 && productionspace.length === 0 && !personalNode) {
     const empty = document.createElement("div");
     empty.className = "empty-card";
     empty.textContent = "Žádné aplikace ani moduly pro aktuální filtr.";
@@ -2305,15 +2326,11 @@ function renderAppsGrid(apps) {
   // větví a nikdy se s Organization discovery datově nemíchá.
   const nodes = [];
   if (personalNode) nodes.push(personalNode);
-
-  const manifestModuleCount = workspaceSections.reduce((count, section) => count + (section.modules?.length ?? 0), 0);
-  const structured = workspaceSections.length > 1 || productionspace.length > 0 || manifestModuleCount > 0;
-  if (!structured) {
-    nodes.push(familyGridNode(families));
-  } else {
-    for (const section of workspaceSections) nodes.push(workspaceSectionNode(section));
-    for (const entry of productionspace) nodes.push(productionspaceSectionNode(entry));
+  if (rootFamilies.length > 0 || organizationModules.length > 0) {
+    nodes.push(organizationSectionNode({ organization, families: rootFamilies, modules: organizationModules }));
   }
+  if (teamSections.length > 0) nodes.push(workspaceSectionNode({ organization, teamSections }));
+  for (const entry of productionspace) nodes.push(productionspaceSectionNode(entry));
   elements.appsGrid.replaceChildren(...nodes);
   if (personalNode) fillPersonalspaceSection();
 }
@@ -2342,16 +2359,17 @@ function familyGridNode(families) {
   return grid;
 }
 
-function workspaceSectionNode(section) {
-  const company = section.company ?? section.families[0]?.company;
-  const modules = section.modules ?? [];
-  const moduleCount = section.families.length + modules.length;
-  const grid = familyGridNode(section.families);
-  grid.append(...modules.map((module) => workspaceModuleCard(module, company)));
+function organizationSectionNode({ organization, families, modules }) {
+  const moduleCount = families.length + modules.length;
+  const grid = familyGridNode(families);
+  grid.append(...modules.map((module) => workspaceModuleCard(module, organization.slug, {
+    kind: "organization-module",
+    scope: "organization",
+  })));
   const node = document.createElement("section");
-  node.className = "app-section app-section-workspace";
+  node.className = "app-section app-section-organization";
   node.append(
-    appSectionHead(null, workspaceLabel(company, section.workspace), pluralModule(moduleCount), {
+    appSectionHead("Organizace", "Organizace", pluralModule(moduleCount), {
       count: moduleCount,
     }),
     grid,
@@ -2359,19 +2377,93 @@ function workspaceSectionNode(section) {
   return node;
 }
 
-function sectionsWithManifestModules(appSections, families) {
+function workspaceSectionNode({ organization, teamSections }) {
+  const uniqueModules = new Set();
+  for (const section of teamSections) {
+    section.families.forEach((family) => uniqueModules.add(family.key));
+    (section.modules ?? []).forEach((module) => uniqueModules.add(`module:${module.path ?? module.slug}`));
+  }
+  const node = document.createElement("section");
+  node.className = "app-section app-section-workspace";
+  node.append(
+    appSectionHead("Workspace", "Workspace", pluralModule(uniqueModules.size), { count: uniqueModules.size }),
+    teamAccessSummaryNode(organization),
+  );
+  const teams = document.createElement("div");
+  teams.className = "workspace-team-list";
+  teams.append(...teamSections.map((section) => teamSectionNode(section, organization)));
+  node.append(teams);
+  return node;
+}
+
+function teamSectionNode(section, organization) {
+  const team = (organization?.teams ?? organization?.workspaces ?? []).find((entry) => entry.slug === section.team);
+  const moduleCount = section.families.length + (section.modules?.length ?? 0);
+  const node = document.createElement("section");
+  node.className = "workspace-team";
+  node.append(appSectionHead("Team", team?.display_name ?? humanizeModuleSlug(section.team), pluralModule(moduleCount), { count: moduleCount }));
+  if (team?.description) {
+    const description = document.createElement("p");
+    description.className = "app-section-note";
+    description.textContent = team.description;
+    node.append(description);
+  }
+  const grid = familyGridNode(section.families);
+  grid.append(...(section.modules ?? []).map((module) => workspaceModuleCard(module, organization.slug, {
+    kind: "workspace-module",
+    scope: section.team,
+  })));
+  node.append(grid);
+  return node;
+}
+
+function teamAccessSummaryNode(organization) {
+  const access = organization?.team_access ?? { status: "not_evaluated", memberships: [] };
+  const node = document.createElement("aside");
+  node.className = `team-access-summary is-${access.status === "verified" ? "verified" : "unverified"}`;
+  const title = document.createElement("strong");
+  title.textContent = "Tvoje Teamy";
+  const memberships = document.createElement("div");
+  memberships.className = "team-access-memberships";
+  if (access.status === "verified" && access.memberships?.length > 0) {
+    memberships.append(...access.memberships.map((membership) => chip(
+      membership.display_name ?? membership.slug ?? membership,
+      "chip-ok",
+    )));
+  } else {
+    memberships.append(chip("GitHub členství neověřeno", "chip-muted"));
+  }
+  const copy = document.createElement("p");
+  copy.textContent = access.message
+    ?? "Launchpad zatím členství Buildera živě neověřuje. Skutečný přístup určuje GitHub.";
+  node.append(title, memberships, copy);
+  return node;
+}
+
+function teamSectionsWithManifestModules(appSections, families) {
   const moduleSections = workspaceModulesInView(families);
   if (moduleSections.length === 0) return appSections;
-  const byWorkspace = new Map(appSections.map((section) => [section.workspace, { ...section, modules: [] }]));
+  const byTeam = new Map(appSections.map((section) => [section.team, { ...section, modules: [] }]));
   for (const moduleSection of moduleSections) {
-    const current = byWorkspace.get(moduleSection.workspace);
+    const current = byTeam.get(moduleSection.team);
     if (current) {
       current.modules = moduleSection.modules;
     } else {
-      byWorkspace.set(moduleSection.workspace, { ...moduleSection, families: [] });
+      byTeam.set(moduleSection.team, { ...moduleSection, families: [] });
     }
   }
-  return [...byWorkspace.values()].filter((section) => section.families.length > 0 || (section.modules?.length ?? 0) > 0);
+  return [...byTeam.values()].filter((section) => section.families.length > 0 || (section.modules?.length ?? 0) > 0);
+}
+
+function organizationModulesInView(families) {
+  if (state.filters.company === "all" || state.filters.status !== "all" || state.filters.attentionOnly) return [];
+  const organization = state.companies.find((company) => company.slug === state.filters.company);
+  if (!organization) return [];
+  const appModules = new Set(families.map((family) => family.module).filter(Boolean));
+  const query = state.filters.query.trim().toLowerCase();
+  return (organization.organization_modules ?? [])
+    .filter((module) => !appModules.has(module.slug))
+    .filter((module) => moduleMatchesQuery(module, query));
 }
 
 function workspaceModulesInView(families) {
@@ -2381,11 +2473,11 @@ function workspaceModulesInView(families) {
   if (!organization) return [];
   const appModules = new Set(families.map((family) => family.module).filter(Boolean));
   const query = state.filters.query.trim().toLowerCase();
-  return (organization.workspaces ?? [])
-    .map((workspace) => ({
+  return (organization.teams ?? organization.workspaces ?? [])
+    .map((team) => ({
       company: organization.slug,
-      workspace: workspace.slug,
-      modules: (workspace.modules ?? [])
+      team: team.slug,
+      modules: (team.modules ?? [])
         .filter((module) => !appModules.has(module.slug))
         .filter((module) => moduleMatchesQuery(module, query)),
     }))
@@ -2403,11 +2495,19 @@ function moduleMatchesQuery(module, query) {
 
 function readonlyDetailInView(detail) {
   if (!detail || state.filters.scope === "personal") return false;
+  if (detail.kind === "organization-module") {
+    if (state.filters.company !== detail.company || state.filters.status !== "all" || state.filters.attentionOnly) return false;
+    const organization = state.companies.find((company) => company.slug === detail.company);
+    const module = (organization?.organization_modules ?? []).find(
+      (entry) => readonlyDetailKey("organization-module", detail.company, "organization", entry.slug ?? entry.path ?? entry.name) === detail.id,
+    );
+    return Boolean(module && moduleMatchesQuery(module, state.filters.query.trim().toLowerCase()));
+  }
   if (detail.kind === "workspace-module") {
     if (state.filters.company !== detail.company || state.filters.status !== "all" || state.filters.attentionOnly) return false;
     const organization = state.companies.find((company) => company.slug === detail.company);
-    const module = (organization?.workspaces ?? [])
-      .find((workspace) => workspace.slug === detail.workspace)
+    const module = (organization?.teams ?? organization?.workspaces ?? [])
+      .find((team) => team.slug === detail.workspace)
       ?.modules?.find((entry) => readonlyDetailKey("workspace-module", detail.company, detail.workspace, entry.slug ?? entry.path ?? entry.name) === detail.id);
     return Boolean(module && moduleMatchesQuery(module, state.filters.query.trim().toLowerCase()));
   }
@@ -2425,14 +2525,14 @@ function readonlyDetailKey(kind, company, scope, key) {
   return [kind, company, scope, key].filter(Boolean).join(":");
 }
 
-function workspaceModuleDetail(module, companySlug) {
-  const workspaceSlug = module.workspace ?? "workspace";
+function workspaceModuleDetail(module, companySlug, { kind = "workspace-module", scope = null } = {}) {
+  const workspaceSlug = scope ?? module.teams?.[0] ?? module.workspace ?? "workspace";
   const organization = state.companies.find((company) => company.slug === companySlug);
   const dependencyState = module.status ?? "invalid_manifest";
   return {
-    id: readonlyDetailKey("workspace-module", companySlug, workspaceSlug, module.slug ?? module.path ?? module.name),
-    kind: "workspace-module",
-    title: module.name ?? module.slug ?? module.path ?? "Workspace modul",
+    id: readonlyDetailKey(kind, companySlug, workspaceSlug, module.slug ?? module.path ?? module.name),
+    kind,
+    title: module.name ?? module.slug ?? module.path ?? (kind === "organization-module" ? "Modul Organizace" : "Workspace modul"),
     company: companySlug,
     company_display_name: organization?.display_name ?? companySlug,
     module: module.slug ?? module.path ?? "workspace-module",
@@ -2457,8 +2557,8 @@ function workspaceModuleDetail(module, companySlug) {
   };
 }
 
-function workspaceModuleCard(module, companySlug) {
-  const detail = workspaceModuleDetail(module, companySlug);
+function workspaceModuleCard(module, companySlug, options = {}) {
+  const detail = workspaceModuleDetail(module, companySlug, options);
   const selected = state.selectedReadonlyDetail?.id === detail.id;
   const openable = detail.can_open_folder;
   const card = document.createElement("article");
@@ -2674,13 +2774,6 @@ function productionspaceInView() {
   const org = state.companies.find((company) => company.slug === state.filters.company);
   if (!org?.productionspace || (org.productionspace.systems ?? []).length === 0) return [];
   return [{ company: org.slug, companyName: org.display_name ?? org.slug, productionspace: org.productionspace }];
-}
-
-function workspaceLabel(companySlug, workspaceSlug) {
-  if (workspaceSlug === null) return "Organizace";
-  const org = state.companies.find((company) => company.slug === companySlug);
-  const workspace = (org?.workspaces ?? []).find((entry) => entry.slug === workspaceSlug);
-  return workspace?.display_name ?? (workspaceSlug === "workspace" ? "Workspace" : workspaceSlug);
 }
 
 // Karta modulu (CAC-0044, port GEN2 web/app.js:2666–3095): celá karta je
@@ -3663,7 +3756,7 @@ function isAttention(app) {
 }
 
 function isProductionspace(app) {
-  return Boolean(app.is_productionspace) || app.surface === "productionspace";
+  return Boolean(app.is_productionspace) || app.surface === "productionspace" || app.space === "productionspace";
 }
 
 function policyLabel(app) {

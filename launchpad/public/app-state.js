@@ -137,6 +137,7 @@ export function summarizeOrganizationSpaceHealth({ apps = [], organization = nul
     : apps;
   const slots = organization
     ? [
+        ...(organization.organization_modules ?? []),
         ...(organization.workspaces ?? []).flatMap((workspace) => workspace.modules ?? []),
         ...(organization.productionspace?.systems ?? []),
       ]
@@ -238,11 +239,26 @@ export function appVersionLabel(app) {
   return version === null ? "" : `v${version}`;
 }
 
+export function appSpace(app) {
+  if (app?.space === "root" || app?.space === "workspace" || app?.space === "productionspace") {
+    return app.space;
+  }
+  if (app && Object.hasOwn(app, "workspace")) {
+    if (app.workspace === null) return "root";
+    if (app.workspace === "productionspace") return "productionspace";
+  }
+  return "workspace";
+}
+
+export function appTeams(app) {
+  if (appSpace(app) !== "workspace") return [];
+  const declared = Array.isArray(app?.teams) ? app.teams : [];
+  const teams = declared.length > 0 ? declared : [app?.workspace ?? "workspace"];
+  return [...new Set(teams.map((team) => String(team).trim()).filter(Boolean))];
+}
+
 function appFamilyKey(app) {
-  const workspace = app && Object.hasOwn(app, "workspace")
-    ? app.workspace
-    : "workspace";
-  const section = workspace === null ? "root" : `workspace:${workspace}`;
+  const section = appSpace(app);
   return app.module
     ? `${app.company}::${section}::m:${app.module}`
     : `${app.company}::${section}::i:${app.id}`;
@@ -291,10 +307,8 @@ export function variantMenuLabel(app, moduleName) {
   return variantTag(app, moduleName) || appBaseTitle(app);
 }
 
-// Groups module tiles by the workspace they belong to, preserving order. An
-// organization may split its modules across several named workspaces. A missing
-// field falls into the default "workspace"; explicit null stays a separate
-// Organization-root section outside Team grouping.
+// Compatibility helper for older callers. New UI groups by physical space and
+// then projects Workspace families into N:M Teams.
 export function groupFamiliesByWorkspace(families) {
   const order = [];
   const map = new Map();
@@ -309,6 +323,34 @@ export function groupFamiliesByWorkspace(families) {
     map.get(slug).push(family);
   }
   return order.map((slug) => ({ workspace: slug, families: map.get(slug) }));
+}
+
+export function groupFamiliesBySpace(families) {
+  const order = ["root", "workspace", "productionspace"];
+  const grouped = new Map(order.map((space) => [space, []]));
+  for (const family of families) {
+    const space = appSpace(family.primary);
+    if (!grouped.has(space)) grouped.set(space, []);
+    grouped.get(space).push(family);
+  }
+  return [...grouped].map(([space, entries]) => ({ space, families: entries }));
+}
+
+export function groupWorkspaceFamiliesByTeam(families, teams = []) {
+  const order = [];
+  const grouped = new Map();
+  const ensure = (slug) => {
+    if (!grouped.has(slug)) {
+      grouped.set(slug, []);
+      order.push(slug);
+    }
+    return grouped.get(slug);
+  };
+  for (const team of teams) ensure(team.slug);
+  for (const family of families) {
+    for (const team of appTeams(family.primary)) ensure(team).push(family);
+  }
+  return order.map((team) => ({ team, families: grouped.get(team) }));
 }
 
 function longestCommonWordPrefix(titles) {

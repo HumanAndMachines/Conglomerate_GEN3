@@ -788,19 +788,24 @@ test("mobilní toolbar drží search kompaktní a sekundární panely přesouvá
   expect(html).toContain('aria-modal="false" tabindex="-1" inert');
 });
 
-test("UI is prepared for multiple workspaces and read-only productionspace", async () => {
+test("UI separates physical Organization/Workspace/Productionspace and prepares honest Team access", async () => {
   const [js, css, diag] = await Promise.all([
     readFile(join(publicRoot, "app.js"), "utf8"),
     readFile(join(publicRoot, "styles.css"), "utf8"),
     readFile(join(import.meta.dirname, "diagnostics-lib.mjs"), "utf8"),
   ]);
 
-  // Apps are grouped by workspace; manifest-only modules are still visible even
-  // when they do not have a Launchpad app manifest yet; productionspace renders
-  // as a distinct, read-only section (never a lifecycle app).
-  expect(js).toContain("groupFamiliesByWorkspace");
+  // Physical placement defines the top-level section. Workspace modules are
+  // projected N:M into Teams, while live membership stays explicitly unknown
+  // until a GitHub adapter can verify it.
+  expect(js).toContain("groupFamiliesBySpace");
+  expect(js).toContain("groupWorkspaceFamiliesByTeam");
+  expect(js).toContain("function organizationSectionNode");
   expect(js).toContain("function workspaceSectionNode");
-  expect(js).toContain('appSectionHead(null, workspaceLabel(company, section.workspace)');
+  expect(js).toContain("function teamSectionNode");
+  expect(js).toContain("function teamAccessSummaryNode");
+  expect(js).toContain("Tvoje Teamy");
+  expect(js).toContain("GitHub členství neověřeno");
   expect(js).toContain("titleRow.append(metaNode)");
   const titleRowCss = css.slice(
     css.indexOf(".app-section-title-row {"),
@@ -821,6 +826,8 @@ test("UI is prepared for multiple workspaces and read-only productionspace", asy
   expect(js).toContain("function productionspaceCard");
   expect(js).toContain("Jen pro čtení");
   expect(css).toContain(".app-section-productionspace");
+  expect(css).toContain(".app-section-organization");
+  expect(css).toContain(".team-access-summary");
   expect(css).toContain(".system-card");
   const systemCardCss = css.slice(
     css.indexOf(".system-card {"),
@@ -828,13 +835,14 @@ test("UI is prepared for multiple workspaces and read-only productionspace", asy
   );
   expect(systemCardCss).toContain("align-self: start");
 
-  // Discovery is additively enriched: per-app workspace + per-org module slots + productionspace.
-  // Decision 0041: workspace grouping jede z manifest deklarací, ne z cesty.
+  // Discovery is additively enriched: physical app space + N:M Team intent,
+  // Organization-root slots, and productionspace.
   expect(diag).toContain("readOrganizationSpaces");
   expect(diag).toContain("readOrganizationModuleManifest");
-  expect(diag).toContain("workspaceResolverForOrganization");
+  expect(diag).toContain("appPlacementResolverForOrganization");
+  expect(diag).toContain('status: "not_evaluated"');
   expect(diag).not.toContain("deriveWorkspaceSlug");
-  expect(diag).toContain("workspace:");
+  expect(diag).toContain('space: "root"');
 });
 
 test("manifest-only module cards keep semantic icon precedence over a broad category", async () => {

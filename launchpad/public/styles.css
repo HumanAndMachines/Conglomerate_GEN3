@@ -1447,6 +1447,66 @@ button.update-pill:disabled {
   line-height: 1.45;
 }
 
+.app-section-organization,
+.app-section-workspace {
+  padding: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.workspace-team-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.workspace-team {
+  display: grid;
+  gap: 0.65rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--line);
+}
+
+.workspace-team:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.team-access-summary {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.55rem 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+}
+
+.team-access-summary strong {
+  font-size: 0.8rem;
+}
+
+.team-access-memberships {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.team-access-summary p {
+  min-width: 0;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 820px) {
+  .team-access-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Productionspace is risk-tinted and visibly distinct from office workspaces. */
 .app-section-productionspace {
   padding: 0.9rem;
