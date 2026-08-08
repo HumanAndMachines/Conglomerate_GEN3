@@ -593,7 +593,8 @@ test("Mission Control app/code a data jsou root sloty mimo Team dlaždice", asyn
     organization_generation: "gen3",
     company: "OmegaCo",
     module_slots: [
-      { path: "mission-control", space: "root", git: { url: "git@github.com:OmegaCo/mission-control.git", branch: "main" } },
+      // Physical root placement is sufficient; manifest need not repeat space.
+      { path: "mission-control", git: { url: "git@github.com:OmegaCo/mission-control.git", branch: "main" } },
       { path: "mission-control/db", space: "root", category: "planning-data", git: { url: "git@github.com:OmegaCo/mission-control-data.git", branch: "v3" } },
       { path: "workspace/wiki", space: "workspace", workspace: "workspace" },
     ],
@@ -633,6 +634,7 @@ test("Mission Control app/code a data jsou root sloty mimo Team dlaždice", asyn
 
   const org = response.organizations.find((item) => item.slug === "OmegaCo");
   const tilePaths = (org?.workspaces ?? []).flatMap((workspace) => workspace.modules.map((module) => module.path));
+  expect(org?.organization_modules.map((module) => module.path)).toEqual(["mission-control"]);
   const missionControl = org?.module_declarations.find(
     (slot) => slot.path === "mission-control",
   );
@@ -657,8 +659,13 @@ test("Mission Control app/code a data jsou root sloty mimo Team dlaždice", asyn
     "mission-control/db",
   ]);
   expect(
-    response.apps.find((app) => app.id === "omegaco-mission-control-v3")?.workspace,
-  ).toBeNull();
+    response.apps.find((app) => app.id === "omegaco-mission-control-v3"),
+  ).toMatchObject({ space: "root", teams: [], workspace: null });
+  expect(org?.team_access).toMatchObject({
+    authority: "github",
+    status: "not_evaluated",
+    memberships: [],
+  });
   expect(JSON.stringify(org)).not.toContain("module_declarations");
 
   const report = await buildLaunchpadDoctorReport({
@@ -1108,7 +1115,7 @@ test("planned root slot nemá git a smí zůstat planned jen dokud není materia
   );
 });
 
-test("app workspace se čte z manifest deklarace, ne z filesystem cesty (decision 0041)", async () => {
+test("app sekci určí fyzická cesta a manifest doplní N:M Team intent", async () => {
   const root = await createCompaniesWorkspaceFixture();
   const companyRoot = join(root, "organizations", "AlfaCo_GEN3");
   await mkdir(join(companyRoot, "manual"), { recursive: true });
@@ -1134,7 +1141,7 @@ test("app workspace se čte z manifest deklarace, ne z filesystem cesty (decisio
     module_slots: [
       {
         path: "workspace/sidebrand-shop",
-        workspace: "sidebrand",
+        teams: ["sidebrand", "workspace"],
         git: { url: "git@github.com:AlfaCo/sidebrand-shop.git", branch: "main" },
       },
       {
@@ -1181,11 +1188,22 @@ test("app workspace se čte z manifest deklarace, ne z filesystem cesty (decisio
     runtimeManager: { appsWithRuntime: async (apps) => apps },
   });
 
-  const workspaceByAppId = new Map(response.apps.map((app) => [app.id, app.workspace]));
-  // Deklarace Teamu v manifestu vyhrává nad pouhou filesystem cestou.
-  expect(workspaceByAppId.get("sidebrand-shop-v1")).toBe("sidebrand");
-  // Chybějící deklarace = default Workspace se slugem "workspace".
-  expect(workspaceByAppId.get("alfaco-wiki-v1")).toBe("workspace");
+  const placementByAppId = new Map(response.apps.map((app) => [app.id, app]));
+  expect(placementByAppId.get("sidebrand-shop-v1")).toMatchObject({
+    space: "workspace",
+    teams: ["sidebrand", "workspace"],
+    workspace: "sidebrand",
+  });
+  // Chybějící Team deklarace = default Team se slugem "workspace"; fyzická
+  // sekce zůstává Workspace v obou případech.
+  expect(placementByAppId.get("alfaco-wiki-v1")).toMatchObject({
+    space: "workspace",
+    teams: ["workspace"],
+    workspace: "workspace",
+  });
+  const teams = new Map(response.organizations[0].teams.map((team) => [team.slug, team]));
+  expect(teams.get("sidebrand")?.modules.map((module) => module.slug)).toContain("sidebrand-shop");
+  expect(teams.get("workspace")?.modules.map((module) => module.slug)).toContain("sidebrand-shop");
   const report = await buildLaunchpadDoctorReport({
     companiesRoot: root,
     launchpadRoot: join(root, "launchpad"),

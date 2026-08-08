@@ -29,6 +29,7 @@ import {
   normalizeOrganizationSlotPath,
   organizationSlotPathScope,
   organizationSlotScope,
+  organizationSlotTeams,
   organizationSlotUiExposure,
   organizationSlotWorkspace,
 } from "./organization-slot-scope-lib.mjs";
@@ -91,10 +92,8 @@ export async function buildLaunchpadAppsResponse({
       // mounted (default) | planned — planned Organizace ještě nemá mount (decision 0024).
       status: organization.status ?? "mounted",
       discovery_source: organization.discovery_source ?? "registry",
-      // GEN3 organization GEN3 model: workspaces (named module groups) and a
-      // read-only productionspace boundary (externally-developed release/runtime
-      // systems referenced here but governed by their own rules). Additive — the
-      // UI groups apps by workspace and renders productionspace read-only.
+      // GEN3 organization model: Organization-root modules, flat Workspace
+      // modules grouped N:M by Team, and a read-only Productionspace boundary.
       ...publicSpaces,
     };
     // Doctor potřebuje i vnořené deklarace, které nejsou UI dlaždice.
@@ -117,31 +116,31 @@ export async function buildLaunchpadAppsResponse({
     discovery_source: template.discovery_source ?? "filesystem",
   }));
   const companyNames = new Map(companies.map((company) => [company.slug, company.display_name]));
-  // Decision 0041: deklarace v manifestu je autorita pro Workspace grouping;
-  // odvozování z filesystem cesty se ruší.
-  const workspaceResolvers = new Map(
+  // Physical Organization-relative path is the authority for the top-level
+  // Organization / Workspace / Productionspace section. Manifest declarations
+  // enrich Workspace apps with their N:M Team intent; they never move an app
+  // across a physical boundary or grant live access.
+  const placementResolvers = new Map(
     organizationSpaces.map(({ organization, spaces }) => [
       organization.path,
-      workspaceResolverForOrganization({
+      appPlacementResolverForOrganization({
         path: organization.path,
         module_declarations: spaces.module_declarations,
+        teams: spaces.teams,
       }),
     ]),
   );
   const apps = await runtimeManager.appsWithRuntime(discovery.apps.map((app) => ({
     ...app,
     company_display_name: companyNames.get(app.company) ?? app.company,
-    // Which workspace inside the organization this module belongs to — from the
-    // manifest declaration (module_slots[].workspace / modules[].workspace);
-    // missing declaration means the default "workspace" (decision 0041).
-    workspace: workspaceForApp(workspaceResolvers, app),
+    ...appPlacementFor(placementResolvers, app),
     url: `http://${app.host}:${app.port}`,
     health_url: `http://${app.host}:${app.port}${app.health_path}`,
   })));
   const invalidApps = (discovery.invalid_apps ?? []).map((app) => ({
     ...app,
     company_display_name: companyNames.get(app.company) ?? app.company,
-    workspace: workspaceForApp(workspaceResolvers, app),
+    ...appPlacementFor(placementResolvers, app),
     url: null,
     health_url: null,
     dependencies: {
@@ -784,12 +783,20 @@ async function readCompaniesConfig(companiesRoot) {
   return readJson(configPath);
 }
 
-// Reads an organization's company.gen3.json to expose its Workspace boundaries
-// and Productionspace systems. Productionspace systems are NOT lifecycle apps —
-// they are externally-developed repos referenced with their own rules, surfaced
-// read-only. Returns empty/null gracefully for planned or config-less orgs.
+// Reads an organization's company.gen3.json to expose the three physical
+// boundaries: Organization root, flat Workspace, and Productionspace. Workspace
+// modules are additionally projected into N:M Teams. GitHub is the access
+// authority; until a live membership adapter exists, the API says explicitly
+// that Builder Team membership was not evaluated.
 async function readOrganizationSpaces(companiesRoot, organization, localConfig = null) {
-  const empty = { workspaces: [], productionspace: null, module_declarations: [] };
+  const empty = {
+    organization_modules: [],
+    teams: [],
+    workspaces: [],
+    productionspace: null,
+    team_access: unevaluatedTeamAccess(),
+    module_declarations: [],
+  };
   if (organization.status === "planned" || !organization.path) return empty;
   const configPath = join(companiesRoot, organization.path, "company.gen3.json");
   if (!existsSync(configPath)) return empty;
@@ -802,9 +809,11 @@ async function readOrganizationSpaces(companiesRoot, organization, localConfig =
 
   const organizationRoot = join(companiesRoot, organization.path);
   const principalRoles = localConfig?.organization_roles?.[organization.slug];
-  const declared = Array.isArray(config?.workspaces) ? config.workspaces : [];
+  const canonicalTeams = Array.isArray(config?.teams) ? config.teams : null;
+  const legacyWorkspaces = Array.isArray(config?.workspaces) ? config.workspaces : [];
+  const declared = canonicalTeams ?? legacyWorkspaces;
   const productionspaceConfig = config?.productionspace ?? null;
-  const productionBoundary = declared.find(
+  const productionBoundary = legacyWorkspaces.find(
     (workspace) => workspace.slug === "productionspace" || workspace.path === "productionspace",
   );
   const manifest = await readOrganizationModuleManifest(companiesRoot, organization);
@@ -830,26 +839,29 @@ async function readOrganizationSpaces(companiesRoot, organization, localConfig =
   const tileModules = moduleDeclarations.filter(
     (slot) => slot.ui_exposure === "module" && !isNestedChildSlot(slot),
   );
-  const workspaceModules = tileModules.filter(
-    (slot) => slot.space === "workspace" && slot.workspace,
-  );
-  const workspaceSlugs = new Set([
-    ...declared.filter((workspace) => workspace !== productionBoundary).map((workspace) => workspace.slug).filter(Boolean),
-    ...workspaceModules.map((slot) => slot.workspace),
+  const organizationModules = tileModules.filter((slot) => slot.space === "root");
+  const workspaceModules = tileModules.filter((slot) => slot.space === "workspace");
+  const teamSlugs = new Set([
+    ...declared.filter((team) => team !== productionBoundary).map((team) => team.slug).filter(Boolean),
+    ...workspaceModules.flatMap((slot) => slot.teams ?? []),
   ]);
-  if (workspaceSlugs.size === 0 && workspaceModules.length > 0) workspaceSlugs.add("workspace");
+  if (teamSlugs.size === 0 && workspaceModules.length > 0) teamSlugs.add("workspace");
 
-  const declaredBySlug = new Map(declared.map((workspace) => [workspace.slug, workspace]));
-  const workspaces = [...workspaceSlugs].map((slug) => {
-    const workspace = declaredBySlug.get(slug) ?? { slug };
+  const declaredBySlug = new Map(declared.map((team) => [team.slug, team]));
+  const teams = [...teamSlugs].map((slug) => {
+    const team = declaredBySlug.get(slug) ?? { slug };
     return {
       slug,
-      display_name: workspace.display_name ?? humanizeSlug(slug),
-      path: workspace.path ?? slug,
-      default: workspace.default === true || slug === "workspace",
-      modules: workspaceModules.filter((slot) => slot.workspace === slug),
+      display_name: team.display_name ?? humanizeSlug(slug),
+      description: team.description ?? null,
+      path: team.path ?? "workspace",
+      default: team.default === true || (declared.length === 0 && slug === "workspace"),
+      modules: workspaceModules.filter((slot) => (slot.teams ?? []).includes(slug)),
     };
   });
+  // Deprecated API alias for older clients. Its entries now carry Team
+  // semantics; new UI consumes `teams` and labels the physical layer Workspace.
+  const workspaces = teams;
 
   const productionSystems = productionspaceSystems({
     moduleSlots: tileModules,
@@ -868,8 +880,11 @@ async function readOrganizationSpaces(companiesRoot, organization, localConfig =
       : null;
 
   return {
+    organization_modules: organizationModules,
+    teams,
     workspaces,
     productionspace,
+    team_access: unevaluatedTeamAccess(),
     module_declarations: moduleDeclarations,
     space_readiness: {
       blocking_slots: moduleDeclarations
@@ -888,6 +903,16 @@ async function readOrganizationSpaces(companiesRoot, organization, localConfig =
       organizationRoot,
     ),
     slot_scope_contract_issues: slotScopeContractIssues(manifest, config),
+  };
+}
+
+function unevaluatedTeamAccess() {
+  return {
+    authority: "github",
+    status: "not_evaluated",
+    memberships: [],
+    reason: "github_team_membership_adapter_not_connected",
+    message: "Členství Buildera v Teamech zatím Launchpad živě neověřuje. Manifest určuje přiřazení modulů; skutečný přístup vždy určuje GitHub.",
   };
 }
 
@@ -1164,17 +1189,28 @@ function classifyModuleSlotReadiness(slot, status, principalRoles = null) {
   return { severity: "blocking", reason: "unknown_status", message: `Neznámý stav slotu: ${status}.` };
 }
 
-// Decision 0041: aplikace patří do Workspace svého modulu podle manifest
-// deklarace; chybějící deklarace znamená default slug "workspace". Filesystem
-// cesta se pro grouping nepoužívá.
-function workspaceResolverForOrganization(company) {
+// Top-level placement is a physical boundary. Manifest declarations only add
+// N:M Team intent to Workspace apps; GitHub remains the live access authority.
+function appPlacementResolverForOrganization(company) {
   const declarations = Array.isArray(company.module_declarations) ? company.module_declarations : [];
+  const defaultTeam = company.teams?.find((team) => team.default)?.slug
+    ?? company.teams?.[0]?.slug
+    ?? "workspace";
   return (app) => {
     // path.relative na Windows vrací backslashe; deklarace jsou POSIX.
     const packagePath = String(app.package_path ?? "").replace(/\\/g, "/");
     const prefix = `${company.path}/`;
-    if (!packagePath.startsWith(prefix)) return "workspace";
+    if (!packagePath.startsWith(prefix)) {
+      return { space: "workspace", teams: [defaultTeam], workspace: defaultTeam };
+    }
     const organizationRelativePath = packagePath.slice(prefix.length);
+    const [boundary] = organizationRelativePath.split("/");
+    if (boundary === "productionspace") {
+      return { space: "productionspace", teams: [], workspace: "productionspace" };
+    }
+    if (boundary !== "workspace" && boundary !== "modules") {
+      return { space: "root", teams: [], workspace: null };
+    }
     let match = null;
     for (const declaration of declarations) {
       if (
@@ -1184,13 +1220,18 @@ function workspaceResolverForOrganization(company) {
         if (!match || declaration.path.length > match.path.length) match = declaration;
       }
     }
-    return match?.space === "root" ? null : match?.workspace ?? "workspace";
+    const teams = match?.space === "workspace" && match.teams?.length > 0
+      ? match.teams
+      : [defaultTeam];
+    return { space: "workspace", teams, workspace: teams[0] };
   };
 }
 
-function workspaceForApp(workspaceResolvers, app) {
-  const resolver = workspaceResolvers.get(app.organization_path);
-  return resolver ? resolver(app) : "workspace";
+function appPlacementFor(placementResolvers, app) {
+  const resolver = placementResolvers.get(app.organization_path);
+  return resolver
+    ? resolver(app)
+    : { space: "workspace", teams: ["workspace"], workspace: "workspace" };
 }
 
 async function readOrganizationModuleManifest(companiesRoot, organization) {
@@ -1220,6 +1261,7 @@ function normalizeModuleSlot(slot) {
     return null;
   }
   const space = organizationSlotScope(slot, path);
+  const teams = organizationSlotTeams(slot, path);
   const workspace = organizationSlotWorkspace(slot, path);
   if (space !== "root" && !workspace) return null;
   // Vnořený slot (mission-control/db) potřebuje jméno z celé org-relativní
@@ -1234,6 +1276,7 @@ function normalizeModuleSlot(slot) {
     name: humanizeSlug(nestedSegments.join("-")),
     path,
     space,
+    teams,
     workspace,
     category: slot.category ?? null,
     default_access: slot.default_access ?? null,

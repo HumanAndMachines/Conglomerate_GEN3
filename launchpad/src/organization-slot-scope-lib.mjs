@@ -89,7 +89,22 @@ export function organizationSlotWorkspace(slot, normalizedPath = null) {
   const space = organizationSlotScope(slot, path);
   if (space === "root") return null;
   if (space === "productionspace") return "productionspace";
-  return slot?.workspace ?? "workspace";
+  return organizationSlotTeams(slot, path)[0] ?? "workspace";
+}
+
+export function organizationSlotTeams(slot, normalizedPath = null) {
+  const path = normalizeOrganizationSlotPath(normalizedPath ?? slot?.path);
+  if (organizationSlotScope(slot, path) !== "workspace") return [];
+  const declared = Array.isArray(slot?.teams)
+    ? slot.teams
+    : Array.isArray(slot?.workspaces)
+      ? slot.workspaces
+      : [slot?.workspace];
+  const normalized = declared
+    .filter((team) => typeof team === "string" && team.trim() !== "")
+    .map((team) => team.trim())
+    .filter((team) => team !== "productionspace");
+  return normalized.length > 0 ? [...new Set(normalized)] : ["workspace"];
 }
 
 export function organizationSlotUiExposure(slot, normalizedPath = null) {
