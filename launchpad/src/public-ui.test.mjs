@@ -404,6 +404,20 @@ test("Launchpad icon registry is initialized before the first async data render"
   expect(js.indexOf("await loadData();")).toBeGreaterThan(js.indexOf("const APP_ICON_PATHS"));
 });
 
+test("CAC-0095: topbar uses the canonical Iconoir interface icons", async () => {
+  const html = await readFile(join(publicRoot, "index.html"), "utf8");
+
+  for (const icon of ["bell", "layout-right", "more-horiz"]) {
+    expect(html).toContain(`<!-- iconoir/${icon} -->`);
+  }
+
+  expect(html).toContain("M18 8.4C18 6.70261");
+  expect(html).toContain("M14.25 9.75V21");
+  expect(html).toContain("M20 12.5C20.2761 12.5");
+  expect(html).not.toContain("M18 8a6 6 0 0 0-12 0");
+  expect(html).not.toContain('<circle cx="5" cy="12" r="1.7" />');
+});
+
 test("Version families render as one card with a default version and a more-menu", async () => {
   const [js, css] = await Promise.all([
     readFile(join(publicRoot, "app.js"), "utf8"),
