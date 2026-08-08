@@ -1014,6 +1014,10 @@ test("Owner 2026-07-05: karta modulu je GEN2-minimal dlaždice bez velkých tla�
   expect(css).toContain(".card-warning.is-warn");
   expect(css).toContain(".card-warning.is-danger");
   expect(css).toContain(".card-warning-action");
+  expect(css).toContain('"icon body"');
+  expect(css).toContain('". action"');
+  expect(css).toContain("text-overflow: ellipsis");
+  expect(css).toContain("white-space: nowrap");
   expect(css).toContain(".app-menu-action");
   expect(css).toContain(".app-menu-divider");
 });
