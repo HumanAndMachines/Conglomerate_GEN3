@@ -308,6 +308,25 @@ test("neúplný template_provenance failuje podle kanonického schématu", async
   expect(result.failures.some((failure) => failure.includes("template_provenance.source_commit"))).toBe(true);
 });
 
+test("template_provenance odmítne neřetězcový materialized_at", async () => {
+  const config = personalConfig("exampleuser", {
+    template_provenance: {
+      source_repository: "HumanAndMachines/PersonalspaceTemplate_GEN3",
+      source_ref: "main",
+      source_commit: "a".repeat(40),
+      materialized_at: null,
+    },
+  });
+  const root = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
+    spaces: [{ dirName: "exampleuser_GEN3", owner: "exampleuser", config, gbrainNotes: {} }],
+  });
+
+  const result = await discoverPersonalspace(root);
+  expect(result.spaces[0].config_valid).toBe(false);
+  expect(result.failures.some((failure) => failure.includes("template_provenance.materialized_at musí být neprázdný text"))).toBe(true);
+});
+
 test("legacy neversionovaný Personalspace zůstane čitelný s migračním warningem", async () => {
   const config = personalConfig("exampleuser");
   delete config.schema_version;

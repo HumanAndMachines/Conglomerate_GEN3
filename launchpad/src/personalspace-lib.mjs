@@ -110,10 +110,11 @@ export function validatePersonalConfig(personal, schema, label) {
     if (!personal.template_provenance || typeof personal.template_provenance !== "object" || Array.isArray(personal.template_provenance)) {
       failures.push(`${label}: template_provenance musí být objekt`);
     } else {
-      for (const key of provenanceSpec.required ?? []) {
-        checkString(personal.template_provenance, key, `template_provenance.${key}`, { required: true });
-      }
+      const requiredProvenanceKeys = new Set(provenanceSpec.required ?? []);
       for (const [key, spec] of Object.entries(provenanceSpec.properties ?? {})) {
+        checkString(personal.template_provenance, key, `template_provenance.${key}`, {
+          required: requiredProvenanceKeys.has(key),
+        });
         checkPattern(personal.template_provenance, key, spec, `template_provenance.${key}`);
       }
     }

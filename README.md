@@ -63,7 +63,8 @@ private. Výsledné repo musí být vždy privátní a pojmenované:
 ```
 
 Lokální mount je `personalspace/<github-login>_GEN3/`. Gbrain software se
-instaluje z veřejného `garrytan/gbrain`, ale osobní Markdown paměť patří do
+instaluje z veřejného fork-of-record `Lazurio/gbrain`; `garrytan/gbrain`
+zůstává upstream provenience. Osobní Markdown paměť patří do
 odděleného privátního data repa vlastníka mountovaného v `gbrain/`. Detailní
 custody a agentní pravidla drží [personalspace/README.md](personalspace/README.md);
 kanonický upstream model drží HumanAndMachines decisions 0079/0080 na `main`.
