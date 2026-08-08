@@ -287,9 +287,7 @@ input:focus-visible,
   position: sticky;
   top: 0;
   z-index: 20;
-  backdrop-filter: saturate(180%) blur(16px);
-  -webkit-backdrop-filter: saturate(180%) blur(16px);
-  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  background: var(--paper);
   border-bottom: 1px solid var(--line);
 }
 
@@ -316,7 +314,7 @@ input:focus-visible,
   padding: 0.2rem 0.48rem 0.2rem 0.25rem;
   border: 1px solid transparent;
   border-radius: 9px;
-  background: var(--bg-muted);
+  background: transparent;
   color: var(--text);
   cursor: pointer;
 }
@@ -325,7 +323,7 @@ input:focus-visible,
 .space-switcher-button:focus-visible,
 .space-switcher-button.is-open {
   border-color: transparent;
-  background: var(--surface);
+  background: transparent;
 }
 
 .space-switcher-label {
@@ -559,22 +557,7 @@ input:focus-visible,
 }
 
 .topbar-overflow-toggle {
-  display: none;
-}
-
-.runtime-root-badge {
-  max-width: 240px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 0.3rem 0.55rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--text-subtle);
-  background: var(--bg-subtle);
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  display: none !important;
 }
 
 .privacy-pill {
@@ -610,16 +593,6 @@ input:focus-visible,
   cursor: pointer;
 }
 
-/* Update pill je button — dědí vzhled pillu, přidává jen interakci. */
-button.update-pill {
-  font-family: inherit;
-}
-
-button.update-pill:disabled {
-  cursor: progress;
-  opacity: 0.7;
-}
-
 .status-ok {
   border-color: transparent;
   background: var(--c-success-bg);
@@ -651,6 +624,42 @@ button.update-pill:disabled {
   border-color: var(--line);
   background: var(--bg-subtle);
   color: var(--text-muted);
+}
+
+/* Doktor je tichá lineární ikona; výraznou barvu dostane jen malý stavový
+   vykřičník ve chvíli, kdy je opravdu potřeba zásah. */
+.doctor-status-icon {
+  position: relative;
+  color: var(--text-muted);
+}
+
+.doctor-status-icon:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.doctor-status-alert {
+  position: absolute;
+  top: -3px;
+  right: -7px;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--surface);
+  border-radius: var(--r-pill);
+  background: var(--c-danger);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.doctor-status-alert[hidden] {
+  display: none;
 }
 
 /* Globální update banner (CAC-0083): dostupná nová verze Conglomerate nesmí
@@ -995,6 +1004,7 @@ button.update-pill:disabled {
 }
 
 #drawerToggle {
+  display: none !important;
   position: relative;
 }
 
@@ -1149,21 +1159,12 @@ button.update-pill:disabled {
   letter-spacing: -0.02em;
 }
 
-.workspace-welcome-copy {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 14px;
-  font-weight: 400;
-  line-height: 1.45;
-}
-
 /* ---------- Apps toolbar ---------- */
 .apps-toolbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0.6rem;
+  gap: 0.75rem;
 }
 
 .search-field {
@@ -1202,9 +1203,11 @@ button.update-pill:disabled {
 .segmented-control {
   flex: 0 0 auto;
   display: inline-flex;
+  gap: 0.25rem;
+  min-height: 46px;
   padding: 0.25rem;
-  border: 1px solid var(--line);
-  border-radius: var(--r-pill);
+  border: 0;
+  border-radius: var(--r-md);
   background: var(--bg-subtle);
 }
 
@@ -1213,13 +1216,16 @@ button.update-pill:disabled {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 0.5rem;
 }
 
 .segment {
-  padding: 0.4rem 0.7rem;
-  border-radius: var(--r-pill);
+  min-width: 112px;
+  padding: 0.55rem 1rem;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
   color: var(--text-muted);
   font-size: 14px;
   font-weight: 600;
@@ -1229,51 +1235,13 @@ button.update-pill:disabled {
 .segment.is-active {
   background: var(--surface);
   color: var(--text);
+  box-shadow: 0 1px 3px rgba(20, 18, 24, 0.12), inset 0 0 0 1px var(--line);
 }
 
-.attention-toggle {
-  min-height: 38px;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.35rem 0.7rem;
-  border: 1px solid var(--line);
-  border-radius: var(--r-pill);
-  background: var(--surface);
-  color: var(--text-muted);
-  font-size: 14px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.attention-toggle-check {
-  width: 18px;
-  height: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--line-strong);
-  border-radius: 6px;
-  background: var(--bg-muted);
-  color: transparent;
-}
-
-.attention-toggle:hover,
-.attention-toggle:focus-visible {
-  border-color: color-mix(in srgb, var(--c-warn) 45%, var(--line));
+.segment:hover:not(.is-active),
+.segment:focus-visible:not(.is-active) {
+  background: transparent;
   color: var(--text);
-}
-
-.attention-toggle.is-active {
-  border-color: color-mix(in srgb, var(--c-warn) 48%, var(--line));
-  background: var(--c-warn-bg);
-  color: color-mix(in srgb, var(--c-warn) 72%, #5b3900);
-}
-
-.attention-toggle.is-active .attention-toggle-check {
-  border-color: var(--c-warn);
-  background: var(--c-warn);
-  color: #fff;
 }
 
 /* ---------- Problems / action panels ---------- */
@@ -1390,12 +1358,39 @@ button.update-pill:disabled {
 }
 
 .action-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   padding: 0.7rem 0.9rem;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--surface);
   font-size: 14px;
   font-weight: 600;
+}
+
+.action-panel-message {
+  min-width: 0;
+}
+
+.action-panel-dismiss {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: currentColor;
+  cursor: pointer;
+}
+
+.action-panel-dismiss:hover {
+  background: color-mix(in srgb, currentColor 8%, transparent);
 }
 
 .action-ok {
@@ -1436,26 +1431,9 @@ button.update-pill:disabled {
   gap: 0.7rem;
 }
 
-/* Section header — GEN2 app-group-head look: eyebrow, then a title-row with the
-   title + a round count badge, then a description line. */
+/* Lazurio section header: one title and one quiet grammatical summary. */
 .app-section-head {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0.35rem 0.75rem;
-}
-
-.app-section-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.12rem 0.5rem;
-  border-radius: var(--r-pill);
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  min-width: 0;
 }
 
 .app-section-title-row {
@@ -1473,26 +1451,11 @@ button.update-pill:disabled {
 }
 
 /* GEN2 app-group-count: round count pill next to the section title. */
-.app-section-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.35rem;
-  height: 1.35rem;
-  padding: 0 0.35rem;
-  border-radius: var(--r-pill);
-  background: var(--bg-subtle);
+.app-section-summary {
   color: var(--text-muted);
   font-size: 14px;
-  font-weight: 600;
-}
-
-.app-section-meta {
-  min-width: 0;
-  color: var(--text-muted);
-  font-size: 14px;
-  font-weight: 600;
-  white-space: normal;
+  font-weight: 400;
+  white-space: nowrap;
 }
 
 .app-section-note {
@@ -1570,15 +1533,6 @@ button.update-pill:disabled {
   background: color-mix(in srgb, var(--c-warn) 4%, var(--surface));
 }
 
-.app-section-productionspace .app-section-eyebrow {
-  background: var(--c-warn-bg);
-  color: #9a5b00;
-}
-
-[data-theme="dark"] .app-section-productionspace .app-section-eyebrow {
-  color: #fbbf24;
-}
-
 .chip-prod {
   background: var(--c-warn-bg);
   color: #9a5b00;
@@ -1597,17 +1551,6 @@ button.update-pill:disabled {
   border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
   border-radius: var(--r-lg);
   background: color-mix(in srgb, var(--accent) 4%, var(--surface));
-}
-
-.app-section-personalspace .app-section-eyebrow {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.app-section-personalspace .app-section-eyebrow::before {
-  content: "🔒";
-  margin-right: 0.3rem;
-  font-size: 0.85em;
 }
 
 .personalspace-body,
@@ -2926,6 +2869,10 @@ tbody tr.selected {
 }
 
 @media (max-width: 900px) {
+  #drawerToggle:not(.hidden) {
+    display: inline-flex !important;
+  }
+
   .topbar-inner {
     flex-wrap: nowrap;
     gap: 0.65rem;
@@ -2942,61 +2889,6 @@ tbody tr.selected {
 
   .topbar-actions {
     flex: 0 0 auto;
-  }
-
-  .topbar-overflow {
-    position: relative;
-    display: block;
-  }
-
-  .topbar-overflow-toggle {
-    display: inline-flex;
-    list-style: none;
-  }
-
-  .topbar-overflow-toggle::-webkit-details-marker {
-    display: none;
-  }
-
-  .topbar-overflow-menu {
-    position: absolute;
-    top: calc(100% + 0.5rem);
-    right: 0;
-    z-index: 35;
-    min-width: min(260px, calc(100vw - 2rem));
-    display: grid;
-    gap: 0.45rem;
-    padding: 0.65rem;
-    border: 1px solid var(--line);
-    border-radius: var(--r-md);
-    background: var(--surface);
-  }
-
-  .topbar-overflow:not([open]) .topbar-overflow-menu {
-    display: none;
-  }
-
-  .topbar-overflow-menu .runtime-root-badge,
-  .topbar-overflow-menu .status-pill {
-    width: 100%;
-    max-width: none;
-    min-height: 38px;
-    justify-content: flex-start;
-  }
-
-  .topbar-overflow-menu .icon-btn {
-    width: 100%;
-    height: 38px;
-    justify-content: flex-start;
-    gap: 0.6rem;
-    padding: 0 0.7rem;
-    border-radius: var(--r-sm);
-  }
-
-  .topbar-overflow-menu .icon-btn::after {
-    content: attr(data-overflow-label);
-    font-size: 14px;
-    font-weight: 600;
   }
 
   .layout {
@@ -3061,7 +2953,7 @@ tbody tr.selected {
   }
 
   .apps-toolbar {
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr);
     align-items: stretch;
   }
 
@@ -3096,11 +2988,6 @@ tbody tr.selected {
     flex: 1 1 0;
   }
 
-  .attention-toggle {
-    width: 100%;
-    min-height: 42px;
-    justify-content: center;
-  }
 }
 
 @media (max-width: 680px) {
@@ -3138,7 +3025,7 @@ tbody tr.selected {
   line-height: 1.42;
 }
 
-/* Openable karta: naznač otevření cursor + open cue. */
+/* Otevíratelnou kartu poznáš podle kurzoru a jejího přístupného popisu. */
 .app-card.is-openable {
   cursor: pointer;
 }
@@ -3146,7 +3033,7 @@ tbody tr.selected {
   cursor: default;
 }
 
-/* Top-right actions: open cue ↗ + ⋯ menu, pinned to the head (GEN2 anatomy). */
+/* Top-right actions: jen skutečné další možnosti, připnuté k hlavičce. */
 .app-card-top-actions {
   position: relative;
   margin-left: auto;
@@ -3154,25 +3041,6 @@ tbody tr.selected {
   align-items: center;
   gap: 0.42rem;
   flex: 0 0 auto;
-}
-
-/* GEN2 open cue: a subtle 2rem pill that fills with accent-soft on hover, not a
-   fade-in — it reads as a persistent "opens on click" affordance. */
-.app-open-cue {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  border-radius: var(--r-pill);
-  color: var(--text-subtle);
-  flex-shrink: 0;
-  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
-}
-.app-card.is-openable:hover .app-open-cue,
-.app-card.is-openable:focus-within .app-open-cue {
-  background: var(--accent-soft);
-  color: var(--accent);
 }
 
 /* Git chip na kartě — lidský text stavu (CAC-0044/CAC-0042). */
@@ -3479,11 +3347,11 @@ button.runtime-stage.is-available:hover {
 
 .notifications-badge {
   position: absolute;
-  top: -0.3rem;
-  right: -0.3rem;
-  min-width: 1.1rem;
-  height: 1.1rem;
-  padding: 0 0.25rem;
+  top: -3px;
+  right: -7px;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3491,9 +3359,11 @@ button.runtime-stage.is-available:hover {
   border-radius: var(--r-pill);
   background: var(--accent);
   color: var(--on-accent);
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 600;
   line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 .notifications-badge[hidden] {
   display: none;
@@ -3877,9 +3747,7 @@ button.runtime-stage.is-available:hover {
   gap: 0.35rem;
   margin-top: 0.4rem;
 }
-/* Top-right akce dlaždice: ↗ open cue + ⋯ menu (reuse .app-open-cue /
-   .app-version-menu z GEN2-minimal karty). Open cue se rozsvítí accent-soft na hoveru
-   openable dlaždice — stejná afordance „otevře na klik" jako firemní karta. */
+/* Top-right akce dlaždice: jen skutečné další možnosti. */
 .personalspace-app-top-actions {
   position: relative;
   flex: 0 0 auto;
@@ -3887,12 +3755,6 @@ button.runtime-stage.is-available:hover {
   align-items: center;
   gap: 0.3rem;
 }
-.personalspace-app.is-openable:hover .app-open-cue,
-.personalspace-app.is-openable:focus-within .app-open-cue {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
 .personalspace-slots {
   display: flex;
   flex-wrap: wrap;
@@ -4491,10 +4353,10 @@ button.runtime-stage.is-available:hover {
    Přebrandování Launchpadu do identity Lazuria (plán CAC-0095). Bloky výš
    dostaly nové tokeny; tady jsou komponenty, které tokeny samy neopraví.
 
-   Kánon je `design-system-lazurio` (repozitář Rozjedeme-ai), dokument
-   „Přehled prvků vizuální identity Lazuria“. Osm prvků, které dokument
-   nedefinoval a musely se rozhodnout tady, je vypsaných v
-   `design-system-lazurio/temata/README.md`.
+  Kánon je `design-system-lazurio` (repozitář Rozjedeme-ai), dokument
+  „Přehled prvků vizuální identity Lazuria“. Osm prvků, které dokument
+  nedefinoval a musely se rozhodnout tady, je vypsaných v
+  `design-system-lazurio/temata/README.md`.
    ========================================================= */
 
 /* --- PLOCHY MAJÍ OSTRÝ ROH -------------------------------------------
@@ -4562,8 +4424,7 @@ button.runtime-stage.is-available:hover {
    `catalog`, `v2`, název větve — popiska dat. Od stavu se liší TVAREM:
    poloměr formulářového pole, ne pilulka. */
 .tag,
-.app-version-badge,
-.runtime-root-badge {
+.app-version-badge {
   border-radius: var(--r-xs);
   font-size: 14px;
   font-weight: 400;
@@ -4609,42 +4470,33 @@ button.runtime-stage.is-available:hover {
   font-weight: 400;
 }
 
-/* --- PŘEPÍNAČ: jedna skupina, jeden rám -----------------------------
-   „Natěsno v řadě = jeden výběr." Ne tři samostatné pilulky. */
+/* --- DVOUVOLBA: klidná neutrální plocha, aktivní list nad ní --------
+   Reference určuje vztah obou voleb; barvy a poloměry drží Lazuria. */
 .segmented-control {
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border: 0;
+  border-radius: var(--r-md);
   overflow: hidden;
-  gap: 0;
-  padding: 0;
-  background: var(--surface);
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg-subtle);
 }
 
 .segment {
-  border-radius: 0;
+  min-width: 112px;
+  border-radius: var(--r-sm);
   border: 0;
   font-size: 14px;
   font-weight: 600;
-  padding: 9px 16px;
+  padding: 9px 18px;
   background: transparent;
   color: var(--text-muted);
 }
 
 .segment[aria-pressed="true"],
 .segment.is-active {
-  background: var(--c-neutral-950, #090909);
-  color: #fff;
-}
-
-/* --- ÚDAJ se sází, nerámuje ----------------------------------------- */
-.app-section-count {
-  background: none;
-  border: 0;
-  padding: 0;
-  border-radius: 0;
-  font-size: 14px;
-  font-weight: 400;
-  color: var(--text-muted);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(20, 18, 24, 0.12), inset 0 0 0 1px var(--line);
 }
 
 /* --- BANNER O NOVÉ VERZI je nabídka, ne úkol ------------------------

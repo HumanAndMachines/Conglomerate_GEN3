@@ -260,10 +260,9 @@ test("Personalspace dlaždice je GEN2-minimal (port GEN2-minimal karty): tile-fi
   expect(js).toContain('summary.className = `app-more-button');
   expect(js).toContain('button.className = "app-menu-action";');
 
-  // Ikona + ↗ open cue dlaždice.
+  // Ikona aplikace zůstává; duplicitní ↗ cue už karta nepotřebuje.
   expect(js).toContain("function personalAppIconNode");
-  expect(js).toContain("function iconOpenGlyph");
-  expect(js).toContain('cue.className = "app-open-cue";');
+  expect(js).not.toContain('cue.className = "app-open-cue";');
 
   // Private badge zůstává — privátní hranice se nikdy nesmí splést s firemní.
   expect(js).toContain('badge("Private"');
@@ -274,7 +273,7 @@ test("Personalspace dlaždice je GEN2-minimal (port GEN2-minimal karty): tile-fi
   expect(css).toContain(".personalspace-app-title-row");
   expect(css).toContain(".personalspace-app-desc");
   expect(css).toContain(".personalspace-app-top-actions");
-  expect(css).toContain(".personalspace-app.is-openable:hover .app-open-cue");
+  expect(css).not.toContain(".app-open-cue");
   expect(css).toContain(".card-warning");
   expect(css).toContain(".app-menu-action");
 
