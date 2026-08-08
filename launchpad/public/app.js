@@ -1715,17 +1715,19 @@ function personalSpaceIcon() {
   svg.setAttribute("width", "18");
   svg.setAttribute("height", "18");
   svg.setAttribute("fill", "none");
-  svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", "2");
-  svg.setAttribute("stroke-linecap", "round");
-  svg.setAttribute("stroke-linejoin", "round");
-  const circle = document.createElementNS(namespace, "circle");
-  circle.setAttribute("cx", "12");
-  circle.setAttribute("cy", "8");
-  circle.setAttribute("r", "4");
-  const path = document.createElementNS(namespace, "path");
-  path.setAttribute("d", "M4 21a8 8 0 0 1 16 0");
-  svg.append(circle, path);
+  svg.setAttribute("stroke-width", "1.5");
+  // iconoir/user — stejná kanonická ikona jako výchozí stav v HTML.
+  for (const pathData of [
+    "M5 20V19C5 15.134 8.13401 12 12 12C15.866 12 19 15.134 19 19V20",
+    "M12 12C14.2091 12 16 10.2091 16 8C16 5.79086 14.2091 4 12 4C9.79086 4 8 5.79086 8 8C8 10.2091 9.79086 12 12 12Z",
+  ]) {
+    const path = document.createElementNS(namespace, "path");
+    path.setAttribute("d", pathData);
+    path.setAttribute("stroke", "currentColor");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+    svg.append(path);
+  }
   return svg;
 }
 

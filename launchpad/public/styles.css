@@ -314,7 +314,7 @@ input:focus-visible,
   align-items: center;
   gap: 0.45rem;
   padding: 0.2rem 0.48rem 0.2rem 0.25rem;
-  border: 1px solid var(--line);
+  border: 1px solid transparent;
   border-radius: 9px;
   background: var(--bg-muted);
   color: var(--text);
@@ -324,7 +324,7 @@ input:focus-visible,
 .space-switcher-button:hover,
 .space-switcher-button:focus-visible,
 .space-switcher-button.is-open {
-  border-color: color-mix(in srgb, var(--accent) 38%, var(--line));
+  border-color: transparent;
   background: var(--surface);
 }
 
@@ -749,7 +749,7 @@ button.update-pill:disabled {
   background: var(--bg-subtle);
 }
 
-/* Primární akce horní lišty jsou samotné ikony, ne kruhové dlaždice.
+/* Akce horní lišty jsou samotné ikony, ne kruhové dlaždice.
    Klikací plocha zůstává 34 × 34 px; hover a aktivní stav nese jen barva. */
 .topbar-icon-plain,
 .topbar-icon-plain:hover,
