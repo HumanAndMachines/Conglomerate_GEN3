@@ -16,7 +16,7 @@
     "pr:preflight": "bun scripts/pr-preflight.mjs",
     "doctor:agent-skills": "bun scripts/agent-skills-entrypoint.mjs check",
     "repair:agent-skills": "bun scripts/agent-skills-entrypoint.mjs repair",
-    "agent-skills:test": "bun test scripts/agent-skills-entrypoint.test.mjs",
+    "agent-skills:test": "bun test scripts/agent-skills-entrypoint.test.mjs scripts/agent-builder-validator.test.mjs",
     "integrations:contracts:test": "bun test scripts/external-app-integrations-contract.test.mjs",
     "git-policy:test": "bun test scripts/pr-preflight.test.mjs launchpad/src/task-preflight-lib.test.mjs",
     "check:strict": "bun run preservation:test && bun run personalspace:test && bun run worktrees:test && bun run --cwd launchpad check:strict",
