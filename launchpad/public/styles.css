@@ -10,57 +10,86 @@
   /* Accent palette — GEN2 Launchpad ramp (accent-500 #6058E9). The named tokens
      stay --c-accent-* so a picked accent (data-accent) can override the ramp
      while the GEN2 default keeps 1:1 visual parity. */
-  --c-accent-200: #bfd1fc;
-  --c-accent-400: #728efc;
-  --c-accent-500: #6058e9;
-  --c-accent-700: #312783;
-  --c-accent-800: #241b63;
-  --c-accent-900: #1b1348;
+  /* Ultramarín 239° — rampa značky Lazuria (`design-system-lazurio/tokens.css`). */
+  --c-accent-200: #a8b9fb;
+  --c-accent-400: #3a48ef;
+  --c-accent-500: #0d12db;
+  --c-accent-700: #0b0e91;
+  --c-accent-800: #0c0d72;
+  --c-accent-900: #0c0c53;
 
   /* Neutrals — GEN2 set. */
   --c-white: #ffffff;
-  --c-neutral-050: #f7f8fb;
-  --c-neutral-100: #f1f3f8;
-  --c-neutral-200: #e5e8f0;
-  --c-neutral-300: #d3d8e3;
-  --c-neutral-500: #6b7385;
-  --c-neutral-700: #3a3f4f;
+  /* Šedá s teplým sklonem. Původní měla modrý nádech (#f7f8fb) a vedle
+     sytého ultramarínu působila studeně a špinavě. */
+  --c-neutral-050: #fbfaf9;
+  --c-neutral-100: #f5f4f3;
+  --c-neutral-200: #ecebea;
+  --c-neutral-300: #dddcdb;
+  --c-neutral-500: #707070;
+  --c-neutral-700: #3d3d3d;
+  --c-neutral-900: #171717;
+  --c-neutral-950: #090909;
 
   /* State */
-  --c-success: #10b981;
-  --c-success-bg: rgba(16, 185, 129, 0.12);
-  --c-warn: #f59e0b;
-  --c-warn-bg: rgba(245, 158, 11, 0.14);
-  --c-danger: #ef4444;
-  --c-danger-bg: rgba(239, 68, 68, 0.12);
+  /* Text nese tmavý stupeň, PLOCHA světlý. Tmavý stupeň v ploše dá blátivý
+     pruh a patnáct karet vedle sebe je pak stěna hnědých pruhů.
+     Plocha se počítá z téhož odstínu při PLNÉ sytosti a světlosti 0,92:
+     sytost pod 0,7 v téhle světlosti dá béžovou, protože na barvu už
+     nezbývá místo. Regulovat se má světlostí, ne sytostí. */
+  --c-success: #1e7b49;
+  --c-success-bg: #d6ffe9;
+  --c-success-line: #70ffb3;
+  --c-success-dot: #229d5c;
+  --c-warn: #876612;
+  --c-warn-bg: #fff3d6;
+  --c-warn-line: #ffd770;
+  --c-warn-dot: #ac8113;
+  --c-danger: #a61e19;
+  --c-danger-bg: #ffd8d6;
+  --c-danger-line: #ff7570;
+  --c-danger-dot: #cc221c;
 
   /* Semantic (light) */
   --bg: var(--c-white);
+  --paper: var(--c-neutral-050);
   --bg-elevated: var(--c-white);
   --bg-subtle: var(--c-neutral-100);
   --bg-muted: var(--c-neutral-050);
   --surface: var(--c-white);
-  --surface-console: #0f1020;
+  --surface-console: #171717;
   /* Ink is intentionally decoupled from the accent ramp so swapping the accent
      (light/dark or a future picked colour) never tints body text. */
-  --text: #1b1348;
-  --text-muted: #525b70;
-  --text-subtle: #838ba3;
-  --line: rgba(27, 19, 72, 0.08);
-  --line-strong: rgba(27, 19, 72, 0.16);
+  /* Dva stupně inkoustu, ne tři. Třetí (`ink-faint`) je v identitě role pro
+     VELKÝ text; na štítku 12 px má 2,85:1 a propadá. Tři stupně, z nichž
+     jeden je nečitelný, nejsou tři stupně. */
+  --text: #171717;
+  --text-muted: #707070;
+  --text-subtle: #707070;
+  --line: #dddcdb;
+  --line-strong: #c3c2c1;
   /* Accent is driven by a single ramp. Everything accent-flavoured (soft fills,
      focus rings, the primary button, the brand mark) derives from --accent via
      color-mix, so a theme/accent switch only has to change the ramp below. */
   --accent: var(--c-accent-500);
   --on-accent: #fff;
+  /* Hlavní akce je inkoustová, ne modrá. Modrá plocha velikosti
+     tlačítka přebije všechno ostatní; modrá zůstává na ohnisko,
+     odkaz a graf. */
+  --accent-button: var(--c-neutral-950);
+  --accent-button-hover: #262626;
   --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
   --accent-ring: color-mix(in srgb, var(--accent) 35%, transparent);
 
   /* Shape — GEN2 keeps a single restrained 8px radius across surfaces; cards
      round a touch more (12px) via their own rule, matching GEN2. */
-  --r-sm: 8px;
-  --r-md: 8px;
-  --r-lg: 8px;
+  /* Poloměr rozlišuje ROLI: plocha 0, formulářové pole 3, ovládací prvek 6,
+     stav pilulka. Pilulka na tlačítku, štítku i poli znamená, že ten tvar
+     přestane cokoli znamenat — a pak nemá smysl ani u stavu. */
+  --r-xs: 3px;
+  --r-sm: 6px;
+  --r-md: 6px;
+  --r-lg: 6px;
   --r-pill: 999px;
 
   /* Motion */
@@ -79,9 +108,9 @@
   --scroll-offset: calc(var(--topbar-h) + 0.75rem);
 
   /* Fonts */
-  --font-body: "Manrope", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-body: "Inter Tight", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-heading: var(--font-body);
-  --font-mono: "JetBrains Mono", "SF Mono", "Menlo", "Consolas", monospace;
+  --font-mono: "Geist Mono", "SF Mono", "Menlo", "Consolas", monospace;
   --launchpad-body-background: color-mix(in srgb, var(--bg) 96%, #000);
 
   color-scheme: light;
@@ -161,11 +190,13 @@ body {
   background: var(--launchpad-body-background);
   color: var(--text);
   font-family: var(--font-body);
-  font-size: 15px;
-  /* GEN2 body weight — Manrope sits a touch heavier than 500 for the
-     workstation feel. */
-  font-weight: 520;
-  line-height: 1.55;
+  font-size: 16.5px;
+  /* Dvě váhy na celé rozhraní: 400 text, 600 akce a nadpis. Naměřeno jich
+     tu bylo sedm včetně 800 a 900 — když je všechno důrazné, nevyčnívá nic.
+     OpenAI i Figma vystačí se dvěma. */
+  font-weight: 400;
+  letter-spacing: -0.005em;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
@@ -302,8 +333,8 @@ input:focus-visible,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.88rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .space-switcher-chevron {
@@ -329,8 +360,8 @@ input:focus-visible,
   border-radius: 7px;
   background: var(--bg-subtle);
   color: var(--text-muted);
-  font-size: 0.7rem;
-  font-weight: 900;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .space-logo-personal {
@@ -404,8 +435,8 @@ input:focus-visible,
   border-radius: 50%;
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 0.74rem;
-  font-weight: 850;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .space-profile-photo img {
@@ -432,8 +463,8 @@ input:focus-visible,
 .space-profile-name {
   display: block;
   color: inherit;
-  font-size: 0.9rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
   text-decoration: none;
 }
 
@@ -446,7 +477,7 @@ input:focus-visible,
 
 .space-profile-email {
   color: var(--text-muted);
-  font-size: 0.74rem;
+  font-size: 14px;
 }
 
 .space-profile-settings {
@@ -457,8 +488,8 @@ input:focus-visible,
   padding: 0.35rem 0.48rem;
   border-radius: var(--r-md);
   color: var(--text);
-  font-size: 0.84rem;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   text-decoration: none;
 }
 
@@ -511,8 +542,8 @@ input:focus-visible,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.84rem;
-  font-weight: 750;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .topbar-actions {
@@ -541,8 +572,8 @@ input:focus-visible,
   border-radius: 999px;
   color: var(--text-subtle);
   background: var(--bg-subtle);
-  font-size: 0.68rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
   letter-spacing: 0.04em;
 }
 
@@ -556,8 +587,8 @@ input:focus-visible,
   border-radius: var(--r-pill);
   background: color-mix(in srgb, var(--c-success) 10%, var(--surface));
   color: color-mix(in srgb, var(--c-success) 70%, #064e3b);
-  font-size: 0.76rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -570,8 +601,8 @@ input:focus-visible,
   border: 1px solid var(--line);
   background: var(--bg-subtle);
   color: var(--text-muted);
-  font-size: 0.78rem;
-  font-weight: 650;
+  font-size: 14px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -638,7 +669,7 @@ button.update-pill:disabled {
 }
 
 .update-banner-text {
-  font-size: 0.92rem;
+  font-size: 14px;
   font-weight: 600;
 }
 
@@ -650,8 +681,8 @@ button.update-pill:disabled {
   background: var(--c-warn);
   color: #78350f;
   font: inherit;
-  font-size: 0.88rem;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -742,11 +773,15 @@ button.update-pill:disabled {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  padding: 0.55rem 0.95rem;
-  border-radius: var(--r-pill);
-  font-weight: 700;
-  font-size: 0.875rem;
+  gap: 8px;
+  padding: 13px 24px;
+  /* Ovládací prvek, ne pilulka. Pilulka je vyhrazená STAVU — je to tvar,
+     který říká „tohle je štítek, ne akce". */
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  font-weight: 600;
+  font-size: 16.5px;
+  letter-spacing: -0.005em;
   white-space: nowrap;
   transition: transform var(--t-fast) var(--ease), background var(--t-fast) var(--ease),
     color var(--t-fast) var(--ease),
@@ -760,30 +795,36 @@ button.update-pill:disabled {
 
 .btn-sm {
   padding: 0.4rem 0.8rem;
-  font-size: 0.8rem;
+  font-size: 14px;
 }
 
 .btn-primary {
-  background: var(--c-accent-500);
+  background: var(--accent-button);
+  border-color: var(--accent-button);
   color: var(--on-accent);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--c-accent-700);
-  transform: translateY(-1px);
+  background: var(--accent-button-hover);
+  border-color: var(--accent-button-hover);
 }
 
 [data-theme="dark"] .btn-primary {
   background: linear-gradient(135deg, var(--c-accent-400), var(--c-accent-500));
 }
 
+/* Bílá plocha a linka, ne akcentní nádech. Modrá plocha znamená OHNISKO;
+   když ji dostane i sekundární tlačítko, přestane se dát poznat, co je
+   zaostřené. */
 .btn-secondary {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--line);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  background: var(--paper);
+  border-color: var(--line-strong);
 }
 
 .btn-ghost {
@@ -861,8 +902,8 @@ button.update-pill:disabled {
 
 .hero-title {
   margin: 0;
-  font-size: 0.9rem;
-  font-weight: 750;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1.35;
   letter-spacing: -0.01em;
 }
@@ -876,7 +917,7 @@ button.update-pill:disabled {
 
 .hero .btn-sm {
   padding: 0.28rem 0.65rem;
-  font-size: 0.72rem;
+  font-size: 14px;
 }
 
 .hero.hero-ok .btn-secondary {
@@ -934,8 +975,8 @@ button.update-pill:disabled {
   border-radius: var(--r-pill);
   background: var(--c-warn);
   color: #fff;
-  font-size: 0.58rem;
-  font-weight: 850;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -999,7 +1040,7 @@ button.update-pill:disabled {
 }
 
 .organization-git-card > strong {
-  font-size: 0.84rem;
+  font-size: 14px;
 }
 
 .organization-git-card p,
@@ -1007,7 +1048,7 @@ button.update-pill:disabled {
 .bulk-pull-summary p {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.75rem;
+  font-size: 14px;
   line-height: 1.4;
 }
 
@@ -1020,12 +1061,12 @@ button.update-pill:disabled {
 .bulk-pull-summary {
   padding-top: 0.55rem;
   border-top: 1px solid var(--line);
-  font-size: 0.76rem;
+  font-size: 14px;
 }
 
 .bulk-pull-summary summary {
   cursor: pointer;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .bulk-pull-summary ul {
@@ -1036,7 +1077,7 @@ button.update-pill:disabled {
 
 .recent-changes-sidebar .rail-eyebrow {
   color: var(--text);
-  font-size: 0.88rem;
+  font-size: 14px;
   letter-spacing: 0;
   text-transform: none;
 }
@@ -1064,8 +1105,8 @@ button.update-pill:disabled {
   align-items: center;
   gap: 0.35rem;
   color: var(--text-subtle);
-  font-size: 0.68rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -1088,8 +1129,8 @@ button.update-pill:disabled {
 .workspace-welcome-title {
   margin: 0;
   color: var(--text);
-  font-size: 1.3rem;
-  font-weight: 720;
+  font-size: 20px;
+  font-weight: 600;
   line-height: 1.25;
   letter-spacing: -0.02em;
 }
@@ -1097,7 +1138,7 @@ button.update-pill:disabled {
 .workspace-welcome-copy {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: 14px;
   font-weight: 400;
   line-height: 1.45;
 }
@@ -1137,7 +1178,7 @@ button.update-pill:disabled {
   outline: 0;
   background: transparent;
   color: var(--text);
-  font-size: 0.88rem;
+  font-size: 14px;
 }
 
 .search-field input::placeholder {
@@ -1166,8 +1207,8 @@ button.update-pill:disabled {
   padding: 0.4rem 0.7rem;
   border-radius: var(--r-pill);
   color: var(--text-muted);
-  font-size: 0.8rem;
-  font-weight: 650;
+  font-size: 14px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -1186,8 +1227,8 @@ button.update-pill:disabled {
   border-radius: var(--r-pill);
   background: var(--surface);
   color: var(--text-muted);
-  font-size: 0.78rem;
-  font-weight: 650;
+  font-size: 14px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -1253,8 +1294,8 @@ button.update-pill:disabled {
   cursor: pointer;
   padding: 0.6rem 0.85rem;
   color: var(--text);
-  font-size: 0.84rem;
-  font-weight: 650;
+  font-size: 14px;
+  font-weight: 600;
   list-style: none;
 }
 
@@ -1288,8 +1329,8 @@ button.update-pill:disabled {
   align-items: center;
   gap: 0.3rem;
   color: var(--text-subtle);
-  font-size: 0.74rem;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .problems-summary-hint::before {
@@ -1312,7 +1353,7 @@ button.update-pill:disabled {
   padding: 0.7rem 0.9rem;
   border-top: 1px solid var(--line);
   color: var(--text);
-  font-size: 0.84rem;
+  font-size: 14px;
 }
 
 .problems-list > .problem-item:first-child {
@@ -1321,7 +1362,7 @@ button.update-pill:disabled {
 
 .problem-item strong {
   display: block;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .problem-meta {
@@ -1331,7 +1372,7 @@ button.update-pill:disabled {
   padding-left: 1.1rem;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 0.74rem;
+  font-size: 14px;
 }
 
 .action-panel {
@@ -1339,8 +1380,8 @@ button.update-pill:disabled {
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--surface);
-  font-size: 0.85rem;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .action-ok {
@@ -1397,8 +1438,8 @@ button.update-pill:disabled {
   border-radius: var(--r-pill);
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 0.66rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -1413,8 +1454,8 @@ button.update-pill:disabled {
 
 .app-section-title {
   margin: 0;
-  font-size: 1.02rem;
-  font-weight: 900;
+  font-size: 16.5px;
+  font-weight: 600;
 }
 
 /* GEN2 app-group-count: round count pill next to the section title. */
@@ -1428,14 +1469,14 @@ button.update-pill:disabled {
   border-radius: var(--r-pill);
   background: var(--bg-subtle);
   color: var(--text-muted);
-  font-size: 0.7rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .app-section-meta {
   min-width: 0;
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: 14px;
   font-weight: 600;
   white-space: normal;
 }
@@ -1443,7 +1484,7 @@ button.update-pill:disabled {
 .app-section-note {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: 14px;
   line-height: 1.45;
 }
 
@@ -1574,8 +1615,8 @@ button.update-pill:disabled {
 }
 
 .personalspace-space-subhead strong {
-  font-size: 0.9rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 /* ---------- Right-panel drawer (Nejčastější / detail) ----------
@@ -1778,8 +1819,8 @@ button.update-pill:disabled {
 
 .app-card-title {
   margin: 0;
-  font-size: 1rem;
-  font-weight: 760;
+  font-size: 16.5px;
+  font-weight: 600;
   line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1797,8 +1838,8 @@ button.update-pill:disabled {
   border-radius: var(--r-pill);
   background: color-mix(in srgb, var(--accent) 9%, var(--bg-muted));
   color: var(--text-muted);
-  font-size: 0.62rem;
-  font-weight: 760;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1.15;
   text-transform: lowercase;
   white-space: nowrap;
@@ -1879,7 +1920,7 @@ button.update-pill:disabled {
   margin: 0 0 0.15rem;
   padding: 0 0.15rem;
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: 14px;
   line-height: 1.35;
 }
 
@@ -1894,8 +1935,8 @@ button.update-pill:disabled {
   border-radius: var(--r-sm);
   background: transparent;
   color: var(--text);
-  font-size: 0.82rem;
-  font-weight: 650;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
   transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
 }
@@ -1939,8 +1980,8 @@ button.update-pill:disabled {
 }
 
 .app-version-option-info strong {
-  font-size: 0.82rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1948,7 +1989,7 @@ button.update-pill:disabled {
 
 .app-version-option-info small {
   color: var(--text-subtle);
-  font-size: 0.72rem;
+  font-size: 14px;
 }
 
 .app-version-option-actions {
@@ -1962,7 +2003,7 @@ button.update-pill:disabled {
   flex: 0 0 auto;
   min-height: 28px;
   padding: 0 0.6rem;
-  font-size: 0.74rem;
+  font-size: 14px;
 }
 
 .app-version-option-actions .ghost-action {
@@ -1972,7 +2013,7 @@ button.update-pill:disabled {
 .app-card-sub {
   margin: 0.05rem 0 0;
   color: var(--text-subtle);
-  font-size: 0.74rem;
+  font-size: 14px;
   font-weight: 400;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1984,8 +2025,8 @@ button.update-pill:disabled {
 .app-card-org {
   margin: 0 0 0.2rem;
   color: var(--text-subtle);
-  font-size: 0.68rem;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;
   overflow: hidden;
@@ -2009,8 +2050,8 @@ button.update-pill:disabled {
   gap: 0.4rem;
   padding: 0.25rem 0.65rem;
   border-radius: var(--r-pill);
-  font-size: 0.74rem;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   letter-spacing: 0.005em;
   white-space: nowrap;
 }
@@ -2070,7 +2111,7 @@ button.update-pill:disabled {
   gap: 0.4rem;
   color: var(--text-subtle);
   font-family: var(--font-mono);
-  font-size: 0.74rem;
+  font-size: 14px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2098,8 +2139,8 @@ button.update-pill:disabled {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--text-muted);
-  font-size: 0.76rem;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   transition: all var(--t-fast) var(--ease);
 }
 
@@ -2153,8 +2194,8 @@ a.primary-action:hover {
   cursor: pointer;
   padding: 0.65rem 0.85rem;
   color: var(--text-subtle);
-  font-size: 0.74rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   list-style: none;
@@ -2192,7 +2233,7 @@ td {
   border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: top;
-  font-size: 0.8rem;
+  font-size: 14px;
 }
 
 th {
@@ -2201,8 +2242,8 @@ th {
   z-index: 1;
   background: var(--bg-subtle);
   color: var(--text-subtle);
-  font-size: 0.7rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
   text-transform: uppercase;
 }
 
@@ -2218,14 +2259,14 @@ tbody tr.selected {
 .app-title {
   display: block;
   color: var(--text);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .app-subtitle,
 .path-text,
 .tag-list {
   color: var(--text-muted);
-  font-size: 0.74rem;
+  font-size: 14px;
 }
 
 .path-text {
@@ -2245,7 +2286,7 @@ tbody tr.selected {
   border-radius: var(--r-pill);
   border: 1px solid var(--line);
   background: var(--bg-muted);
-  font-size: 0.7rem;
+  font-size: 14px;
 }
 
 .open-link {
@@ -2258,8 +2299,8 @@ tbody tr.selected {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--accent);
-  font-weight: 700;
-  font-size: 0.76rem;
+  font-weight: 600;
+  font-size: 14px;
   text-decoration: none;
 }
 
@@ -2284,8 +2325,8 @@ tbody tr.selected {
   background: var(--surface);
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 0.74rem;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .small-button:disabled {
@@ -2310,8 +2351,8 @@ tbody tr.selected {
   border: 1px solid var(--line);
   background: var(--bg-subtle);
   color: var(--text-muted);
-  font-size: 0.72rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .runtime-healthy {
@@ -2345,7 +2386,7 @@ tbody tr.selected {
   place-items: center;
   min-height: 180px;
   color: var(--text-subtle);
-  font-size: 0.9rem;
+  font-size: 14px;
 }
 
 .detail-block {
@@ -2366,8 +2407,8 @@ tbody tr.selected {
 
 .detail-header h2 {
   margin: 0;
-  font-size: 1.1rem;
-  font-weight: 800;
+  font-size: 16.5px;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -2387,8 +2428,8 @@ tbody tr.selected {
 .detail-section-title {
   margin: 0;
   color: var(--text-subtle);
-  font-size: 0.68rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -2396,20 +2437,20 @@ tbody tr.selected {
 .detail-summary h3 {
   margin: 0;
   color: var(--text);
-  font-size: 1rem;
+  font-size: 16.5px;
   line-height: 1.3;
 }
 
 .detail-summary > p {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.86rem;
+  font-size: 14px;
   line-height: 1.45;
 }
 
 .detail-summary .detail-summary-change {
   color: var(--text);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .detail-summary-actions {
@@ -2442,7 +2483,7 @@ tbody tr.selected {
 .detail-next p {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: 14px;
   line-height: 1.45;
 }
 
@@ -2459,8 +2500,8 @@ tbody tr.selected {
 
 .detail-list dt {
   color: var(--text-subtle);
-  font-size: 0.68rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -2468,12 +2509,12 @@ tbody tr.selected {
 .detail-list dd {
   margin: 0;
   overflow-wrap: anywhere;
-  font-size: 0.82rem;
+  font-size: 14px;
 }
 
 .detail-list dd.is-mono {
   font-family: var(--font-mono);
-  font-size: 0.76rem;
+  font-size: 14px;
   color: var(--text-muted);
 }
 
@@ -2505,13 +2546,13 @@ tbody tr.selected {
 }
 
 .worktree-item strong {
-  font-size: 0.86rem;
+  font-size: 14px;
 }
 
 .worktree-meta,
 .worktree-message {
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: 14px;
   overflow-wrap: anywhere;
 }
 
@@ -2551,8 +2592,8 @@ tbody tr.selected {
   border-radius: 999px;
   background: var(--bg-muted);
   color: var(--text-subtle);
-  font-size: 0.64rem;
-  font-weight: 900;
+  font-size: 14px;
+  font-weight: 600;
   letter-spacing: 0.06em;
 }
 
@@ -2574,7 +2615,7 @@ tbody tr.selected {
 
 .runtime-source-text small {
   color: var(--text-muted);
-  font-size: 0.76rem;
+  font-size: 14px;
 }
 
 .worktree-builder-actions {
@@ -2597,7 +2638,7 @@ tbody tr.selected {
 }
 
 .git-change-list strong {
-  font-size: 0.82rem;
+  font-size: 14px;
 }
 
 .git-change-list ul {
@@ -2614,13 +2655,13 @@ tbody tr.selected {
   justify-content: space-between;
   gap: 0.6rem;
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: 14px;
 }
 
 .git-change-list code {
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 0.74rem;
+  font-size: 14px;
   overflow-wrap: anywhere;
 }
 
@@ -2628,7 +2669,7 @@ tbody tr.selected {
   flex: 0 0 auto;
   color: var(--text-subtle);
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 14px;
 }
 
 .builder-action-card {
@@ -2642,13 +2683,13 @@ tbody tr.selected {
 
 .builder-action-card strong {
   color: var(--text);
-  font-size: 0.86rem;
+  font-size: 14px;
 }
 
 .builder-action-card p {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: 14px;
   line-height: 1.45;
 }
 
@@ -2663,14 +2704,14 @@ tbody tr.selected {
 
 .plugin-block h3 {
   margin: 0;
-  font-size: 0.92rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .plugin-block p {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: 14px;
   line-height: 1.45;
 }
 
@@ -2689,14 +2730,14 @@ tbody tr.selected {
 
 .plugin-links a {
   color: var(--accent);
-  font-weight: 700;
-  font-size: 0.82rem;
+  font-weight: 600;
+  font-size: 14px;
 }
 
 .detail-note {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: 14px;
   line-height: 1.45;
 }
 
@@ -2712,8 +2753,8 @@ tbody tr.selected {
   cursor: pointer;
   padding: 0.65rem 0.85rem;
   color: var(--text-subtle);
-  font-size: 0.74rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   list-style: none;
@@ -2753,7 +2794,7 @@ tbody tr.selected {
   border-radius: var(--r-sm);
   color: #d7dcea;
   font-family: var(--font-mono);
-  font-size: 0.76rem;
+  font-size: 14px;
   line-height: 1.5;
   white-space: pre-wrap;
   overflow: auto;
@@ -2770,8 +2811,8 @@ tbody tr.selected {
   cursor: pointer;
   padding: 0.6rem 0.8rem;
   color: var(--text-subtle);
-  font-size: 0.72rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   list-style: none;
@@ -2801,7 +2842,7 @@ tbody tr.selected {
   background: var(--surface-console);
   color: #d7dcea;
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 14px;
   line-height: 1.5;
   max-height: 320px;
   overflow: auto;
@@ -2824,8 +2865,8 @@ tbody tr.selected {
   border: 1px solid var(--line-strong);
   background: var(--surface);
   color: var(--text);
-  font-size: 0.84rem;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   animation: toast-in 0.22s var(--ease);
 }
 
@@ -2940,8 +2981,8 @@ tbody tr.selected {
 
   .topbar-overflow-menu .icon-btn::after {
     content: attr(data-overflow-label);
-    font-size: 0.78rem;
-    font-weight: 750;
+    font-size: 14px;
+    font-weight: 600;
   }
 
   .layout {
@@ -3078,7 +3119,7 @@ tbody tr.selected {
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-size: 0.78rem;
+  font-size: 14px;
   font-weight: 400;
   line-height: 1.42;
 }
@@ -3177,8 +3218,8 @@ tbody tr.selected {
 
 .card-warning-title {
   display: block;
-  font-size: 0.82rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1.25;
   color: var(--text);
   overflow: hidden;
@@ -3189,7 +3230,7 @@ tbody tr.selected {
 .card-warning-message {
   margin: 0.25rem 0 0;
   color: var(--text-muted);
-  font-size: 0.75rem;
+  font-size: 14px;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -3222,8 +3263,8 @@ tbody tr.selected {
   background: var(--bg-muted);
   color: var(--text-muted);
   font: inherit;
-  font-size: 0.64rem;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   line-height: 1.5;
@@ -3267,7 +3308,7 @@ button.runtime-stage.is-available:hover {
   border: 1px dashed var(--line-strong);
   border-radius: var(--r-sm);
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: 14px;
   font-style: italic;
 }
 .loading-dots::after {
@@ -3310,12 +3351,12 @@ button.runtime-stage.is-available:hover {
   flex: 1 1 auto;
 }
 .app-version-option-text strong {
-  font-size: 0.84rem;
-  font-weight: 850;
+  font-size: 14px;
+  font-weight: 600;
 }
 .app-version-option-text small {
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: 14px;
 }
 .app-version-option-cue {
   flex: 0 0 auto;
@@ -3340,12 +3381,12 @@ button.runtime-stage.is-available:hover {
 .rail-copy {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: 14px;
   line-height: 1.4;
 }
 .rail-copy-hint {
   color: var(--text-subtle);
-  font-size: 0.76rem;
+  font-size: 14px;
 }
 
 .most-used {
@@ -3393,21 +3434,21 @@ button.runtime-stage.is-available:hover {
   flex: 1 1 auto;
 }
 .quick-app-text strong {
-  font-size: 0.86rem;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .quick-app-text small {
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: 14px;
 }
 .quick-app-action {
   flex: 0 0 auto;
   color: var(--accent);
-  font-size: 0.74rem;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 /* =========================================================
@@ -3436,8 +3477,8 @@ button.runtime-stage.is-available:hover {
   border-radius: var(--r-pill);
   background: var(--accent);
   color: var(--on-accent);
-  font-size: 0.58rem;
-  font-weight: 850;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1;
 }
 .notifications-badge[hidden] {
@@ -3475,8 +3516,8 @@ button.runtime-stage.is-available:hover {
   background: none;
   padding: 0;
   color: var(--accent);
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
 }
 .notifications-mark-all:hover {
@@ -3498,8 +3539,8 @@ button.runtime-stage.is-available:hover {
   border-radius: var(--r-pill);
   background: none;
   color: var(--text-muted);
-  font-size: 0.76rem;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
 }
 .notifications-filter.is-active {
@@ -3509,8 +3550,8 @@ button.runtime-stage.is-available:hover {
 }
 .notifications-filter-count {
   color: var(--text-subtle);
-  font-size: 0.7rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .notifications-list {
@@ -3545,8 +3586,8 @@ button.runtime-stage.is-available:hover {
   background: hsl(var(--avatar-hue, 250) 62% 93%);
   border: 1px solid hsl(var(--avatar-hue, 250) 45% 78%);
   color: hsl(var(--avatar-hue, 250) 52% 32%);
-  font-size: 0.68rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
 }
 /* V tmavém režimu by světlá kolečka svítila; drží se stejný odstín, jen
    obrácený kontrast. */
@@ -3568,7 +3609,7 @@ button.runtime-stage.is-available:hover {
 }
 .notification-headline {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: 14px;
   line-height: 1.35;
   color: var(--text);
 }
@@ -3578,15 +3619,15 @@ button.runtime-stage.is-available:hover {
   border: 1px solid var(--line-strong);
   border-radius: var(--r-pill);
   color: var(--text-subtle);
-  font-size: 0.62rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 .notification-meta {
   margin: 0;
   color: var(--text-subtle);
-  font-size: 0.7rem;
+  font-size: 14px;
 }
 
 .notification-payload-toggle {
@@ -3607,7 +3648,7 @@ button.runtime-stage.is-available:hover {
   border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
 }
 .notification-subject {
-  font-size: 0.8rem;
+  font-size: 14px;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3615,7 +3656,7 @@ button.runtime-stage.is-available:hover {
 }
 .notification-scale {
   color: var(--text-subtle);
-  font-size: 0.68rem;
+  font-size: 14px;
 }
 
 .notification-payload-detail {
@@ -3628,21 +3669,21 @@ button.runtime-stage.is-available:hover {
 .notification-human-summary {
   margin: 0;
   color: var(--text);
-  font-size: 0.8rem;
+  font-size: 14px;
   line-height: 1.45;
 }
 .notification-author-label {
   margin: 0.15rem 0 0;
   color: var(--text-subtle);
-  font-size: 0.68rem;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 .notification-description {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: 14px;
   white-space: pre-wrap;
 }
 .notification-files {
@@ -3652,7 +3693,7 @@ button.runtime-stage.is-available:hover {
   gap: 0.1rem;
   color: var(--text-muted);
   font-family: var(--font-mono, monospace);
-  font-size: 0.7rem;
+  font-size: 14px;
   word-break: break-all;
 }
 .notification-files-rest {
@@ -3664,12 +3705,12 @@ button.runtime-stage.is-available:hover {
 .notification-coauthors {
   margin: 0;
   color: var(--text-subtle);
-  font-size: 0.72rem;
+  font-size: 14px;
 }
 .notification-hash {
   color: var(--text-subtle);
   font-family: var(--font-mono, monospace);
-  font-size: 0.68rem;
+  font-size: 14px;
   word-break: break-all;
 }
 
@@ -3692,13 +3733,13 @@ button.runtime-stage.is-available:hover {
 .personalspace-empty {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: 14px;
   line-height: 1.4;
 }
 
 .personalspace-space-mount {
   color: var(--text-subtle);
-  font-size: 0.7rem;
+  font-size: 14px;
   font-family: var(--font-mono);
   overflow-wrap: anywhere;
 }
@@ -3708,14 +3749,14 @@ button.runtime-stage.is-available:hover {
   border-radius: var(--r-sm);
   background: var(--c-danger-bg);
   color: var(--c-danger);
-  font-size: 0.74rem;
+  font-size: 14px;
   line-height: 1.4;
 }
 
 .personalspace-apps-empty {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.76rem;
+  font-size: 14px;
   line-height: 1.4;
 }
 .personalspace-app {
@@ -3789,8 +3830,8 @@ button.runtime-stage.is-available:hover {
 }
 .personalspace-app-title {
   margin: 0;
-  font-size: 0.82rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3799,7 +3840,7 @@ button.runtime-stage.is-available:hover {
 .personalspace-app-desc {
   margin: 0.15rem 0 0;
   color: var(--text-subtle);
-  font-size: 0.72rem;
+  font-size: 14px;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -3809,8 +3850,8 @@ button.runtime-stage.is-available:hover {
   align-items: center;
   padding: 0.1rem 0.45rem;
   border-radius: var(--r-pill);
-  font-size: 0.64rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -3848,8 +3889,8 @@ button.runtime-stage.is-available:hover {
   align-items: center;
   padding: 0.18rem 0.5rem;
   border-radius: var(--r-pill);
-  font-size: 0.68rem;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   border: 1px dashed var(--line-strong);
   color: var(--text-muted);
   font-family: var(--font-mono);
@@ -3871,8 +3912,8 @@ button.runtime-stage.is-available:hover {
   align-items: center;
   gap: 0.35rem;
   color: var(--text-subtle);
-  font-size: 0.68rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -3886,7 +3927,7 @@ button.runtime-stage.is-available:hover {
 .personalspace-gbrain-missing {
   margin: 0;
   color: var(--text-subtle);
-  font-size: 0.7rem;
+  font-size: 14px;
   line-height: 1.4;
 }
 .personalspace-gbrain-path {
@@ -3917,19 +3958,19 @@ button.runtime-stage.is-available:hover {
   border-radius: var(--r-sm);
   background: var(--surface);
   color: var(--text);
-  font-size: 0.78rem;
+  font-size: 14px;
 }
 .personalspace-gbrain-error {
   margin: 0;
   color: var(--c-danger);
-  font-size: 0.74rem;
+  font-size: 14px;
 }
 .personalspace-gbrain-loading,
 .personalspace-gbrain-count,
 .personalspace-gbrain-note-empty {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.74rem;
+  font-size: 14px;
 }
 .personalspace-gbrain-columns {
   display: grid;
@@ -3953,8 +3994,8 @@ button.runtime-stage.is-available:hover {
 }
 .personalspace-gbrain-tree summary {
   cursor: pointer;
-  font-size: 0.76rem;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   padding: 0.15rem 0;
 }
 .personalspace-gbrain-file {
@@ -3966,7 +4007,7 @@ button.runtime-stage.is-available:hover {
   border-radius: var(--r-sm);
   background: transparent;
   color: var(--text);
-  font-size: 0.76rem;
+  font-size: 14px;
   cursor: pointer;
   overflow-wrap: anywhere;
 }
@@ -3976,7 +4017,7 @@ button.runtime-stage.is-available:hover {
 .personalspace-gbrain-file.is-active {
   background: var(--accent-soft);
   color: var(--accent);
-  font-weight: 700;
+  font-weight: 600;
 }
 .personalspace-gbrain-results-head {
   display: flex;
@@ -3984,8 +4025,8 @@ button.runtime-stage.is-available:hover {
   justify-content: space-between;
   gap: 0.5rem;
   margin-bottom: 0.35rem;
-  font-size: 0.76rem;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
 }
 .personalspace-gbrain-result {
   margin-bottom: 0.5rem;
@@ -3993,7 +4034,7 @@ button.runtime-stage.is-available:hover {
 .personalspace-gbrain-snippet {
   margin: 0.1rem 0 0 0.4rem;
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: 14px;
   font-family: var(--font-mono);
   overflow-wrap: anywhere;
 }
@@ -4006,15 +4047,15 @@ button.runtime-stage.is-available:hover {
   background: var(--surface);
 }
 .personalspace-gbrain-note-title {
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--text-subtle);
   font-family: var(--font-mono);
   margin-bottom: 0.4rem;
   overflow-wrap: anywhere;
 }
 .personalspace-gbrain-note-body {
-  font-size: 0.8rem;
+  font-size: 14px;
   line-height: 1.5;
 }
 .personalspace-gbrain-note-body h1,
@@ -4024,9 +4065,9 @@ button.runtime-stage.is-available:hover {
   margin: 0.6rem 0 0.3rem;
   line-height: 1.3;
 }
-.personalspace-gbrain-note-body h1 { font-size: 1.05rem; }
-.personalspace-gbrain-note-body h2 { font-size: 0.98rem; }
-.personalspace-gbrain-note-body h3 { font-size: 0.9rem; }
+.personalspace-gbrain-note-body h1 { font-size: 16.5px; }
+.personalspace-gbrain-note-body h2 { font-size: 16.5px; }
+.personalspace-gbrain-note-body h3 { font-size: 14px; }
 .personalspace-gbrain-note-body p { margin: 0.35rem 0; }
 .personalspace-gbrain-note-body ul { margin: 0.35rem 0; padding-left: 1.1rem; }
 .personalspace-gbrain-note-body code {
@@ -4161,8 +4202,8 @@ button.runtime-stage.is-available:hover {
 
 .buddy-eyebrow {
   color: color-mix(in srgb, var(--accent) 74%, #8c3b1f);
-  font-size: 0.74rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -4180,8 +4221,8 @@ button.runtime-stage.is-available:hover {
   align-items: center;
   width: fit-content;
   border-radius: var(--r-pill);
-  font-size: 0.74rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .buddy-status {
@@ -4195,7 +4236,7 @@ button.runtime-stage.is-available:hover {
   max-width: 62ch;
   margin: 1rem 0 0;
   color: var(--text-muted);
-  font-size: 0.98rem;
+  font-size: 16.5px;
   line-height: 1.6;
 }
 
@@ -4240,11 +4281,11 @@ button.runtime-stage.is-available:hover {
 
 .buddy-application-copy span {
   color: var(--text-subtle);
-  font-size: 0.72rem;
+  font-size: 14px;
 }
 
 .buddy-application-copy strong {
-  font-size: 0.92rem;
+  font-size: 14px;
 }
 
 .buddy-application-state {
@@ -4270,7 +4311,7 @@ button.runtime-stage.is-available:hover {
 .buddy-routines h2,
 .personal-apps-section > h2,
 .personal-support-card h2 {
-  font-size: 1.15rem;
+  font-size: 20px;
   letter-spacing: -0.02em;
 }
 
@@ -4297,14 +4338,14 @@ button.runtime-stage.is-available:hover {
 }
 
 .buddy-routine h3 {
-  font-size: 0.88rem;
+  font-size: 14px;
   line-height: 1.35;
 }
 
 .buddy-routine p {
   margin-top: 0.2rem;
   color: var(--text-subtle);
-  font-size: 0.74rem;
+  font-size: 14px;
   line-height: 1.4;
 }
 
@@ -4313,8 +4354,8 @@ button.runtime-stage.is-available:hover {
   border-radius: var(--r-pill);
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 0.68rem;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -4333,13 +4374,13 @@ button.runtime-stage.is-available:hover {
 }
 
 .personalspace-apps-empty strong {
-  font-size: 0.95rem;
+  font-size: 16.5px;
 }
 
 .personalspace-apps-empty p {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: 14px;
   line-height: 1.5;
 }
 
@@ -4363,8 +4404,8 @@ button.runtime-stage.is-available:hover {
   width: fit-content;
   padding: 0.85rem 0;
   cursor: pointer;
-  font-size: 0.76rem;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .personalspace-technical-inner {
@@ -4427,4 +4468,269 @@ button.runtime-stage.is-available:hover {
   .personal-support-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* =========================================================
+   Lazurio: identita nad původním GEN2 vzhledem
+   =========================================================
+
+   Přebrandování Launchpadu do identity Lazuria (plán CAC-0095). Bloky výš
+   dostaly nové tokeny; tady jsou komponenty, které tokeny samy neopraví.
+
+   Kánon je `design-system-lazurio` (repozitář Rozjedeme-ai), dokument
+   „Přehled prvků vizuální identity Lazuria“. Osm prvků, které dokument
+   nedefinoval a musely se rozhodnout tady, je vypsaných v
+   `design-system-lazurio/temata/README.md`.
+   ========================================================= */
+
+/* --- PLOCHY MAJÍ OSTRÝ ROH -------------------------------------------
+   Karta, panel a dlaždice jsou PLOCHY. Poloměr si nechává jen to, co se
+   mačká — pak je rozdíl mezi plochou a ovládacím prvkem vidět beze slov. */
+.app-card,
+.side-panel,
+.workspace-panel,
+.recent-module-modal,
+.notification-card {
+  border-radius: 0;
+}
+
+/* --- IKONA MODULU: dlaždice v barvě rodiny --------------------------- */
+.app-card-icon {
+  border-radius: var(--r-sm);
+  background: var(--app-icon-bg);
+  border: 1px solid var(--app-icon-border);
+}
+
+.app-card-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* --- STAV: barvu nese tečka a linka, text je inkoust -----------------
+   Barvy stavů byly tmavé ne kvůli výběru odstínů, ale protože je nesl TEXT
+   a text na světlém podkladu musí mít 4,5:1 — to každý odstín stlačí ke
+   světlosti 0,30, kde je pyrit olivový a zelená lesní. Když barvu z textu
+   sundáme, uvolní se a smí být živá. */
+.chip {
+  border-radius: var(--r-pill);
+  border: 1px solid transparent;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 4px 12px;
+  color: var(--text);
+}
+
+.chip-success {
+  background: var(--c-success-bg);
+  border-color: var(--c-success-line);
+  color: var(--text);
+}
+
+.chip-warn {
+  background: var(--c-warn-bg);
+  border-color: var(--c-warn-line);
+  color: var(--text);
+}
+
+.chip-danger {
+  background: var(--c-danger-bg);
+  border-color: var(--c-danger-line);
+  color: var(--text);
+}
+
+/* Tečka je jediné místo se sytou barvou. Stupeň je nejsvětlejší, který
+   projde 3:1 proti vlastní ploše — spočítaný, ne vybraný. */
+.chip-success .chip-dot { background: var(--c-success-dot); }
+.chip-warn .chip-dot { background: var(--c-warn-dot); }
+.chip-danger .chip-dot { background: var(--c-danger-dot); }
+
+/* --- ŠTÍTEK NENÍ STAV ------------------------------------------------
+   `catalog`, `v2`, název větve — popiska dat. Od stavu se liší TVAREM:
+   poloměr formulářového pole, ne pilulka. */
+.tag,
+.app-version-badge,
+.runtime-root-badge {
+  border-radius: var(--r-xs);
+  font-size: 14px;
+  font-weight: 400;
+  padding: 2px 8px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  color: var(--text-muted);
+}
+
+/* --- FAKT NENÍ VÝSTRAHA ----------------------------------------------
+   Tichý řádek pod popisem: bez plochy, bez ikony, bez tlačítka. */
+.card-warning.is-fact {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin-top: 6px;
+}
+
+.card-warning-fact {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+/* Problém je tlačítko, ne krabice. */
+.card-warning.is-jen-akce {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin-top: 12px;
+}
+
+.card-warning.is-jen-akce .card-warning-icon,
+.card-warning.is-jen-akce .card-warning-body {
+  display: none;
+}
+
+/* --- VYHLEDÁVACÍ POLE je pole, ne pilulka ---------------------------- */
+.search-field {
+  border-radius: var(--r-xs);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-weight: 400;
+}
+
+/* --- PŘEPÍNAČ: jedna skupina, jeden rám -----------------------------
+   „Natěsno v řadě = jeden výběr." Ne tři samostatné pilulky. */
+.segmented-control {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  gap: 0;
+  padding: 0;
+  background: var(--surface);
+}
+
+.segment {
+  border-radius: 0;
+  border: 0;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 9px 16px;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.segment[aria-pressed="true"],
+.segment.is-active {
+  background: var(--c-neutral-950, #090909);
+  color: #fff;
+}
+
+/* --- ÚDAJ se sází, nerámuje ----------------------------------------- */
+.app-section-count {
+  background: none;
+  border: 0;
+  padding: 0;
+  border-radius: 0;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+/* --- BANNER O NOVÉ VERZI je nabídka, ne úkol ------------------------
+   Ztišen na řádek s tečkou; barvu nese tečka, ne pás přes celou šířku. */
+.update-banner {
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--c-neutral-200);
+  border-radius: 0;
+  padding: 10px 0;
+  gap: 10px;
+  align-items: center;
+}
+
+.update-banner > svg {
+  display: none;
+}
+
+.update-banner::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--c-warn-dot);
+}
+
+.update-banner-text {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.update-banner-action {
+  font-size: 14px;
+  padding: 8px 14px;
+  background: var(--c-neutral-950, #090909);
+  border-color: var(--c-neutral-950, #090909);
+  color: #fff;
+}
+
+/* --- PORTRÉT JE ČTVERCOVÝ -------------------------------------------
+   Plochy jsou v identitě hranaté a portrét není výjimka; kolečko je tvar
+   stavové tečky. */
+.space-profile-photo {
+  border-radius: var(--r-xs);
+  flex: none;
+}
+
+.space-profile-photo img {
+  border-radius: 0;
+}
+
+/* --- VÝBĚR V NABÍDCE JE BEZBARVÝ ------------------------------------
+   Modrá znamená ohnisko; kdyby značila i výběr, nepozná se vybraná položka
+   od zaostřené — a v nabídce ovládané klávesnicí jsou to dvě různé. */
+.space-switcher-option[aria-selected="true"] {
+  background: var(--c-neutral-100);
+  border: 1px solid var(--line);
+  font-weight: 600;
+}
+
+/* Pevný rozměr bez `flex: none` je v řádkovém flexu jen doporučení:
+   `flex-basis` přebije `width`, `height` projde a ze čtverce je obdélník. */
+.space-logo {
+  flex: none;
+  border-radius: var(--r-xs);
+}
+
+/* --- OHNISKO: modrá, a jen ta --------------------------------------- */
+:focus-visible {
+  outline: 2px solid var(--c-accent-500);
+  outline-offset: 2px;
+}
+
+/* --- MŘÍŽKA POD KARTAMI ----------------------------------------------
+   Nejrozpoznatelnější prvek identity a workspace je přesně to místo, kam
+   podle pravidla patří: pracovní plocha, na které něco leží. Krok 64 px,
+   viditelná každá druhá linka, křížek v průsečíku (decision 0111).
+
+   Plocha pod ní je BÍLÁ, ne papírová — na papíru je rozdíl pod prahem
+   viditelnosti a mřížka není vidět vůbec. */
+body {
+  background-color: var(--c-white);
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cpath d='M64,51V77M51,64H77' stroke='%23ecebea' stroke-width='1.5'/%3E%3C/svg%3E"),
+    linear-gradient(#f5f4f3 1px, transparent 1px),
+    linear-gradient(90deg, #f5f4f3 1px, transparent 1px);
+  background-size: 128px 128px;
+  background-position: -64px -64px, 0 0, 0 0;
+  background-attachment: fixed;
+}
+
+[data-theme="dark"] body {
+  background-image: none;
+  background-color: var(--launchpad-body-background);
+}
+
+/* `<strong>` a `<b>` mají prohlížečovou výchozí váhu 700. Dvě váhy znamenají
+   dvě — i pro značky, které si výchozí hodnotu nesou samy. */
+strong,
+b {
+  font-weight: 600;
 }
