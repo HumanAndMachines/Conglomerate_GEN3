@@ -405,7 +405,10 @@ test("Launchpad icon registry is initialized before the first async data render"
 });
 
 test("CAC-0095: topbar uses the canonical Iconoir interface icons", async () => {
-  const html = await readFile(join(publicRoot, "index.html"), "utf8");
+  const [html, css] = await Promise.all([
+    readFile(join(publicRoot, "index.html"), "utf8"),
+    readFile(join(publicRoot, "styles.css"), "utf8"),
+  ]);
 
   for (const icon of ["bell", "layout-right", "more-horiz"]) {
     expect(html).toContain(`<!-- iconoir/${icon} -->`);
@@ -416,6 +419,11 @@ test("CAC-0095: topbar uses the canonical Iconoir interface icons", async () => 
   expect(html).toContain("M20 12.5C20.2761 12.5");
   expect(html).not.toContain("M18 8a6 6 0 0 0-12 0");
   expect(html).not.toContain('<circle cx="5" cy="12" r="1.7" />');
+  expect((html.match(/topbar-icon-plain/g) ?? []).length).toBe(3);
+  expect(css).toContain(".topbar-icon-plain,");
+  expect(css).toContain("border-color: transparent;");
+  expect(css).toContain("border-radius: 0;");
+  expect(css).toContain("background: transparent;");
 });
 
 test("Version families render as one card with a default version and a more-menu", async () => {

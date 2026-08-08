@@ -749,6 +749,20 @@ button.update-pill:disabled {
   background: var(--bg-subtle);
 }
 
+/* Primární akce horní lišty jsou samotné ikony, ne kruhové dlaždice.
+   Klikací plocha zůstává 34 × 34 px; hover a aktivní stav nese jen barva. */
+.topbar-icon-plain,
+.topbar-icon-plain:hover,
+.topbar-icon-plain.is-active {
+  border-color: transparent;
+  border-radius: 0;
+  background: transparent;
+}
+
+.topbar-icon-plain.is-active {
+  color: var(--accent);
+}
+
 .icon-btn.is-busy .refresh-icon {
   animation: icon-spin 0.85s linear infinite;
   transform-origin: center;
