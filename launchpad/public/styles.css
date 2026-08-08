@@ -3070,7 +3070,10 @@ tbody tr.selected {
    nemění výšku celé řady karet. Tón (warn/danger) sdílí barvy s chip- stavy. */
 .card-warning {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "icon body"
+    ". action";
   align-items: center;
   gap: 0.5rem;
   min-height: 44px;
@@ -3091,6 +3094,7 @@ tbody tr.selected {
 }
 
 .card-warning-icon {
+  grid-area: icon;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -3107,6 +3111,7 @@ tbody tr.selected {
 }
 
 .card-warning-body {
+  grid-area: body;
   min-width: 0;
 }
 
@@ -3116,7 +3121,9 @@ tbody tr.selected {
   font-weight: 800;
   line-height: 1.25;
   color: var(--text);
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .card-warning-message {
@@ -3128,7 +3135,8 @@ tbody tr.selected {
 }
 
 .card-warning-action {
-  margin-left: auto;
+  grid-area: action;
+  justify-self: end;
   align-self: center;
   white-space: nowrap;
 }
