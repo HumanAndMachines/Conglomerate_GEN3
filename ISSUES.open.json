@@ -253,6 +253,58 @@
           "path": "../HumanAndMachines/mission-control/plans/2026/06/CAC-0035-spectoda-gen3-migration-dogfood.yaml"
         }
       ]
+    },
+    {
+      "id": "issue-2026-08-08-003",
+      "title": "Serializovat souběžné Launchpad starty podle runtime identity",
+      "status": "open",
+      "severity": "high",
+      "owner": "Launchpad runtime agent",
+      "created_at": "2026-08-08",
+      "updated_at": "2026-08-08",
+      "tags": [
+        "launchpad",
+        "runtime",
+        "concurrency",
+        "start",
+        "idempotency",
+        "gen2-gen3",
+        "CAC-0035"
+      ],
+      "question": "Jak má sdílený Launchpad serializovat překrývající se Start, Open, Restart a Switch operace pro stejný runtimeKey tak, aby dva požadavky nemohly po souběžném health/dependency preflightu spustit dva procesy nebo přepsat runtime state v opačném pořadí?",
+      "impact": "Shared runtime dnes kontroluje managedProcesses až po asynchronním health a dependency preflightu. Dva téměř současné starty stejné app identity proto mohou oba projít před tím, než první volání zapíše managed proces. Generation-safe apps response cache pouze invaliduje read cache; runMutation není mutex ani per-runtime-key fronta. Výsledkem může být dvojí spawn, závod na app-owned portu, nepravdivý unhealthy stav nebo nekonzistentní Stop/Restart readback. GEN2 PR #317 tento záměr eviduje jako starý Launchpad task, ale přesný task-ID rename se do Spectoda_GEN3 záměrně nepřenáší, protože runtime autorita patří tomuto repu.",
+      "diagnosis": "launchpad/src/server.mjs obaluje runtime mutace přes appsResponseCache.runMutation, která pouze invaliduje generaci před a po akci. launchpad/src/runtime-lib.mjs startRuntimeApp nejprve awaituje healthForApp a dependencyForApp a teprve potom volá spawnProcess a managedProcesses.set(runtimeKey, record). Neexistuje per-runtimeKey in-flight coordinator ani regresní test s řízeně zablokovaným preflightem a dvěma současnými voláními.",
+      "next_action": "Navrhnout úzký Launchpad owner plán a implementovat per-runtime-key mutation coordinator. Nejprve přidat deterministický RED test se dvěma překrývajícími se starty stejné identity; potom zahrnout Start/Open/Restart/Switch a rozhodnout, zda Stop sdílí stejnou frontu. Cross-Organization Switch musí zamykat zdroj i cíl v deterministickém pořadí nebo použít jednu port/runtime transakční identitu, aby nevznikl deadlock.",
+      "acceptance_criteria": [
+        "Dvě současná Start volání stejného runtimeKey provedou nejvýše jeden spawn; druhý caller dostane stejný dokončený výsledek nebo stabilní idempotentní/409 odpověď podle výslovně zdokumentovaného kontraktu.",
+        "Start, Open, Restart a Switch pro stejnou runtime identitu se nemohou předběhnout přes health/dependency preflight, spawn, managedProcesses ani writeState; Stop je výslovně zahrnutý nebo má testem doložené bezpečné oddělení.",
+        "Mutace různých runtimeKey bez sdíleného portu zůstávají paralelní a nová koordinace nevytvoří globální Launchpad zámek.",
+        "Selhaný spawn, timeout nebo vyhozená výjimka vždy uvolní in-flight slot a následný retry může uspět bez stale promise nebo runtime state.",
+        "Cross-Organization Switch se sdíleným app-owned portem má deterministické pořadí zámků a regresi proti deadlocku i dvojímu listeneru.",
+        "launchpad/src/runtime-lib.test.mjs obsahuje řízený concurrency test s odloženým preflightem a počítadlem spawnů; bun run check a bun run doctor projdou na exact headu."
+      ],
+      "links": [
+        {
+          "label": "GEN2 source PR #317",
+          "url": "https://github.com/Spectoda/Spectoda/pull/317"
+        },
+        {
+          "label": "Runtime manager",
+          "path": "launchpad/src/runtime-lib.mjs"
+        },
+        {
+          "label": "Runtime tests",
+          "path": "launchpad/src/runtime-lib.test.mjs"
+        },
+        {
+          "label": "Server mutation wrapper",
+          "path": "launchpad/src/apps-response-cache-lib.mjs"
+        },
+        {
+          "label": "Spectoda GEN2 to GEN3 migration authority",
+          "path": "../HumanAndMachines/mission-control/plans/2026/06/CAC-0035-spectoda-gen3-migration-dogfood.yaml"
+        }
+      ]
     }
   ]
 }
