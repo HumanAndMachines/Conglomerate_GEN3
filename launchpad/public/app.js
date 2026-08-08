@@ -139,26 +139,47 @@ const REPORTED_CHECK_STATUSES = new Set(["fail", "warn", "blocked"]);
 let lastUpdateStatusAt = 0;
 const mobilePanelQuery = window.matchMedia("(max-width: 900px)");
 const mobileTopbarQuery = window.matchMedia("(max-width: 900px)");
+// Odstín dlaždice patří RODINĚ, ne jednotlivému modulu. Devatenáct odstínů,
+// z nichž žádný nic neznamená, porušuje pravidlo identity „v rozhraní barva
+// něco znamená"; rodina je vrstva systému, o které modul je, a to význam JE.
+//
+// Barvu nese POUZE dlaždice, kresba je inkoustová. Tmavý tón téhož odstínu
+// vychází u žluté vždycky olivově, ať se ladí jak chce.
+// Obecné popisky, které samy neříkají, co se děje. Když je akce takhle
+// bezobsažná, převezme tlačítko popis problému — jinak by z karty zmizela
+// informace a zbyla nabídka kliknout neznámo proč.
+const OBECNA_AKCE = new Set(["Zobrazit detail", "Detail", "Zobrazit"]);
+
+const APP_ICON_FAMILY = {
+  "control": "stavba",
+  "dashboard": "stavba",
+  "system": "stavba",
+  "app": "stavba",
+  "database": "stavba",
+  "examples": "stavba",
+  "book": "obsah",
+  "pen": "obsah",
+  "palette": "obsah",
+  "datasheet": "obsah",
+  "website": "obsah",
+  "warehouse": "stroj",
+  "product": "stroj",
+  "installation": "stroj",
+  "deal": "obchod",
+  "pricebook": "obchod",
+  "invoice": "obchod",
+  "profitability": "obchod",
+  "marketing": "obchod"
+};
+
+// Světlá poloha odstínu při PLNÉ sytosti. Sytost pod 0,7 při světlosti 0,9
+// dá béžovou — na barvu už v té světlosti není místo a regulovat se má
+// světlostí, ne sytostí.
 const APP_ICON_STYLES = {
-  control: { color: "#3730a3", background: "#e0e7ff", border: "#c7d2fe" },
-  book: { color: "#0e7490", background: "#cffafe", border: "#a5f3fc" },
-  pen: { color: "#9a3412", background: "#ffedd5", border: "#fed7aa" },
-  palette: { color: "#a21caf", background: "#fae8ff", border: "#f5d0fe" },
-  deal: { color: "#c2410c", background: "#ffedd5", border: "#fdba74" },
-  warehouse: { color: "#166534", background: "#dcfce7", border: "#86efac" },
-  product: { color: "#047857", background: "#d1fae5", border: "#6ee7b7" },
-  datasheet: { color: "#1d4ed8", background: "#dbeafe", border: "#93c5fd" },
-  pricebook: { color: "#a16207", background: "#fef3c7", border: "#fcd34d" },
-  invoice: { color: "#7e22ce", background: "#f3e8ff", border: "#d8b4fe" },
-  installation: { color: "#0f766e", background: "#ccfbf1", border: "#5eead4" },
-  dashboard: { color: "#4f46e5", background: "#e0e7ff", border: "#a5b4fc" },
-  profitability: { color: "#4d7c0f", background: "#ecfccb", border: "#bef264" },
-  marketing: { color: "#be185d", background: "#fce7f3", border: "#f9a8d4" },
-  website: { color: "#0369a1", background: "#e0f2fe", border: "#7dd3fc" },
-  examples: { color: "#475569", background: "#f1f5f9", border: "#cbd5e1" },
-  database: { color: "#1d4ed8", background: "#dbeafe", border: "#bfdbfe" },
-  system: { color: "#9a5b00", background: "#fef3c7", border: "#fde68a" },
-  app: { color: "#5f5147", background: "#eadfd2", border: "#d3c0ad" },
+  stavba: { color: "#171717", background: "#cccdff", border: "#9a9dff" },
+  obsah: { color: "#171717", background: "#fff5cc", border: "#ffe699" },
+  stroj: { color: "#171717", background: "#ccffee", border: "#99ffdd" },
+  obchod: { color: "#171717", background: "#ffe7cc", border: "#ffcf99" },
 };
 
 // Org-agnostic lidské fallbacky drží karty čitelné i ve firmě, která ještě
@@ -185,45 +206,71 @@ const APP_DESCRIPTION_FALLBACKS = Object.freeze({
   system: "Provozní nástroje a technická infrastruktura.",
 });
 
+// Ikony rozhraní jsou Iconoir (MIT) — sada, kterou drží identita Lazuria
+// v `content/brand/icons/`. Kreslily se tu vlastní; vlastní ikona v jedné
+// obrazovce je nekonzistence, kterou nikdo neuhlídá.
+//
+// Cesty jsou vložené, ne importované: Launchpad nemá žádné závislosti
+// a `public/` se servíruje staticky. Zdroj každé ikony je v komentáři,
+// takže se dá kdykoli ověřit proti sadě.
 const APP_ICON_PATHS = {
+  // control → iconoir/view-grid
   control:
-    '<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>',
-  book:
-    '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
-  pen:
-    '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
-  palette:
-    '<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.5-.7 1.5-1.5 0-.4-.2-.8-.5-1.1-.3-.3-.5-.7-.5-1.1 0-.8.7-1.5 1.5-1.5H16c3.3 0 6-2.7 6-6 0-4.4-4.5-8-10-8Z"/>',
-  deal:
-    '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 12h18"/><path d="M10 12v2h4v-2"/>',
-  warehouse:
-    '<path d="M3 21V8l9-5 9 5v13"/><path d="M3 10h18"/><path d="M8 21v-6h8v6"/>',
-  product:
-    '<path d="m21 8-9 5-9-5"/><path d="m3 8 9-5 9 5v8l-9 5-9-5Z"/><path d="M12 13v8"/>',
-  datasheet:
-    '<path d="m21 8-9 5-9-5"/><path d="m3 8 9-5 9 5v8l-9 5-9-5Z"/><path d="M12 13v8"/>',
-  pricebook:
-    '<path d="M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z"/><line x1="7" y1="7" x2="7.01" y2="7"/>',
-  invoice:
-    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h6"/>',
-  installation:
-    '<path d="M14.7 6.3a4 4 0 0 0-5-5L7.5 3.5l3 3-4 4-3-3-2.2 2.2a4 4 0 0 0 5 5L14 7Z"/><path d="m12 12 8.5 8.5"/><path d="M18 19.5 19.5 18"/>',
+    "<path d=\"M14 20.4V14.6C14 14.2686 14.2686 14 14.6 14H20.4C20.7314 14 21 14.2686 21 14.6V20.4C21 20.7314 20.7314 21 20.4 21H14.6C14.2686 21 14 20.7314 14 20.4Z\" stroke=\"currentColor\" stroke-width=\"1.5\"/>\n<path d=\"M3 20.4V14.6C3 14.2686 3.26863 14 3.6 14H9.4C9.73137 14 10 14.2686 10 14.6V20.4C10 20.7314 9.73137 21 9.4 21H3.6C3.26863 21 3 20.7314 3 20.4Z\" stroke=\"currentColor\" stroke-width=\"1.5\"/>\n<path d=\"M14 9.4V3.6C14 3.26863 14.2686 3 14.6 3H20.4C20.7314 3 21 3.26863 21 3.6V9.4C21 9.73137 20.7314 10 20.4 10H14.6C14.2686 10 14 9.73137 14 9.4Z\" stroke=\"currentColor\" stroke-width=\"1.5\"/>\n<path d=\"M3 9.4V3.6C3 3.26863 3.26863 3 3.6 3H9.4C9.73137 3 10 3.26863 10 3.6V9.4C10 9.73137 9.73137 10 9.4 10H3.6C3.26863 10 3 9.73137 3 9.4Z\" stroke=\"currentColor\" stroke-width=\"1.5\"/>",
+  // dashboard → iconoir/reports
   dashboard:
-    '<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/>',
-  profitability:
-    '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
-  marketing:
-    '<path d="m3 11 18-5v12L3 14v-3Z"/><path d="M11.6 16.5 13 21H8l-1.3-5.7"/><path d="M21 10v4"/>',
-  website:
-    '<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 0 20"/><path d="M12 2a15.3 15.3 0 0 0 0 20"/>',
-  examples:
-    '<path d="m8 9-4 3 4 3"/><path d="m16 9 4 3-4 3"/><path d="m14 5-4 14"/>',
-  database:
-    '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>',
-  app:
-    '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+    "<path d=\"M9 21H15M9 21V16M9 21H3.6C3.26863 21 3 20.7314 3 20.4V16.6C3 16.2686 3.26863 16 3.6 16H9M15 21V9M15 21H20.4C20.7314 21 21 20.7314 21 20.4V3.6C21 3.26863 20.7314 3 20.4 3H15.6C15.2686 3 15 3.26863 15 3.6V9M15 9H9.6C9.26863 9 9 9.26863 9 9.6V16\" stroke=\"currentColor\" stroke-width=\"1.5\"/>",
+  // system → iconoir/settings
   system:
-    '<rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><line x1="7" y1="7" x2="7.01" y2="7"/><line x1="7" y1="17" x2="7.01" y2="17"/>',
+    "<path d=\"M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M19.6224 10.3954L18.5247 7.7448L20 6L18 4L16.2647 5.48295L13.5578 4.36974L12.9353 2H10.981L10.3491 4.40113L7.70441 5.51596L6 4L4 6L5.45337 7.78885L4.3725 10.4463L2 11V13L4.40111 13.6555L5.51575 16.2997L4 18L6 20L7.79116 18.5403L10.397 19.6123L11 22H13L13.6045 19.6132L16.2551 18.5155C16.6969 18.8313 18 20 18 20L20 18L18.5159 16.2494L19.6139 13.598L21.9999 12.9772L22 11L19.6224 10.3954Z\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
+  // app → iconoir/box-iso
+  app:
+    "<path d=\"M2.6954 7.18536L11.6954 11.1854L12.3046 9.81464L3.3046 5.81464L2.6954 7.18536ZM12.75 21.5V10.5H11.25V21.5H12.75ZM12.3046 11.1854L21.3046 7.18536L20.6954 5.81464L11.6954 9.81464L12.3046 11.1854Z\" fill=\"currentColor\"/>\n<path d=\"M3 17.1101V6.88992C3 6.65281 3.13964 6.43794 3.35632 6.34164L11.7563 2.6083C11.9115 2.53935 12.0885 2.53935 12.2437 2.6083L20.6437 6.34164C20.8604 6.43794 21 6.65281 21 6.88992V17.1101C21 17.3472 20.8604 17.5621 20.6437 17.6584L12.2437 21.3917C12.0885 21.4606 11.9115 21.4606 11.7563 21.3917L3.35632 17.6584C3.13964 17.5621 3 17.3472 3 17.1101Z\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M7.5 4.5L16.1437 8.34164C16.3604 8.43794 16.5 8.65281 16.5 8.88992V12.5\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
+  // database → iconoir/database
+  database:
+    "<path d=\"M5 12V18C5 18 5 21 12 21C19 21 19 18 19 18V12\" stroke=\"currentColor\" stroke-width=\"1.5\"/>\n<path d=\"M5 6V12C5 12 5 15 12 15C19 15 19 12 19 12V6\" stroke=\"currentColor\" stroke-width=\"1.5\"/>\n<path d=\"M12 3C19 3 19 6 19 6C19 6 19 9 12 9C5 9 5 6 5 6C5 6 5 3 12 3Z\" stroke=\"currentColor\" stroke-width=\"1.5\"/>",
+  // examples → iconoir/multiple-pages
+  examples:
+    "<path d=\"M7 18H10.5H14\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M7 14H7.5H8\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M7 10H8.5H10\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M7 2L16.5 2L21 6.5V19\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M3 20.5V6.5C3 5.67157 3.67157 5 4.5 5H14.2515C14.4106 5 14.5632 5.06321 14.6757 5.17574L17.8243 8.32426C17.9368 8.43679 18 8.5894 18 8.74853V20.5C18 21.3284 17.3284 22 16.5 22H4.5C3.67157 22 3 21.3284 3 20.5Z\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M14 5V8.4C14 8.73137 14.2686 9 14.6 9H18\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
+  // book → iconoir/book
+  book:
+    "<path d=\"M4 19V5C4 3.89543 4.89543 3 6 3H19.4C19.7314 3 20 3.26863 20 3.6V16.7143\" stroke=\"currentColor\"  stroke-linecap=\"round\"/>\n<path d=\"M6 17L20 17\" stroke=\"currentColor\"  stroke-linecap=\"round\"/>\n<path d=\"M6 21L20 21\" stroke=\"currentColor\"  stroke-linecap=\"round\"/>\n<path d=\"M6 21C4.89543 21 4 20.1046 4 19C4 17.8954 4.89543 17 6 17\" stroke=\"currentColor\"  stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M9 7L15 7\" stroke=\"currentColor\"  stroke-linecap=\"round\"/>",
+  // pen → iconoir/design-nib
+  pen:
+    "<path d=\"M17.6744 11.4075L15.7691 17.1233C15.7072 17.309 15.5586 17.4529 15.3709 17.5087L3.69348 20.9803C3.22819 21.1186 2.79978 20.676 2.95328 20.2155L6.74467 8.84131C6.79981 8.67588 6.92419 8.54263 7.08543 8.47624L12.472 6.25822C12.696 6.166 12.9535 6.21749 13.1248 6.38876L17.5294 10.7935C17.6901 10.9542 17.7463 11.1919 17.6744 11.4075Z\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M3.2959 20.6016L9.65986 14.2376\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M17.7917 11.0557L20.6202 8.22724C21.4012 7.44619 21.4012 6.17986 20.6202 5.39881L18.4989 3.27749C17.7178 2.49645 16.4515 2.49645 15.6704 3.27749L12.842 6.10592\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M11.7814 12.1163C11.1956 11.5305 10.2458 11.5305 9.66004 12.1163C9.07426 12.7021 9.07426 13.6519 9.66004 14.2376C10.2458 14.8234 11.1956 14.8234 11.7814 14.2376C12.3671 13.6519 12.3671 12.7021 11.7814 12.1163Z\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
+  // palette → iconoir/palette
+  palette:
+    "<path d=\"M20.5096 9.54C20.4243 9.77932 20.2918 9.99909 20.12 10.1863C19.9483 10.3735 19.7407 10.5244 19.5096 10.63C18.2796 11.1806 17.2346 12.0745 16.5002 13.2045C15.7659 14.3345 15.3733 15.6524 15.3696 17C15.3711 17.4701 15.418 17.9389 15.5096 18.4C15.5707 18.6818 15.5747 18.973 15.5215 19.2564C15.4682 19.5397 15.3588 19.8096 15.1996 20.05C15.0649 20.2604 14.8877 20.4403 14.6793 20.5781C14.4709 20.7158 14.2359 20.8085 13.9896 20.85C13.4554 20.9504 12.9131 21.0006 12.3696 21C11.1638 21.0006 9.97011 20.7588 8.85952 20.2891C7.74893 19.8194 6.74405 19.1314 5.90455 18.2657C5.06506 17.4001 4.40807 16.3747 3.97261 15.2502C3.53714 14.1257 3.33208 12.9252 3.36959 11.72C3.4472 9.47279 4.3586 7.33495 5.92622 5.72296C7.49385 4.11097 9.60542 3.14028 11.8496 3H12.3596C14.0353 3.00042 15.6777 3.46869 17.1017 4.35207C18.5257 5.23544 19.6748 6.49885 20.4196 8C20.6488 8.47498 20.6812 9.02129 20.5096 9.52V9.54Z\" stroke=\"currentColor\" stroke-width=\"1.5\"/>\n<path d=\"M8 16.01L8.01 15.9989\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M6 12.01L6.01 11.9989\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M8 8.01L8.01 7.99889\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M12 6.01L12.01 5.99889\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M16 8.01L16.01 7.99889\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
+  // datasheet → iconoir/table-2-columns
+  datasheet:
+    "<path d=\"M3 20.4V3.6C3 3.26863 3.26863 3 3.6 3H20.4C20.7314 3 21 3.26863 21 3.6V20.4C21 20.7314 20.7314 21 20.4 21H3.6C3.26863 21 3 20.7314 3 20.4Z\" stroke=\"currentColor\" stroke-width=\"1.5\"/>\n<path d=\"M3 16.5H21\" stroke=\"currentColor\" stroke-width=\"1.5\"/>\n<path d=\"M3 12H21\" stroke=\"currentColor\" stroke-width=\"1.5\"/>\n<path d=\"M21 7.5H3\" stroke=\"currentColor\" stroke-width=\"1.5\"/>\n<path d=\"M12 21V3\" stroke=\"currentColor\" stroke-width=\"1.5\"/>",
+  // website → iconoir/globe
+  website:
+    "<path d=\"M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z\" stroke=\"currentColor\"   stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M2.5 12.5L8 14.5L7 18L8 21\" stroke=\"currentColor\"   stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M17 20.5L16.5 18L14 17V13.5L17 12.5L21.5 13\" stroke=\"currentColor\"   stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M19 5.5L18.5 7L15 7.5V10.5L17.5 9.5H19.5L21.5 10.5\" stroke=\"currentColor\"   stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M2.5 10.5L5 8.5L7.5 8L9.5 5L8.5 3\" stroke=\"currentColor\"   stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
+  // warehouse → iconoir/box
+  warehouse:
+    "<path d=\"M10 12L14 12\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M3 3L21 3\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M21 7V20.4C21 20.7314 20.7314 21 20.4 21H3.6C3.26863 21 3 20.7314 3 20.4V7\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
+  // product → iconoir/shop
+  product:
+    "<path d=\"M3 10V19C3 20.1046 3.89543 21 5 21H19C20.1046 21 21 20.1046 21 19V10\" stroke=\"currentColor\" stroke-width=\"1.5\"/>\n<path d=\"M14.8333 21V15C14.8333 13.8954 13.9379 13 12.8333 13H10.8333C9.72874 13 8.83331 13.8954 8.83331 15V21\" stroke=\"currentColor\" stroke-miterlimit=\"16\"/>\n<path d=\"M21.8183 9.36418L20.1243 3.43517C20.0507 3.17759 19.8153 3 19.5474 3H15.5L15.9753 8.70377C15.9909 8.89043 16.0923 9.05904 16.2532 9.15495C16.6425 9.38698 17.4052 9.81699 18 10C19.0158 10.3125 20.5008 10.1998 21.3465 10.0958C21.6982 10.0526 21.9157 9.7049 21.8183 9.36418Z\" stroke=\"currentColor\" stroke-width=\"1.5\"/>\n<path d=\"M14 10C14.5675 9.82538 15.2879 9.42589 15.6909 9.18807C15.8828 9.07486 15.9884 8.86103 15.9699 8.63904L15.5 3H8.5L8.03008 8.63904C8.01158 8.86103 8.11723 9.07486 8.30906 9.18807C8.71207 9.42589 9.4325 9.82538 10 10C11.493 10.4594 12.507 10.4594 14 10Z\" stroke=\"currentColor\" stroke-width=\"1.5\"/>\n<path d=\"M3.87567 3.43517L2.18166 9.36418C2.08431 9.7049 2.3018 10.0526 2.6535 10.0958C3.49916 10.1998 4.98424 10.3125 6 10C6.59477 9.81699 7.35751 9.38698 7.74678 9.15495C7.90767 9.05904 8.00913 8.89043 8.02469 8.70377L8.5 3H4.45258C4.18469 3 3.94926 3.17759 3.87567 3.43517Z\" stroke=\"currentColor\" stroke-width=\"1.5\"/>",
+  // installation → iconoir/tools
+  installation:
+    "<path d=\"M10.0503 10.6066L2.97923 17.6777C2.19818 18.4587 2.19818 19.7251 2.97923 20.5061V20.5061C3.76027 21.2872 5.0266 21.2872 5.80765 20.5061L12.8787 13.4351\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M17.1927 13.7994L21.071 17.6777C21.8521 18.4587 21.8521 19.7251 21.071 20.5061V20.5061C20.29 21.2872 19.0236 21.2872 18.2426 20.5061L12.0341 14.2977\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M6.73267 5.90381L4.61135 6.61092L2.49003 3.07539L3.90424 1.66117L7.43978 3.78249L6.73267 5.90381ZM6.73267 5.90381L9.5629 8.73404\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M10.0503 10.6066C9.2065 8.45359 9.37147 5.62861 11.111 3.8891C12.8505 2.14958 16.0607 1.76778 17.8285 2.82844L14.7878 5.86911L14.5052 8.98015L17.6162 8.69754L20.6569 5.65686C21.7176 7.42463 21.3358 10.6349 19.5963 12.3744C17.8567 14.1139 15.0318 14.2789 12.8788 13.435\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
+  // deal → iconoir/hand-cash
+  deal:
+    "<path d=\"M2 11L4.80662 7.84255C5.5657 6.98859 6.65372 6.5 7.79627 6.5L8 6.5\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M2 19.5003L7.5 19.5L11.5 16.5003C11.5 16.5003 12.3091 15.9528 13.5 15.0001C16 13.0002 13.5 9.83352 11 11.4997C8.96409 12.8565 7 14.0003 7 14.0003\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M8 13.5V7C8 5.89543 8.89543 5 10 5H20C21.1046 5 22 5.89543 22 7V13C22 14.1046 21.1046 15 20 15H13.5\" stroke=\"currentColor\"/>\n<path d=\"M15 12C13.8954 12 13 11.1046 13 10C13 8.89543 13.8954 8 15 8C16.1046 8 17 8.89543 17 10C17 11.1046 16.1046 12 15 12Z\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M19.5 10.01L19.51 9.99889\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M10.5 10.01L10.51 9.99889\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
+  // pricebook → iconoir/label
+  pricebook:
+    "<path d=\"M3 17.4V6.6C3 6.26863 3.26863 6 3.6 6H16.6789C16.8795 6 17.0668 6.10026 17.1781 6.26718L20.7781 11.6672C20.9125 11.8687 20.9125 12.1313 20.7781 12.3328L17.1781 17.7328C17.0668 17.8997 16.8795 18 16.6789 18H3.6C3.26863 18 3 17.7314 3 17.4Z\" stroke=\"currentColor\" stroke-width=\"1.5\"/>",
+  // invoice → iconoir/dollar
+  invoice:
+    "<path d=\"M16.1538 7.15382C15.2054 6.20538 13.5351 5.54568 12 5.50437M7.84619 16.1538C8.73855 17.3436 10.3977 18.0222 12 18.0798M12 5.50437C10.1735 5.45522 8.5385 6.2815 8.5385 8.53845C8.5385 12.6923 16.1538 10.6154 16.1538 14.7692C16.1538 17.1383 14.127 18.1562 12 18.0798M12 5.50437V3M12 18.0798V20.9999\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
+  // profitability → iconoir/graph-up
+  profitability:
+    "<path d=\"M20 20H4V4\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M4 16.5L12 9L15 12L19.5 7.5\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
+  // marketing → iconoir/megaphone
+  marketing:
+    "<path d=\"M14 14V6M14 14L20.1023 17.487C20.5023 17.7156 21 17.4268 21 16.9661V3.03391C21 2.57321 20.5023 2.28439 20.1023 2.51296L14 6M14 14H7C4.79086 14 3 12.2091 3 10V10C3 7.79086 4.79086 6 7 6H14\" stroke=\"currentColor\" stroke-width=\"1.5\"/>\n<path d=\"M7.75716 19.3001L7 14H11L11.6772 18.7401C11.8476 19.9329 10.922 21 9.71716 21C8.73186 21 7.8965 20.2755 7.75716 19.3001Z\" stroke=\"currentColor\" stroke-width=\"1.5\"/>",
 };
 
 const elements = {
@@ -3056,8 +3103,19 @@ function cardWarningModel(app, gitRepo) {
   // a pošli do detailu, ať karta při zapnutém kontrolním togglu nikdy nevisí bez důvodu.
   const gitModel = gitChipModel(gitRepo);
   if (gitModel && gitModel.attention) {
+    const tone = gitModel.tone === "danger" ? "danger" : "warn";
     return {
-      tone: gitModel.tone === "danger" ? "danger" : "warn",
+      tone,
+      // FAKT, NE ÚKOL. Rozdělaná práce je normální stav repozitáře — je to
+      // to, co se v práci děje. Když ji nesl žlutý pruh na šesti kartách
+      // z deseti, žlutá znamenala „obvyklé", ne „pozor", a přestala nést
+      // informaci. Rozhodnutí Principálky 8. 8. 2026.
+      //
+      // Hranice se nepozná z textu, ale z toho, jestli je co dělat: warn
+      // stav, jehož jediná nabídka je „Zobrazit detail", žádnou akci nemá,
+      // takže je to informace. Danger zůstává úkolem i bez vlastní akce —
+      // tam se něco rozbilo.
+      kind: tone === "warn" ? "fact" : "task",
       title: gitModel.label.replace(/^./, (character) => character.toUpperCase()),
       actionLabel: "Zobrazit detail",
       run: () => revealAppDetail(app),
@@ -3075,6 +3133,17 @@ function cardWarningModel(app, gitRepo) {
 function cardWarningNode(warning) {
   const node = document.createElement("div");
   node.className = `card-warning is-${warning.tone}`;
+
+  // FAKT: tichý řádek pod popisem. Bez plochy, bez ikony, bez tlačítka —
+  // na fakt se neklikáá a barva mu nepřísluší.
+  if (warning.kind === "fact") {
+    node.classList.add("is-fact");
+    const text = document.createElement("span");
+    text.className = "card-warning-fact";
+    text.textContent = warning.title;
+    node.append(text);
+    return node;
+  }
 
   const icon = document.createElement("span");
   icon.className = "card-warning-icon";
@@ -3097,10 +3166,20 @@ function cardWarningNode(warning) {
   node.append(icon, body);
 
   if (warning.actionLabel && typeof warning.run === "function") {
+    const obecna = OBECNA_AKCE.has(warning.actionLabel);
+    // PROBLÉM JE TLAČÍTKO, ne krabice. Plocha s ikonou, nadpisem a tlačítkem
+    // uvnitř říká totéž třikrát; zůstává akce, protože to je to jediné, co
+    // se s problémem dá udělat (rozhodnutí Principálky 8. 8. 2026).
+    //
+    // Když je popisek obecný („Zobrazit detail"), převezme popis problému —
+    // jinak by z karty zmizela informace a zbyla nabídka kliknout neznámo
+    // proč. To by nebyl úklid, to by bylo zatajení.
+    const popisek = obecna ? warning.title : warning.actionLabel;
+    node.classList.add("is-jen-akce");
     const button = document.createElement("button");
     button.type = "button";
     button.className = "btn btn-sm btn-secondary card-warning-action";
-    button.textContent = warning.actionLabel;
+    button.textContent = popisek;
     button.setAttribute("aria-label", `${warning.actionLabel}: ${warning.title}`);
     button.disabled = warning.pending ? state.pendingAction === warning.pending : false;
     button.addEventListener("click", (event) => {
@@ -3526,7 +3605,10 @@ function appCardTone(app, warning) {
   // Warning model je autorita tónu pro zastavené karty; danger → blocked,
   // warn → attention.
   if (warning?.tone === "danger") return "blocked";
-  if (warning?.tone === "warn") return "attention";
+  // Fakt hranu nedostane. Hrana je značka „něco se tu má řešit"; u faktu
+  // se řešit nemá nic, a šest žlutých hran z deseti karet znamená, že
+  // žlutá přestala být signál.
+  if (warning?.tone === "warn" && warning?.kind !== "fact") return "attention";
   // Fallback pro edge-case bez warningu (např. needs_install bez can_install).
   const dependencyState = app.dependencies?.state;
   if (["missing_package", "unknown_package_manager", "invalid_manifest", "missing_access", "restricted", "runtime_failed"].includes(dependencyState)) {
@@ -5146,14 +5228,21 @@ function appIconKey(app) {
   return semanticAppIconKey(app, APP_ICON_PATHS);
 }
 
+function appIconFamily(key) {
+  // Nezařazený modul je pořád část systému, proto `stavba`.
+  return APP_ICON_FAMILY[key] ?? "stavba";
+}
+
 function appIconStyle(key) {
-  const style = APP_ICON_STYLES[key] ?? APP_ICON_STYLES.app;
+  const style = APP_ICON_STYLES[appIconFamily(key)];
   return [`--app-icon-color:${style.color}`, `--app-icon-bg:${style.background}`, `--app-icon-border:${style.border}`].join(";");
 }
 
 function appIconSvg(key) {
   const path = APP_ICON_PATHS[key] ?? APP_ICON_PATHS.app;
-  return `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
+  // Tloušťka 1,5 jako v celé sadě. Dvojka sedla k původní tučné sazbě (520);
+  // s váhou 400 je z ní vedle textu drát.
+  return `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
 }
 
 /* =========================================================

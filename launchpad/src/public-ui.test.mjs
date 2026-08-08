@@ -1060,8 +1060,12 @@ test("Organization workspace má kompaktní uvítání s dynamickým názvem fir
   expect(js).toContain('toggleAttribute("hidden", personal)');
   expect(css).toContain(".workspace-welcome-title");
   expect(css).toContain("margin-top: 1.5rem");
-  expect(css).toContain("font-size: 1.3rem");
-  expect(css).toContain("font-weight: 720");
+  // CAC-0095: sazba jde na škálu Lazuria. Test tvrdil 1,3 rem / 720 —
+  // konkrétní hodnoty, které identita nahradila škálou (14 · 16,5 · 20)
+  // a dvěma vahami (400 · 600). Tvrzení tu zůstává, protože hlídá, že
+  // uvítací nadpis vůbec nějakou sazbu má; jen míří na novou hodnotu.
+  expect(css).toContain("font-size: 20px");
+  expect(css).toContain("font-weight: 600");
 });
 
 test("CAC-0083: dostupný root update je nepřehlédnutelný — banner ve všech scope, počet commitů, průběžný refresh", async () => {
