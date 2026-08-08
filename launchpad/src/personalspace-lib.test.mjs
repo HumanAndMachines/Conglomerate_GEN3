@@ -903,6 +903,19 @@ test("custody pattern rozepsaný na cizího ownera failuje", async () => {
   expect(result.failures.some((failure) => failure.includes("secrets.custody_pattern musí být šablonový nebo vázaný"))).toBe(true);
 });
 
+test("custody pattern musí být řetězec", async () => {
+  const config = personalConfig("exampleuser");
+  config.secrets.custody_pattern = null;
+  const root = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
+    spaces: [{ dirName: "exampleuser_GEN3", owner: "exampleuser", config, gbrainNotes: {} }],
+  });
+
+  const result = await discoverPersonalspace(root);
+  expect(result.spaces[0].config_valid).toBe(false);
+  expect(result.failures.some((failure) => failure.includes("secrets.custody_pattern musí být neprázdný text"))).toBe(true);
+});
+
 test("ORG discovery NIKDY nevidí personalspace (oddělené lane)", async () => {
   const root = await createPersonalspaceFixture({
     localOwner: "exampleuser",

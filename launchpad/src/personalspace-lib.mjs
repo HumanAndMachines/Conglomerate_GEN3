@@ -303,6 +303,7 @@ export function validatePersonalConfig(personal, schema, label) {
     if (personal.secrets?.[key] === undefined) failures.push(`${label}: chybí secrets.${key}`);
   }
   checkConst(personal.secrets, "path", secretsSpec.properties?.path, "secrets.path");
+  checkString(personal.secrets, "custody_pattern", "secrets.custody_pattern", { required: true });
   checkPattern(
     personal.secrets,
     "custody_pattern",
