@@ -10,6 +10,7 @@ const organizationRootSlotPaths = new Set([
 const organizationDiagnosticsOnlySlotPaths = new Set([
   "mission-control/db",
 ]);
+const organizationRepositoryDbSlotPattern = /^(workspace|modules)\/[a-z0-9][a-z0-9-]*\/db$/;
 
 export function isOrganizationRootSlotPath(path) {
   const normalizedPath = normalizeOrganizationSlotPath(path);
@@ -46,7 +47,13 @@ export function isCanonicalOrganizationRepositorySlotPath(path) {
   return (
     organizationRootSlotPaths.has(normalizedPath)
     || /^(workspace|modules|productionspace)\/[a-z0-9][a-z0-9-]*$/.test(normalizedPath)
+    || organizationRepositoryDbSlotPattern.test(normalizedPath)
   );
+}
+
+export function isOrganizationRepositoryDbSlotPath(path) {
+  const normalizedPath = normalizeOrganizationSlotPath(path);
+  return normalizedPath !== null && organizationRepositoryDbSlotPattern.test(normalizedPath);
 }
 
 export function organizationSlotPathScope(path) {
@@ -116,7 +123,10 @@ export function organizationSlotUiExposure(slot, normalizedPath = null) {
     || sourceOfTruth.startsWith("repository-db:");
   if (
     organizationDiagnosticsOnlySlotPaths.has(path)
-    || (repositoryDb && organizationSlotScope(slot, path) === "root")
+    || (repositoryDb && (
+      organizationSlotScope(slot, path) === "root"
+      || isOrganizationRepositoryDbSlotPath(path)
+    ))
   ) {
     return "diagnostics-only";
   }

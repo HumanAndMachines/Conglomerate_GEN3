@@ -1097,6 +1097,18 @@ test("planned root slot nemá git a smí zůstat planned jen dokud není materia
   );
 
   await mkdir(join(companyRoot, "design-system"), { recursive: true });
+  const compatibilityWithCoordinatesCheck = await doctor();
+  expect(compatibilityWithCoordinatesCheck?.status).toBe("fail");
+  expect(compatibilityWithCoordinatesCheck?.details.join("\n")).not.toContain(
+    'materializovaný root slot design-system nesmí zůstat status: "planned_slot"',
+  );
+
+  delete manifest.module_slots[0].git;
+  await writeJson(manifestPath, manifest);
+  const compatibilityDirectoryCheck = await doctor();
+  expect(compatibilityDirectoryCheck?.status).toBe("ok");
+
+  await writeFile(join(companyRoot, "design-system", ".git"), "gitdir: ../.git/worktrees/design-system\n");
   const materializedWithCoordinatesCheck = await doctor();
   expect(materializedWithCoordinatesCheck?.status).toBe("fail");
   expect(materializedWithCoordinatesCheck?.details.join("\n")).toContain(
@@ -1105,9 +1117,6 @@ test("planned root slot nemá git a smí zůstat planned jen dokud není materia
   expect(materializedWithCoordinatesCheck?.details.join("\n")).not.toContain(
     "planned root slot design-system nesmí deklarovat git",
   );
-
-  delete manifest.module_slots[0].git;
-  await writeJson(manifestPath, manifest);
   const materializedWithoutCoordinatesCheck = await doctor();
   expect(materializedWithoutCoordinatesCheck?.status).toBe("fail");
   expect(materializedWithoutCoordinatesCheck?.details.join("\n")).toContain(

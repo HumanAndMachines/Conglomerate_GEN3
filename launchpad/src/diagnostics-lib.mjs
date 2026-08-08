@@ -1057,7 +1057,11 @@ function rootSlotContractIssues(manifest, config, organizationRoot) {
 
     const gitUrl = typeof slot.git?.url === "string" ? slot.git.url.trim() : "";
     const gitBranch = typeof slot.git?.branch === "string" ? slot.git.branch.trim() : "";
-    const checkoutExists = existsSync(join(organizationRoot, path));
+    // During the GEN2 → GEN3 migration, an in-tree compatibility directory may
+    // remain at the canonical mount path even though no nested checkout exists.
+    // Only a .git directory/file is evidence that the root slot is materialized;
+    // a plain directory must not turn a planned slot into a blocker.
+    const checkoutExists = existsSync(join(organizationRoot, path, ".git"));
     const checkoutCoordinatesStarted = slot.git !== undefined;
     if (slot.status === "planned_slot" && checkoutExists) {
       issues.push(
