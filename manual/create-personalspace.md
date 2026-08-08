@@ -14,7 +14,8 @@ Výstupem jsou dva samostatné private repozitáře na osobním GitHub účtu:
 ```
 
 První je katalog a privacy kontrakt Personalspace, druhý drží pouze soukromou
-Markdown paměť. Software se instaluje z veřejného `garrytan/gbrain`.
+Markdown paměť. Software se instaluje z veřejného fork-of-record
+`Lazurio/gbrain`; `garrytan/gbrain` zůstává upstream provenience.
 
 Schválený target-state pro pozdější Buddy onboarding přidává třetí private
 repo:
@@ -64,8 +65,8 @@ Bootstrap živě ověří:
 provider a search režim mají privacy i nákladový dopad, proto zůstávají
 vědomým rozhodnutím vlastníka. Navazující přesný postup je v
 `personalspace/<login>_GEN3/manual/bootstrap-personalspace.md` a aktuálním
-upstream
-[`INSTALL_FOR_AGENTS.md`](https://github.com/garrytan/gbrain/blob/master/INSTALL_FOR_AGENTS.md).
+fork-of-record
+[`INSTALL_FOR_AGENTS.md`](https://github.com/Lazurio/gbrain/blob/main/INSTALL_FOR_AGENTS.md).
 
 Pro Personalspace bez Buddyho může být tato lokální aktivace záměrná. Buddy
 varianta dnes není live: parser odmítá už samotný `--with-buddy`, nevytváří

@@ -275,7 +275,8 @@ Defaultně se nesdílí. Kanonický mount je `personalspace/<owner>_GEN3/gbrain/
 na živý vault vedle prostoru, dokud neproběhne fyzická migrace.
 
 `gbrain/` je Doctor-managed gitignored checkout samostatného private data repa.
-Veřejný `garrytan/gbrain` je pouze software source; nesmí se zaměnit za
+Veřejný fork-of-record `Lazurio/gbrain` je software install source;
+`garrytan/gbrain` zůstává upstream provenience. Ani jeden se nesmí zaměnit za
 Markdown data vlastníka.
 
 Agenti pracují s pamětí VÝHRADNĚ přes gbrain MCP server. Launchpad nabízí jen

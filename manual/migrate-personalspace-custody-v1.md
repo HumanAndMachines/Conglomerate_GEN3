@@ -33,8 +33,8 @@ Doplň:
       "mount_strategy": "doctor-managed-nested-repo"
     },
     "software": {
-      "github_repo": "garrytan/gbrain",
-      "install_source": "github:garrytan/gbrain"
+      "github_repo": "Lazurio/gbrain",
+      "install_source": "github:Lazurio/gbrain"
     }
   }
 }

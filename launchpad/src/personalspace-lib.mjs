@@ -105,6 +105,19 @@ export function validatePersonalConfig(personal, schema, label) {
   checkConst(personal, "personal_generation", props.personal_generation, "personal_generation");
   checkConst(personal, "modules_manifest_path", props.modules_manifest_path, "modules_manifest_path");
   checkConst(personal, "workspace_path", props.workspace_path, "workspace_path");
+  if (personal.template_provenance !== undefined) {
+    const provenanceSpec = props.template_provenance ?? {};
+    if (!personal.template_provenance || typeof personal.template_provenance !== "object" || Array.isArray(personal.template_provenance)) {
+      failures.push(`${label}: template_provenance musí být objekt`);
+    } else {
+      for (const key of provenanceSpec.required ?? []) {
+        checkString(personal.template_provenance, key, `template_provenance.${key}`, { required: true });
+      }
+      for (const [key, spec] of Object.entries(provenanceSpec.properties ?? {})) {
+        checkPattern(personal.template_provenance, key, spec, `template_provenance.${key}`);
+      }
+    }
+  }
   if (personal.shared_spaces !== undefined && !Array.isArray(personal.shared_spaces)) {
     failures.push(`${label}: shared_spaces musí být pole`);
   } else if (personal.shared_spaces?.length !== 0 && personal.shared_spaces !== undefined) {
@@ -131,6 +144,9 @@ export function validatePersonalConfig(personal, schema, label) {
         if (personal.buddy[key] === undefined) failures.push(`${label}: chybí buddy.${key}`);
       }
       checkString(personal.buddy, "slug", "buddy.slug", { required: true });
+      if (typeof personal.buddy.slug === "string" && !/^[a-z0-9][a-z0-9-]*$/.test(personal.buddy.slug)) {
+        failures.push(`${label}: buddy.slug musí být lowercase ASCII slug (a-z, 0-9, pomlčka)`);
+      }
       checkConst(personal.buddy, "gbrain_path", buddySpec.properties?.gbrain_path, "buddy.gbrain_path");
       if (!legacyCustody) {
         checkConst(personal.buddy, "path", buddySpec.properties?.path, "buddy.path");

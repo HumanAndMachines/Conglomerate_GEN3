@@ -274,6 +274,40 @@ test("Buddy slug je osobní identita a nemusí kopírovat technický název prof
   expect(result.spaces[0].buddy.slug).toBe("mattychus");
 });
 
+test("Buddy slug zůstává bezpečný lowercase ASCII identifikátor", async () => {
+  const config = personalConfig("exampleuser", {
+    buddy: {
+      slug: "Můj Buddy",
+      repository: { github_repo: "exampleuser/exampleuser-buddy" },
+    },
+  });
+  const root = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
+    spaces: [{ dirName: "exampleuser_GEN3", owner: "exampleuser", config, gbrainNotes: {} }],
+  });
+
+  const result = await discoverPersonalspace(root);
+  expect(result.spaces[0].config_valid).toBe(false);
+  expect(result.failures.some((failure) => failure.includes("buddy.slug musí být lowercase ASCII slug"))).toBe(true);
+});
+
+test("neúplný template_provenance failuje podle kanonického schématu", async () => {
+  const config = personalConfig("exampleuser", {
+    template_provenance: {
+      source_repository: "HumanAndMachines/PersonalspaceTemplate_GEN3",
+      source_ref: "main",
+    },
+  });
+  const root = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
+    spaces: [{ dirName: "exampleuser_GEN3", owner: "exampleuser", config, gbrainNotes: {} }],
+  });
+
+  const result = await discoverPersonalspace(root);
+  expect(result.spaces[0].config_valid).toBe(false);
+  expect(result.failures.some((failure) => failure.includes("template_provenance.source_commit"))).toBe(true);
+});
+
 test("legacy neversionovaný Personalspace zůstane čitelný s migračním warningem", async () => {
   const config = personalConfig("exampleuser");
   delete config.schema_version;

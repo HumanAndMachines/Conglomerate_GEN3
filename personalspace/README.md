@@ -60,8 +60,9 @@ promotion do firemního workspace je přesun repa + úprava manifestů, vždy
 přes fail-closed isolation gate (žádné secrets, osobní overlaye ani gbrain
 reference). Gbrain je root vrstva prostoru (analogie `mission-control/`
 v rootu Organizace), ne modul; v1 lidské rozhraní je Obsidian (deep link),
-agenti pracují přes gbrain MCP server. Software pochází z veřejného
-`garrytan/gbrain`; privátní Markdown data vlastníka žijí v samostatném repu,
+agenti pracují přes gbrain MCP server. Software se instaluje z veřejného
+fork-of-record `Lazurio/gbrain` (`garrytan/gbrain` je upstream provenience);
+privátní Markdown data vlastníka žijí v samostatném repu,
 doporučeně `<username>/<username>-gbrain`, mountovaném do `gbrain/`. Software
 repo a data repo se nesmějí zaměnit.
 
