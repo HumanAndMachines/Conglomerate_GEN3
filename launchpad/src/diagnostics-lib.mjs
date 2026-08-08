@@ -1897,7 +1897,7 @@ function workspaceDeclarationCheck(appsResponse) {
         ? `Manifestované sloty mají ${formatCount(blockingSlotCount, "blokátor", "blokátory", "blokátorů")}.`
         : conformanceIssueCount > 0
         ? `Manifest deklarace mají ${formatCount(conformanceIssueCount, "konflikt", "konflikty", "konfliktů")} s decision 0041.`
-        : "Workspace grouping jede z manifest deklarací (decision 0041).",
+        : "Fyzické sekce odpovídají cestám; Workspace Team grouping jede z manifest deklarací (decision 0041).",
     paths: ["organizations"],
     links: [],
     details,
