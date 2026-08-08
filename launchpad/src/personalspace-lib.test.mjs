@@ -47,12 +47,12 @@ function personalConfig(username, overrides = {}) {
         mount_strategy: "doctor-managed-nested-repo",
       },
       runtime: {
-        github_repo: "HumanAndMachines/Buddy",
+        github_repo: "HumanAndMachines/Buddy_GEN2",
         deployment_target: "owner-dedicated-personalspace-vps",
         local_execution: "forbidden",
       },
       hermes: {
-        software_repo: "NousResearch/hermes-agent",
+        software_repo: "Lazurio/hermes-agent",
         profile_format: "hermes-profile-distribution",
         profile_path: "buddy",
       },
@@ -75,8 +75,8 @@ function personalConfig(username, overrides = {}) {
         mount_strategy: "doctor-managed-nested-repo",
       },
       software: {
-        github_repo: "garrytan/gbrain",
-        install_source: "github:garrytan/gbrain",
+        github_repo: "Lazurio/gbrain",
+        install_source: "github:Lazurio/gbrain",
       },
       default_shared: false,
       human_editor: "obsidian",
@@ -249,6 +249,29 @@ test("Personalspace bez Buddyho je validní a materializuje osobní aplikace i g
   expect(result.spaces[0].buddy).toBeNull();
   expect(result.spaces[0].gbrain.exists).toBe(true);
   expect(result.apps).toHaveLength(1);
+});
+
+test("Buddy slug je osobní identita a nemusí kopírovat technický název profile repa", async () => {
+  const config = personalConfig("exampleuser", {
+    buddy: {
+      slug: "mattychus",
+      repository: { github_repo: "exampleuser/exampleuser-buddy" },
+    },
+  });
+  const root = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
+    spaces: [{
+      dirName: "exampleuser_GEN3",
+      owner: "exampleuser",
+      config,
+      gbrainNotes: {},
+    }],
+  });
+
+  const result = await discoverPersonalspace(root);
+  expect(result.failures).toEqual([]);
+  expect(result.spaces[0].config_valid).toBe(true);
+  expect(result.spaces[0].buddy.slug).toBe("mattychus");
 });
 
 test("legacy neversionovaný Personalspace zůstane čitelný s migračním warningem", async () => {

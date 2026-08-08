@@ -3,10 +3,7 @@ import { mkdir, readFile, rename, rm, symlink, writeFile } from "fs/promises";
 import { join } from "path";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
 import { createLaunchpadGitFixture } from "./git-fixture-helpers.test.mjs";
-import {
-  isCanonicalOrganizationRepositorySlotPath,
-  organizationSlotUiExposure,
-} from "./organization-slot-scope-lib.mjs";
+import { isCanonicalOrganizationRepositorySlotPath } from "./organization-slot-scope-lib.mjs";
 
 const tempRoots = [];
 
@@ -14,15 +11,10 @@ afterAll(async () => {
   await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
 });
 
-test("workspace repository-db child slot je kanonická boundary a zůstává jen v diagnostice", () => {
-  expect(isCanonicalOrganizationRepositorySlotPath("workspace/warehouse/db")).toBe(true);
-  expect(isCanonicalOrganizationRepositorySlotPath("modules/warehouse/db")).toBe(true);
+test("repository-db child slot zůstává app-owned a není Organization repository slot", () => {
+  expect(isCanonicalOrganizationRepositorySlotPath("workspace/warehouse/db")).toBe(false);
+  expect(isCanonicalOrganizationRepositorySlotPath("modules/warehouse/db")).toBe(false);
   expect(isCanonicalOrganizationRepositorySlotPath("workspace/warehouse/db/archive")).toBe(false);
-  expect(organizationSlotUiExposure({
-    path: "workspace/warehouse/db",
-    space: "workspace",
-    source_of_truth: "repository-db:v3",
-  })).toBe("diagnostics-only");
 });
 
 test("inventory reads repo paths from Organization manifests and does not infer layout from filesystem", async () => {

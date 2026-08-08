@@ -42,12 +42,12 @@ function personalConfig(username) {
         mount_strategy: "doctor-managed-nested-repo",
       },
       runtime: {
-        github_repo: "HumanAndMachines/Buddy",
+        github_repo: "HumanAndMachines/Buddy_GEN2",
         deployment_target: "owner-dedicated-personalspace-vps",
         local_execution: "forbidden",
       },
       hermes: {
-        software_repo: "NousResearch/hermes-agent",
+        software_repo: "Lazurio/hermes-agent",
         profile_format: "hermes-profile-distribution",
         profile_path: "buddy",
       },
@@ -75,8 +75,8 @@ function personalConfig(username) {
         mount_strategy: "doctor-managed-nested-repo",
       },
       software: {
-        github_repo: "garrytan/gbrain",
-        install_source: "github:garrytan/gbrain",
+        github_repo: "Lazurio/gbrain",
+        install_source: "github:Lazurio/gbrain",
       },
       default_shared: false,
       human_editor: "obsidian",

@@ -197,9 +197,14 @@ test("kanonická Personalspace schema kopie zůstává base kontraktem s privát
   expect(schema.properties.buddy.properties.display_name).toBeUndefined();
   expect(schema.properties.buddy.properties.runtime.required).toContain("deployment_target");
   expect(schema.properties.buddy.properties.runtime.required).toContain("local_execution");
+  expect(schema.properties.buddy.properties.runtime.properties.github_repo.enum)
+    .toContain("HumanAndMachines/Buddy_GEN2");
+  expect(schema.properties.buddy.properties.hermes.properties.software_repo.const)
+    .toBe("Lazurio/hermes-agent");
   expect(schema.properties.buddy.properties.runtime.properties.deployment_target.const)
     .toBe("owner-dedicated-personalspace-vps");
   expect(schema.properties.buddy.properties.runtime.properties.local_execution.const).toBe("forbidden");
+  expect(schema.properties.gbrain.properties.software.properties.github_repo.const).toBe("Lazurio/gbrain");
   // Identity invariant stavební kameny (patterny na repo/mount).
   expect(schema.properties.repository.properties.github_repo.pattern).toContain("_GEN3");
   expect(schema.properties.repository.properties.mount_path.pattern).toContain("personalspace/");

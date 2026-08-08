@@ -22,6 +22,38 @@
       "const": "gen3",
       "description": "Kanonický klíč generace osobního prostoru. Repo i mount používají _GEN3 marker podle decision 0045/0051."
     },
+    "template_provenance": {
+      "type": "object",
+      "description": "Volitelný zpětně kompatibilní záznam původu: z jaké šablony, z jakého refu a z jakého přesného commitu byl tento Personalspace root materializovaný (current HumanAndMachines/PersonalspaceTemplate_GEN3, po provider cutoveru target Lazurio/PersonalspaceTemplate_GEN3; docs/personalspace-template-gen3.md). Zapisuje se JEDNORÁZOVĚ při materializaci (bootstrap), aby se původ nemusel později rekonstruovat archeologií na živém Personalspace Hostu. Není to sync autorizace ani mount kontrakt — template_sync_role a template_sync_authorization patří Organizaci (company.gen3.json), Personalspace je nemá. vN ladder (app/v1, app/v2, app/v3 podle docs/workspace-module-version-lifecycle.md) se na Personalspace root NEVZTAHUJE: verzi kontraktu rootu nese schema_version a personal_generation, protože root není appka ani data repo. vN je dimenze modulové appky a žije jen v modules.manifest.json module_slots[].template_provenance.source_version. Chybějící pole = původ není v konfiguraci deklarovaný (starší instance), nikdy ne 'není z template'.",
+      "required": [
+        "source_repository",
+        "source_ref",
+        "source_commit"
+      ],
+      "properties": {
+        "source_repository": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+          "description": "GitHub template repo v zápisu owner/repo, shodně s company.gen3.json template_sync_authorization.source_repository. Pro Personalspace je current HumanAndMachines/PersonalspaceTemplate_GEN3; po provider cutoveru je target Lazurio/PersonalspaceTemplate_GEN3."
+        },
+        "source_ref": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Git ref (branch nebo tag) šablony v okamžiku materializace — čitelná verze pointeru, kanonicky main. Ref se v čase posouvá, proto sám o sobě původ neurčuje."
+        },
+        "source_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$",
+          "description": "Přesný 40-hex commit šablony v okamžiku materializace. Jediná neposunutelná identita původu; podle ní se pozdější upstream diff počítá bez archeologie."
+        },
+        "materialized_at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$",
+          "description": "Volitelný ISO 8601 timestamp materializace (UTC nebo s offsetem)."
+        }
+      },
+      "additionalProperties": true
+    },
     "owner": {
       "type": "object",
       "required": [
@@ -99,7 +131,11 @@
           ],
           "properties": {
             "github_repo": {
-              "const": "HumanAndMachines/Buddy"
+              "enum": [
+                "HumanAndMachines/Buddy_GEN2",
+                "HumanAndMachines/Buddy"
+              ],
+              "description": "Buddy runtime integration repo. Kanonicky HumanAndMachines/Buddy_GEN2 — živá GEN2 kohorta (founder ruling 2026-07-29; decision 0114 §3). Zmrazený archiv HumanAndMachines/Buddy zůstává přijímaný po dobu kohorty. NAŠE ROZHODNUTÍ (ADR-077): const→enum, protože decision 0114 Důsledky vyžaduje, aby kontrakt po dobu kohorty přijímal víc než jednu hodnotu; na jediný literál se zúží až po migraci na Buddy_GEN3 (0107 §3). Buddy_GEN3 se sem NEpřidává — jeho přijetí patří do CAC-0076, ne sem."
             },
             "deployment_target": {
               "const": "owner-dedicated-personalspace-vps",
@@ -121,7 +157,8 @@
           ],
           "properties": {
             "software_repo": {
-              "const": "NousResearch/hermes-agent"
+              "const": "Lazurio/hermes-agent",
+              "description": "Hermes runtime software fork-of-record. Founder ruling 2026-07-29: reviewovaný fork byl PŘEVEDEN z org HumanAndMachines do org Lazurio (Lazurio/hermes-agent); oficiální upstream NousResearch/hermes-agent se nemění a zůstává parentem forku (MĚŘENO 2026-07-29: gh api repos/Lazurio/hermes-agent vrací fork=true, parent=NousResearch/hermes-agent; stará cesta redirectuje). Kompletní záznam nese revize 2026-07-29 v docs/decisions/0096-*. NAŠE ROZHODNUTÍ (ADR-077): zůstává const, protože ruling jmenuje jediný fork-of-record a žádné rozhodnutí zde nevyžaduje migrační okno s víc hodnotami (na rozdíl od buddy.runtime.github_repo dle 0114). Případný další přesun forku je nová reviewovaná jednorádková změna pinu, ne uvolnění na pattern."
             },
             "profile_format": {
               "const": "hermes-profile-distribution"
@@ -134,48 +171,6 @@
         }
       },
       "additionalProperties": true
-    },
-    "doctor": {
-      "type": "object",
-      "description": "Deklarace VLASTNÍHO doctora tohohle mountu (decision 0118). Root doctor podle ní podřízené doctory NAJDE — discovery je deklarací v manifestu, ne hádáním konvenční cesty: `scripts/doctor.mjs` by nefungovala pro mount, který není Node projekt, a hádaná cesta by z chybějícího doctora udělala ticho místo vady. Chybějící blok znamená 'tenhle mount vlastního doctora nemá', nikdy 'doctor je jinde'. Standardizované kontroly zůstávají rootu, vlastní kontroly patří sem — pull kořenového repa nesmí rozbít prostor, který má vlastní konfiguraci.",
-      "required": [
-        "schema_version",
-        "command"
-      ],
-      "properties": {
-        "schema_version": {
-          "const": "humanandmachines.doctor.declaration.v1"
-        },
-        "command": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "string"
-          },
-          "description": "argv podřízeného doctora. Dostane tenhle argv a pracovní adresář, vrací v3 report na stdout a exit kód 0=ok|warn, 1=fail, 2=incomplete, 3=report vůbec nevznikl."
-        },
-        "cwd": {
-          "type": "string",
-          "description": "Pracovní adresář relativně k mountu. Výchozí je kořen mountu."
-        },
-        "timeout_ms": {
-          "type": "integer",
-          "minimum": 1000,
-          "description": "Limit, po kterém root dítě ukončí a zapíše outcome 'timeout'. Zaseknutý doctor nepozoroval nic — to není zelená."
-        },
-        "scope_type": {
-          "type": "string",
-          "enum": [
-            "companiesascode_core",
-            "launchpad_root",
-            "organization",
-            "workspace",
-            "personalspace"
-          ],
-          "description": "Očekávaný scope.type v reportu dítěte. Root ho ASERTUJE (nesoulad = outcome 'scope_mismatch'), nikdy podle něj nic nevybírá."
-        }
-      },
-      "additionalProperties": false
     },
     "repository": {
       "type": "object",
@@ -229,11 +224,6 @@
     "workspace_path": {
       "const": "workspace"
     },
-    "shared_spaces": {
-      "type": "array",
-      "maxItems": 0,
-      "description": "Zpětně kompatibilní rezervované pole. Personalspace je výhradní prostor jednoho Principála a jeho volitelného Buddyho; cizí Personalspace se nemountuje, proto pole musí zůstat prázdné (decision 0091)."
-    },
     "gbrain": {
       "type": "object",
       "required": [
@@ -277,10 +267,12 @@
           ],
           "properties": {
             "github_repo": {
-              "const": "garrytan/gbrain"
+              "const": "Lazurio/gbrain",
+              "description": "gbrain software fork-of-record. Founder ruling 2026-07-29: reviewovaný fork byl PŘEVEDEN z org HumanAndMachines do org Lazurio (Lazurio/gbrain); oficiální upstream garrytan/gbrain se nemění a zůstává parentem forku (MĚŘENO 2026-07-29: gh api repos/Lazurio/gbrain vrací fork=true, parent=garrytan/gbrain; stará cesta redirectuje). Kompletní záznam nese revize 2026-07-29 v docs/decisions/0096-*. NAŠE ROZHODNUTÍ (ADR-077): zůstává const — jediný fork-of-record, žádné migrační okno vyžadující víc hodnot; další přesun je nová reviewovaná změna pinu."
             },
             "install_source": {
-              "const": "github:garrytan/gbrain"
+              "const": "github:Lazurio/gbrain",
+              "description": "Odkud se gbrain instaluje. Je to CESTA, ne release kanál: pin neříká, že existuje ověřená release pipeline, a zakládat ji nesmí — decision 0096 §4 zakazuje vydávat neověřený fork za hotový update kanál a §5 chce do managed instalace přesný release commit nebo immutable artifact. Ani jedno dnes neexistuje, takže se instaluje HEAD default branche forku. MĚŘENO 2026-07-29 dvakrát: ráno přes gh api byl Lazurio/gbrain@master proti garrytan/gbrain@master 295 commitů pozadu, 0 napřed; po upstream syncu téhož dne je přes git ls-remote head shodný (1057bf4368d9). Ten sync byl ale jednorázový ruční krok, ne mechanismus, a releases je pořád 0 — není co připnout. Release gate 0096 §4/§5 zůstává otevřený; až se uzavře, tohle pole se mění na release/artifact pin, ne na volnější pattern. Kontrakt pro člověka: docs/personalspace-template-gen3.md § „Fork-of-record není prokázaný release kanál\"."
             }
           },
           "additionalProperties": true
@@ -300,6 +292,50 @@
       },
       "additionalProperties": true
     },
+    "doctor": {
+      "type": "object",
+      "description": "Deklarace VLASTNÍHO doctora tohohle mountu (decision 0118). Root doctor podle ní podřízené doctory NAJDE — discovery je deklarací v manifestu, ne hádáním konvenční cesty: `scripts/doctor.mjs` by nefungovala pro mount, který není Node projekt, a hádaná cesta by z chybějícího doctora udělala ticho místo vady. Chybějící blok znamená 'tenhle mount vlastního doctora nemá', nikdy 'doctor je jinde'. Standardizované kontroly zůstávají rootu, vlastní kontroly patří sem — pull kořenového repa nesmí rozbít prostor, který má vlastní konfiguraci.",
+      "required": [
+        "schema_version",
+        "command"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "humanandmachines.doctor.declaration.v1"
+        },
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          },
+          "description": "argv podřízeného doctora. Dostane tenhle argv a pracovní adresář, vrací v3 report na stdout a exit kód 0=ok|warn, 1=fail, 2=incomplete, 3=report vůbec nevznikl."
+        },
+        "cwd": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$",
+          "description": "Pracovní adresář RELATIVNĚ k mountu; výchozí je kořen mountu. Absolutní cesta ani segment '..' se nepřijímají: doctor mountu se spouští jen uvnitř svého mountu. Schéma je tu doplněk — hranici vymáhá runtime nad rozloženou cestou (realpath), protože symlink ven z mountu žádné schéma neuvidí, a uniklý cwd by si scope check POTVRDIL sám se sebou."
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "description": "Limit, po kterém root dítě ukončí a zapíše outcome 'timeout'. Zaseknutý doctor nepozoroval nic — to není zelená."
+        },
+        "scope_type": {
+          "type": "string",
+          "enum": [
+            "companiesascode_core",
+            "launchpad_root",
+            "organization",
+            "workspace",
+            "personalspace"
+          ],
+          "description": "Očekávaný scope.type v reportu dítěte. Root ho ASERTUJE (nesoulad = outcome 'scope_mismatch'), nikdy podle něj nic nevybírá."
+        }
+      },
+      "additionalProperties": false
+    },
     "secrets": {
       "type": "object",
       "required": [
@@ -312,13 +348,20 @@
           "const": "secrets"
         },
         "custody_pattern": {
-          "const": "personalspace/<owner>_GEN3/secrets/<provider>/<scope>/<purpose>"
+          "type": "string",
+          "pattern": "^personalspace/(<owner>|[A-Za-z0-9][A-Za-z0-9-]{0,38})_GEN3/secrets/<provider>/<scope>/<purpose>$",
+          "description": "Deklarace layoutu owner-scoped secrets, ne seznam credentialů. NAŠE ROZHODNUTÍ (ADR-077, founder zadání 2026-07-29 „zrefactoruj, jak to dává smysl\"): dřívější const na šablonovém tvaru byl v každé instanci bajt za bajtem stejný — nemohl být špatně, a proto nic neprokazoval — a zároveň odmítal jedinou hodnotu, která něco tvrdí, totiž tvar rozepsaný na skutečného vlastníka. Přijímají se proto právě dva tvary: šablonový `<owner>` (template a examples, kde vlastník ještě není) a tvar rozepsaný na jeden GitHub login. Segmenty `<provider>/<scope>/<purpose>` zůstávají doslovné v obou tvarech, protože na rozdíl od vlastníka nejsou v okamžiku psaní manifestu známé — jsou to runtime multiplicity. Rozepsaný login váže na `owner.github_username` téhož manifestu semantická kontrola v scripts/check-personalspace-contracts.mjs; schema samo cizí login odlišit nedokáže, takže samotný pattern je nutná, ne postačující podmínka. Kontrakt pro člověka: docs/personalspace-template-gen3.md § „Custody secretů\"."
         },
         "git": {
           "const": "ignored"
         }
       },
       "additionalProperties": true
+    },
+    "shared_spaces": {
+      "type": "array",
+      "maxItems": 0,
+      "description": "Zpětně kompatibilní rezervované pole. Personalspace je výhradní prostor jednoho Principála a jeho volitelného Buddyho; cizí Personalspace se nemountuje, proto pole musí zůstat prázdné (decision 0091)."
     }
   },
   "additionalProperties": true

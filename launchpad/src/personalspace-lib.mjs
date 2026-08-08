@@ -168,6 +168,12 @@ export function validatePersonalConfig(personal, schema, label) {
           buddyRuntimeSpec.properties?.github_repo,
           "buddy.runtime.github_repo",
         );
+        checkEnum(
+          personal.buddy.runtime,
+          "github_repo",
+          buddyRuntimeSpec.properties?.github_repo,
+          "buddy.runtime.github_repo",
+        );
         checkConst(
           personal.buddy.runtime,
           "deployment_target",
@@ -414,7 +420,7 @@ export function identityInvariantIssues(personal, dirName) {
     }
     if (personal?.buddy !== undefined) {
       const buddyRepo = personal?.buddy?.repository?.github_repo;
-      const [buddyRepoOwner, buddyRepoName] = typeof buddyRepo === "string"
+      const [buddyRepoOwner] = typeof buddyRepo === "string"
         ? buddyRepo.split("/")
         : [];
       if (typeof buddyRepoOwner !== "string" || buddyRepoOwner.toLowerCase() !== owner.toLowerCase()) {
@@ -425,12 +431,6 @@ export function identityInvariantIssues(personal, dirName) {
         || buddyRepo?.toLowerCase() === gbrainRepo?.toLowerCase()
       ) {
         issues.push("buddy.repository.github_repo musí být jiné repo než Personalspace owner a gbrain repo");
-      }
-      if (
-        typeof buddyRepoName !== "string"
-        || personal?.buddy?.slug !== buddyRepoName.toLowerCase()
-      ) {
-        issues.push("buddy.slug musí odpovídat lower-case názvu Buddy profile repa");
       }
     }
   }
