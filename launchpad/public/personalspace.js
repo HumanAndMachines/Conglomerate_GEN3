@@ -508,20 +508,15 @@ function personalAppCard(app) {
   titleBlock.append(titleBody);
   head.append(titleBlock);
 
-  const topActions = document.createElement("div");
-  topActions.className = "personalspace-app-top-actions";
-  if (openable) {
-    const cue = document.createElement("span");
-    cue.className = "app-open-cue";
-    cue.setAttribute("aria-hidden", "true");
-    cue.innerHTML = iconOpenGlyph();
-    topActions.append(cue);
-  }
   // ⋯ menu se ukáže, jen když má obsah (zastavit/restart/logy) — čistá zastavená
   // dlaždice zůstane bez ⋯.
   const menu = personalMenuNode(app);
-  if (menu) topActions.append(menu);
-  head.append(topActions);
+  if (menu) {
+    const topActions = document.createElement("div");
+    topActions.className = "personalspace-app-top-actions";
+    topActions.append(menu);
+    head.append(topActions);
+  }
 
   card.append(head);
   // Sofistikovaný warning panel jen když je co řešit: nainstalovat/opravit
@@ -1055,11 +1050,6 @@ function shouldOpenFromCardSurface(target) {
   );
 }
 
-// Ikona ↗ „otevře na klik" (port iconOpenGlyph z app.js).
-function iconOpenGlyph() {
-  return '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
-}
-
 // Ikona osobní aplikace: heuristika podle modulu/id/tagů (osobní appky nemají
 // manifest icon). Všechny sdílí jednu „private" paletu (accent-tint), což
 // vizuálně drží osobní dlaždice pohromadě a odlišuje je od firemních.
@@ -1120,7 +1110,7 @@ async function runAction(app, action) {
     });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.message ?? `${action} selhal`);
-    deps.onToast(`${app.title}: ${action} dokončeno.`, "ok");
+    deps.onToast(`${app.title}: ${completedRuntimeActionLabel(action)}.`, "ok");
     await deps.onReload();
   } catch (error) {
     deps.onToast(`${app.title}: ${error.message}`, "fail", 6000);
@@ -1128,6 +1118,16 @@ async function runAction(app, action) {
     state.pendingAction = null;
     rerender();
   }
+}
+
+function completedRuntimeActionLabel(action) {
+  return ({
+    install: "instalace dokončena",
+    repair: "oprava dokončena",
+    start: "spuštění dokončeno",
+    stop: "zastavení dokončeno",
+    restart: "restart dokončen",
+  })[action] ?? "akce dokončena";
 }
 
 async function loadLogs(app) {

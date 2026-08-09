@@ -109,13 +109,10 @@ let organizationThemeRenderKey = null;
 let appliedLaunchpadHash = null;
 let launchpadScopeDataReady = false;
 
-// Appearance is split into two independent axes so a future settings panel can
-// drive both dynamically: `mode` (light/dark via data-theme) and `accent`
-// (a named colour preset via data-accent — see the accent presets in styles.css).
-// Components never hardcode colours; they read CSS variables that follow these.
-// Declared up here because initTheme() runs during module init, before the
-// theme section below would otherwise initialise these consts.
-const THEME_STORAGE = { mode: "launchpad-theme", accent: "launchpad-accent" };
+// Launchpad má zatím jen světlý režim. Accent zůstává samostatně připravený
+// pro osobní prostory; Organizace si dál dodává vlastní kanonické tokeny.
+const THEME_STORAGE = { accent: "launchpad-accent" };
+const LEGACY_THEME_MODE_STORAGE = "launchpad-theme";
 const ACCENT_PRESETS = ["default", "emerald", "amber", "rose", "slate"];
 const ORGANIZATION_THEME_TOKENS = new Set([
   "--bg", "--bg-elevated", "--bg-subtle", "--bg-muted", "--surface", "--surface-console",
@@ -282,16 +279,13 @@ const elements = {
   currentSpaceLogo: document.querySelector("#currentSpaceLogo"),
   currentSpaceLabel: document.querySelector("#currentSpaceLabel"),
   topbarOverflow: document.querySelector("#topbarOverflow"),
-  runtimeRootBadge: document.querySelector("#runtimeRootBadge"),
   personalPrivacyBadge: document.querySelector("#personalPrivacyBadge"),
   doctorStatus: document.querySelector("#doctorStatus"),
-  updateButton: document.querySelector("#updateButton"),
   updateBanner: document.querySelector("#updateBanner"),
   updateBannerText: document.querySelector("#updateBannerText"),
   updateBannerAction: document.querySelector("#updateBannerAction"),
   reloadButton: document.querySelector("#reloadButton"),
   pullAllButton: document.querySelector("#pullAllButton"),
-  themeToggle: document.querySelector("#themeToggle"),
   hero: document.querySelector("#hero"),
   heroTitle: document.querySelector("#heroTitle"),
   heroCta: document.querySelector("#heroCta"),
@@ -345,7 +339,6 @@ elements.reloadButton.addEventListener("click", () => {
   loadData();
 });
 elements.pullAllButton?.addEventListener("click", () => pullAllRepositories());
-elements.updateButton?.addEventListener("click", () => runRootUpdate());
 elements.updateBannerAction?.addEventListener("click", () => runRootUpdate());
 elements.heroCta.addEventListener("click", () => runHeroAction());
 elements.doctorStatus.addEventListener("click", () => {
@@ -365,12 +358,13 @@ elements.appsSearch.addEventListener("input", (event) => {
 for (const segment of elements.segmentedControl) {
   segment.addEventListener("click", () => {
     state.filters.status = segment.dataset.statusSegment ?? "all";
-    syncSegmentedControl();
+    state.filters.attentionOnly = false;
     render();
   });
 }
 elements.attentionToggle?.addEventListener("click", () => {
-  state.filters.attentionOnly = !state.filters.attentionOnly;
+  state.filters.status = "all";
+  state.filters.attentionOnly = true;
   render();
 });
 
@@ -555,12 +549,9 @@ initActiveWindowPolling();
    Theme + toasts
    ========================================================= */
 
-function applyTheme({ mode, accent } = {}) {
+function applyTheme({ accent } = {}) {
   const root = document.documentElement;
-  if (mode) {
-    root.setAttribute("data-theme", mode);
-    localStorage.setItem(THEME_STORAGE.mode, mode);
-  }
+  root.setAttribute("data-theme", "light");
   if (accent) {
     if (accent === "default") root.removeAttribute("data-accent");
     else root.setAttribute("data-accent", accent);
@@ -570,26 +561,19 @@ function applyTheme({ mode, accent } = {}) {
 }
 
 function currentThemeMode() {
-  return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+  return "light";
 }
 
 function initTheme() {
-  const storedMode = localStorage.getItem(THEME_STORAGE.mode);
-  const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
+  localStorage.removeItem(LEGACY_THEME_MODE_STORAGE);
   applyTheme({
-    mode: storedMode || (prefersDark ? "dark" : "light"),
     accent: localStorage.getItem(THEME_STORAGE.accent) || "default",
   });
 
-  elements.themeToggle?.addEventListener("click", () => {
-    applyTheme({ mode: currentThemeMode() === "dark" ? "light" : "dark" });
-  });
-
-  // Forward-compatible hook: a future appearance/settings UI can call
-  // window.LaunchpadTheme.setMode("dark") or .setAccent("emerald") to recolour
-  // the whole app dynamically without touching any component CSS.
+  // Accent zůstává dostupný pro osobní prostory; tmavý režim se znovu zapojí,
+  // až pro něj bude hotový a ověřený design.
   window.LaunchpadTheme = {
-    setMode: (mode) => applyTheme({ mode }),
+    setMode: () => false,
     setAccent: (accent) => {
       if (state.filters.scope === "org") return false;
       applyTheme({ accent });
@@ -957,7 +941,8 @@ function annotateGitAttention(apps) {
 
 function syncSegmentedControl() {
   for (const segment of elements.segmentedControl) {
-    const active = segment.dataset.statusSegment === state.filters.status;
+    const active = !state.filters.attentionOnly
+      && segment.dataset.statusSegment === state.filters.status;
     segment.classList.toggle("is-active", active);
     segment.setAttribute("aria-pressed", active ? "true" : "false");
   }
@@ -1126,23 +1111,20 @@ function renderDoctorStatus() {
   const status = state.doctor?.summary?.status ?? "unknown";
   const runState = state.doctorRunState;
   const chipStatus = runState === "unavailable" ? "fail" : runState === "complete" ? status : "unknown";
-  elements.doctorStatus.className = `status-pill status-${chipStatus}`;
-  elements.doctorStatus.textContent = runState === "running"
+  const label = runState === "running"
     ? "Doktor: kontroluje…"
     : runState === "unavailable"
       ? "Doktor: nedostupný"
       : runState === "complete"
         ? `Doktor: dokončeno · ${statusLabel(status)}`
         : "Doktor: bez výsledku";
-  elements.doctorStatus.title = "Dostupnost Doctora a výsledek root diagnostiky; stav aktivního prostoru shrnuje banner.";
-  const rootPath = state.doctor?.scope?.absolute_path;
-  const rootName = state.doctor?.scope?.name ?? "Launchpad root";
-  const normalizedRootPath = rootPath?.replaceAll("\\", "/");
-  const isWorktree = normalizedRootPath?.includes("/.worktrees/");
-  const worktreeName = isWorktree ? normalizedRootPath.slice(normalizedRootPath.lastIndexOf("/") + 1) : null;
-  elements.runtimeRootBadge.hidden = !rootPath;
-  elements.runtimeRootBadge.textContent = isWorktree ? `WORKTREE · ${worktreeName}` : "MAIN";
-  elements.runtimeRootBadge.title = rootPath ? `${rootName}: ${rootPath}` : "";
+  const needsAttention = runState === "unavailable"
+    || ["fail", "warn", "incomplete", "blocked", "error"].includes(status);
+  elements.doctorStatus.dataset.status = chipStatus;
+  elements.doctorStatus.setAttribute("aria-label", label);
+  elements.doctorStatus.title = label;
+  const alert = elements.doctorStatus.querySelector(".doctor-status-alert");
+  if (alert) alert.hidden = !needsAttention;
 }
 
 function renderProblems(spaceHealth) {
@@ -1303,7 +1285,21 @@ function renderActionMessage() {
   }
 
   elements.actionPanel.className = `action-panel action-${state.actionMessage.type}`;
-  elements.actionPanel.textContent = state.actionMessage.message;
+  const message = document.createElement("span");
+  message.className = "action-panel-message";
+  message.textContent = state.actionMessage.message;
+  const dismiss = document.createElement("button");
+  dismiss.type = "button";
+  dismiss.className = "action-panel-dismiss";
+  dismiss.setAttribute("aria-label", "Zavřít zprávu");
+  dismiss.title = "Zavřít";
+  // lucide/x
+  dismiss.innerHTML = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+  dismiss.addEventListener("click", () => {
+    state.actionMessage = null;
+    renderActionMessage();
+  });
+  elements.actionPanel.replaceChildren(message, dismiss);
 }
 
 /* =========================================================
@@ -1715,17 +1711,19 @@ function personalSpaceIcon() {
   svg.setAttribute("width", "18");
   svg.setAttribute("height", "18");
   svg.setAttribute("fill", "none");
-  svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", "2");
-  svg.setAttribute("stroke-linecap", "round");
-  svg.setAttribute("stroke-linejoin", "round");
-  const circle = document.createElementNS(namespace, "circle");
-  circle.setAttribute("cx", "12");
-  circle.setAttribute("cy", "8");
-  circle.setAttribute("r", "4");
-  const path = document.createElementNS(namespace, "path");
-  path.setAttribute("d", "M4 21a8 8 0 0 1 16 0");
-  svg.append(circle, path);
+  svg.setAttribute("stroke-width", "1.5");
+  // iconoir/user — stejná kanonická ikona jako výchozí stav v HTML.
+  for (const pathData of [
+    "M5 20V19C5 15.134 8.13401 12 12 12C15.866 12 19 15.134 19 19V20",
+    "M12 12C14.2091 12 16 10.2091 16 8C16 5.79086 14.2091 4 12 4C9.79086 4 8 5.79086 8 8C8 10.2091 9.79086 12 12 12Z",
+  ]) {
+    const path = document.createElementNS(namespace, "path");
+    path.setAttribute("d", pathData);
+    path.setAttribute("stroke", "currentColor");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+    svg.append(path);
+  }
   return svg;
 }
 
@@ -2416,9 +2414,7 @@ function organizationSectionNode({ organization, families, modules }) {
   const node = document.createElement("section");
   node.className = "app-section app-section-organization";
   node.append(
-    appSectionHead("Organizace", "Organizace", pluralModule(moduleCount), {
-      count: moduleCount,
-    }),
+    appSectionHead("Organizace", `${moduleCount} ${pluralModule(moduleCount)}`),
     grid,
   );
   return node;
@@ -2433,7 +2429,7 @@ function workspaceSectionNode({ organization, teamSections }) {
   const node = document.createElement("section");
   node.className = "app-section app-section-workspace";
   node.append(
-    appSectionHead("Workspace", "Workspace", pluralModule(uniqueModules.size), { count: uniqueModules.size }),
+    appSectionHead("Workspace", `${uniqueModules.size} ${pluralModule(uniqueModules.size)}`),
     teamAccessSummaryNode(organization),
   );
   const teams = document.createElement("div");
@@ -2448,7 +2444,10 @@ function teamSectionNode(section, organization) {
   const moduleCount = section.families.length + (section.modules?.length ?? 0);
   const node = document.createElement("section");
   node.className = "workspace-team";
-  node.append(appSectionHead("Team", team?.display_name ?? humanizeModuleSlug(section.team), pluralModule(moduleCount), { count: moduleCount }));
+  node.append(appSectionHead(
+    team?.display_name ?? humanizeModuleSlug(section.team),
+    `${moduleCount} ${pluralModule(moduleCount)}`,
+  ));
   if (team?.description) {
     const description = document.createElement("p");
     description.className = "app-section-note";
@@ -2637,13 +2636,6 @@ function workspaceModuleCard(module, companySlug, options = {}) {
   titleBody.append(titleRow, desc);
   titleBlock.append(titleBody);
   head.append(titleBlock);
-  if (openable) {
-    const cue = document.createElement("span");
-    cue.className = "app-open-cue";
-    cue.setAttribute("aria-hidden", "true");
-    cue.innerHTML = iconOpenGlyph();
-    head.append(cue);
-  }
   card.append(head);
   card.addEventListener("click", (event) => {
     if (!shouldOpenFromCardSurface(event.target)) return;
@@ -2667,10 +2659,8 @@ function productionspaceSectionNode(entry) {
   node.className = "app-section app-section-productionspace";
   node.append(
     appSectionHead(
-      "Productionspace",
       entry.productionspace.display_name ?? "Productionspace",
-      `${pluralSystem(entry.productionspace.systems.length)} · externě spravované`,
-      { count: entry.productionspace.systems.length },
+      `${entry.productionspace.systems.length} ${pluralSystem(entry.productionspace.systems.length)} · externě spravované`,
     ),
   );
   const note = document.createElement("p");
@@ -2780,9 +2770,9 @@ function productionspaceDetail(system, entry) {
   };
 }
 
-// Section header in GEN2 group style (port web/app.js app-group-head:2728–2737):
-// eyebrow and a title row with the title, count badge and its unit.
-function appSectionHead(eyebrow, title, meta, { count } = {}) {
+// Lazurio section header: one semantic title and one quiet, grammatical summary.
+// Category badges would duplicate the title and introduce forbidden uppercase labels.
+function appSectionHead(title, summary) {
   const head = document.createElement("header");
   head.className = "app-section-head";
   const titleRow = document.createElement("div");
@@ -2791,23 +2781,11 @@ function appSectionHead(eyebrow, title, meta, { count } = {}) {
   titleNode.className = "app-section-title";
   titleNode.textContent = title;
   titleRow.append(titleNode);
-  if (Number.isFinite(count)) {
-    const countNode = document.createElement("span");
-    countNode.className = "app-section-count";
-    countNode.textContent = String(count);
-    titleRow.append(countNode);
-  }
-  if (eyebrow) {
-    const eyebrowNode = document.createElement("span");
-    eyebrowNode.className = "app-section-eyebrow";
-    eyebrowNode.textContent = eyebrow;
-    head.append(eyebrowNode);
-  }
-  if (meta) {
-    const metaNode = document.createElement("span");
-    metaNode.className = "app-section-meta";
-    metaNode.textContent = meta;
-    titleRow.append(metaNode);
+  if (summary) {
+    const summaryNode = document.createElement("span");
+    summaryNode.className = "app-section-summary";
+    summaryNode.textContent = summary;
+    titleRow.append(summaryNode);
   }
   head.append(titleRow);
   return head;
@@ -2835,6 +2813,9 @@ function appCard(app, family = { key: app.id, members: [app], primary: app }) {
   const selected = members.some((member) => member.id === state.selectedAppId);
   const nextAction = primaryNextAction(app);
   const readOnly = isProductionspace(app) || nextAction.type === "disabled";
+  const opensForeignViewer = nextAction.type === "open"
+    && app.runtime?.owner === "foreign-port"
+    && Boolean(app.url);
   const running = app.runtime_status === "healthy";
   const warning = cardWarningModel(app, gitRepoForApp(app));
 
@@ -2847,8 +2828,8 @@ function appCard(app, family = { key: app.id, members: [app], primary: app }) {
   // GEN2-minimal dlaždice (port web/app.js:2875–2896 zjednodušený per owner
   // request 2026-07-05): ikona nad názvem (+ verze) a popisem. Žádný
   // company·module sub-řádek ani trvalé statusové chipy — v čistém zastaveném
-  // stavu je karta jen klikatelná dlaždice, která otevře výchozí verzi. ↗ cue a
-  // ⋯ menu jsou vpravo nahoře.
+  // stavu je karta jen klikatelná dlaždice, která otevře výchozí verzi. Další
+  // možnosti zůstávají vpravo nahoře jen tam, kde mají skutečný obsah.
   const head = document.createElement("div");
   head.className = "app-card-head";
 
@@ -2894,21 +2875,14 @@ function appCard(app, family = { key: app.id, members: [app], primary: app }) {
   titleBlock.append(titleBody);
   head.append(titleBlock);
 
-  const topActions = document.createElement("div");
-  topActions.className = "app-card-top-actions";
-  if (!readOnly) {
-    const cue = document.createElement("span");
-    cue.className = "app-open-cue";
-    cue.setAttribute("aria-hidden", "true");
-    cue.innerHTML = iconOpenGlyph();
-    topActions.append(cue);
-  }
   // ⋯ menu drží „další možnosti" (varianty, zastavit, restart, detail/logy).
   // Zobrazí se, jen když je co nabídnout — čistá dlaždice zůstane bez ⋯.
   if (cardHasMenu(app, others)) {
+    const topActions = document.createElement("div");
+    topActions.className = "app-card-top-actions";
     topActions.append(versionMenuNode(app, others, family.key, moduleName));
+    head.append(topActions);
   }
-  head.append(topActions);
 
   const feedback = document.createElement("div");
   feedback.className = "card-feedback empty";
@@ -2942,16 +2916,24 @@ function appCard(app, family = { key: app.id, members: [app], primary: app }) {
       selectAppDetail(app.id);
     });
   } else {
-    // Openable karta: klik na plochu (mimo tlačítka/menu) spustí one-click open.
+    // Cizí běžící checkout se otevře přímo jako read-only viewer. Ostatní
+    // karty používají one-click open chain, který smí spravovat jejich runtime.
+    const openFromCard = () => {
+      if (opensForeignViewer) {
+        openResultUrl(app.url, null, app);
+        return;
+      }
+      void openAppChain(app, { feedback });
+    };
     card.addEventListener("click", (event) => {
       if (!shouldOpenFromCardSurface(event.target)) return;
-      void openAppChain(app, { feedback });
+      openFromCard();
     });
     card.addEventListener("keydown", (event) => {
       if (event.target !== card) return;
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
-      void openAppChain(app, { feedback });
+      openFromCard();
     });
   }
 
@@ -3366,6 +3348,13 @@ function shouldOpenFromCardSurface(target) {
 // One-click open chain (CAC-0044, step-003): rezervace tabu → průběh → toast →
 // klasifikace chyb (port GEN2 web/app.js:2900–2994, 2938–2950).
 async function openAppChain(app, { feedback } = {}) {
+  // Cizí checkout už na deklarované URL běží, ale Launchpad ho nesmí
+  // adoptovat ani jinak měnit. Všechny vstupy (karta, stage i menu) proto
+  // končí přímým otevřením vieweru ještě před mutačním API voláním.
+  if (app.runtime?.owner === "foreign-port" && app.url) {
+    openResultUrl(app.url, null, app);
+    return;
+  }
   if (state.openingApps.has(app.id)) return;
   state.openingApps.add(app.id);
   // Rezervace tabu PŘED akcí, aby ho prohlížeč nezablokoval (není to
@@ -3806,10 +3795,16 @@ function primaryNextAction(app) {
   if (app.kind === "workspace-module" && app.can_open_folder) {
     return { type: "folder", label: "Otevřít složku" };
   }
+  // Cizí checkout se nesmí adoptovat, spouštět ani zastavovat. Když ale
+  // odpovídá na deklarované lokální URL, je bezpečné nabídnout read-only
+  // otevření jeho vieweru — typický případ aktivního modulového worktree.
+  if (app.runtime?.owner === "foreign-port" && app.url) {
+    return { type: "open", label: "Otevřít běžící checkout" };
+  }
   if (isUntrustedPortOwner(app)) {
     return {
       type: "disabled",
-      label: app.runtime?.owner === "foreign-port" ? "Cizí checkout na portu" : "Checkout procesu nelze ověřit",
+      label: "Checkout procesu nelze ověřit",
     };
   }
   if (dependencyState === "needs_install") {
@@ -4590,9 +4585,8 @@ function formatCommitCountCz(value) {
   return `${number} commitů`;
 }
 
-// Banner se ukazuje jen pro akční stavy: kolega má jedním klikem stáhnout
-// novou verzi. Neakční poruchy (diverged, fetch_failed…) zůstávají v pillu
-// a Doctor panelu, aby banner nekřičel bez proveditelné akce.
+// Aktuální stav je tichý. Dostupná aktualizace dostane akci; zablokované nebo
+// chybové stavy zůstávají viditelné jako vysvětlení bez falešného tlačítka.
 function renderUpdateBanner() {
   const banner = elements.updateBanner;
   if (!banner) return;
@@ -4602,11 +4596,22 @@ function renderUpdateBanner() {
     status.state === "update_available"
     || (status.state === "dirty_worktree" && status.can_update_with_autostash)
   );
-  if (!actionable) {
+  if (!status || status.state === "up_to_date") {
     banner.hidden = true;
     return;
   }
+  if (!actionable) {
+    elements.updateBannerText.textContent = status.message ?? "Stav aktualizace se nepodařilo ověřit.";
+    elements.updateBannerAction.hidden = true;
+    elements.updateBannerAction.disabled = true;
+    banner.classList.remove("is-updating");
+    banner.classList.add("is-blocked");
+    banner.hidden = false;
+    return;
+  }
   const preserve = status.state === "dirty_worktree";
+  elements.updateBannerAction.hidden = false;
+  banner.classList.remove("is-blocked");
   elements.updateBannerText.textContent = state.updatePending
     ? "Stahuju novou verzi… Stránka se po dokončení sama znovu načte."
     : preserve
@@ -4621,43 +4626,7 @@ function renderUpdateBanner() {
 }
 
 function renderUpdatePill() {
-  const button = elements.updateButton;
-  if (!button) return;
   renderUpdateBanner();
-  const status = state.updateStatus;
-  if (!status) {
-    button.hidden = true;
-    return;
-  }
-  const channel = status.channel ?? "stable";
-  const version = status.version?.describe || status.head?.short_sha || "";
-  const pill = (tone, label) => {
-    button.className = `status-pill status-${tone} update-pill`;
-    button.textContent = state.updatePending ? "Aktualizuju…" : label;
-    button.disabled = state.updatePending;
-    button.title = `${status.message ?? ""} Kanál: ${channel}. Verze: ${version}.`.trim();
-    button.hidden = false;
-  };
-  switch (status.state) {
-    case "up_to_date":
-      pill("ok", `Aktuální · ${channel} · ${version}`);
-      break;
-    case "update_available":
-      pill("warn", `Aktualizovat · ${channel} · ${formatCommitCountCz(status.counts?.behind)}`);
-      break;
-    case "dirty_worktree":
-      pill("warn", status.can_update_with_autostash ? "Aktualizovat (zachovat změny)" : `Lokální změny · ${channel}`);
-      break;
-    case "ahead_of_channel_target":
-      pill("ok", `Před kanálem ${channel} · ${version}`);
-      break;
-    case "no_release_tag":
-      pill("unknown", "Stable zatím bez release");
-      break;
-    default:
-      pill("fail", `Update: vyžaduje pozornost`);
-      break;
-  }
 }
 
 async function runRootUpdate() {
@@ -5357,11 +5326,12 @@ async function runRuntimeAction(app, action) {
     if (!response.ok) {
       throw new Error(payload.message ?? `${action} selhal`);
     }
+    const completedAction = completedRuntimeActionLabel(action);
     state.actionMessage = {
       type: "ok",
-      message: `${app.title}: ${action} dokončeno.`,
+      message: `${app.title}: ${completedAction}.`,
     };
-    toast(`${app.title}: ${action} dokončeno.`, "ok");
+    toast(`${app.title}: ${completedAction}.`, "ok");
   } catch (error) {
     state.actionMessage = {
       type: "fail",
@@ -5374,6 +5344,16 @@ async function runRuntimeAction(app, action) {
     state.pendingAction = null;
     render();
   }
+}
+
+function completedRuntimeActionLabel(action) {
+  return ({
+    install: "instalace dokončena",
+    repair: "oprava dokončena",
+    start: "spuštění dokončeno",
+    stop: "zastavení dokončeno",
+    restart: "restart dokončen",
+  })[action] ?? "akce dokončena";
 }
 
 async function switchRuntimeApp(app, peer) {

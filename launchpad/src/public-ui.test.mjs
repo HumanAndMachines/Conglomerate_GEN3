@@ -96,9 +96,8 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(server).toContain('"cross-origin-resource-policy": "same-origin"');
   expect(js).toContain("function renderScopeControls");
   expect(js).toContain('state.filters.scope === "personal"');
-  expect(html).toContain('id="runtimeRootBadge"');
-  expect(js).toContain('WORKTREE · ${worktreeName}');
-  expect(js).toContain('rootPath?.replaceAll("\\\\", "/")');
+  expect(html).not.toContain('id="runtimeRootBadge"');
+  expect(js).not.toContain('WORKTREE · ${worktreeName}');
   expect(js).toContain('elements.drawerToggle.classList.toggle("hidden", personal)');
   expect(js).toContain('state.filters.scope = "personal";\n  state.filters.company = "all";');
   const switcherBlock = js.slice(js.indexOf("function renderSpaceSwitcher"), js.indexOf("Side panels:"));
@@ -130,7 +129,14 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(server).toContain("runtimeManager.switchApp(route.appId, runtimeOptions)");
   expect(js).toContain('title: app.runtime?.owner === "foreign-port" ? "Cizí checkout na portu" : "Checkout procesu nelze ověřit"');
   expect(js).toContain('actionLabel: "Zobrazit detail"');
-  expect(js).toContain('label: app.runtime?.owner === "foreign-port" ? "Cizí checkout na portu" : "Checkout procesu nelze ověřit"');
+  expect(js).toContain('app.runtime?.owner === "foreign-port" && app.url');
+  expect(js).toContain('label: "Otevřít běžící checkout"');
+  expect(js).toContain('if (opensForeignViewer)');
+  expect(js).toContain('openResultUrl(app.url, null, app)');
+  const openChainBlock = js.slice(js.indexOf("async function openAppChain"), js.indexOf("function reserveResultTab"));
+  expect(openChainBlock).toContain('app.runtime?.owner === "foreign-port" && app.url');
+  expect(openChainBlock).toContain('openResultUrl(app.url, null, app)');
+  expect(js).toContain('label: "Checkout procesu nelze ověřit"');
   expect(js).toContain('small.textContent = blocked ? "blokovaná"');
   expect(js).toContain('action.textContent = blocked ? "Zobrazit detail"');
   expect(js).toContain('primaryNextAction(app).type !== "disabled"');
@@ -139,6 +145,7 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(css).toContain(".space-switcher-option");
   expect(css).toContain("max-height: calc(100vh - 5.5rem)");
   expect(css).toContain("overflow-y: auto");
+  expect(css).toContain("#drawerToggle:not(.hidden) {\n    display: inline-flex !important;");
   expect(css).toContain(".space-logo-organization");
   expect(css).toContain(".space-logo img");
   expect(css).toContain("var(--launchpad-body-background)");
@@ -154,7 +161,7 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(css).toContain(".space-profile-settings");
   expect(css).toContain("grid-template-columns: minmax(0, 1fr)");
   expect(css).not.toContain(".rail-panel");
-  expect(css).toContain(".runtime-root-badge");
+  expect(css).not.toContain(".runtime-root-badge");
   expect(css).not.toContain(".organization-rail");
   expect(css).toContain(".apps-grid");
   expect(css).toContain(".app-card");
@@ -243,32 +250,36 @@ test("Launchpad shell ships GEN2-like command center, theme and feedback afforda
   expect(js).toContain("state.suppressNextDrawerOpen = true");
   expect(js).toContain("if (mobilePanelQuery.matches) setDrawer(false)");
 
-  // Theme toggle + persisted theme.
+  // Launchpad je zatím pouze světlý; stará uložená tmavá volba se odstraní.
   expect(html).toContain('data-theme="light"');
-  expect(html).toContain('id="themeToggle"');
+  expect(html).not.toContain('id="themeToggle"');
+  expect(html).not.toContain('id="updateButton"');
   expect(js).toContain("function initTheme");
   expect(js).toContain("launchpad-theme");
+  expect(js).toContain("localStorage.removeItem(LEGACY_THEME_MODE_STORAGE)");
+  expect(js).toContain("setMode: () => false");
   expect(css).toContain('[data-theme="dark"]');
 
-  // Theming is built to be driven dynamically by a future settings panel:
-  // a mode axis (data-theme) and a named accent axis (data-accent presets),
-  // exposed via window.LaunchpadTheme, with accent-derived tokens via color-mix.
+  // Accent zůstává připravený pro osobní prostory; režim je do dokončení
+  // tmavého návrhu uzamčený na light.
   expect(js).toContain("function applyTheme");
   expect(js).toContain("window.LaunchpadTheme");
   expect(js).toContain("launchpad-accent");
   expect(css).toContain('[data-accent="emerald"]');
   expect(css).toContain("color-mix(in srgb, var(--accent)");
 
-  // Search + segmented status filter in the workbench.
+  // Search + user-facing two-option view filter in the workbench.
   expect(html).toContain('id="appsSearch"');
-  expect(html).toContain("data-status-segment");
-  expect(html).not.toContain('data-status-segment="attention"');
+  expect(html).toContain('data-status-segment="all"');
+  expect(html).not.toContain('data-status-segment="healthy"');
+  expect(html).not.toContain('data-status-segment="stopped"');
   expect(html).toContain('id="attentionToggle"');
-  expect(html).toContain("Jen vyžadující kontrolu");
-  expect(js).toContain("state.filters.attentionOnly = !state.filters.attentionOnly");
+  expect(html).toContain("Ke kontrole");
+  expect(js).toContain("state.filters.attentionOnly = true");
+  expect(js).toContain("state.filters.attentionOnly = false");
   expect(js).toContain("function syncAttentionToggle");
   expect(css).toContain(".segmented-control");
-  expect(css).toContain(".attention-toggle");
+  expect(html).toContain('class="segment attention-toggle"');
 
   // Toast + skeleton feedback.
   expect(html).toContain('id="toastRoot"');
@@ -305,7 +316,10 @@ test("Daily surface hides diagnostics until the hero action requests them", asyn
   // proto druhá explicitní, klávesnicí dostupná cesta ke stejnému detailu.
   expect(html).toContain('id="doctorStatus"');
   expect(html).toContain('aria-controls="problemsPanel"');
+  expect(html).toContain('class="doctor-status-alert"');
+  expect(html).toContain('<!-- lucide/stethoscope -->');
   expect(js).toContain('elements.doctorStatus.addEventListener("click", () => {');
+  expect(js).toContain('alert.hidden = !needsAttention');
   expect(js).toContain("closeMobileOverflow();");
   expect(js).toContain('elements.doctorStatus.setAttribute("aria-expanded", String(details.open))');
   expect(js).toContain('check.id === "launchpad.personalspace" && check.status === "fail"');
@@ -404,6 +418,42 @@ test("Launchpad icon registry is initialized before the first async data render"
   expect(js.indexOf("await loadData();")).toBeGreaterThan(js.indexOf("const APP_ICON_PATHS"));
 });
 
+test("CAC-0095: topbar uses canonical Iconoir icons without circular wrappers", async () => {
+  const [html, css, js] = await Promise.all([
+    readFile(join(publicRoot, "index.html"), "utf8"),
+    readFile(join(publicRoot, "styles.css"), "utf8"),
+    readFile(join(publicRoot, "app.js"), "utf8"),
+  ]);
+
+  for (const icon of ["user", "nav-arrow-down", "lock", "bell", "layout-right", "more-horiz", "refresh"]) {
+    expect(html).toContain(`<!-- iconoir/${icon} -->`);
+  }
+
+  expect(html).toContain("M5 20V19C5 15.134");
+  expect(html).toContain("M6 9L12 15L18 9");
+  expect(html).toContain("M16 12H17.4C17.7314");
+  expect(html).toContain("M18 8.4C18 6.70261");
+  expect(html).toContain("M14.25 9.75V21");
+  expect(html).toContain("M20 12.5C20.2761 12.5");
+  expect(html).not.toContain("M3 11.5066C3 16.7497");
+  expect(html).toContain("M21.8883 13.5C21.1645");
+  expect(js).toContain("// iconoir/user");
+  expect(js).toContain("M5 20V19C5 15.134");
+  expect(html).not.toContain("M18 8a6 6 0 0 0-12 0");
+  expect(html).not.toContain('<circle cx="5" cy="12" r="1.7" />');
+  expect(html).not.toContain("M21 12.8A9 9 0 1 1");
+  expect(html).not.toContain("M3 12a9 9 0 0 1");
+  expect((html.match(/topbar-icon-plain/g) ?? []).length).toBe(5);
+  expect(css).toContain(".topbar-icon-plain,");
+  expect(css).toContain("border-color: transparent;");
+  expect(css).toContain("border-radius: 0;");
+  expect(css).toContain("background: transparent;");
+  expect(css).toMatch(/\.space-switcher-button \{[\s\S]*?border: 1px solid transparent;/);
+  expect(css).toMatch(/\.topbar \{[\s\S]*?background: var\(--paper\);/);
+  expect(css).toMatch(/\.space-switcher-button \{[\s\S]*?background: transparent;/);
+  expect(css).toMatch(/\.space-switcher-button:hover,[\s\S]*?border-color: transparent;/);
+});
+
 test("Version families render as one card with a default version and a more-menu", async () => {
   const [js, css] = await Promise.all([
     readFile(join(publicRoot, "app.js"), "utf8"),
@@ -445,6 +495,10 @@ test("CAC-0044: karty jsou celé klikatelné a spouští one-click open s guarde
   expect(js).toContain("Aplikace startuje moc dlouho");
   expect(js).toContain("EADDRINUSE");
   expect(js).toContain("function writeCardProgress");
+  expect(js).toContain("function completedRuntimeActionLabel");
+  expect(js).toContain('repair: "oprava dokončena"');
+  expect(js).toContain('dismiss.setAttribute("aria-label", "Zavřít zprávu")');
+  expect(css).toContain(".action-panel-dismiss");
   // Karta čte popis a ikonu z manifestu s fallbacky.
   expect(js).toContain("function appDescription");
   expect(js).toContain("app.icon");
@@ -453,7 +507,7 @@ test("CAC-0044: karty jsou celé klikatelné a spouští one-click open s guarde
   expect(js).not.toContain("QUICK_APP_IDS");
   expect(js).not.toContain("APP_GROUPS");
   expect(css).toContain(".card-feedback");
-  expect(css).toContain(".app-open-cue");
+  expect(css).not.toContain(".app-open-cue");
 });
 
 test("CAC-0044: technická diagnostika nerozbíjí mřížku karet", async () => {
@@ -806,17 +860,18 @@ test("UI separates physical Organization/Workspace/Productionspace and prepares 
   expect(js).toContain("function teamAccessSummaryNode");
   expect(js).toContain("Tvoje Teamy");
   expect(js).toContain("GitHub členství neověřeno");
-  expect(js).toContain("titleRow.append(metaNode)");
+  expect(js).toContain("titleRow.append(summaryNode)");
   const titleRowCss = css.slice(
     css.indexOf(".app-section-title-row {"),
     css.indexOf("}", css.indexOf(".app-section-title-row {")) + 1,
   );
-  const sectionMetaCss = css.slice(
-    css.indexOf(".app-section-meta {"),
-    css.indexOf("}", css.indexOf(".app-section-meta {")) + 1,
+  const sectionSummaryCss = css.slice(
+    css.indexOf(".app-section-summary {"),
+    css.indexOf("}", css.indexOf(".app-section-summary {")) + 1,
   );
   expect(titleRowCss).toContain("flex-wrap: wrap");
-  expect(sectionMetaCss).toContain("white-space: normal");
+  expect(sectionSummaryCss).toContain("white-space: nowrap");
+  expect(js).not.toContain("app-section-eyebrow");
   expect(js).toContain("function workspaceModuleCard");
   expect(js).toContain("function workspaceModulesInView");
   expect(js).toContain("Otevřít složku");
@@ -1051,10 +1106,11 @@ test("Launchpad používá jednotný kompaktní modulový grid bez stínů", asy
   expect(js).toContain('["manual", "admin", "productionspace", "public-preview"].includes(app.surface)');
   expect(js).toContain("return surface ? `${surface} · ${purpose}` : purpose");
   expect(js).toContain("if (orgLabel && shouldShowCardOrg())");
-  expect(css).not.toContain("box-shadow");
-  expect(css).not.toContain("text-shadow");
-  expect(css).not.toContain("drop-shadow");
-  expect(css).not.toContain("--shadow-");
+  const appCardRule = css.match(/\.app-card\s*\{[^}]*\}/s)?.[0] ?? "";
+  expect(appCardRule).not.toContain("box-shadow");
+  expect(appCardRule).not.toContain("text-shadow");
+  expect(appCardRule).not.toContain("drop-shadow");
+  expect(appCardRule).not.toContain("--shadow-");
 });
 
 test("Organization workspace má kompaktní uvítání s dynamickým názvem firmy", async () => {
@@ -1066,7 +1122,7 @@ test("Organization workspace má kompaktní uvítání s dynamickým názvem fir
 
   expect(html).toContain('id="workspaceWelcome"');
   expect(html.indexOf('id="workspaceWelcome"')).toBeLessThan(html.indexOf('id="appsToolbar"'));
-  expect(html).toContain("Vyberte aplikaci a pokračujte tam, kde potřebujete.");
+  expect(html).not.toContain("Vyberte aplikaci a pokračujte tam, kde potřebujete.");
   expect(js).toContain("function renderWorkspaceWelcome");
   expect(js).toContain("`Vítejte v pracovním prostoru ${organizationName}`");
   expect(js).toContain('toggleAttribute("hidden", personal)');
@@ -1095,13 +1151,16 @@ test("CAC-0083: dostupný root update je nepřehlédnutelný — banner ve všec
   expect(html).toContain('id="updateBannerText"');
   expect(html).toContain('id="updateBannerAction"');
 
-  // Banner se ukazuje jen pro akční stavy a nese počet commitů; akce vede na
-  // stejný guarded runRootUpdate jako pill.
+  // Aktuální stav je tichý. Akční stav nese počet commitů a vede na guarded
+  // update; blokovaný stav zůstane vysvětlený bez falešného tlačítka.
   expect(js).toContain("function renderUpdateBanner");
   expect(js).toContain('status.state === "update_available"');
   expect(js).toContain('(status.state === "dirty_worktree" && status.can_update_with_autostash)');
   expect(js).toContain("function formatCommitCountCz");
-  expect(js).toContain("formatCommitCountCz(status.counts?.behind)");
+  expect(js).toContain("formatCommitCountCz(behind)");
+  expect(js).toContain('status.state === "up_to_date"');
+  expect(js).toContain('elements.updateBannerAction.hidden = true');
+  expect(js).toContain('banner.classList.add("is-blocked")');
   expect(js).toContain('elements.updateBannerAction?.addEventListener("click", () => runRootUpdate())');
 
   // Update status se neobnovuje jen jednou při startu: quiet poll ho drží
