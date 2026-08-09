@@ -16,10 +16,11 @@ stejného kanonického repozitáře, z commitu
 `ed34efa929a599a22005f83ea2d6a514aec98445`:
 
 - `favicon.svg` a `favicon.ico` jsou kanonické favicon exporty;
-- `apple-touch-icon.png` je kanonický `appicon-180.png`;
-- `assets/launchpad.svg` je kanonický `appicon-master.svg`;
+- `apple-touch-icon.png` je 180px platformní export kanonického
+  `profile-light-1024.png` pro použití na světlé ploše;
+- `assets/launchpad.svg` je kanonický `profile-light.svg`;
 - `assets/launchpad.ico` je platformní balení kanonického
-  `appicon-1024.png` pro Windows zástupce.
+  `profile-light-1024.png` pro Windows zástupce na světlé ploše.
 
 Ani ikonové kopie se neupravují ručně. Změna kresby patří nejdřív do
 generátoru design systému Lazurio a potom se znovu vyexportuje celá sada.
