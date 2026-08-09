@@ -209,6 +209,9 @@ async function updateOrganizationRepo({
       message: materialization.message,
       branch: materialization.branch ?? null,
       head: materialization.head ?? null,
+      residue_recovery_path: materialization.residue_recovery_path ?? null,
+      recovery_path: materialization.recovery_path ?? null,
+      residue_restored: Boolean(materialization.residue_restored),
     };
   }
   if (preflight.status === "up_to_date") {

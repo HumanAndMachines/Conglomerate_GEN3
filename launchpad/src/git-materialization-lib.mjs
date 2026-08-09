@@ -1,5 +1,13 @@
-import { lstat, mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readdir,
+  realpath,
+  rename,
+  rm,
+} from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
   GIT_FETCH_TIMEOUT_MS,
@@ -13,6 +21,18 @@ import {
 } from "./path-boundary-lib.mjs";
 
 export const GIT_CLONE_TIMEOUT_MS = 10 * 60_000;
+
+const GENERATED_RESIDUE_DIRECTORIES = new Set([
+  "node_modules",
+  ".astro",
+  ".next",
+  ".nuxt",
+  ".svelte-kit",
+  ".vite",
+  ".cache",
+  ".turbo",
+]);
+const AMBIGUOUS_OUTPUT_DIRECTORIES = new Set(["build", "dist", "out"]);
 
 // Explicit sync/update action for an active manifest slot whose checkout is
 // missing. Doctor remains read-only: it only reports missing_access. This
@@ -29,7 +49,11 @@ export async function materializeRepoCheckout({
     run = runGit,
     makeDirectory = mkdir,
     makeTempDirectory = mkdtemp,
+    makeRecoveryDirectory = mkdtemp,
+    move = rename,
     remove = rm,
+    recoveryStateRoot = defaultRecoveryStateRoot(),
+    now = () => new Date(),
   } = deps;
 
   const validation = await validateMaterializationTarget({ companiesRoot, repo, run });
@@ -41,10 +65,20 @@ export async function materializeRepoCheckout({
     branch,
     remote,
   } = validation;
-  if (await lstatOrNull(targetPath)) return targetExists();
+
+  const existingTarget = await lstatOrNull(targetPath);
+  if (
+    existingTarget
+    && !(await isGeneratedOnlyMigrationResidue(targetPath))
+  ) {
+    return targetExists(
+      "Cílová cesta už existuje, není samostatným Git checkoutem a obsahuje neznámá nebo uživatelská data; Launchpad ji nepřepíše ani nepřesune.",
+    );
+  }
 
   const targetParent = dirname(targetPath);
   let transportCwd = null;
+  let residueRecovery = null;
   try {
     transportCwd = await makeTempDirectory(join(tmpdir(), "launchpad-materialization-"));
     // Probe access from a neutral cwd so the Organization checkout cannot
@@ -71,11 +105,43 @@ export async function materializeRepoCheckout({
       return boundaryFailure("Rodič cílového checkoutu vede mimo kanonický root Organizace.");
     }
 
+    if (existingTarget) {
+      residueRecovery = await quarantineGeneratedResidue({
+        targetPath,
+        repo,
+        recoveryStateRoot,
+        now,
+        makeDirectory,
+        makeRecoveryDirectory,
+        move,
+        remove,
+      });
+      if (!residueRecovery.ok) {
+        return recoveryFailure(
+          "Cílová cesta se během kontroly změnila nebo bezpečné odložení rozpoznaných odvozených artefaktů selhalo; nic se neklonovalo.",
+          residueRecovery.recoveryDirectory,
+        );
+      }
+    }
+
     // Claim the final path atomically. Concurrent update actions can observe
     // the target, but never overwrite or adopt each other's checkout.
     try {
       await makeDirectory(targetPath);
     } catch (error) {
+      if (residueRecovery) {
+        const restored = await restoreGeneratedResidue({
+          targetPath,
+          recoveryPath: residueRecovery.recoveryPath,
+          move,
+        });
+        if (!restored) {
+          return recoveryFailure(
+            "Cílovou cestu mezitím převzala jiná operace; původní odvozené artefakty zůstávají v recovery a je potřeba je zkontrolovat ručně.",
+            residueRecovery.recoveryDirectory,
+          );
+        }
+      }
       if (error?.code === "EEXIST") return targetExists();
       return cloneFailure();
     }
@@ -98,7 +164,19 @@ export async function materializeRepoCheckout({
         env: safeGitRemoteEnv(),
       },
     );
-    if (!clone.ok) return cloneFailure();
+    if (!clone.ok) {
+      if (residueRecovery) {
+        return rollbackMaterializationFailure({
+          targetPath,
+          residueRecovery,
+          move,
+          message:
+            "Git clone selhal; původní odvozené artefakty byly obnoveny a neúplný clone zůstal v recovery.",
+          failureCode: "materialization_clone_failed",
+        });
+      }
+      return cloneFailure();
+    }
 
     const verification = await verifyClonedCheckout({
       path: targetPath,
@@ -106,7 +184,19 @@ export async function materializeRepoCheckout({
       remote,
       run,
     });
-    if (!verification.ok) return verification;
+    if (!verification.ok) {
+      if (residueRecovery) {
+        return rollbackMaterializationFailure({
+          targetPath,
+          residueRecovery,
+          move,
+          message:
+            "Naklonovaný checkout neprošel ověřením; původní odvozené artefakty byly obnoveny a neplatný clone zůstal v recovery.",
+          failureCode: "materialization_verification_failed",
+        });
+      }
+      return verification;
+    }
 
     return {
       ok: true,
@@ -116,6 +206,7 @@ export async function materializeRepoCheckout({
       branch,
       head: verification.head,
       remote,
+      residue_recovery_path: residueRecovery?.recoveryPath ?? null,
     };
   } catch {
     return cloneFailure();
@@ -124,6 +215,156 @@ export async function materializeRepoCheckout({
       await remove(transportCwd, { recursive: true, force: true }).catch(() => {});
     }
   }
+}
+
+export function generatedResiduePathAllowed(relativePath) {
+  const normalized = String(relativePath ?? "").replaceAll("\\", "/");
+  const segments = normalized.split("/").filter(Boolean);
+  if (
+    segments.length === 0
+    || normalized.startsWith("/")
+    || segments.some((segment) => segment === "." || segment === "..")
+    || segments.some((segment) => AMBIGUOUS_OUTPUT_DIRECTORIES.has(segment))
+  ) {
+    return false;
+  }
+  const leaf = segments.at(-1);
+  return leaf === ".DS_Store"
+    || leaf?.endsWith(".tsbuildinfo")
+    || segments.some((segment) => GENERATED_RESIDUE_DIRECTORIES.has(segment));
+}
+
+export async function isGeneratedOnlyMigrationResidue(targetPath) {
+  const rootEntry = await lstatOrNull(targetPath);
+  if (!rootEntry?.isDirectory() || rootEntry.isSymbolicLink()) return false;
+
+  let leafCount = 0;
+  const stack = [{ absolutePath: targetPath, relativePath: "" }];
+  try {
+    while (stack.length > 0) {
+      const current = stack.pop();
+      const entries = await readdir(current.absolutePath, { withFileTypes: true });
+      if (entries.length === 0) {
+        if (current.relativePath === "") return true;
+        if (!generatedResiduePathAllowed(current.relativePath)) return false;
+        leafCount += 1;
+        continue;
+      }
+
+      for (const entry of entries) {
+        const absolutePath = join(current.absolutePath, entry.name);
+        const relativePath = current.relativePath
+          ? `${current.relativePath}/${entry.name}`
+          : entry.name;
+        const metadata = await lstat(absolutePath);
+        if (metadata.isDirectory() && !metadata.isSymbolicLink()) {
+          stack.push({ absolutePath, relativePath });
+          continue;
+        }
+        if (
+          (!metadata.isFile() && !metadata.isSymbolicLink())
+          || !generatedResiduePathAllowed(relativePath)
+        ) {
+          return false;
+        }
+        leafCount += 1;
+      }
+    }
+  } catch {
+    return false;
+  }
+  return leafCount > 0;
+}
+
+async function quarantineGeneratedResidue({
+  targetPath,
+  repo,
+  recoveryStateRoot,
+  now,
+  makeDirectory,
+  makeRecoveryDirectory,
+  move,
+  remove,
+}) {
+  const organization = safeRecoverySegment(repo.organization ?? "organization");
+  const slot = safeRecoverySegment(repo.slot_path ?? repo.module ?? "slot");
+  const recoveryRoot = join(
+    recoveryStateRoot,
+    "companiesascode",
+    "doctor-recovery",
+    organization,
+  );
+  let recoveryDirectory = null;
+  try {
+    // Re-read immediately before the atomic move. This closes the ordinary
+    // stale-read window between the initial classification and quarantine;
+    // an adversarial same-user concurrent filesystem mutator remains outside
+    // the capability boundary of this local helper.
+    if (!(await isGeneratedOnlyMigrationResidue(targetPath))) {
+      return { ok: false, recoveryDirectory: null, recoveryPath: null };
+    }
+    await makeDirectory(recoveryRoot, { recursive: true });
+    const timestamp = now().toISOString().replaceAll(/[-:.]/g, "");
+    recoveryDirectory = await makeRecoveryDirectory(
+      join(recoveryRoot, `${timestamp}-${slot}-`),
+    );
+    const recoveryPath = join(recoveryDirectory, "residue");
+    await move(targetPath, recoveryPath);
+    return { ok: true, recoveryDirectory, recoveryPath };
+  } catch {
+    if (recoveryDirectory) {
+      await remove(recoveryDirectory, { recursive: true, force: true }).catch(() => {});
+    }
+    return { ok: false, recoveryDirectory: null, recoveryPath: null };
+  }
+}
+
+async function rollbackMaterializationFailure({
+  targetPath,
+  residueRecovery,
+  move,
+  message,
+  failureCode,
+}) {
+  const failedClonePath = join(residueRecovery.recoveryDirectory, "failed-clone");
+  try {
+    await move(targetPath, failedClonePath);
+    await move(residueRecovery.recoveryPath, targetPath);
+    return failureCode === "materialization_verification_failed"
+      ? verificationFailure(message, residueRecovery.recoveryDirectory, true)
+      : cloneFailure(message, residueRecovery.recoveryDirectory, true);
+  } catch {
+    return recoveryFailure(
+      "Materializace selhala a automatické obnovení původních artefaktů se nepodařilo; zkontroluj cílovou i recovery cestu ručně.",
+      residueRecovery.recoveryDirectory,
+    );
+  }
+}
+
+async function restoreGeneratedResidue({ targetPath, recoveryPath, move }) {
+  if (await lstatOrNull(targetPath)) return false;
+  try {
+    await move(recoveryPath, targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function defaultRecoveryStateRoot() {
+  const configured = process.env.XDG_STATE_HOME?.trim();
+  if (configured) return resolve(configured);
+  if (process.platform === "win32") {
+    const localAppData = process.env.LOCALAPPDATA?.trim();
+    if (localAppData) return resolve(localAppData);
+  }
+  const userHome = homedir();
+  return userHome ? resolve(userHome, ".local", "state") : resolve(tmpdir());
+}
+
+function safeRecoverySegment(value) {
+  const sanitized = String(value).replaceAll(/[^A-Za-z0-9._-]+/g, "-");
+  return sanitized.replaceAll(/^-+|-+$/g, "") || "unknown";
 }
 
 async function validateMaterializationTarget({ companiesRoot, repo, run }) {
@@ -247,21 +488,25 @@ function boundaryFailure(message) {
   };
 }
 
-function verificationFailure(message) {
+function verificationFailure(message, recoveryPath = null, restored = false) {
   return {
     ok: false,
     outcome: "failed",
     code: "materialization_verification_failed",
     message,
+    recovery_path: recoveryPath,
+    residue_restored: restored,
   };
 }
 
-function targetExists() {
+function targetExists(
+  message = "Cílová cesta už existuje; Launchpad ji nepřepíše ani nepřevezme.",
+) {
   return {
     ok: false,
     outcome: "target_exists",
     code: "materialization_target_exists",
-    message: "Cílová cesta už existuje; Launchpad ji nepřepíše ani nepřevezme.",
+    message,
   };
 }
 
@@ -274,12 +519,28 @@ function missingAccess() {
   };
 }
 
-function cloneFailure() {
+function cloneFailure(
+  message = "Git nedokončil klon manifestovaného modulu; částečný target zůstal viditelný pro kontrolu.",
+  recoveryPath = null,
+  restored = false,
+) {
   return {
     ok: false,
     outcome: "failed",
     code: "materialization_clone_failed",
-    message: "Git nedokončil klon manifestovaného modulu; částečný target zůstal viditelný pro kontrolu.",
+    message,
+    recovery_path: recoveryPath,
+    residue_restored: restored,
+  };
+}
+
+function recoveryFailure(message, recoveryPath = null) {
+  return {
+    ok: false,
+    outcome: "failed",
+    code: "materialization_recovery_required",
+    message,
+    recovery_path: recoveryPath,
   };
 }
 

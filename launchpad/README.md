@@ -71,6 +71,14 @@ inventář a chybějící aktivní Workspace/root sloty naklonují na přesně
 deklarovanou větev. `planned_slot` bez Git souřadnic se nikdy neklonuje.
 Když aktuální GitHub identita repo nebo branch nedokáže načíst, checkout
 zůstane `missing_access`; Launchpad žádný paralelní ACL ani grant nevytváří.
+Při přechodu z dříve in-tree složky na samostatný Doctor-managed checkout
+materializace nejdřív prokáže přístup ke zdrojovému repu. Existující target
+automaticky odloží jen tehdy, když obsahuje výhradně konzervativně rozpoznané
+dependency/framework cache (`node_modules`, `.astro`, `.next`, `.vite` a
+obdobné skryté cache); recovery cesta zůstane v lokálním state adresáři.
+Zdrojové nebo neznámé soubory a obecné `build`, `dist` či `out` adresáře se
+nikdy automaticky nepřesouvají. Když clone nebo jeho ověření selže, původní
+cache se obnoví a neúplný checkout zůstane v recovery pro ruční kontrolu.
 
 Launchpad čte Launchpad GEN3 root a Organization GEN3 manifesty:
 
@@ -512,6 +520,9 @@ jasný mechanismus:
   Productionspace, wrong-branch, outgoing a diverged checkouty přeskočí a
   vypíše je v souhrnu. Klonování nespouští package skripty; app-scoped
   dependencies instaluje až explicitní `Install`/`Otevřít` runtime flow.
+  Stejná akce umí dokončit in-tree → standalone migraci, ale pouze přes
+  fail-closed generated-residue pravidla popsaná výše; nejde o obecné mazání
+  nebo přebírání existujících adresářů.
 
 Organization root repo není jen součást technického API: aktivní Organization
 pohled ukazuje jeho Git stav, incoming počet, freshness a vhodnou pull/autostash

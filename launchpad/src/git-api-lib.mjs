@@ -112,6 +112,12 @@ export async function buildRepoPullResponse({ companiesRoot, repoKey, statusServ
       throw new GitApiError(materialization.message, {
         status: materialization.outcome === "missing_access" ? 403 : 409,
         code: materialization.code,
+        metadata: materialization.recovery_path
+          ? {
+              recovery_path: materialization.recovery_path,
+              residue_restored: Boolean(materialization.residue_restored),
+            }
+          : null,
       });
     }
     statusService?.markRemoteChecked(repo);
@@ -124,6 +130,7 @@ export async function buildRepoPullResponse({ companiesRoot, repoKey, statusServ
       materialized: true,
       branch: materialization.branch,
       head: materialization.head,
+      residue_recovery_path: materialization.residue_recovery_path ?? null,
     };
   }
   const result = await pullRepoFastForward(repo);
@@ -282,6 +289,7 @@ async function pullAllRepo({ companiesRoot, repo, statusService }) {
         message: materialization.message,
         branch: materialization.branch,
         head: materialization.head,
+        residue_recovery_path: materialization.residue_recovery_path ?? null,
       };
     }
     return {
@@ -292,6 +300,8 @@ async function pullAllRepo({ companiesRoot, repo, statusService }) {
           ? "skipped"
           : "failed",
       message: materialization.message,
+      recovery_path: materialization.recovery_path ?? null,
+      residue_restored: Boolean(materialization.residue_restored),
     };
   }
   if (

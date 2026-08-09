@@ -112,6 +112,7 @@ function laneDeps({ rootState = "up_to_date", repoStatuses = {}, pulls = {}, inv
           message: "Nový manifestovaný modul byl bezpečně naklonovaný.",
           branch: repo.expected_branch,
           head: "1".repeat(40),
+          residue_recovery_path: "/state/companiesascode/doctor-recovery/spectoda/cache/residue",
         };
       },
     },
@@ -265,7 +266,11 @@ describe("runUpdateLane", () => {
     expect(calls.pullFastForward[0]).toBe("spectoda::root");
     expect(calls.materializeRepo).toEqual(["spectoda::lazurio"]);
     expect(result.organizations.find((entry) => entry.repo_key === "spectoda::lazurio"))
-      .toMatchObject({ outcome: "materialized", branch: "main" });
+      .toMatchObject({
+        outcome: "materialized",
+        branch: "main",
+        residue_recovery_path: "/state/companiesascode/doctor-recovery/spectoda/cache/residue",
+      });
     expect(result.summary.org_materialized_count).toBe(1);
     expect(result.ok).toBe(true);
   });
