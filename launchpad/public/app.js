@@ -109,19 +109,8 @@ let organizationThemeRenderKey = null;
 let appliedLaunchpadHash = null;
 let launchpadScopeDataReady = false;
 
-// Launchpad má zatím jen světlý režim. Accent zůstává samostatně připravený
-// pro osobní prostory; Organizace si dál dodává vlastní kanonické tokeny.
-const THEME_STORAGE = { accent: "launchpad-accent" };
+// Launchpad má jednu kanonickou světlou Lazurio podobu.
 const LEGACY_THEME_MODE_STORAGE = "launchpad-theme";
-const ACCENT_PRESETS = ["default", "emerald", "amber", "rose", "slate"];
-const ORGANIZATION_THEME_TOKENS = new Set([
-  "--bg", "--bg-elevated", "--bg-subtle", "--bg-muted", "--surface", "--surface-console",
-  "--text", "--text-muted", "--text-subtle", "--line", "--line-strong", "--accent",
-  "--on-accent", "--accent-soft", "--accent-ring", "--shadow-sm", "--shadow-md", "--shadow-lg",
-  "--shadow-hover", "--r-sm", "--r-md", "--r-lg", "--r-pill", "--font-body",
-  "--font-heading", "--font-mono", "--c-accent-200", "--c-accent-400", "--c-accent-500",
-  "--c-accent-700", "--c-accent-800", "--c-accent-900", "--launchpad-body-background",
-]);
 const OPEN_STARTING_WAIT_MS = 120_000;
 const OPEN_STARTING_POLL_MS = 1_500;
 const ACTIVE_POLL_INTERVAL_MS = 15_000;
@@ -167,17 +156,15 @@ const APP_ICON_FAMILY = {
   "pricebook": "obchod",
   "invoice": "obchod",
   "profitability": "obchod",
-  "marketing": "obchod"
+  "marketing": "kampan"
 };
 
-// Světlá poloha odstínu při PLNÉ sytosti. Sytost pod 0,7 při světlosti 0,9
-// dá béžovou — na barvu už v té světlosti není místo a regulovat se má
-// světlostí, ne sytostí.
 const APP_ICON_STYLES = {
-  stavba: { color: "#171717", background: "#cccdff", border: "#9a9dff" },
-  obsah: { color: "#171717", background: "#fff5cc", border: "#ffe699" },
-  stroj: { color: "#171717", background: "#ccffee", border: "#99ffdd" },
-  obchod: { color: "#171717", background: "#ffe7cc", border: "#ffcf99" },
+  stavba: { color: "var(--lz-blue-500)", background: "transparent", border: "transparent" },
+  obsah: { color: "var(--lz-expressive-orange-figure)", background: "transparent", border: "transparent" },
+  stroj: { color: "var(--lz-expressive-mint-figure)", background: "transparent", border: "transparent" },
+  obchod: { color: "var(--lz-expressive-vermilion-figure)", background: "transparent", border: "transparent" },
+  kampan: { color: "var(--lz-expressive-yellow-figure)", background: "transparent", border: "transparent" },
 };
 
 // Org-agnostic lidské fallbacky drží karty čitelné i ve firmě, která ještě
@@ -549,14 +536,10 @@ initActiveWindowPolling();
    Theme + toasts
    ========================================================= */
 
-function applyTheme({ accent } = {}) {
+function applyTheme() {
   const root = document.documentElement;
   root.setAttribute("data-theme", "light");
-  if (accent) {
-    if (accent === "default") root.removeAttribute("data-accent");
-    else root.setAttribute("data-accent", accent);
-    localStorage.setItem(THEME_STORAGE.accent, accent);
-  }
+  root.removeAttribute("data-accent");
   applyOrganizationTheme();
 }
 
@@ -566,24 +549,18 @@ function currentThemeMode() {
 
 function initTheme() {
   localStorage.removeItem(LEGACY_THEME_MODE_STORAGE);
-  applyTheme({
-    accent: localStorage.getItem(THEME_STORAGE.accent) || "default",
-  });
+  localStorage.removeItem("launchpad-accent");
+  applyTheme();
 
-  // Accent zůstává dostupný pro osobní prostory; tmavý režim se znovu zapojí,
-  // až pro něj bude hotový a ověřený design.
+  // Rozhraní má jedinou schválenou světlou Lazurio podobu.
   window.LaunchpadTheme = {
     setMode: () => false,
-    setAccent: (accent) => {
-      if (state.filters.scope === "org") return false;
-      applyTheme({ accent });
-      return true;
-    },
-    accents: ACCENT_PRESETS,
+    setAccent: () => false,
+    accents: ["default"],
     getState: () => ({
       mode: currentThemeMode(),
-      accent: document.documentElement.getAttribute("data-accent") || "default",
-      accentLockedByOrganization: state.filters.scope === "org",
+      accent: "default",
+      accentLockedByOrganization: true,
     }),
   };
 }
@@ -762,14 +739,8 @@ async function runLoadData({ quiet = false, isCurrent = () => true } = {}) {
     state.loaded = true;
     launchpadScopeDataReady = true;
     applyLaunchpadHash({ notify: firstSuccessfulScopeLoad });
-    // První reconcile vybere aplikaci aktivní Organizace. Když je první položka
-    // globálního discovery seznamu z jiného scope (např. root Guide), nesmí tato
-    // technická změna výběru sama otevřít desktop drawer ani mobilní bottom
-    // sheet a zakrýt uživateli denní plochu ještě před první interakcí.
-    if (firstSuccessfulScopeLoad) state.suppressNextDrawerOpen = true;
-    if (!state.selectedAppId && state.apps.length > 0) {
-      state.selectedAppId = state.apps[0].id;
-    }
+    // Denní plocha je rozcestník. Po načtení proto žádnou aplikaci automaticky
+    // nevybíráme ani vizuálně nezvýrazňujeme.
     render();
     // Panely Poslední změny / Nejčastější + git read model se načítají zvlášť a
     // best-effort — pomalejší git nesmí blokovat hlavní mřížku aplikací.
@@ -1006,7 +977,9 @@ function render() {
   renderProblems(spaceHealth);
   renderActionMessage();
   renderAppsGrid(filteredApps);
-  renderApps(filteredApps);
+  // Technický tabulkový renderer zůstává dočasně použitelný pro vývojové
+  // harnessy, ale běžný Launchpad jeho mount už uživatelům neposílá.
+  if (elements.appsTable) renderApps(filteredApps);
   renderDetail(filteredApps);
   renderOrganizationGitStatus();
   renderNotifications();
@@ -1293,8 +1266,8 @@ function renderActionMessage() {
   dismiss.className = "action-panel-dismiss";
   dismiss.setAttribute("aria-label", "Zavřít zprávu");
   dismiss.title = "Zavřít";
-  // lucide/x
-  dismiss.innerHTML = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+  // iconoir/xmark
+  dismiss.innerHTML = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="M6 6 18 18"/></svg>';
   dismiss.addEventListener("click", () => {
     state.actionMessage = null;
     renderActionMessage();
@@ -1395,110 +1368,14 @@ function writeLaunchpadHash(hash, { replace = false } = {}) {
   appliedLaunchpadHash = hash;
 }
 
-// Shared Launchpad drží layout a chování, ale aktivní Organizace dodává skin.
-// Server propustí jen povolené sémantické tokeny z jejího design systému / GEN2
-// adaptéru; klient je znovu allowlistuje a aplikuje podle light/dark režimu.
 function applyOrganizationTheme() {
   const root = document.documentElement;
   const space = activeSpace();
-  const theme = space.kind === "organization" ? space.organization.theme : null;
-  const mode = currentThemeMode();
-  const renderKey = `${space.kind}:${space.organization?.slug ?? "personal"}:${mode}:${JSON.stringify(theme ?? null)}`;
+  const renderKey = `${space.kind}:${space.organization?.slug ?? "personal"}`;
   if (renderKey === organizationThemeRenderKey) return;
   organizationThemeRenderKey = renderKey;
-
-  for (const token of ORGANIZATION_THEME_TOKENS) root.style.removeProperty(token);
   root.removeAttribute("data-organization-theme");
-  if (!theme?.light || typeof theme.light !== "object") {
-    if (space.kind === "personal") {
-      const personalAccent = localStorage.getItem(THEME_STORAGE.accent) || "default";
-      if (personalAccent === "default") root.removeAttribute("data-accent");
-      else root.setAttribute("data-accent", personalAccent);
-    } else {
-      root.removeAttribute("data-accent");
-    }
-    return;
-  }
-
-  // Firemní brand je v Organization scope autorita; uživatelský accent preset
-  // se vrátí až v Osobním / výchozím prostoru.
   root.removeAttribute("data-accent");
-  const properties = {
-    ...theme.light,
-    ...(mode === "dark" && theme.dark && typeof theme.dark === "object" ? theme.dark : {}),
-  };
-  for (const [token, value] of Object.entries(properties)) {
-    if (!ORGANIZATION_THEME_TOKENS.has(token) || !safeOrganizationThemeValue(token, value)) continue;
-    root.style.setProperty(token, value);
-  }
-  root.setAttribute("data-organization-theme", space.organization.slug);
-}
-
-function safeOrganizationThemeValue(token, value) {
-  if (typeof value !== "string" || value.length === 0 || value.length > 500 || /[\\{};<>:@]/.test(value)) {
-    return false;
-  }
-  if (token.startsWith("--font-")) return /^[a-zA-Z0-9 ,"'_-]+$/.test(value);
-  if (token.startsWith("--r-")) return /^(?:0|\d+(?:\.\d+)?(?:px|rem|em|%))$/.test(value);
-  if (token.startsWith("--shadow-")) {
-    if (!/^[a-zA-Z0-9#.,%()\s+-]+$/.test(value)) return false;
-    const functions = [...value.matchAll(/([a-zA-Z][a-zA-Z0-9-]*)\s*\(/g)].map((match) => match[1]);
-    return functions.every((name) => ["rgb", "rgba", "hsl", "hsla"].includes(name));
-  }
-  if (token === "--launchpad-body-background") {
-    return value === "linear-gradient(180deg, var(--bg-muted) 0%, var(--bg) 42%)";
-  }
-  if (token === "--on-accent") return safeOpaqueOrganizationColor(value);
-  return /^(?:#[0-9a-fA-F]{3,8}|(?:rgb|rgba|hsl|hsla)\([\d.%,\s+-]+\)|transparent|white|black)$/.test(value);
-}
-
-function safeOpaqueOrganizationColor(value) {
-  if (value === "white" || value === "black") return true;
-  const hex = value.match(/^#([0-9a-fA-F]+)$/)?.[1];
-  if (hex) {
-    if (hex.length === 3 || hex.length === 6) return true;
-    if (hex.length === 4) return hex.endsWith("f") || hex.endsWith("F");
-    if (hex.length === 8) return hex.endsWith("ff") || hex.endsWith("FF");
-    return false;
-  }
-  const colorFunction = value.match(/^(rgb|rgba|hsl|hsla)\(([\d.%,\s+/-]+)\)$/);
-  if (!colorFunction) return false;
-  const serializedComponents = colorFunction[2].trim();
-  let components;
-  let alpha;
-  if (serializedComponents.includes("/")) {
-    if (serializedComponents.includes(",")) return false;
-    const slashParts = serializedComponents.split("/");
-    if (slashParts.length !== 2) return false;
-    components = slashParts[0].trim().split(/\s+/);
-    alpha = slashParts[1].trim();
-  } else if (serializedComponents.includes(",")) {
-    components = serializedComponents.split(",").map((component) => component.trim());
-    alpha = components.length === 4 ? components.pop() : undefined;
-  } else {
-    components = serializedComponents.split(/\s+/);
-  }
-  if (components.length !== 3 || !alpha && serializedComponents.includes("/")) return false;
-  const [first, second, third] = components;
-  const validComponents = colorFunction[1].startsWith("rgb")
-    ? [first, second, third].every(isOrganizationThemeCssNumberOrPercentage)
-    : isOrganizationThemeCssNumber(first)
-      && isOrganizationThemeCssPercentage(second)
-      && isOrganizationThemeCssPercentage(third);
-  if (!validComponents) return false;
-  return alpha === undefined || /^(?:1(?:\.0+)?|100(?:\.0+)?%)$/.test(alpha);
-}
-
-function isOrganizationThemeCssNumber(value) {
-  return /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(value);
-}
-
-function isOrganizationThemeCssPercentage(value) {
-  return value.endsWith("%") && isOrganizationThemeCssNumber(value.slice(0, -1));
-}
-
-function isOrganizationThemeCssNumberOrPercentage(value) {
-  return isOrganizationThemeCssNumber(value) || isOrganizationThemeCssPercentage(value);
 }
 
 function renderSpaceSwitcher() {
@@ -1661,22 +1538,6 @@ function resetSpaceSelection() {
   setDrawer(false);
 }
 
-// Stabilní odstín odvozený z textu: stejné jméno = vždy stejná barva, i po
-// reloadu a na jiné mašině. Používá ho logo Organizace i monogram autora
-// v notifikacích, ať se dvě místa nerozejdou do dvou různých palet.
-//
-// Hash se násobí zlatým úhlem (137,508°), protože prosté `% 360` dávalo
-// podobným jménům podobné odstíny — „anna.prdelka" 329° a „Michael Blažíček"
-// 350° byly obě růžové a v seznamu se nedaly rozeznat. Zlatý úhel sousední
-// hodnoty hashe rozhodí po celém kruhu.
-function stringHue(value) {
-  const hash = [...String(value ?? "")].reduce(
-    (acc, character) => (Math.imul(acc, 31) + character.charCodeAt(0)) | 0,
-    2166136261,
-  );
-  return Math.round((Math.abs(hash) * 137.508) % 360);
-}
-
 function renderSpaceLogo(mount, space) {
   mount.className = `space-logo ${space.kind === "personal" ? "space-logo-personal" : "space-logo-organization"}`;
   mount.setAttribute("aria-hidden", "true");
@@ -1690,10 +1551,6 @@ function renderSpaceLogo(mount, space) {
   fallback.className = "space-logo-fallback";
   fallback.setAttribute("aria-hidden", "true");
   fallback.textContent = (space.label.trim()[0] ?? "O").toUpperCase();
-  mount.style.setProperty(
-    "--space-logo-hue",
-    String(stringHue(space.organization.slug ?? space.label)),
-  );
   mount.append(fallback);
   if (space.organization.logo_url) {
     const image = document.createElement("img");
@@ -1936,9 +1793,6 @@ function notificationItem(item, expanded = false) {
   const avatar = document.createElement("span");
   avatar.className = "notification-avatar";
   avatar.dataset.kind = item.actor?.kind ?? "human";
-  // Každý autor má vlastní barvu kolečka, ať se lidé v seznamu rozeznají
-  // dřív, než si člověk přečte jméno.
-  avatar.style.setProperty("--avatar-hue", String(stringHue(item.actor?.name ?? "")));
   avatar.textContent = item.actor?.initials ?? "?";
   avatar.setAttribute("aria-hidden", "true");
 
@@ -2303,6 +2157,21 @@ function newCommitCountLabel(count) {
    ========================================================= */
 
 function renderSkeleton() {
+  const section = document.createElement("section");
+  section.className = "app-section app-section-organization skeleton-section";
+  section.setAttribute("aria-label", "Načítám aplikace");
+  section.setAttribute("aria-busy", "true");
+
+  const head = document.createElement("header");
+  head.className = "app-section-head skeleton-head";
+  const title = document.createElement("span");
+  title.className = "skeleton-line skeleton-title";
+  title.setAttribute("aria-hidden", "true");
+  const status = document.createElement("span");
+  status.className = "sr-only";
+  status.textContent = "Načítám aplikace…";
+  head.append(title, status);
+
   const grid = document.createElement("div");
   grid.className = "apps-grid";
   grid.append(
@@ -2312,7 +2181,8 @@ function renderSkeleton() {
       return node;
     }),
   );
-  elements.appsGrid.replaceChildren(grid);
+  section.append(head, grid);
+  elements.appsGrid.replaceChildren(section);
 }
 
 function renderAppsGrid(apps) {
@@ -2459,10 +2329,19 @@ function teamSectionNode(section, organization) {
 
 function teamAccessSummaryNode(organization) {
   const access = organization?.team_access ?? { status: "not_evaluated", memberships: [] };
-  const node = document.createElement("aside");
+  const node = document.createElement("details");
   node.className = `team-access-summary is-${access.status === "verified" ? "verified" : "unverified"}`;
+  const summary = document.createElement("summary");
   const title = document.createElement("strong");
-  title.textContent = "Tvoje Teamy";
+  title.textContent = "Přístup k Teamům";
+  const help = document.createElement("span");
+  help.className = "team-access-help";
+  help.setAttribute("aria-hidden", "true");
+  help.textContent = "?";
+  summary.append(title, help);
+
+  const content = document.createElement("div");
+  content.className = "team-access-content";
   const memberships = document.createElement("div");
   memberships.className = "team-access-memberships";
   if (access.status === "verified" && access.memberships?.length > 0) {
@@ -2471,12 +2350,13 @@ function teamAccessSummaryNode(organization) {
       "chip-ok",
     )));
   } else {
-    memberships.append(chip("GitHub členství neověřeno", "chip-muted"));
+    memberships.append(chip("Členství zatím neověřeno", "chip-muted"));
   }
   const copy = document.createElement("p");
   copy.textContent = access.message
-    ?? "Launchpad zatím členství Buildera živě neověřuje. Skutečný přístup určuje GitHub.";
-  node.append(title, memberships, copy);
+    ?? "Skutečný přístup určuje GitHub; Launchpad ho zatím živě neověřuje.";
+  content.append(memberships, copy);
+  node.append(summary, content);
   return node;
 }
 
@@ -2603,6 +2483,7 @@ function workspaceModuleCard(module, companySlug, options = {}) {
   const openable = detail.can_open_folder;
   const card = document.createElement("article");
   card.className = `app-card system-card manifest-module-card ${openable ? "is-openable" : "is-readonly is-unavailable"} ${selected ? "selected" : ""}`.trim();
+  card.style.setProperty("--app-accent", appIconAccent(appIconKey(detail)));
   card.dataset.readonlyDetailId = detail.id;
   card.tabIndex = 0;
   card.setAttribute("aria-label", openable ? `Otevřít složku ${detail.title}` : `${detail.title} — detail`);
@@ -2673,6 +2554,7 @@ function productionspaceCard(system, entry) {
   const selected = state.selectedReadonlyDetail?.id === detail.id;
   const card = document.createElement("article");
   card.className = `app-card system-card is-readonly ${selected ? "selected" : ""}`.trim();
+  card.style.setProperty("--app-accent", appIconAccent("system"));
   card.dataset.readonlyDetailId = detail.id;
   card.tabIndex = 0;
   card.setAttribute("aria-label", `${detail.title} — detail`);
@@ -2764,8 +2646,9 @@ function productionspaceDetail(system, entry) {
   };
 }
 
-// Lazurio section header: one semantic title and one quiet, grammatical summary.
-// Category badges would duplicate the title and introduce forbidden uppercase labels.
+// Lazurio section header: the semantic title can become the structural tab on
+// the top-level Organization/Workspace edge. It stays an h2 in sentence case;
+// this is not a duplicated eyebrow label.
 function appSectionHead(title, summary) {
   const head = document.createElement("header");
   head.className = "app-section-head";
@@ -2810,11 +2693,11 @@ function appCard(app, family = { key: app.id, members: [app], primary: app }) {
   const opensForeignViewer = nextAction.type === "open"
     && app.runtime?.owner === "foreign-port"
     && Boolean(app.url);
-  const running = app.runtime_status === "healthy";
   const warning = cardWarningModel(app, gitRepoForApp(app));
 
   const card = document.createElement("article");
   card.className = `app-card is-${appCardTone(app, warning)} ${selected ? "selected" : ""} ${readOnly ? "is-readonly" : "is-openable"}`.trim();
+  card.style.setProperty("--app-accent", appIconAccent(appIconKey(app)));
   card.dataset.appId = app.id;
   card.tabIndex = 0;
   card.setAttribute("aria-label", readOnly ? `${appBaseTitle(app)} — detail` : `Otevřít ${appBaseTitle(app)}`);
@@ -2859,13 +2742,6 @@ function appCard(app, family = { key: app.id, members: [app], primary: app }) {
   desc.textContent = appDescription(app);
 
   titleBody.append(titleRow, desc);
-  // Jediný povolený stavový chip je „Běží" — a jen když modul opravdu běží.
-  if (running) {
-    const badges = document.createElement("div");
-    badges.className = "app-card-badges";
-    badges.append(runtimeChip(app));
-    titleBody.append(badges);
-  }
   titleBlock.append(titleBody);
   head.append(titleBlock);
 
@@ -3706,7 +3582,7 @@ function runtimeChip(app) {
         : app.runtime_status === "starting"
           ? "chip-warn"
           : "chip-muted";
-  return chip(humanRuntimeLabel(app.runtime_status), tone, app.runtime_status === "healthy");
+  return chip(humanRuntimeLabel(app.runtime_status), tone);
 }
 
 function dependencyChip(app) {
@@ -3718,16 +3594,39 @@ function dependencyChip(app) {
   return chip(humanDependencyLabel(dependencyState), tone);
 }
 
-function chip(label, toneClass, withDot = false) {
+function chip(label, toneClass) {
   const node = document.createElement("span");
   node.className = `chip ${toneClass}`;
-  if (withDot) {
-    const dot = document.createElement("span");
-    dot.className = "chip-dot";
-    node.append(dot);
-  }
+  const statusIcon = statusChipIcon(toneClass);
+  if (statusIcon) node.append(statusIcon);
   node.append(document.createTextNode(label));
   return node;
+}
+
+function statusChipIcon(toneClass) {
+  const pathsByTone = {
+    "chip-success": ["M7 12L10 15L17 8", "M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z"],
+    "chip-warn": ["M12 8V13", "M12 16.01L12.01 15.9989", "M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z"],
+    "chip-danger": ["M12 8V13", "M12 16.01L12.01 15.9989", "M4 4H20V20H4V4Z"],
+  };
+  const paths = pathsByTone[toneClass];
+  if (!paths) return null;
+  const namespace = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(namespace, "svg");
+  svg.classList.add("chip-status-icon");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "1.5");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  for (const pathData of paths) {
+    const path = document.createElementNS(namespace, "path");
+    path.setAttribute("d", pathData);
+    svg.append(path);
+  }
+  return svg;
 }
 
 function primaryActionNode(app, nextAction) {
@@ -5274,7 +5173,7 @@ function iconOpenGlyph() {
 function gitChipNode(model) {
   const toneClass =
     model.tone === "danger" ? "chip-danger" : model.tone === "warn" ? "chip-warn" : "chip-muted";
-  const node = chip(model.label, toneClass, false);
+  const node = chip(model.label, toneClass);
   node.classList.add("git-chip");
   if (model.message) node.title = model.message;
   return node;
@@ -5292,6 +5191,10 @@ function appIconFamily(key) {
 function appIconStyle(key) {
   const style = APP_ICON_STYLES[appIconFamily(key)];
   return [`--app-icon-color:${style.color}`, `--app-icon-bg:${style.background}`, `--app-icon-border:${style.border}`].join(";");
+}
+
+function appIconAccent(key) {
+  return APP_ICON_STYLES[appIconFamily(key)].color;
 }
 
 function appIconSvg(key) {

@@ -30,7 +30,9 @@ export function matchesQuery(app, query) {
 export function reconcileSelectedAppId(apps, filters, selectedAppId) {
   const visibleApps = filterApps(apps, filters);
   if (visibleApps.some((app) => app.id === selectedAppId)) return selectedAppId;
-  return visibleApps[0]?.id ?? null;
+  // Launchpad je rozcestník: první viditelná aplikace není automaticky
+  // „vybraná“. Výběr vzniká až explicitní interakcí uživatele s detailem.
+  return null;
 }
 
 export function createLatestDataLoadCoordinator({ run } = {}) {

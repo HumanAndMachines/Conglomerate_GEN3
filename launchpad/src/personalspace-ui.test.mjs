@@ -61,7 +61,7 @@ test("Launchpad renderuje personalspace jako vlastní sekci v hlavní ploše (ne
   expect(appJs).toContain('Boolean(state.personalspace)');
 });
 
-test("personalspace.js renderuje Principálův prostor, Private badge a runtime akce oddělenou lane", async () => {
+test("personalspace.js renderuje Principálův prostor, český privacy badge a runtime akce oddělenou lane", async () => {
   const js = await readFile(join(publicRoot, "personalspace.js"), "utf8");
 
   expect(js).toContain("export function renderPersonalspace");
@@ -72,9 +72,10 @@ test("personalspace.js renderuje Principálův prostor, Private badge a runtime 
   // Runtime propouští pouze Principálův prostor.
   expect(js).toContain("is_owner_primary");
   expect(js).not.toContain("personalspace-owner-badge");
-  // Private badge na kartách osobních aplikací.
+  // Soukromí je vždy česky a jako stav s ikonou i slovem.
   expect(js).toContain("personalspace-private-badge");
-  expect(js).toContain('badge("Private"');
+  expect(js).toContain('statusBadge("Soukromé"');
+  expect(js).toContain('private: \'<path d="M7 11h10v9H7z"');
   // Runtime akce přes oddělenou personalspace lane: one-click open (start &
   // otevři) klikem na dlaždici + zastavit/restart pod ⋯ menu.
   expect(js).toContain("/api/personalspace/apps/");
@@ -110,7 +111,7 @@ test("Personalspace je owner-first, Buddy je volitelný a technické údaje jsou
   expect(js).toContain("Buddy není připojený");
   expect(js).toContain("Personalspace zatím není vytvořený");
   expect(js).toContain("Osobní paměť");
-  expect(js).toContain('badge("Nastaveno", "buddy-application-state")');
+  expect(js).toContain('statusBadge("Nastaveno", "buddy-application-state", "success")');
   expect(js).not.toContain("image.src = avatarUrl");
   expect(js).toContain("Moje aplikace");
   expect(js).toContain("Technické informace");
@@ -235,12 +236,11 @@ test("Personalspace dlaždice je GEN2-minimal (port GEN2-minimal karty): tile-fi
   expect(js).toContain("openingMessages");
   expect(js).toContain("Osobní aplikace startuje moc dlouho");
 
-  // Jediný povolený stavový chip je „Běží" a jen když aplikace opravdu běží;
-  // trvalý „Připraveno" chip (dependencyChip) je pryč.
+  // Personalspace je také rozcestník: běžný runtime stav na dlaždici nepíšeme;
+  // trvalý „Připraveno" chip (dependencyChip) je rovněž pryč.
   expect(js).not.toContain("function dependencyChip");
-  expect(js).toContain('const running = app.runtime_status === "healthy";');
-  expect(js).toContain("if (running) {");
-  expect(js).toContain("badges.append(runtimeChip(app));");
+  const personalCard = js.slice(js.indexOf("function personalAppCard"), js.indexOf("function personalCardWarningModel"));
+  expect(personalCard).not.toContain("runtimeChip(app)");
 
   // Sofistikovaný warning panel se ukáže jen když je co řešit (null jinak);
   // reuse .card-warning* patternů z GEN2-minimal karty.
@@ -264,8 +264,8 @@ test("Personalspace dlaždice je GEN2-minimal (port GEN2-minimal karty): tile-fi
   expect(js).toContain("function personalAppIconNode");
   expect(js).not.toContain('cue.className = "app-open-cue";');
 
-  // Private badge zůstává — privátní hranice se nikdy nesmí splést s firemní.
-  expect(js).toContain('badge("Private"');
+  // Český badge s ikonou zůstává — privátní hranice se nikdy nesmí splést s firemní.
+  expect(js).toContain('statusBadge("Soukromé"');
 
   // CSS: nové dlaždicové třídy + reuse sdílených warning/menu tříd z GEN2-minimal karty.
   expect(css).toContain(".personalspace-app.is-openable");

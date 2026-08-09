@@ -9,9 +9,9 @@
 //
 // - Personalspace Principála je jediný povolený prostor.
 // - Osobní aplikace jsou GEN2-minimal dlaždice (port appCardu z GEN2-minimal karty): čistá
-//   klikatelná dlaždice (ikona + název + popis + ↗), jediný „● Běží" chip jen
+//   klikatelná dlaždice (ikona + název + popis), jediný stav „Běží" s ikonou jen
 //   když běží, sekundární akce (Zastavit / Restart / Logy) pod ⋯ menu a inline
-//   warning panel jen když je co řešit. Private badge zůstává — privátní surface
+//   warning panel jen když je co řešit. Badge Soukromé zůstává — privátní surface
 //   se nikdy nesmí splést s firemní. Runtime jede přes oddělenou personalspace
 //   lane (/api/personalspace/apps/<id>/…), klik na dlaždici volá /open chain.
 // - gbrain sekce: tlačítko „Otevřít v Obsidianu" (obsidian://open) + read-only
@@ -243,7 +243,7 @@ function buddyCard(space) {
   eyebrow.textContent = "Tvůj Buddy";
   const title = document.createElement("h2");
   title.textContent = name;
-  const status = badge("Buddy je nastavený", "buddy-status is-configured");
+  const status = statusBadge("Buddy je nastavený", "buddy-status is-configured", "success");
   const description = document.createElement("p");
   description.className = "buddy-description";
   description.textContent = buddy.description
@@ -297,7 +297,7 @@ function buddyApplicationRow(application) {
   const name = document.createElement("strong");
   name.textContent = application.name ?? "Komunikační aplikace";
   copy.append(label, name);
-  row.append(icon, copy, badge("Nastaveno", "buddy-application-state"));
+  row.append(icon, copy, statusBadge("Nastaveno", "buddy-application-state", "success"));
   return row;
 }
 
@@ -448,7 +448,7 @@ function buddyPortraitPlaceholder() {
   const wrapper = document.createElement("span");
   wrapper.className = "buddy-portrait-placeholder";
   wrapper.setAttribute("aria-hidden", "true");
-  wrapper.innerHTML = '<svg viewBox="0 0 240 300" role="img"><circle cx="120" cy="104" r="65" fill="#f0c9b4"/><path d="M55 105c0-55 26-85 65-85 43 0 68 34 68 88-19-25-41-38-67-38-25 0-47 12-66 35Z" fill="#29313a"/><path d="M72 107c0 52 18 83 48 83 31 0 49-31 49-83-15-17-32-25-49-25-17 0-33 8-48 25Z" fill="#f0c9b4" stroke="#29313a" stroke-width="5"/><path d="M92 126h13m30 0h13" stroke="#29313a" stroke-width="7" stroke-linecap="round"/><path d="M112 158c7 5 14 5 21 0" stroke="#8a5142" stroke-width="5" stroke-linecap="round" fill="none"/><path d="M45 292c4-62 32-94 75-94 44 0 72 32 76 94" fill="#242b33"/><path d="M108 200h24l12 92h-48Z" fill="#b94d2b"/></svg>';
+  wrapper.innerHTML = '<svg viewBox="0 0 240 300" role="img"><circle cx="120" cy="104" r="65" fill="var(--lz-paper)"/><path d="M55 105c0-55 26-85 65-85 43 0 68 34 68 88-19-25-41-38-67-38-25 0-47 12-66 35Z" fill="var(--lz-ink)"/><path d="M72 107c0 52 18 83 48 83 31 0 49-31 49-83-15-17-32-25-49-25-17 0-33 8-48 25Z" fill="var(--lz-paper)" stroke="var(--lz-ink)" stroke-width="5"/><path d="M92 126h13m30 0h13" stroke="var(--lz-ink)" stroke-width="7" stroke-linecap="round"/><path d="M112 158c7 5 14 5 21 0" stroke="var(--lz-ink-muted)" stroke-width="5" stroke-linecap="round" fill="none"/><path d="M45 292c4-62 32-94 75-94 44 0 72 32 76 94" fill="var(--lz-ink)"/><path d="M108 200h24l12 92h-48Z" fill="var(--lz-persona-buddy)"/></svg>';
   return wrapper;
 }
 
@@ -461,12 +461,11 @@ function messageIcon() {
 }
 
 // GEN2-minimal dlaždice osobní aplikace (port appCardu z GEN2-minimal karty): ikona nad
-// názvem + popisem, Private badge na title-row (privátní hranice zůstává
+// názvem + popisem, badge Soukromé na title-row (privátní hranice zůstává
 // viditelná), žádná velká trvalá tlačítka ani trvalé statusové chipy. Hlavní
 // akce (spustit a otevřít) je klik na celou dlaždici; ostatní jde pod ⋯ a do
 // warning panelu.
 function personalAppCard(app) {
-  const running = app.runtime_status === "healthy";
   const warning = personalCardWarningModel(app);
   const openable = isOpenable(app);
   const opening = state.openingApps.has(app.id);
@@ -491,20 +490,13 @@ function personalAppCard(app) {
   const title = document.createElement("h4");
   title.className = "personalspace-app-title";
   title.textContent = app.title;
-  // Private badge zůstává na title-row — osobní surface se nikdy nesmí splést
+  // Badge Soukromé zůstává na title-row — osobní surface se nikdy nesmí splést
   // s firemní (izolace per decision 0051).
-  titleRow.append(title, badge("Private", "personalspace-private-badge"));
+  titleRow.append(title, statusBadge("Soukromé", "personalspace-private-badge", "private"));
   const desc = document.createElement("p");
   desc.className = "personalspace-app-desc";
   desc.textContent = personalAppDescription(app);
   titleBody.append(titleRow, desc);
-  // Jediný povolený stavový chip je „Běží" — a jen když aplikace opravdu běží.
-  if (running) {
-    const badges = document.createElement("div");
-    badges.className = "personalspace-app-badges";
-    badges.append(runtimeChip(app));
-    titleBody.append(badges);
-  }
   titleBlock.append(titleBody);
   head.append(titleBlock);
 
@@ -1051,8 +1043,8 @@ function shouldOpenFromCardSurface(target) {
 }
 
 // Ikona osobní aplikace: heuristika podle modulu/id/tagů (osobní appky nemají
-// manifest icon). Všechny sdílí jednu „private" paletu (accent-tint), což
-// vizuálně drží osobní dlaždice pohromadě a odlišuje je od firemních.
+// manifest icon). Osobní hranici nese badge s ikonou; produktové ikony samy
+// zůstávají neutrální stejně jako ve firemní ploše.
 function personalAppIconNode(app) {
   const span = document.createElement("span");
   span.className = "personalspace-app-icon";
@@ -1215,11 +1207,12 @@ function writePersonalTabStatus(tab, app, message) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Spouštím ${escapeHtml(app.title)}</title>
   <style>
-    body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#17133f;background:#fbfaff}
+    @import url("/fonts/fonts.css");
+    body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:"Inter Tight Variable","Inter Tight",Inter,system-ui,sans-serif;color:#090909;background:#fbfaf9}
     main{max-width:28rem;padding:2rem;text-align:center}
-    .mark{width:3rem;height:3rem;margin:0 auto 1rem;border-radius:1rem;background:#f0ebff;color:#6d5dfc;display:grid;place-items:center;font-size:1.5rem}
-    h1{margin:0 0 .5rem;font-size:1.25rem}
-    p{margin:0;color:#6b668a;line-height:1.5}
+    .mark{width:3rem;height:3rem;margin:0 auto 1rem;border:1px solid #dddcdb;border-radius:0;background:#fbfaf9;color:#090909;display:grid;place-items:center;font-size:1.5rem}
+    h1{margin:0 0 .5rem;font-size:20px;line-height:1.3;font-weight:600;letter-spacing:-.02em}
+    p{margin:0;color:#707070;font-size:16.5px;line-height:1.6}
   </style>
 </head>
 <body>
@@ -1323,7 +1316,7 @@ function runtimeChip(app) {
     unhealthy: ["Runtime problém", "chip-warn"],
   };
   const [label, tone] = labels[app.runtime_status] ?? ["Neznámý stav", "chip-muted"];
-  return chip(label, tone, app.runtime_status === "healthy");
+  return chip(label, tone, app.runtime_status === "healthy" ? "success" : null);
 }
 
 function dependencyLabel(stateName) {
@@ -1338,16 +1331,29 @@ function dependencyLabel(stateName) {
   );
 }
 
-function chip(label, toneClass, withDot = false) {
+function chip(label, toneClass, status = null) {
   const span = document.createElement("span");
   span.className = `chip ${toneClass}`;
-  if (withDot) {
-    const dot = document.createElement("span");
-    dot.className = "chip-dot";
-    span.append(dot);
-  }
+  if (status) span.append(statusIcon(status));
   span.append(document.createTextNode(label));
   return span;
+}
+
+function statusBadge(label, className, status) {
+  const span = badge(label, className);
+  span.prepend(statusIcon(status));
+  return span;
+}
+
+function statusIcon(status) {
+  const paths = {
+    success: '<path d="m7 12 3 3 7-7"/><circle cx="12" cy="12" r="9"/>',
+    private: '<path d="M7 11h10v9H7z"/><path d="M9 11V8a3 3 0 0 1 6 0v3"/>',
+  };
+  const icon = svgIcon(paths[status] ?? paths.success);
+  icon.classList.add("chip-status-icon");
+  icon.setAttribute("aria-hidden", "true");
+  return icon;
 }
 
 function badge(label, className) {
