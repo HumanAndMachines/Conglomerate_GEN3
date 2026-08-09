@@ -1058,6 +1058,7 @@ input:focus-visible,
   display: grid;
   gap: 0.12rem;
   margin-top: 1.5rem;
+  margin-bottom: var(--lz-space-16);
 }
 
 .workspace-welcome-title {

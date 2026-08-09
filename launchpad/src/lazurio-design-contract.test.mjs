@@ -146,6 +146,7 @@ test("materiálový průchod používá výraznější hrany a odstupňované La
 test("uvítání pracovního prostoru používá display hierarchii Lazuria", async () => {
   const styles = await source("styles.css");
   expect(styles).toMatch(/\.workspace-welcome-title\s*{[\s\S]*?font-size: var\(--lz-size-display\);[\s\S]*?font-weight: var\(--lz-weight-title\);[\s\S]*?line-height: var\(--lz-leading-display\);[\s\S]*?letter-spacing: var\(--lz-track-display\)/);
+  expect(styles).toMatch(/\.workspace-welcome\s*{[\s\S]*?margin-bottom: var\(--lz-space-16\);/);
 });
 
 test("menu dalších možností se rozbalí uvnitř dlaždice bez vrstveného hoveru", async () => {
