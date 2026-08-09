@@ -16,12 +16,23 @@ import {
   readDoctorDeclaration,
 } from "../launchpad/src/doctor-surface-lib.mjs";
 import { validateAgainstSchema } from "../launchpad/src/json-schema-mini.mjs";
+import {
+  identityInvariantIssues,
+  isLegacyPersonalCustodyConfig,
+  validatePersonalConfig,
+} from "../launchpad/src/personalspace-lib.mjs";
 
 export const LAZURIO_CONTEXT_SCHEMA_VERSION = "lazurio.context.v0";
 
 const contextSchemaUrl = new URL("./context-v0.schema.json", import.meta.url);
+const personalSchemaUrl = new URL(
+  "../launchpad/schemas/personal.gen3.schema.json",
+  import.meta.url,
+);
 const githubUsernamePattern = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/;
 let contextSchema;
+let personalSchema;
+let legacyPersonalSchema;
 
 export function detectLazurioRoot(root = process.cwd()) {
   const absolutePath = resolve(root);
@@ -91,6 +102,12 @@ export async function buildLazurioDoctorReport({
 
   const manifestPath = join(detected.absolutePath, "personal.gen3.json");
   const manifest = await readJson(manifestPath, "personal.gen3.json");
+  const manifestIssues = await personalManifestIssues(manifest, {
+    label: "personal.gen3.json",
+  });
+  if (manifestIssues.length > 0) {
+    throw new Error(`Personalspace manifest není validní: ${manifestIssues.join("; ")}`);
+  }
   const declaration = readDoctorDeclaration(manifest);
   if (!declaration) {
     throw new Error(
@@ -164,18 +181,29 @@ async function personalspaceRootContext(detected) {
       sources: [],
     });
   }
+  const manifestIssues = await personalManifestIssues(manifest, {
+    label: "personal.gen3.json",
+  });
+  if (manifestIssues.length > 0) {
+    const reason = "personalspace_manifest_invalid";
+    return contextDocument({
+      rootKind: detected.kind,
+      principal: state("not_evaluated", reason),
+      personalspace: {
+        mount: state("present", "personalspace_is_root", { path: "." }),
+        manifest: state("not_evaluated", reason, { path: "personal.gen3.json" }),
+        readiness: state("not_evaluated", reason),
+        access: state("not_evaluated", "provider_authority_not_checked"),
+      },
+      organizationsState: state("absent", "rootless_mode"),
+      sources: [],
+    });
+  }
   const owner = allowlistedOwner(manifest?.owner);
-  const ownerConfigured = Object.hasOwn(manifest, "owner");
-  const principal = owner
-    ? state("present", "personalspace_manifest_owner", owner)
-    : state(
-      "not_evaluated",
-      ownerConfigured ? "personalspace_owner_invalid" : "personalspace_owner_missing",
-    );
 
   return contextDocument({
     rootKind: detected.kind,
-    principal,
+    principal: state("present", "personalspace_manifest_owner", owner),
     personalspace: {
       mount: state("present", "personalspace_is_root", { path: "." }),
       manifest: state("present", "personalspace_root_manifest", { path: "personal.gen3.json" }),
@@ -378,7 +406,22 @@ async function launchpadRootContext(detected) {
         sources,
       });
     }
-    sources.push(manifestRelativePath);
+    const configIssues = await personalManifestConfigIssues(manifest, manifestRelativePath);
+    if (configIssues.length > 0) {
+      const reason = "personalspace_manifest_invalid";
+      return contextDocument({
+        rootKind: detected.kind,
+        principal: state("not_evaluated", reason),
+        personalspace: {
+          mount: state("present", "configured_mount_present", { path: relativeMountPath }),
+          manifest: state("not_evaluated", reason, { path: manifestRelativePath }),
+          readiness: state("not_evaluated", reason),
+          access: state("not_evaluated", "provider_authority_not_checked"),
+        },
+        organizationsState: state("not_evaluated", "organization_context_deferred_cac_0093"),
+        sources,
+      });
+    }
     manifestOwner = allowlistedOwner(manifest?.owner);
     const ownerConfigured = Object.hasOwn(manifest, "owner");
     if (
@@ -403,6 +446,28 @@ async function launchpadRootContext(detected) {
         sources,
       });
     }
+    // Case-insensitive lookup mount pouze najde. Kanonický identity invariant
+    // pak záměrně drží skutečný název adresáře 1:1 včetně casing driftu.
+    const identityIssues = identityInvariantIssues(
+      manifest,
+      resolvedMount.directoryName,
+    );
+    if (identityIssues.length > 0) {
+      const reason = "personalspace_manifest_invalid";
+      return contextDocument({
+        rootKind: detected.kind,
+        principal: state("not_evaluated", reason),
+        personalspace: {
+          mount: state("present", "configured_mount_present", { path: relativeMountPath }),
+          manifest: state("not_evaluated", reason, { path: manifestRelativePath }),
+          readiness: state("not_evaluated", reason),
+          access: state("not_evaluated", "provider_authority_not_checked"),
+        },
+        organizationsState: state("not_evaluated", "organization_context_deferred_cac_0093"),
+        sources,
+      });
+    }
+    sources.push(manifestRelativePath);
   }
 
   return contextDocument({
@@ -468,6 +533,51 @@ function allowlistedOwner(owner) {
   if (displayName) result.display_name = displayName;
   if (type) result.type = type;
   return result;
+}
+
+async function personalManifestIssues(manifest, { label }) {
+  const configIssues = await personalManifestConfigIssues(manifest, label);
+  if (configIssues.length > 0) return configIssues;
+  // Rootless režim nemá fyzický mount adresář. Jeho identity gate proto
+  // ověřuje deklarované repo/mount/gbrain vazby přímo proti ownerovi.
+  const identityDirectoryName = `${manifest?.owner?.github_username ?? ""}_GEN3`;
+  return identityInvariantIssues(manifest, identityDirectoryName);
+}
+
+async function personalManifestConfigIssues(manifest, label) {
+  if (!personalSchema) {
+    personalSchema = JSON.parse(await readFile(personalSchemaUrl, "utf8"));
+  }
+  const schemaFailures = validateAgainstSchema(
+    manifest,
+    personalSchemaFor(manifest),
+    label,
+  );
+  if (schemaFailures.length > 0) return schemaFailures;
+  return validatePersonalConfig(manifest, personalSchema, label);
+}
+
+function personalSchemaFor(manifest) {
+  if (!isLegacyPersonalCustodyConfig(manifest)) return personalSchema;
+  if (!legacyPersonalSchema) {
+    legacyPersonalSchema = JSON.parse(JSON.stringify(personalSchema));
+    legacyPersonalSchema.required = legacyPersonalSchema.required.filter(
+      (key) => key !== "schema_version",
+    );
+    legacyPersonalSchema.properties.repository.required =
+      legacyPersonalSchema.properties.repository.required.filter(
+        (key) => key !== "mount_strategy",
+      );
+    legacyPersonalSchema.properties.gbrain.required =
+      legacyPersonalSchema.properties.gbrain.required.filter(
+        (key) => !["repository", "software"].includes(key),
+      );
+    legacyPersonalSchema.properties.buddy.required =
+      legacyPersonalSchema.properties.buddy.required.filter(
+        (key) => !["path", "repository", "runtime", "hermes"].includes(key),
+      );
+  }
+  return legacyPersonalSchema;
 }
 
 function normalizedGithubUsername(value) {

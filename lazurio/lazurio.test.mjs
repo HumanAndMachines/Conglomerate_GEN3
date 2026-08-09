@@ -23,12 +23,9 @@ afterAll(async () => {
 
 test("rootless context je deterministický allowlist bez Residentova obsahu", async () => {
   const root = await tempRoot("lazurio-personalspace-");
-  await writeJson(join(root, "personal.gen3.json"), {
-    schema_version: "humanandmachines.personal.gen3.v1",
+  await writeJson(join(root, "personal.gen3.json"), personalConfig("owner-login", {
     owner: {
-      github_username: "owner-login",
       display_name: "Owner Name",
-      type: "human",
       private_note: "CANARY_OWNER_PRIVATE",
     },
     soul: "CANARY_SOUL",
@@ -37,7 +34,7 @@ test("rootless context je deterministický allowlist bez Residentova obsahu", as
     mandates: ["CANARY_MANDATE"],
     chat: "CANARY_CHAT",
     sessions: ["CANARY_SESSION"],
-  });
+  }));
 
   const options = { root };
   const first = await buildLazurioContext(options);
@@ -90,6 +87,44 @@ test("rootless context je deterministický allowlist bez Residentova obsahu", as
   expect(await validateLazurioContext(first)).toEqual([]);
 });
 
+test("schema-nevalidní rootless manifest není autoritativní context source", async () => {
+  const root = await tempRoot("lazurio-invalid-rootless-manifest-");
+  await writeJson(join(root, "personal.gen3.json"), personalConfig("owner-login", {
+    gbrain: { repository: { github_repo: 42 } },
+  }));
+
+  const context = await buildLazurioContext({ root });
+
+  expect(context.principal).toEqual({
+    status: "not_evaluated",
+    reason: "personalspace_manifest_invalid",
+  });
+  expect(context.personalspace.mount.status).toBe("present");
+  expect(context.personalspace.manifest).toEqual({
+    status: "not_evaluated",
+    reason: "personalspace_manifest_invalid",
+    path: "personal.gen3.json",
+  });
+  expect(context.provenance.context_sources).toEqual([]);
+});
+
+test("legacy custody výjimka zůstává čitelná stejně jako v Personalspace lane", async () => {
+  const root = await tempRoot("lazurio-legacy-rootless-manifest-");
+  await writeJson(join(root, "personal.gen3.json"), legacyPersonalConfig("owner-login", {
+    buddy: { slug: "owner-buddy", gbrain_path: "gbrain" },
+  }));
+
+  const context = await buildLazurioContext({ root });
+
+  expect(context.principal).toMatchObject({
+    status: "present",
+    reason: "personalspace_manifest_owner",
+    github_username: "owner-login",
+  });
+  expect(context.personalspace.manifest.status).toBe("present");
+  expect(context.provenance.context_sources).toEqual(["personal.gen3.json"]);
+});
+
 test("chybějící mount je absent, ale provider access zůstává not_evaluated", async () => {
   const root = await tempRoot("lazurio-launchpad-missing-personalspace-");
   await writeJson(join(root, "launchpad.gen3.json"), {
@@ -128,13 +163,10 @@ test("přítomný mount se hledá case-insensitive a manifest potvrzuje ownera",
   });
   const mount = join(root, "personalspace", "Owner-Login_GEN3");
   await mkdir(mount, { recursive: true });
-  await writeJson(join(mount, "personal.gen3.json"), {
-    owner: {
-      github_username: "Owner-Login",
-      display_name: "Owner Name",
-      type: "human",
-    },
-  });
+  await writeJson(
+    join(mount, "personal.gen3.json"),
+    personalConfig("Owner-Login", { owner: { display_name: "Owner Name" } }),
+  );
 
   const context = await buildLazurioContext({ root });
 
@@ -157,6 +189,62 @@ test("přítomný mount se hledá case-insensitive a manifest potvrzuje ownera",
   ]);
 });
 
+test("case-insensitive lookup najde mount, ale casing identity drift zůstane nevalidní", async () => {
+  const root = await tempRoot("lazurio-mounted-casing-drift-");
+  await writeJson(join(root, "launchpad.gen3.json"), {
+    personalspace_mountpoint: "personalspace",
+  });
+  await writeJson(join(root, "launchpad.gen3.local.json"), {
+    personalspace_owner: "owner-login",
+  });
+  const mount = join(root, "personalspace", "Owner-Login_GEN3");
+  await mkdir(mount, { recursive: true });
+  await writeJson(join(mount, "personal.gen3.json"), personalConfig("owner-login"));
+
+  const context = await buildLazurioContext({ root });
+
+  expect(context.principal).toEqual({
+    status: "not_evaluated",
+    reason: "personalspace_manifest_invalid",
+  });
+  expect(context.personalspace.mount.path).toBe("personalspace/Owner-Login_GEN3");
+  expect(context.provenance.context_sources).not.toContain(
+    "personalspace/Owner-Login_GEN3/personal.gen3.json",
+  );
+});
+
+test("schema-nevalidní namountovaný manifest nepotvrdí Principála ani provenienci", async () => {
+  const root = await tempRoot("lazurio-invalid-mounted-manifest-");
+  await writeJson(join(root, "launchpad.gen3.json"), {
+    personalspace_mountpoint: "personalspace",
+  });
+  await writeJson(join(root, "launchpad.gen3.local.json"), {
+    personalspace_owner: "owner-login",
+  });
+  const mount = join(root, "personalspace", "owner-login_GEN3");
+  await mkdir(mount, { recursive: true });
+  await writeJson(join(mount, "personal.gen3.json"), personalConfig("bob", {
+    secrets: { custody_pattern: "wrong" },
+  }));
+
+  const context = await buildLazurioContext({ root });
+
+  expect(context.principal).toEqual({
+    status: "not_evaluated",
+    reason: "personalspace_manifest_invalid",
+  });
+  expect(context.personalspace.mount).toEqual({
+    status: "present",
+    reason: "configured_mount_present",
+    path: "personalspace/owner-login_GEN3",
+  });
+  expect(context.personalspace.manifest.reason).toBe("personalspace_manifest_invalid");
+  expect(context.provenance.context_sources).toEqual([
+    "launchpad.gen3.json",
+    "launchpad.gen3.local.json",
+  ]);
+});
+
 test("manifest s jiným ownerem nevydá cizí Personalspace za present", async () => {
   const root = await tempRoot("lazurio-launchpad-owner-mismatch-");
   await writeJson(join(root, "launchpad.gen3.json"), {
@@ -167,9 +255,7 @@ test("manifest s jiným ownerem nevydá cizí Personalspace za present", async (
   });
   const mount = join(root, "personalspace", "alice_GEN3");
   await mkdir(mount, { recursive: true });
-  await writeJson(join(mount, "personal.gen3.json"), {
-    owner: { github_username: "bob" },
-  });
+  await writeJson(join(mount, "personal.gen3.json"), personalConfig("bob"));
 
   const context = await buildLazurioContext({ root });
 
@@ -500,9 +586,7 @@ test.skipIf(process.platform === "win32")(
 
 test("schema odmítne access verdikt mimo stavový slovník v0", async () => {
   const root = await tempRoot("lazurio-context-schema-");
-  await writeJson(join(root, "personal.gen3.json"), {
-    owner: { github_username: "owner-login" },
-  });
+  await writeJson(join(root, "personal.gen3.json"), personalConfig("owner-login"));
   const context = await buildLazurioContext({ root });
   context.personalspace.access.status = "missing_access";
 
@@ -535,15 +619,14 @@ test("rootless doctor spouští deklarovaný Personalspace doctor a propustí re
     `process.stdout.write(${JSON.stringify(JSON.stringify(report))});\nprocess.exitCode = 0;\n`,
     "utf8",
   );
-  await writeJson(join(root, "personal.gen3.json"), {
-    owner: { github_username: "owner-login" },
+  await writeJson(join(root, "personal.gen3.json"), personalConfig("owner-login", {
     doctor: {
       schema_version: "humanandmachines.doctor.declaration.v1",
       command: [process.execPath, "fixture-doctor.mjs"],
       scope_type: "personalspace",
       timeout_ms: 5_000,
     },
-  });
+  }));
 
   const result = await buildLazurioDoctorReport({ root });
 
@@ -558,15 +641,35 @@ test("rootless doctor spouští deklarovaný Personalspace doctor a propustí re
 
 test("doctor bez deklarace vrací no_report exit 3, ne incomplete exit 2", async () => {
   const root = await tempRoot("lazurio-rootless-doctor-missing-");
-  await writeJson(join(root, "personal.gen3.json"), {
-    owner: { github_username: "owner-login" },
-  });
+  await writeJson(join(root, "personal.gen3.json"), personalConfig("owner-login"));
 
   const cli = run([process.execPath, cliPath, "doctor", "--json", "--root", root], root);
 
   expect(cli.exitCode).toBe(3);
   expect(cli.stdout).toBe("");
   expect(cli.stderr).toContain("nedeklaruje doctor");
+}, platformTestTimeout(5_000));
+
+test("schema-nevalidní manifest nespustí deklarovaný rootless Doctor", async () => {
+  const root = await tempRoot("lazurio-rootless-invalid-doctor-");
+  const executed = join(root, "doctor-must-not-run");
+  await writeJson(join(root, "personal.gen3.json"), personalConfig("owner-login", {
+    doctor: {
+      command: [
+        process.execPath,
+        "-e",
+        `require('fs').writeFileSync(${JSON.stringify(executed)}, '')`,
+      ],
+      scope_type: "personalspace",
+    },
+  }));
+
+  const cli = run([process.execPath, cliPath, "doctor", "--json", "--root", root], root);
+
+  expect(cli.exitCode).toBe(3);
+  expect(cli.stdout).toBe("");
+  expect(cli.stderr).toContain("Personalspace manifest není validní");
+  expect(existsSync(executed)).toBe(false);
 }, platformTestTimeout(5_000));
 
 test("doctor s validním reportem a chybným exit kódem vrací incomplete 2", async () => {
@@ -595,15 +698,14 @@ test("doctor s validním reportem a chybným exit kódem vrací incomplete 2", a
     `process.stdout.write(${JSON.stringify(JSON.stringify(report))});\nprocess.exitCode = 1;\n`,
     "utf8",
   );
-  await writeJson(join(root, "personal.gen3.json"), {
-    owner: { github_username: "owner-login" },
+  await writeJson(join(root, "personal.gen3.json"), personalConfig("owner-login", {
     doctor: {
       schema_version: "humanandmachines.doctor.declaration.v1",
       command: [process.execPath, "fixture-doctor.mjs"],
       scope_type: "personalspace",
       timeout_ms: 5_000,
     },
-  });
+  }));
 
   const cli = run([process.execPath, cliPath, "doctor", "--json", "--root", root], root);
 
@@ -630,10 +732,10 @@ test("Lazurio doctor drží identity a výsledky existujícího root Doctor core
 
 test("CLI context --json funguje z čisté Agent session bez privátního obsahu", async () => {
   const root = await tempRoot("lazurio-cli-context-");
-  await writeJson(join(root, "personal.gen3.json"), {
-    owner: { github_username: "owner-login", display_name: "Owner" },
+  await writeJson(join(root, "personal.gen3.json"), personalConfig("owner-login", {
+    owner: { display_name: "Owner" },
     gbrain: { content: "CLI_PRIVATE_CANARY" },
-  });
+  }));
 
   const result = run([process.execPath, cliPath, "context", "--json", "--root", root], root);
 
@@ -683,6 +785,81 @@ async function tempRoot(prefix) {
 
 async function writeJson(path, value) {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function personalConfig(username, overrides = {}) {
+  const base = {
+    schema_version: "humanandmachines.personal.gen3.v1",
+    personal_generation: "gen3",
+    owner: {
+      github_username: username,
+      display_name: `${username} Display`,
+      type: "human",
+    },
+    repository: {
+      github_repo: `${username}/${username}_GEN3`,
+      mount_path: `personalspace/${username}_GEN3`,
+      visibility: "private",
+      mount_strategy: "doctor-managed-nested-repo",
+    },
+    privacy: {
+      default_share: "private",
+      agent_boundary: "personal-context-only",
+      shared_outputs: "metadata-only",
+    },
+    modules_manifest_path: "modules.manifest.json",
+    workspace_path: "workspace",
+    gbrain: {
+      path: "gbrain",
+      repository: {
+        github_repo: `${username}/${username}-gbrain`,
+        visibility: "private",
+        mount_strategy: "doctor-managed-nested-repo",
+      },
+      software: {
+        github_repo: "garrytan/gbrain",
+        install_source: "github:garrytan/gbrain",
+      },
+      default_shared: false,
+      human_editor: "obsidian",
+      agent_access: "mcp-only",
+    },
+    secrets: {
+      path: "secrets",
+      custody_pattern: "personalspace/<owner>_GEN3/secrets/<provider>/<scope>/<purpose>",
+      git: "ignored",
+    },
+    shared_spaces: [],
+  };
+  return {
+    ...base,
+    ...overrides,
+    owner: { ...base.owner, ...(overrides.owner ?? {}) },
+    repository: { ...base.repository, ...(overrides.repository ?? {}) },
+    privacy: { ...base.privacy, ...(overrides.privacy ?? {}) },
+    gbrain: {
+      ...base.gbrain,
+      ...(overrides.gbrain ?? {}),
+      repository: {
+        ...base.gbrain.repository,
+        ...(overrides.gbrain?.repository ?? {}),
+      },
+      software: {
+        ...base.gbrain.software,
+        ...(overrides.gbrain?.software ?? {}),
+      },
+    },
+    secrets: { ...base.secrets, ...(overrides.secrets ?? {}) },
+  };
+}
+
+function legacyPersonalConfig(username, overrides = {}) {
+  const config = personalConfig(username, overrides);
+  delete config.schema_version;
+  delete config.repository.mount_strategy;
+  delete config.gbrain.repository;
+  delete config.gbrain.software;
+  return config;
 }
 
 function run(command, cwd) {
