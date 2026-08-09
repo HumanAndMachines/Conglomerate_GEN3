@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "bun run preservation:test && bun run personalspace:test && bun run worktrees:test && bun run git-policy:test && bun run agent-skills:test && bun run integrations:contracts:test && bun run doctor:agent-skills && bun run --cwd launchpad check",
+    "check": "bun run preservation:test && bun run personalspace:test && bun run worktrees:test && bun run git-policy:test && bun run agent-skills:test && bun run integrations:contracts:test && bun run lazurio:test && bun run doctor:agent-skills && bun run --cwd launchpad check",
     "doctor": "bun run --cwd launchpad doctor",
     "doctor:task": "bun run --cwd launchpad doctor:task",
     "doctor:json": "bun run --cwd launchpad doctor:json",
@@ -11,6 +11,8 @@
     "launchpad": "bun run --cwd launchpad launch",
     "launchpad:serve": "bun run --cwd launchpad serve",
     "launchpad:dev": "bun run --cwd launchpad dev",
+    "lazurio": "bun lazurio/cli.mjs",
+    "lazurio:test": "bun test --timeout 15000 lazurio/lazurio.test.mjs",
     "personalspace:create": "bun scripts/create-personalspace.mjs",
     "personalspace:test": "bun test scripts/create-personalspace.test.mjs",
     "pr:preflight": "bun scripts/pr-preflight.mjs",

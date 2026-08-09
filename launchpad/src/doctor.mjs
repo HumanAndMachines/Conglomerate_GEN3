@@ -1,5 +1,6 @@
 import { join, resolve } from "path";
 import { buildLaunchpadDoctorReport } from "./diagnostics-lib.mjs";
+import { renderHumanDoctorReport } from "./doctor-output-lib.mjs";
 import { exitCodeForSummaryStatus } from "./doctor-surface-lib.mjs";
 
 const options = parseArgs(Bun.argv.slice(2));
@@ -15,7 +16,7 @@ const report = await buildLaunchpadDoctorReport({
 if (options.json) {
   console.log(JSON.stringify(report, null, 2));
 } else {
-  printHumanReport(report);
+  console.log(renderHumanDoctorReport(report));
 }
 
 // Invokační kontrakt společného surfacu (decision 0118): 0 = ok|warn, 1 = fail,
@@ -25,31 +26,6 @@ if (options.json) {
 // proces dřív, než se stihne dopsat celý stdout, a rodič, který by tenhle doctor
 // zavolal jako podřízeného, by useknutý JSON klasifikoval jako `unparseable`.
 process.exitCode = exitCodeForSummaryStatus(report.summary.status);
-
-function printHumanReport(doctorReport) {
-  console.log(`${doctorReport.summary.status} - ${doctorReport.scope.name}`);
-  for (const check of doctorReport.checks) {
-    console.log(`${check.status} - ${check.id}: ${check.message}`);
-    if (check.status === "blocked") {
-      console.log(`  ! ${check.blocked_reason}`);
-      console.log(`  → ${check.remedy}`);
-    }
-    if (check.status === "not_applicable") {
-      console.log(`  ~ ${check.not_applicable_reason} · vlastní: ${check.owner}`);
-    }
-    if (check.status === "ok" || (check.details ?? []).length === 0) continue;
-    for (const detail of check.details) {
-      console.log(`  - ${detail}`);
-    }
-  }
-  for (const child of doctorReport.children ?? []) {
-    console.log(
-      `${child.outcome} - podřízený doctor ${child.declaration_path} `
-      + `(${child.invoked_command.join(" ")})`,
-    );
-    for (const failure of child.failures ?? []) console.log(`  - ${failure}`);
-  }
-}
 
 function parseArgs(args) {
   const parsed = {

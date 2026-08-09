@@ -10,6 +10,28 @@ Cílové základy budoucího `Lazurio/Lazurio` drží
 Lazuria jako distribuční a lifecycle vrstvy. Dnešní názvy a provider cesty se
 od cíle mohou lišit do dokončení migrace `CAC-0092`.
 
+## Lazurio CLI v0
+
+První interní řez Lazurio CLI je záměrně read-only a nestabilní. Agentovi
+zpřístupňuje bezpečnou projekci identity Principála, aktuální Mašiny a stavu
+Personalspace; nečte SOUL, obsah GBrainu, chat, sessions, secrets ani mandáty.
+Chybějící lokální mount není tvrzení o GitHub přístupu — provider authority
+zůstává `not_evaluated`, dokud ji neověří živý provider readback.
+
+Ve vývojovém checkoutu se CLI spouští přes Bun:
+
+```sh
+bun run lazurio -- context --json
+bun run lazurio -- doctor
+```
+
+Oba příkazy přijímají `--root <cesta>`. Root může být buď tento Launchpad root
+s `launchpad.gen3.json`, nebo samostatný Personalspace root na Buddy VPS s
+`personal.gen3.json`. `lazurio doctor` nevlastní diagnostická pravidla: v
+Launchpad rootu používá existující strukturované Doctor jádro, v Personalspace
+rootu spouští přesně doctor command deklarovaný jeho manifestem. CLI v0 není
+distribuční package, veřejné Core API, MCP server ani write surface.
+
 ## Začíná se v chatu
 
 Kolega začíná práci přímým chatem s App Agentem. Agent otevře Launchpad GEN3
