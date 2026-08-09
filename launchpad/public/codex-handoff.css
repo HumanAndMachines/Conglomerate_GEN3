@@ -1,0 +1,161 @@
+.codex-handoff-dialog {
+  width: min(720px, calc(100vw - 32px));
+  max-height: min(820px, calc(100vh - 32px));
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  box-shadow: 0 24px 80px rgb(9 9 11 / 24%);
+}
+
+.codex-handoff-dialog::backdrop {
+  background: rgb(9 9 11 / 48%);
+  backdrop-filter: blur(2px);
+}
+
+.codex-handoff-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px 28px;
+  border-bottom: 1px solid var(--line);
+}
+
+.codex-handoff-head h2 {
+  margin: 0;
+  font-size: clamp(24px, 3vw, 32px);
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+}
+
+.codex-handoff-close {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.codex-handoff-close:hover {
+  color: var(--text);
+  background: var(--paper);
+  border-color: var(--line-strong);
+}
+
+.codex-handoff-close:focus-visible,
+.codex-handoff-prompt:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.codex-handoff-body {
+  display: grid;
+  gap: 18px;
+  max-height: calc(100vh - 240px);
+  padding: 24px 28px;
+  overflow: auto;
+}
+
+.codex-handoff-body > p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.codex-handoff-steps {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 24px;
+  line-height: 1.45;
+}
+
+.codex-handoff-label {
+  margin-bottom: -10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.codex-handoff-prompt {
+  width: 100%;
+  min-height: 280px;
+  resize: vertical;
+  padding: 16px;
+  color: var(--text);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.codex-handoff-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 88px;
+  padding: 18px 28px;
+  background: var(--paper);
+  border-top: 1px solid var(--line);
+}
+
+.codex-handoff-status {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.codex-handoff-buttons {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .codex-handoff-dialog {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+  }
+
+  .codex-handoff-head,
+  .codex-handoff-body,
+  .codex-handoff-actions {
+    padding-inline: 18px;
+  }
+
+  .codex-handoff-body {
+    max-height: calc(100vh - 260px);
+  }
+
+  .codex-handoff-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .codex-handoff-buttons,
+  .codex-handoff-buttons .btn {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .codex-handoff-dialog::backdrop {
+    backdrop-filter: none;
+  }
+}
