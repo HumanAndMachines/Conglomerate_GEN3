@@ -35,6 +35,15 @@ export function reconcileSelectedAppId(apps, filters, selectedAppId) {
   return null;
 }
 
+export function reconcileDetailDrawerView({
+  drawerView,
+  appSelectionWasCleared = false,
+  readonlyDetailWasCleared = false,
+} = {}) {
+  if (drawerView !== "detail") return drawerView;
+  return appSelectionWasCleared || readonlyDetailWasCleared ? "overview" : drawerView;
+}
+
 export function createLatestDataLoadCoordinator({ run } = {}) {
   if (typeof run !== "function") throw new TypeError("data load coordinator requires a run function");
 

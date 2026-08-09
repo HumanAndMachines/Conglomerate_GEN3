@@ -323,6 +323,18 @@ test("Daily surface hides diagnostics until the hero action requests them", asyn
   expect(detailRender).not.toContain("renderDetailPaths");
 });
 
+test("Launchpad po odfiltrování aktivního detailu zobrazí drawer overview", async () => {
+  const js = await readFile(join(publicRoot, "app.js"), "utf8");
+  const renderBlock = js.slice(js.indexOf("function render()"), js.indexOf("function computeHeroState"));
+
+  expect(js).toContain("reconcileDetailDrawerView");
+  expect(renderBlock).toContain("const readonlyDetailWasCleared");
+  expect(renderBlock).toContain("const appSelectionWasCleared");
+  expect(renderBlock).toContain("state.drawerView = reconcileDetailDrawerView({");
+  expect(renderBlock).toContain("appSelectionWasCleared,");
+  expect(renderBlock).toContain("readonlyDetailWasCleared,");
+});
+
 test("Launchpad quiet refresh is lightweight and non-overlapping", async () => {
   const js = await readFile(join(publicRoot, "app.js"), "utf8");
   const stateLib = await readFile(join(publicRoot, "app-state.js"), "utf8");

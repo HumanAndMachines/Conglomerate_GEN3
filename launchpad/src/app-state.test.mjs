@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import * as appState from "../public/app-state.js";
 import {
   appBaseTitle,
   appVersionLabel,
@@ -39,6 +40,30 @@ test("Launchpad drží jen explicitní výběr, první aplikaci rozcestníku nev
 
 test("Launchpad selection becomes empty when no filtered app is visible", () => {
   expect(reconcileSelectedAppId(apps, baseFilters({ company: "MissingCo" }), "democo-app-1")).toBe(null);
+});
+
+test("ztráta vybrané aplikace vrátí otevřený detailový drawer do overview", () => {
+  expect(appState.reconcileDetailDrawerView({
+    drawerView: "detail",
+    appSelectionWasCleared: true,
+    readonlyDetailWasCleared: false,
+  })).toBe("overview");
+});
+
+test("ztráta read-only detailu vrátí otevřený drawer do overview", () => {
+  expect(appState.reconcileDetailDrawerView({
+    drawerView: "detail",
+    appSelectionWasCleared: false,
+    readonlyDetailWasCleared: true,
+  })).toBe("overview");
+});
+
+test("platný detail zůstane detailem bez zneplatněného výběru", () => {
+  expect(appState.reconcileDetailDrawerView({
+    drawerView: "detail",
+    appSelectionWasCleared: false,
+    readonlyDetailWasCleared: false,
+  })).toBe("detail");
 });
 
 test("partial-failure Personalspace odpověď odstraní revokovaný prostor i soukromá Buddy data", () => {

@@ -11,6 +11,7 @@ import {
   isAttentionState,
   offersMoreThanLocalRun,
   replacePersonalspaceResponse,
+  reconcileDetailDrawerView,
   reconcileSelectedAppId,
   runtimeStagesForApp,
   sidePanelResponseIsCurrent,
@@ -945,7 +946,10 @@ function render() {
   const previousSelectedAppId = state.selectedAppId;
   const suppressDrawerOpen = state.suppressNextDrawerOpen;
   state.suppressNextDrawerOpen = false;
-  if (state.selectedReadonlyDetail && !readonlyDetailInView(state.selectedReadonlyDetail)) {
+  const readonlyDetailWasCleared = Boolean(
+    state.selectedReadonlyDetail && !readonlyDetailInView(state.selectedReadonlyDetail),
+  );
+  if (readonlyDetailWasCleared) {
     state.selectedReadonlyDetail = null;
   }
   if (state.filters.scope === "personal") {
@@ -965,6 +969,12 @@ function render() {
       setDrawer(true);
     }
   }
+  const appSelectionWasCleared = Boolean(previousSelectedAppId && !state.selectedAppId);
+  state.drawerView = reconcileDetailDrawerView({
+    drawerView: state.drawerView,
+    appSelectionWasCleared,
+    readonlyDetailWasCleared,
+  });
 
   // Anotace git_attention z git read modelu — nezávislý toggle ji zahrne
   // (graceful: bez git read modelu je model prázdný a anotace je vždy false).
