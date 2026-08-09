@@ -4981,12 +4981,25 @@ b {
   background: var(--lz-gray-100);
 }
 
+/* Spodní informační lišta drží fakta i skutečné akce na stejné základně.
+   Rozdíl zůstává sémantický: fakt je tichý text, problém je ovládací prvek. */
+.app-card > .card-warning.is-fact,
 .app-card > .card-warning.is-jen-akce {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  min-height: 52px;
   margin-top: auto;
-  padding-top: var(--lz-space-24);
+  padding-top: var(--lz-space-16);
+  border-top: 1px solid var(--lz-line-faint);
 }
 
-.app-card > .card-warning:not(.is-jen-akce),
+.app-card > .card-warning.is-jen-akce .card-warning-action {
+  align-self: auto;
+  justify-self: auto;
+}
+
+.app-card > .card-warning:not(.is-jen-akce):not(.is-fact),
 .app-card > .runtime-stages,
 .app-card > .card-feedback:not(.empty) {
   margin-top: var(--lz-space-24);
@@ -5169,10 +5182,6 @@ body {
 .app-card:focus-within,
 .app-card.selected {
   background: var(--lz-gray-50);
-}
-
-.app-card > .card-warning.is-jen-akce {
-  border-top: 1px solid var(--lz-line-faint);
 }
 
 .btn.btn-secondary,

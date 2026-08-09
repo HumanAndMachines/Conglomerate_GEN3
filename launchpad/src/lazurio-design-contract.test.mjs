@@ -122,6 +122,7 @@ test("materiálový průchod používá výraznější hrany a odstupňované La
   expect(material).toMatch(/\.topbar\s*{[\s\S]*?border-bottom-width: 1\.5px;[\s\S]*?background: var\(--lz-white\)/);
   expect(material).toMatch(/\.search-field\s*{[\s\S]*?border-width: 1\.5px;[\s\S]*?background: var\(--lz-gray-50\)/);
   expect(material).toMatch(/\.app-card\s*{[\s\S]*?border-width: 1\.5px;[\s\S]*?border-color: var\(--lz-line\);[\s\S]*?background: var\(--lz-white\)/);
-  expect(material).toMatch(/\.app-card > \.card-warning\.is-jen-akce\s*{[\s\S]*?border-top: 1px solid var\(--lz-line-faint\)/);
+  expect(styles).toMatch(/\.app-card > \.card-warning\.is-fact,[\s\S]*?\.app-card > \.card-warning\.is-jen-akce\s*{[\s\S]*?display: flex;[\s\S]*?min-height: 52px;[\s\S]*?margin-top: auto;[\s\S]*?border-top: 1px solid var\(--lz-line-faint\)/);
+  expect(styles).toContain(".app-card > .card-warning:not(.is-jen-akce):not(.is-fact)");
   expect(material).toMatch(/\.organization-git-status\s*{[\s\S]*?background: var\(--lz-paper\)/);
 });
