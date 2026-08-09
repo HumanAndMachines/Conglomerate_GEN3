@@ -28,8 +28,11 @@ test("Windows installer publikuje bootstrap a config atomickým přejmenováním
 
   expect(contents).toContain("Publish-AtomicFile");
   expect(contents).toContain("Write-AtomicUtf8File");
-  expect(contents).toContain("[System.IO.File]::Replace");
-  expect(contents).toContain("catch [System.IO.FileNotFoundException]");
+  expect(contents).toContain("$backupPath = New-AtomicTemporaryPath -DestinationPath $DestinationPath");
+  expect(contents).toContain("[System.IO.File]::Replace($TemporaryPath, $DestinationPath, $backupPath)");
+  expect(contents).toContain("$replaceFailure = $_.Exception.GetBaseException()");
+  expect(contents).toContain("$replaceFailure -is [System.IO.FileNotFoundException]");
+  expect(contents).not.toContain("[System.IO.File]::Replace($TemporaryPath, $DestinationPath, $null)");
   expect(contents).not.toContain("if (Test-Path -LiteralPath $DestinationPath -PathType Leaf)");
   expect(contents).toContain("-SourcePath $sourceBootstrapPath -DestinationPath $installedBootstrapPath");
   expect(contents).toContain("Write-AtomicUtf8File -DestinationPath $installConfigPath");

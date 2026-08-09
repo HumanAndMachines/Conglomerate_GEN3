@@ -105,13 +105,27 @@ function Publish-AtomicTemporaryFile {
         [Parameter(Mandatory = $true)][string]$DestinationPath
     )
 
+    $backupPath = New-AtomicTemporaryPath -DestinationPath $DestinationPath
     try {
-        [System.IO.File]::Replace($TemporaryPath, $DestinationPath, $null)
+        try {
+            [System.IO.File]::Replace($TemporaryPath, $DestinationPath, $backupPath)
+        }
+        catch {
+            $replaceFailure = $_.Exception.GetBaseException()
+            if ($replaceFailure -is [System.IO.FileNotFoundException]) {
+                # First installation has no destination yet. Move does not overwrite a
+                # concurrently-created destination, so that race fails closed.
+                [System.IO.File]::Move($TemporaryPath, $DestinationPath)
+            }
+            else {
+                throw
+            }
+        }
     }
-    catch [System.IO.FileNotFoundException] {
-        # First installation has no destination yet. Move does not overwrite a
-        # concurrently-created destination, so that race fails closed.
-        [System.IO.File]::Move($TemporaryPath, $DestinationPath)
+    finally {
+        if (Test-Path -LiteralPath $backupPath -PathType Leaf) {
+            Remove-Item -LiteralPath $backupPath -Force
+        }
     }
 }
 
