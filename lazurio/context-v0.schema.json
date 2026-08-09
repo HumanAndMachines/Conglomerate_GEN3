@@ -1,0 +1,167 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://lazurio.ai/schemas/context-v0.schema.json",
+  "title": "Lazurio context v0 (unstable)",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "unstable",
+    "root",
+    "principal",
+    "machine",
+    "personalspace",
+    "organizations",
+    "organizations_state",
+    "provenance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "lazurio.context.v0"
+    },
+    "unstable": {
+      "const": true
+    },
+    "root": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": ["launchpad_root", "personalspace"]
+        }
+      }
+    },
+    "principal": {
+      "type": "object",
+      "required": ["status", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": ["present", "not_evaluated"]
+        },
+        "reason": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+([_-][a-z0-9]+)*$"
+        },
+        "github_username": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$"
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": { "const": "present" }
+            }
+          },
+          "then": {
+            "required": ["github_username"]
+          }
+        }
+      ]
+    },
+    "machine": {
+      "type": "object",
+      "required": ["status", "reason", "platform", "architecture"],
+      "additionalProperties": false,
+      "properties": {
+        "status": { "const": "present" },
+        "reason": { "const": "runtime_observed" },
+        "platform": {
+          "type": "string",
+          "minLength": 1
+        },
+        "architecture": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "personalspace": {
+      "type": "object",
+      "required": ["mount", "manifest", "readiness", "access"],
+      "additionalProperties": false,
+      "properties": {
+        "mount": { "$ref": "#/definitions/path_state" },
+        "manifest": { "$ref": "#/definitions/path_state" },
+        "readiness": { "$ref": "#/definitions/state" },
+        "access": { "$ref": "#/definitions/state" }
+      }
+    },
+    "organizations": {
+      "type": "array",
+      "maxItems": 0
+    },
+    "organizations_state": {
+      "$ref": "#/definitions/state"
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["context_sources", "machine_sources"],
+      "additionalProperties": false,
+      "properties": {
+        "context_sources": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$"
+          }
+        },
+        "machine_sources": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["process.platform", "process.arch"]
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "state": {
+      "type": "object",
+      "required": ["status", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": ["present", "absent", "not_evaluated"]
+        },
+        "reason": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+([_-][a-z0-9]+)*$"
+        }
+      }
+    },
+    "path_state": {
+      "type": "object",
+      "required": ["status", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": ["present", "absent", "not_evaluated"]
+        },
+        "reason": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+([_-][a-z0-9]+)*$"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^(\\.|[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*)$"
+        }
+      }
+    }
+  }
+}

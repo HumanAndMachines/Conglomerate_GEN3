@@ -132,6 +132,28 @@ Uživatelský model musí zůstat srozumitelný i bez znalosti implementace:
 Když je Zulip nebo Resident runtime rozbitý, opravuje jej Agent přímo na
 Mašině. Kvůli tomu nevzniká druhý chat vydávající Agenta za Residenta.
 
+### Lazurio CLI v0 je podklad Agenta, ne třetí identita
+
+První Lazurio CLI řeší pouze dvě read-only potřeby Agenta: bezpečný strojový
+`context` a přístup ke stávajícímu Doctoru. Je to projekce nad kanonickými
+manifesty a runtime fakty, nikoli nový store, IAM nebo veřejné Core API.
+
+- `context` vrací pouze výslovně povolená metadata Principála, Mašiny a
+  Personalspace. Residentovu osobnost, paměť, chat, sessions, secrets ani
+  mandáty nenačítá.
+- Pozorování filesystemu a provider authority jsou dvě různé věci. Chybějící
+  mount je `absent`; GitHub nebo aplikační access zůstává `not_evaluated` bez
+  živého provider readbacku.
+- `doctor` nevytváří další diagnostický model. V Launchpad rootu používá stejné
+  strukturované jádro jako dnešní Doctor a na rootless Buddy VPS spouští doctor
+  deklarovaný samotným Personalspace manifestem.
+- Organization context, MCP, writes, distribuce a stabilní API vzniknou až z
+  ověřeného navazujícího consumeru; nejsou skrytou součástí v0.
+
+Zulip proto zůstává chat s Residentem, T3 Code nebo CLI chat s Agenty a Lazurio
+CLI jejich strojový podklad. Čistá Agent session se spuštěním CLI nestává
+Buddym ani AI Kolegou a nedědí jejich kontinuitu.
+
 ## Vnější bezpečnostní hranice
 
 Model stojí na ramenou providerů, kteří už řeší identity a přístup:
