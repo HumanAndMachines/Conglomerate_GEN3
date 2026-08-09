@@ -80,13 +80,18 @@ test("Organizace a Workspace používají nadpis jako modrou záložku na hraně
 });
 
 test("experimentální modulové dlaždice mají stálou hranu a vzdušný rytmus", async () => {
-  const styles = await source("styles.css");
+  const [styles, app] = await Promise.all([source("styles.css"), source("app.js")]);
   const experiment = styles.slice(styles.indexOf("/* Experiment dlaždic podle produktové reference"));
+  expect(experiment).toMatch(/\.apps-grid > \.app-card\s*{[\s\S]*?align-self: stretch/);
   expect(experiment).toMatch(/\.app-card\s*{[\s\S]*?min-height: 250px;[\s\S]*?padding: var\(--lz-space-24\);[\s\S]*?border: 1px solid color-mix\(in srgb, var\(--lz-line-faint\) 50%, var\(--lz-line\)\);[\s\S]*?border-radius: 18px/);
   expect(experiment).toMatch(/\.app-title-block\s*{[\s\S]*?gap: 28px/);
   expect(experiment).toMatch(/\.app-title-body\s*{[\s\S]*?gap: var\(--lz-space-16\)/);
   expect(experiment).toMatch(/\.app-card-desc\s*{[\s\S]*?font-size: 15px;[\s\S]*?line-height: 1\.55/);
   expect(experiment).toMatch(/\.app-card:hover,[\s\S]*?border-color: var\(--app-accent\)/);
+  expect(app).toContain('app.module === "mission-control" ? "" : variantTag(app, moduleName)');
+  expect(app).toContain('control: "Procesy, automatizace a koordinace práce."');
+  expect(app).toContain('book: "Návody, dokumentace a sdílené znalosti."');
+  expect(app).toContain('system: "Provozní nástroje a technické zázemí."');
 });
 
 test("pracovní plocha používá teplý papír bez mřížky a obvodových linek sekcí", async () => {

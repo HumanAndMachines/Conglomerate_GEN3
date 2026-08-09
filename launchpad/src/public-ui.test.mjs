@@ -1086,8 +1086,8 @@ test("Launchpad používá jednotný kompaktní modulový grid bez stínů", asy
   expect(css).toContain("color-mix(in srgb, var(--accent) 58%, var(--line))");
   expect(css).toContain(".app-card.selected:focus-visible");
   expect(js).toContain("APP_DESCRIPTION_FALLBACKS");
-  expect(js).toContain("Procesy, automatizace a koordinace každodenní práce.");
-  expect(js).toContain('["manual", "admin", "productionspace", "public-preview"].includes(app.surface)');
+  expect(js).toContain("Procesy, automatizace a koordinace práce.");
+  expect(js).toContain('["admin", "productionspace", "public-preview"].includes(app.surface)');
   expect(js).toContain("return surface ? `${surface} · ${purpose}` : purpose");
   expect(js).toContain("if (orgLabel && shouldShowCardOrg())");
   const appCardRule = css.match(/\.app-card\s*\{[^}]*\}/s)?.[0] ?? "";
