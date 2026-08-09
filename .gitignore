@@ -28,10 +28,6 @@ out/
 # Never tracked: it carries machine-specific data. Seed it by hand from the .example.
 launchpad.gen3.local.json
 
-# Local recovery for atomic nested-repo materialization. Keeping it beside the
-# Conglomerate checkout guarantees the same filesystem for normal Organization mounts.
-.companiesascode-state/
-
 # Env and secrets
 .env
 .env.*

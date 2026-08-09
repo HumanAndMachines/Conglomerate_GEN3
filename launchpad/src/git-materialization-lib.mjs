@@ -58,9 +58,6 @@ export async function materializeRepoCheckout({
     typeof deps.recoveryStateRoot === "string"
     && deps.recoveryStateRoot.trim() !== ""
   );
-  const recoveryStateRoot = usesDefaultRecoveryStateRoot
-    ? defaultRecoveryStateRoot(companiesRoot)
-    : resolve(deps.recoveryStateRoot);
 
   const validation = await validateMaterializationTarget({ companiesRoot, repo, run });
   if (!validation.ok) return validation;
@@ -71,6 +68,9 @@ export async function materializeRepoCheckout({
     branch,
     remote,
   } = validation;
+  const recoveryStateRoot = usesDefaultRecoveryStateRoot
+    ? defaultRecoveryStateRoot(organizationRoot)
+    : resolve(deps.recoveryStateRoot);
 
   const existingTarget = await lstatOrNull(targetPath);
   if (
@@ -81,15 +81,6 @@ export async function materializeRepoCheckout({
       "Cílová cesta už existuje, není samostatným Git checkoutem a obsahuje neznámá nebo uživatelská data; Launchpad ji nepřepíše ani nepřesune.",
     );
   }
-  if (existingTarget && usesDefaultRecoveryStateRoot) {
-    const recoveryContract = await validateDefaultRecoveryStateRoot({
-      companiesRoot,
-      recoveryStateRoot,
-      run,
-    });
-    if (!recoveryContract.ok) return recoveryContract;
-  }
-
   const targetParent = dirname(targetPath);
   let transportCwd = null;
   let residueRecovery = null;
@@ -107,6 +98,15 @@ export async function materializeRepoCheckout({
       },
     );
     if (!source.ok || !source.stdout) return missingAccess();
+
+    if (existingTarget && usesDefaultRecoveryStateRoot) {
+      const recoveryContract = await validateDefaultRecoveryStateRoot({
+        organizationRoot,
+        recoveryStateRoot,
+        run,
+      });
+      if (!recoveryContract.ok) return recoveryContract;
+    }
 
     await makeDirectory(targetParent, { recursive: true });
     const parentBoundary = await inspectCanonicalPathBoundary({
@@ -131,8 +131,11 @@ export async function materializeRepoCheckout({
         remove,
       });
       if (!residueRecovery.ok) {
+        const message = residueRecovery.failureCode === "EXDEV"
+          ? "Cílový slot a Organization recovery neleží na stejném filesystemu; nic se neklonovalo ani nemaže. Přesuň Organization mount tak, aby recovery podporovala atomický rename."
+          : "Cílová cesta se během kontroly změnila nebo bezpečné odložení rozpoznaných odvozených artefaktů selhalo; nic se neklonovalo.";
         return recoveryFailure(
-          "Cílová cesta se během kontroly změnila nebo bezpečné odložení rozpoznaných odvozených artefaktů selhalo; nic se neklonovalo.",
+          message,
           residueRecovery.recoveryDirectory,
         );
       }
@@ -155,6 +158,17 @@ export async function materializeRepoCheckout({
             residueRecovery.recoveryDirectory,
           );
         }
+        await remove(residueRecovery.recoveryDirectory, { recursive: true, force: true }).catch(() => {});
+        if (error?.code === "EEXIST") {
+          return targetExists(
+            "Cílovou cestu nešlo souběžně převzít; původní odvozené artefakty byly obnoveny a nic se neklonovalo.",
+          );
+        }
+        return cloneFailure(
+          "Cílovou cestu nešlo připravit; původní odvozené artefakty byly obnoveny.",
+          null,
+          true,
+        );
       }
       if (error?.code === "EEXIST") return targetExists();
       return cloneFailure();
@@ -216,13 +230,21 @@ export async function materializeRepoCheckout({
       ok: true,
       outcome: "materialized",
       code: null,
-      message: "Nový manifestovaný modul byl naklonovaný do deklarovaného targetu.",
+      message: residueRecovery
+        ? `Nový manifestovaný modul byl naklonovaný; původní odvozené artefakty zůstávají v recovery ${residueRecovery.recoveryPath}.`
+        : "Nový manifestovaný modul byl naklonovaný do deklarovaného targetu.",
       branch,
       head: verification.head,
       remote,
       residue_recovery_path: residueRecovery?.recoveryPath ?? null,
     };
   } catch {
+    if (residueRecovery) {
+      return recoveryFailure(
+        "Materializace po odložení původních artefaktů neočekávaně selhala; zkontroluj uvedenou recovery cestu ručně.",
+        residueRecovery.recoveryDirectory,
+      );
+    }
     return cloneFailure();
   } finally {
     if (transportCwd) {
@@ -234,18 +256,23 @@ export async function materializeRepoCheckout({
 export function generatedResiduePathAllowed(relativePath) {
   const normalized = String(relativePath ?? "").replaceAll("\\", "/");
   const segments = normalized.split("/").filter(Boolean);
+  const generatedRootIndex = segments.findIndex((segment) => (
+    GENERATED_RESIDUE_DIRECTORIES.has(segment)
+  ));
   if (
     segments.length === 0
     || normalized.startsWith("/")
     || segments.some((segment) => segment === "." || segment === "..")
-    || segments.some((segment) => AMBIGUOUS_OUTPUT_DIRECTORIES.has(segment))
+    || segments
+      .slice(0, generatedRootIndex < 0 ? segments.length : generatedRootIndex)
+      .some((segment) => AMBIGUOUS_OUTPUT_DIRECTORIES.has(segment))
   ) {
     return false;
   }
   const leaf = segments.at(-1);
   return leaf === ".DS_Store"
     || leaf?.endsWith(".tsbuildinfo")
-    || segments.some((segment) => GENERATED_RESIDUE_DIRECTORIES.has(segment));
+    || generatedRootIndex >= 0;
 }
 
 export async function isGeneratedOnlyMigrationResidue(targetPath) {
@@ -266,17 +293,18 @@ export async function isGeneratedOnlyMigrationResidue(targetPath) {
       }
 
       for (const entry of entries) {
-        const absolutePath = join(current.absolutePath, entry.name);
         const relativePath = current.relativePath
           ? `${current.relativePath}/${entry.name}`
           : entry.name;
-        const metadata = await lstat(absolutePath);
-        if (metadata.isDirectory() && !metadata.isSymbolicLink()) {
-          stack.push({ absolutePath, relativePath });
+        if (entry.isDirectory() && !entry.isSymbolicLink()) {
+          stack.push({
+            absolutePath: join(current.absolutePath, entry.name),
+            relativePath,
+          });
           continue;
         }
         if (
-          (!metadata.isFile() && !metadata.isSymbolicLink())
+          (!entry.isFile() && !entry.isSymbolicLink())
           || !generatedResiduePathAllowed(relativePath)
         ) {
           return false;
@@ -300,13 +328,10 @@ async function quarantineGeneratedResidue({
   move,
   remove,
 }) {
-  const organization = safeRecoverySegment(repo.organization ?? "organization");
   const slot = safeRecoverySegment(repo.slot_path ?? repo.module ?? "slot");
   const recoveryRoot = join(
     recoveryStateRoot,
-    "companiesascode",
     "doctor-recovery",
-    organization,
   );
   let recoveryDirectory = null;
   try {
@@ -315,7 +340,12 @@ async function quarantineGeneratedResidue({
     // an adversarial same-user concurrent filesystem mutator remains outside
     // the capability boundary of this local helper.
     if (!(await isGeneratedOnlyMigrationResidue(targetPath))) {
-      return { ok: false, recoveryDirectory: null, recoveryPath: null };
+      return {
+        ok: false,
+        recoveryDirectory: null,
+        recoveryPath: null,
+        failureCode: null,
+      };
     }
     await makeDirectory(recoveryRoot, { recursive: true });
     const timestamp = now().toISOString().replaceAll(/[-:.]/g, "");
@@ -324,12 +354,17 @@ async function quarantineGeneratedResidue({
     );
     const recoveryPath = join(recoveryDirectory, "residue");
     await move(targetPath, recoveryPath);
-    return { ok: true, recoveryDirectory, recoveryPath };
-  } catch {
+    return { ok: true, recoveryDirectory, recoveryPath, failureCode: null };
+  } catch (error) {
     if (recoveryDirectory) {
       await remove(recoveryDirectory, { recursive: true, force: true }).catch(() => {});
     }
-    return { ok: false, recoveryDirectory: null, recoveryPath: null };
+    return {
+      ok: false,
+      recoveryDirectory: null,
+      recoveryPath: null,
+      failureCode: error?.code ?? null,
+    };
   }
 }
 
@@ -356,8 +391,8 @@ async function rollbackMaterializationFailure({
 }
 
 async function restoreGeneratedResidue({ targetPath, recoveryPath, move }) {
-  if (await lstatOrNull(targetPath)) return false;
   try {
+    if (await lstatOrNull(targetPath)) return false;
     await move(recoveryPath, targetPath);
     return true;
   } catch {
@@ -365,38 +400,60 @@ async function restoreGeneratedResidue({ targetPath, recoveryPath, move }) {
   }
 }
 
-function defaultRecoveryStateRoot(companiesRoot) {
-  // The Organization mounts normally share the Conglomerate filesystem. A
-  // co-located ignored state root therefore preserves atomic directory rename
-  // semantics even when the checkout itself lives on a different volume than
-  // HOME/XDG_STATE_HOME/LOCALAPPDATA.
-  return resolve(companiesRoot, ".companiesascode-state");
+function defaultRecoveryStateRoot(organizationRoot) {
+  // Keep recovery inside the Organization mount. The Organization itself may
+  // live on another filesystem or Windows volume than the Conglomerate root.
+  return resolve(organizationRoot, ".companiesascode-state");
 }
 
 async function validateDefaultRecoveryStateRoot({
-  companiesRoot,
+  organizationRoot,
   recoveryStateRoot,
   run,
 }) {
+  const recoveryEntry = await lstatOrNull(recoveryStateRoot);
+  if (recoveryEntry?.isSymbolicLink() || (recoveryEntry && !recoveryEntry.isDirectory())) {
+    return recoveryFailure(
+      "Lokální Organization recovery cesta je link nebo jiný nepodporovaný typ; nic se nepřesunulo.",
+    );
+  }
   const boundary = await inspectCanonicalPathBoundary({
-    rootPath: companiesRoot,
+    rootPath: organizationRoot,
     targetPath: recoveryStateRoot,
     allowMissingTarget: true,
   });
   if (!boundary.ok) {
     return recoveryFailure(
-      "Lokální recovery cesta vede mimo kanonický Conglomerate root; nic se nepřesunulo.",
-      recoveryStateRoot,
+      "Lokální recovery cesta vede mimo kanonický Organization root; nic se nepřesunulo.",
+    );
+  }
+  const recoveryStoreRoot = join(recoveryStateRoot, "doctor-recovery");
+  const recoveryStoreEntry = await lstatOrNull(recoveryStoreRoot);
+  if (
+    recoveryStoreEntry?.isSymbolicLink()
+    || (recoveryStoreEntry && !recoveryStoreEntry.isDirectory())
+  ) {
+    return recoveryFailure(
+      "Lokální doctor-recovery cesta je link nebo jiný nepodporovaný typ; nic se nepřesunulo.",
+    );
+  }
+  const recoveryStoreBoundary = await inspectCanonicalPathBoundary({
+    rootPath: organizationRoot,
+    targetPath: recoveryStoreRoot,
+    allowMissingTarget: true,
+  });
+  if (!recoveryStoreBoundary.ok) {
+    return recoveryFailure(
+      "Lokální doctor-recovery cesta vede mimo kanonický Organization root; nic se nepřesunulo.",
     );
   }
   const ignored = await run(
     ["check-ignore", "--quiet", "--no-index", "--", `${recoveryStateRoot}/`],
-    { cwd: companiesRoot, timeoutMs: GIT_LOCAL_TIMEOUT_MS },
+    { cwd: organizationRoot, timeoutMs: GIT_LOCAL_TIMEOUT_MS },
   );
   if (!ignored.ok) {
     return recoveryFailure(
-      "Sdílený root nemá lokální recovery cestu gitignored; nic se nepřesunulo. Aktualizuj Conglomerate checkout a akci zopakuj.",
-      recoveryStateRoot,
+      "Organization root nemá lokální recovery cestu gitignored; nic se nepřesunulo. Aktualizuj Organization checkout a akci zopakuj.",
     );
   }
   return { ok: true };

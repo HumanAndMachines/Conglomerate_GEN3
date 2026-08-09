@@ -5,11 +5,12 @@ import {
   mkdir,
   readFile,
   readdir,
+  rename,
   rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { runGit } from "./git-lib.mjs";
 import {
   generatedResiduePathAllowed,
@@ -68,7 +69,6 @@ test("materializes an active manifest slot on its exact repository and branch", 
 test("quarantines generated-only in-tree residue before materializing a standalone checkout", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
-  await writeFile(join(root, ".gitignore"), ".companiesascode-state/\n");
   await initGitRepo(root);
   const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
   await prepareOrganizationRoot(organizationRoot);
@@ -76,9 +76,9 @@ test("quarantines generated-only in-tree residue before materializing a standalo
   await mkdir(join(root, "sources"), { recursive: true });
   await initGitRepo(join(root, "sources", "design-system"), { remotePath: remote });
   const target = join(organizationRoot, "design-system");
-  const cachedPackage = join(target, "app", "node_modules", "fixture", "package.json");
-  await mkdir(join(target, "app", "node_modules", "fixture"), { recursive: true });
-  await writeFile(cachedPackage, '{"name":"fixture"}\n');
+  const cachedPackage = join(target, "app", "node_modules", "fixture", "dist", "index.js");
+  await mkdir(join(target, "app", "node_modules", "fixture", "dist"), { recursive: true });
+  await writeFile(cachedPackage, "export const cached = true;\n");
   await writeJson(join(organizationRoot, "modules.manifest.json"), {
     organization_generation: "gen3",
     company: "BetaCo",
@@ -105,17 +105,17 @@ test("quarantines generated-only in-tree residue before materializing a standalo
     remote,
   });
   expect(result.residue_recovery_path).toStartWith(
-    join(root, ".companiesascode-state", "companiesascode", "doctor-recovery"),
+    join(organizationRoot, ".companiesascode-state", "doctor-recovery"),
   );
+  expect(result.message).toContain(result.residue_recovery_path);
   expect(await readFile(join(target, "README.md"), "utf8")).toContain("# main");
-  expect(await readFile(join(result.residue_recovery_path, "app", "node_modules", "fixture", "package.json"), "utf8"))
-    .toBe('{"name":"fixture"}\n');
+  expect(await readFile(join(result.residue_recovery_path, "app", "node_modules", "fixture", "dist", "index.js"), "utf8"))
+    .toBe("export const cached = true;\n");
 });
 
 test("preserves a generated-cache link as a leaf during co-located residue recovery", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
-  await writeFile(join(root, ".gitignore"), ".companiesascode-state/\n");
   await initGitRepo(root);
   const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
   await prepareOrganizationRoot(organizationRoot);
@@ -165,23 +165,30 @@ test("preserves a generated-cache link as a leaf during co-located residue recov
   expect(await readFile(join(target, "README.md"), "utf8")).toContain("# main");
 });
 
-test("shared root keeps the co-located default recovery state gitignored", async () => {
-  const repositoryRoot = resolve(import.meta.dir, "../..");
-  const recoveryRoot = join(repositoryRoot, ".companiesascode-state");
+test("Organization root keeps the co-located default recovery state gitignored", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
+  await prepareOrganizationRoot(organizationRoot);
+  const recoveryRoot = join(organizationRoot, ".companiesascode-state");
   const ignored = await runGit(
     ["check-ignore", "--quiet", "--no-index", "--", `${recoveryRoot}/`],
-    { cwd: repositoryRoot },
+    { cwd: organizationRoot },
   );
 
   expect(ignored.ok).toBe(true);
 });
 
-test("refuses default recovery before mutation when a shared root lacks the ignore contract", async () => {
+test("refuses default recovery before mutation when an Organization root lacks the ignore contract", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   await initGitRepo(root);
   const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
   await prepareOrganizationRoot(organizationRoot);
+  await writeFile(
+    join(organizationRoot, ".gitignore"),
+    "/workspace/*\n/design-system\n/mission-control\n",
+  );
   const remote = join(root, "remotes", "design-system.git");
   await mkdir(join(root, "sources"), { recursive: true });
   await initGitRepo(join(root, "sources", "design-system"), { remotePath: remote });
@@ -212,8 +219,105 @@ test("refuses default recovery before mutation when a shared root lacks the igno
     code: "materialization_recovery_required",
   });
   expect(result.message).toContain("nemá lokální recovery cestu gitignored");
+  expect(result.recovery_path).toBeNull();
   expect(await readFile(cached, "utf8")).toBe("{}\n");
-  expect(existsSync(join(root, ".companiesascode-state"))).toBe(false);
+  expect(existsSync(join(organizationRoot, ".companiesascode-state"))).toBe(false);
+});
+
+test("refuses a link-typed Organization recovery root before moving residue", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
+  await prepareOrganizationRoot(organizationRoot);
+  const remote = join(root, "remotes", "design-system.git");
+  await mkdir(join(root, "sources"), { recursive: true });
+  await initGitRepo(join(root, "sources", "design-system"), { remotePath: remote });
+  const target = join(organizationRoot, "design-system");
+  const cached = join(target, ".vite", "cache.json");
+  const linkedRecoveryTarget = join(organizationRoot, "tracked-recovery-target");
+  await mkdir(join(target, ".vite"), { recursive: true });
+  await writeFile(cached, "{}\n");
+  await mkdir(linkedRecoveryTarget);
+  await symlink(
+    linkedRecoveryTarget,
+    join(organizationRoot, ".companiesascode-state"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "BetaCo",
+    github_org: "BetaCo",
+    module_slots: [
+      {
+        path: "design-system",
+        space: "root",
+        git: { url: remote, branch: "main" },
+      },
+    ],
+  });
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  const repo = inventory.repos.find((entry) => entry.key === "BetaCo::design-system");
+
+  const result = await materializeRepoCheckout({ companiesRoot: root, repo });
+
+  expect(result).toMatchObject({
+    ok: false,
+    outcome: "failed",
+    code: "materialization_recovery_required",
+    recovery_path: null,
+  });
+  expect(result.message).toContain("je link");
+  expect(await readFile(cached, "utf8")).toBe("{}\n");
+  expect(await readdir(linkedRecoveryTarget)).toEqual([]);
+});
+
+test("refuses a link-typed doctor-recovery store before moving residue", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
+  await prepareOrganizationRoot(organizationRoot);
+  const remote = join(root, "remotes", "design-system.git");
+  await mkdir(join(root, "sources"), { recursive: true });
+  await initGitRepo(join(root, "sources", "design-system"), { remotePath: remote });
+  const target = join(organizationRoot, "design-system");
+  const cached = join(target, ".vite", "cache.json");
+  const recoveryStateRoot = join(organizationRoot, ".companiesascode-state");
+  const linkedRecoveryTarget = join(organizationRoot, "tracked-recovery-target");
+  await mkdir(join(target, ".vite"), { recursive: true });
+  await writeFile(cached, "{}\n");
+  await mkdir(recoveryStateRoot);
+  await mkdir(linkedRecoveryTarget);
+  await symlink(
+    linkedRecoveryTarget,
+    join(recoveryStateRoot, "doctor-recovery"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "BetaCo",
+    github_org: "BetaCo",
+    module_slots: [
+      {
+        path: "design-system",
+        space: "root",
+        git: { url: remote, branch: "main" },
+      },
+    ],
+  });
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  const repo = inventory.repos.find((entry) => entry.key === "BetaCo::design-system");
+
+  const result = await materializeRepoCheckout({ companiesRoot: root, repo });
+
+  expect(result).toMatchObject({
+    ok: false,
+    outcome: "failed",
+    code: "materialization_recovery_required",
+    recovery_path: null,
+  });
+  expect(result.message).toContain("doctor-recovery cesta je link");
+  expect(await readFile(cached, "utf8")).toBe("{}\n");
+  expect(await readdir(linkedRecoveryTarget)).toEqual([]);
 });
 
 test("generated residue policy is cross-platform and rejects ambiguous output roots", () => {
@@ -233,6 +337,9 @@ test("generated residue policy is cross-platform and rejects ambiguous output ro
   expect(generatedResiduePathAllowed("app/build/.next/cache.bin")).toBe(false);
   expect(generatedResiduePathAllowed("app\\dist\\.astro\\cache.bin")).toBe(false);
   expect(generatedResiduePathAllowed("out/.vite/cache.bin")).toBe(false);
+  expect(generatedResiduePathAllowed("app/node_modules/vite/dist/node/index.js")).toBe(true);
+  expect(generatedResiduePathAllowed("app\\node_modules\\vite\\build\\index.js")).toBe(true);
+  expect(generatedResiduePathAllowed("dist/node_modules/vite/index.js")).toBe(false);
   expect(generatedResiduePathAllowed("package.json")).toBe(false);
 });
 
@@ -295,6 +402,10 @@ test("does not quarantine generated residue until manifest source access is prov
   const cached = join(target, ".astro", "cache.json");
   await mkdir(join(target, ".astro"), { recursive: true });
   await writeFile(cached, "{}\n");
+  await writeFile(
+    join(organizationRoot, ".gitignore"),
+    "/design-system\n",
+  );
   await writeJson(join(organizationRoot, "modules.manifest.json"), {
     organization_generation: "gen3",
     company: "BetaCo",
@@ -309,13 +420,9 @@ test("does not quarantine generated residue until manifest source access is prov
   });
   const inventory = await buildGitInventory({ companiesRoot: root });
   const repo = inventory.repos.find((entry) => entry.key === "BetaCo::design-system");
-  const recoveryStateRoot = join(root, "recovery-state");
+  const recoveryStateRoot = join(organizationRoot, ".companiesascode-state");
 
-  const result = await materializeRepoCheckout({
-    companiesRoot: root,
-    repo,
-    deps: { recoveryStateRoot },
-  });
+  const result = await materializeRepoCheckout({ companiesRoot: root, repo });
 
   expect(result).toMatchObject({
     ok: false,
@@ -324,6 +431,58 @@ test("does not quarantine generated residue until manifest source access is prov
   });
   expect(await readFile(cached, "utf8")).toBe("{}\n");
   expect(existsSync(recoveryStateRoot)).toBe(false);
+});
+
+test("reports a cross-filesystem residue move without cloning or losing the target", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
+  await prepareOrganizationRoot(organizationRoot);
+  const remote = join(root, "remotes", "design-system.git");
+  await mkdir(join(root, "sources"), { recursive: true });
+  await initGitRepo(join(root, "sources", "design-system"), { remotePath: remote });
+  const target = join(organizationRoot, "design-system");
+  const cached = join(target, ".astro", "cache.json");
+  await mkdir(join(target, ".astro"), { recursive: true });
+  await writeFile(cached, "{}\n");
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "BetaCo",
+    github_org: "BetaCo",
+    module_slots: [
+      {
+        path: "design-system",
+        space: "root",
+        git: { url: remote, branch: "main" },
+      },
+    ],
+  });
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  const repo = inventory.repos.find((entry) => entry.key === "BetaCo::design-system");
+
+  const result = await materializeRepoCheckout({
+    companiesRoot: root,
+    repo,
+    deps: {
+      move: async (source, destination) => {
+        if (source === target) {
+          const error = new Error("simulated cross-device rename");
+          error.code = "EXDEV";
+          throw error;
+        }
+        return rename(source, destination);
+      },
+    },
+  });
+
+  expect(result).toMatchObject({
+    ok: false,
+    outcome: "failed",
+    code: "materialization_recovery_required",
+    recovery_path: null,
+  });
+  expect(result.message).toContain("stejném filesystemu");
+  expect(await readFile(cached, "utf8")).toBe("{}\n");
 });
 
 test("restores generated residue when clone fails after quarantine", async () => {
@@ -533,6 +692,60 @@ test("does not overwrite a target claimed by a concurrent materialization", asyn
   expect(await readFile(join(target, "owned-by-other-update"), "utf8")).toBe("keep\n");
 });
 
+test("restores residue and reports it when claiming the final target fails", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
+  await prepareOrganizationRoot(organizationRoot);
+  const remote = join(root, "remotes", "design-system.git");
+  await mkdir(join(root, "sources"), { recursive: true });
+  await initGitRepo(join(root, "sources", "design-system"), { remotePath: remote });
+  const target = join(organizationRoot, "design-system");
+  const cached = join(target, ".vite", "cache.json");
+  await mkdir(join(target, ".vite"), { recursive: true });
+  await writeFile(cached, "{}\n");
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "BetaCo",
+    github_org: "BetaCo",
+    module_slots: [
+      {
+        path: "design-system",
+        space: "root",
+        git: { url: remote, branch: "main" },
+      },
+    ],
+  });
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  const repo = inventory.repos.find((entry) => entry.key === "BetaCo::design-system");
+
+  const result = await materializeRepoCheckout({
+    companiesRoot: root,
+    repo,
+    deps: {
+      makeDirectory: async (path, options) => {
+        if (path === target && !options?.recursive) {
+          const error = new Error("simulated target permission failure");
+          error.code = "EACCES";
+          throw error;
+        }
+        return mkdir(path, options);
+      },
+    },
+  });
+
+  expect(result).toMatchObject({
+    ok: false,
+    outcome: "failed",
+    code: "materialization_clone_failed",
+    recovery_path: null,
+    residue_restored: true,
+  });
+  expect(await readFile(cached, "utf8")).toBe("{}\n");
+  expect(await readdir(join(organizationRoot, ".companiesascode-state", "doctor-recovery")))
+    .toEqual([]);
+});
+
 test("leaves a claimed target visible when clone fails", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
@@ -580,7 +793,7 @@ test("leaves a claimed target visible when clone fails", async () => {
 async function prepareOrganizationRoot(organizationRoot) {
   await writeFile(
     join(organizationRoot, ".gitignore"),
-    "/workspace/*/\n/design-system/\n/mission-control/\n",
+    "/workspace/*\n/design-system\n/mission-control\n/.companiesascode-state\n",
   );
   await initGitRepo(organizationRoot);
 }

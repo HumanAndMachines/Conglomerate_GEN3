@@ -92,6 +92,16 @@ export async function createOrganization({ root, orgPath, slug, moduleSlots }) {
   await writeJson(join(orgRoot, "TODO.tasks.json"), {});
   await writeJson(join(orgRoot, "DONE.tasks.json"), {});
   await writeJson(join(orgRoot, "ISSUES.open.json"), {});
+  await writeFile(
+    join(orgRoot, ".gitignore"),
+    [
+      "company/colleagues/*/private/",
+      "company/colleagues/*/archive/",
+      "company/colleagues/*/archiv/",
+      "/.companiesascode-state",
+      "",
+    ].join("\n"),
+  );
 }
 
 export async function createPackageApp({ root, packagePath, app }) {
