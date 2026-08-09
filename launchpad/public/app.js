@@ -519,7 +519,7 @@ document.addEventListener("click", (event) => {
     state.spaceMenuOpen = false;
     applySpaceMenuState();
   }
-  if (state.openVersionMenu && !event.target.closest(".app-version-menu")) {
+  if (state.openVersionMenu && !event.target.closest(".app-version-menu, .app-version-menu-panel")) {
     state.openVersionMenu = null;
     render();
   }
@@ -2750,10 +2750,14 @@ function appCard(app, family = { key: app.id, members: [app], primary: app }) {
 
   // ⋯ menu drží „další možnosti" (varianty, zastavit, restart, detail/logy).
   // Zobrazí se, jen když je co nabídnout — čistá dlaždice zůstane bez ⋯.
+  let inlineMenuPanel = null;
   if (cardHasMenu(app, others)) {
     const topActions = document.createElement("div");
     topActions.className = "app-card-top-actions";
-    topActions.append(versionMenuNode(app, others, family.key, moduleName));
+    const menu = versionMenuNode(app, others, family.key, moduleName);
+    topActions.append(menu.trigger);
+    inlineMenuPanel = menu.panel;
+    if (inlineMenuPanel) card.classList.add("has-open-menu");
     head.append(topActions);
   }
 
@@ -2762,6 +2766,7 @@ function appCard(app, family = { key: app.id, members: [app], primary: app }) {
   feedback.setAttribute("aria-live", "polite");
 
   card.append(head);
+  if (inlineMenuPanel) card.append(inlineMenuPanel);
   // Sofistikovaný warning panel jen když je co řešit: stáhnout novější verzi,
   // nainstalovat/opravit balíčky, nebo vysvětlit blokující/failed stav. Žádná
   // velká trvalá tlačítka — hlavní akce (otevřít) je klik na celou dlaždici.
@@ -3202,7 +3207,6 @@ function menuActionRow(action) {
   button.disabled = action.pending ? state.pendingAction === action.pending : false;
   button.addEventListener("click", (event) => {
     event.stopPropagation();
-    button.closest("details")?.removeAttribute("open");
     state.openVersionMenu = null;
     action.run();
   });
@@ -3457,19 +3461,21 @@ function badgeNode(label) {
 // versions or named sub-apps) so the default stays the face of the card and the
 // rest are one click away.
 function versionMenuNode(primary, others, familyKey, moduleName) {
-  const details = document.createElement("details");
-  details.className = "app-version-menu";
-  details.open = state.openVersionMenu === familyKey;
-  details.addEventListener("click", (event) => event.stopPropagation());
+  const isOpen = state.openVersionMenu === familyKey;
+  const menu = document.createElement("div");
+  menu.className = "app-version-menu";
+  menu.addEventListener("click", (event) => event.stopPropagation());
 
   const anyRunning = others.some((app) => app.runtime_status === "healthy");
-  const summary = document.createElement("summary");
-  summary.className = `app-more-button ${anyRunning ? "has-running" : ""}`.trim();
-  summary.setAttribute("aria-label", "Další možnosti modulu");
-  summary.title = "Další možnosti";
-  summary.innerHTML =
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = `app-more-button ${anyRunning ? "has-running" : ""}`.trim();
+  trigger.setAttribute("aria-label", "Další možnosti modulu");
+  trigger.setAttribute("aria-expanded", String(isOpen));
+  trigger.title = "Další možnosti";
+  trigger.innerHTML =
     '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>';
-  summary.addEventListener("click", (event) => {
+  trigger.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
     state.openVersionMenu = state.openVersionMenu === familyKey ? null : familyKey;
@@ -3478,6 +3484,9 @@ function versionMenuNode(primary, others, familyKey, moduleName) {
 
   const panel = document.createElement("div");
   panel.className = "app-version-menu-panel";
+  panel.setAttribute("role", "group");
+  panel.setAttribute("aria-label", "Další možnosti modulu");
+  panel.addEventListener("click", (event) => event.stopPropagation());
 
   // Sekce 1 — varianty modulu (jiné verze / vedlejší aplikace). Note vysvětluje,
   // co dělá klik na dlaždici a že varianty se otevřou stejným jedním klikem.
@@ -3504,8 +3513,8 @@ function versionMenuNode(primary, others, familyKey, moduleName) {
     panel.append(...actions.map((action) => menuActionRow(action)));
   }
 
-  details.append(summary, panel);
-  return details;
+  menu.append(trigger);
+  return { trigger: menu, panel: isOpen ? panel : null };
 }
 
 // Položka varianty v ⋯ menu: „Otevřít <varianta> — port · popis · stav"
@@ -3529,7 +3538,6 @@ function versionOptionNode(app, moduleName) {
   button.append(text, cue);
   button.addEventListener("click", (event) => {
     event.stopPropagation();
-    button.closest("details")?.removeAttribute("open");
     state.openVersionMenu = null;
     void openAppChain(app, {});
   });

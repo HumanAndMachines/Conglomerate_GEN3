@@ -82,8 +82,9 @@ test("Organizace a Workspace používají nadpis jako modrou záložku na hraně
 test("experimentální modulové dlaždice mají stálou hranu a vzdušný rytmus", async () => {
   const [styles, app] = await Promise.all([source("styles.css"), source("app.js")]);
   const experiment = styles.slice(styles.indexOf("/* Experiment dlaždic podle produktové reference"));
-  expect(experiment).toMatch(/\.apps-grid > \.app-card\s*{[\s\S]*?align-self: stretch/);
-  expect(experiment).toMatch(/\.app-card\s*{[\s\S]*?min-height: 250px;[\s\S]*?padding: var\(--lz-space-24\);[\s\S]*?border: 1px solid color-mix\(in srgb, var\(--lz-line-faint\) 50%, var\(--lz-line\)\);[\s\S]*?border-radius: 18px/);
+  expect(experiment).toMatch(/\.apps-grid\s*{[\s\S]*?align-items: start/);
+  expect(experiment).toMatch(/\.apps-grid > \.app-card\s*{[\s\S]*?align-self: start/);
+  expect(experiment).toMatch(/\.app-card\s*{[\s\S]*?min-height: 16rem;[\s\S]*?padding: var\(--lz-space-24\);[\s\S]*?border: 1px solid color-mix\(in srgb, var\(--lz-line-faint\) 50%, var\(--lz-line\)\);[\s\S]*?border-radius: 18px/);
   expect(experiment).toMatch(/\.app-title-block\s*{[\s\S]*?gap: 28px/);
   expect(experiment).toMatch(/\.app-title-body\s*{[\s\S]*?gap: var\(--lz-space-16\)/);
   expect(experiment).toMatch(/\.app-card-desc\s*{[\s\S]*?font-size: 15px;[\s\S]*?line-height: 1\.55/);
@@ -130,4 +131,21 @@ test("materiálový průchod používá výraznější hrany a odstupňované La
   expect(styles).toMatch(/\.app-card > \.card-warning\.is-fact,[\s\S]*?\.app-card > \.card-warning\.is-jen-akce\s*{[\s\S]*?display: flex;[\s\S]*?min-height: 52px;[\s\S]*?margin-top: auto;[\s\S]*?border-top: 1px solid var\(--lz-line-faint\)/);
   expect(styles).toContain(".app-card > .card-warning:not(.is-jen-akce):not(.is-fact)");
   expect(material).toMatch(/\.organization-git-status\s*{[\s\S]*?background: var\(--lz-paper\)/);
+});
+
+test("menu dalších možností se rozbalí uvnitř dlaždice bez vrstveného hoveru", async () => {
+  const [styles, app, personalspace] = await Promise.all([
+    source("styles.css"),
+    source("app.js"),
+    source("personalspace.js"),
+  ]);
+  expect(styles).toMatch(/\.app-version-menu-panel\s*{[\s\S]*?position: static;[\s\S]*?width: 100%;[\s\S]*?border-top: 1px solid var\(--lz-line-faint\)/);
+  expect(styles).toMatch(/\.app-card\.has-open-menu:not\(\.selected\),[\s\S]*?border-color: var\(--lz-line\);[\s\S]*?background: var\(--lz-white\)/);
+  expect(styles).toMatch(/\.apps-grid\s*{[\s\S]*?align-items: start/);
+  expect(styles).toMatch(/\.apps-grid > \.app-card\s*{[\s\S]*?align-self: start/);
+  expect(styles).toMatch(/\.personalspace-app\.has-open-menu,[\s\S]*?background: var\(--lz-paper\);[\s\S]*?box-shadow: none/);
+  expect(app).toContain("if (inlineMenuPanel) card.append(inlineMenuPanel)");
+  expect(app).toContain('trigger.setAttribute("aria-expanded", String(isOpen))');
+  expect(personalspace).toContain("if (menu?.panel) card.append(menu.panel)");
+  expect(personalspace).toContain('trigger.setAttribute("aria-expanded", String(isOpen))');
 });

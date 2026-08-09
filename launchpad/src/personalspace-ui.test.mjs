@@ -257,7 +257,9 @@ test("Personalspace dlaždice je GEN2-minimal (port GEN2-minimal karty): tile-fi
   expect(js).toContain("function personalMenuNode");
   expect(js).toContain("function personalMenuActions");
   expect(js).toContain("function menuActionRow");
-  expect(js).toContain('summary.className = `app-more-button');
+  expect(js).toContain('trigger.className = `app-more-button');
+  expect(js).toContain('trigger.setAttribute("aria-expanded", String(isOpen))');
+  expect(js).toContain('if (menu?.panel) card.append(menu.panel)');
   expect(js).toContain('button.className = "app-menu-action";');
 
   // Ikona aplikace zůstává; duplicitní ↗ cue už karta nepotřebuje.
