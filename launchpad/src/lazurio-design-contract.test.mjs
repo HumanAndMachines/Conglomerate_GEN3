@@ -98,7 +98,7 @@ test("filtr aplikací používá dvě samostatné Lazurio pilulky", async () => 
   expect(styles).toMatch(/\.apps-toolbar \.segment\s*{[\s\S]*?border-radius: var\(--lz-radius-pill\)/);
   expect(styles).toContain('.apps-toolbar .segment[aria-pressed="true"]');
   expect(styles).toMatch(/\.apps-toolbar \.segment\[aria-pressed="true"\],[\s\S]*?background: var\(--lz-ink\)[\s\S]*?color: var\(--lz-white\)/);
-  expect(styles).toMatch(/\.search-field:focus-within\s*{[\s\S]*?outline: none;/);
+  expect(styles).toMatch(/\.search-field:focus-within\s*{[\s\S]*?border-color: var\(--lz-gray-700\);[\s\S]*?background: var\(--lz-white\)/);
   expect(styles).toMatch(/\.search-field input:focus-visible\s*{[\s\S]*?outline: none;/);
 });
 
@@ -190,6 +190,8 @@ test("menu dalších možností se rozbalí uvnitř dlaždice bez vrstveného ho
   expect(styles).toMatch(/\.personalspace-app\.has-open-menu,[\s\S]*?background: var\(--lz-paper\);[\s\S]*?box-shadow: none/);
   expect(app).toContain("if (inlineMenuPanel) card.append(inlineMenuPanel)");
   expect(app).toContain('trigger.setAttribute("aria-expanded", String(isOpen))');
+  expect(app).toContain("focusMenuTriggerAfterRender(document, familyKey)");
   expect(personalspace).toContain("if (menu?.panel) card.append(menu.panel)");
   expect(personalspace).toContain('trigger.setAttribute("aria-expanded", String(isOpen))');
+  expect(personalspace).toContain("focusMenuTriggerAfterRender(document, app.id)");
 });

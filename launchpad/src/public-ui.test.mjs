@@ -470,6 +470,8 @@ test("Version families render as one card with a default version and a more-menu
   expect(js).toContain("app-version-menu");
   expect(js).toContain("app-version-badge");
   expect(js).toContain('trigger.setAttribute("aria-expanded", String(isOpen))');
+  expect(js).toContain('trigger.dataset.menuFocusKey = familyKey');
+  expect(js).toContain("focusMenuTriggerAfterRender(document, familyKey)");
   expect(js).toContain('if (inlineMenuPanel) card.append(inlineMenuPanel)');
   expect(css).toContain(".app-version-menu");
   expect(css).toContain(".app-version-badge");

@@ -17,6 +17,8 @@
 // - gbrain sekce: tlačítko „Otevřít v Obsidianu" (obsidian://open) + read-only
 //   listování zápisů (strom, markdown render, fulltext) jako fallback.
 
+import { focusMenuTriggerAfterRender } from "./focus-restoration.js";
+
 const state = {
   data: null,
   // per-space gbrain UI stav: { open, tree, note, notePath, search, query, loading, error }
@@ -988,6 +990,7 @@ function personalMenuNode(app) {
   const trigger = document.createElement("button");
   trigger.type = "button";
   trigger.className = `app-more-button ${app.runtime_status === "healthy" ? "has-running" : ""}`.trim();
+  trigger.dataset.menuFocusKey = app.id;
   trigger.setAttribute("aria-label", "Další možnosti aplikace");
   trigger.setAttribute("aria-expanded", String(isOpen));
   trigger.title = "Další možnosti";
@@ -998,6 +1001,7 @@ function personalMenuNode(app) {
     event.stopPropagation();
     state.openMenu = state.openMenu === app.id ? null : app.id;
     rerender();
+    focusMenuTriggerAfterRender(document, app.id);
   });
 
   const panel = document.createElement("div");

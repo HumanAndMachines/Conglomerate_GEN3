@@ -28,6 +28,7 @@ import {
   topicLabel,
 } from "./commit-copy.js";
 import { semanticAppIconKey } from "./app-icon-key.js";
+import { focusMenuTriggerAfterRender } from "./focus-restoration.js";
 import {
   isCodexPortConflict,
   openCodexPortConflictDialog,
@@ -3558,6 +3559,7 @@ function versionMenuNode(primary, others, familyKey, moduleName) {
   const trigger = document.createElement("button");
   trigger.type = "button";
   trigger.className = `app-more-button ${anyRunning ? "has-running" : ""}`.trim();
+  trigger.dataset.menuFocusKey = familyKey;
   trigger.setAttribute("aria-label", "Další možnosti modulu");
   trigger.setAttribute("aria-expanded", String(isOpen));
   trigger.title = "Další možnosti";
@@ -3568,6 +3570,7 @@ function versionMenuNode(primary, others, familyKey, moduleName) {
     event.stopPropagation();
     state.openVersionMenu = state.openVersionMenu === familyKey ? null : familyKey;
     render();
+    focusMenuTriggerAfterRender(document, familyKey);
   });
 
   const panel = document.createElement("div");
