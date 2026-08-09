@@ -161,7 +161,13 @@ const APP_ICON_FAMILY = {
 
 const APP_ICON_STYLES = {
   stavba: { color: "var(--lz-blue-500)", background: "transparent", border: "transparent" },
-  obsah: { color: "var(--lz-expressive-orange-figure)", background: "transparent", border: "transparent" },
+  obsah: {
+    color: "var(--lz-expressive-orange-figure)",
+    accent: "var(--lz-expressive-orange)",
+    focusAccent: "var(--lz-expressive-orange-figure)",
+    background: "transparent",
+    border: "transparent",
+  },
   stroj: { color: "var(--lz-expressive-mint-figure)", background: "transparent", border: "transparent" },
   obchod: { color: "var(--lz-expressive-vermilion-figure)", background: "transparent", border: "transparent" },
   kampan: { color: "var(--lz-expressive-yellow-figure)", background: "transparent", border: "transparent" },
@@ -2484,6 +2490,7 @@ function workspaceModuleCard(module, companySlug, options = {}) {
   const card = document.createElement("article");
   card.className = `app-card system-card manifest-module-card ${openable ? "is-openable" : "is-readonly is-unavailable"} ${selected ? "selected" : ""}`.trim();
   card.style.setProperty("--app-accent", appIconAccent(appIconKey(detail)));
+  card.style.setProperty("--app-focus-accent", appIconFocusAccent(appIconKey(detail)));
   card.dataset.readonlyDetailId = detail.id;
   card.tabIndex = 0;
   card.setAttribute("aria-label", openable ? `Otevřít složku ${detail.title}` : `${detail.title} — detail`);
@@ -2555,6 +2562,7 @@ function productionspaceCard(system, entry) {
   const card = document.createElement("article");
   card.className = `app-card system-card is-readonly ${selected ? "selected" : ""}`.trim();
   card.style.setProperty("--app-accent", appIconAccent("system"));
+  card.style.setProperty("--app-focus-accent", appIconFocusAccent("system"));
   card.dataset.readonlyDetailId = detail.id;
   card.tabIndex = 0;
   card.setAttribute("aria-label", `${detail.title} — detail`);
@@ -2698,6 +2706,7 @@ function appCard(app, family = { key: app.id, members: [app], primary: app }) {
   const card = document.createElement("article");
   card.className = `app-card is-${appCardTone(app, warning)} ${selected ? "selected" : ""} ${readOnly ? "is-readonly" : "is-openable"}`.trim();
   card.style.setProperty("--app-accent", appIconAccent(appIconKey(app)));
+  card.style.setProperty("--app-focus-accent", appIconFocusAccent(appIconKey(app)));
   card.dataset.appId = app.id;
   card.tabIndex = 0;
   card.setAttribute("aria-label", readOnly ? `${appBaseTitle(app)} — detail` : `Otevřít ${appBaseTitle(app)}`);
@@ -4583,7 +4592,7 @@ async function runRootUpdate() {
 
 async function pullAllRepositories() {
   const confirmed = window.confirm(
-    "Pullnout vše napříč všemi Organizacemi? Launchpad nejdřív aktualizuje Organization root repa, znovu načte jejich manifesty a dostupné nové Workspace moduly bezpečně naklonuje. Lokální změny odloží a obnoví; planned sloty, productionspace, chybějící přístup a jinak rizikové checkouty přeskočí.",
+    "Načíst nejnovější změny ve všech organizacích?\n\nLaunchpad aktualizuje dostupné pracovní prostory a doplní nové aplikace. Vaše rozpracované změny zachová. Místa, ke kterým nemáte přístup nebo u kterých by aktualizace mohla způsobit problém, bezpečně přeskočí.\n\nChcete pokračovat?",
   );
   if (!confirmed) return;
   state.pendingAction = "git:pull-all";
@@ -5205,7 +5214,13 @@ function appIconStyle(key) {
 }
 
 function appIconAccent(key) {
-  return APP_ICON_STYLES[appIconFamily(key)].color;
+  const style = APP_ICON_STYLES[appIconFamily(key)];
+  return style.accent ?? style.color;
+}
+
+function appIconFocusAccent(key) {
+  const style = APP_ICON_STYLES[appIconFamily(key)];
+  return style.focusAccent ?? style.color;
 }
 
 function appIconSvg(key) {
