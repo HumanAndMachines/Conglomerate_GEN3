@@ -20,11 +20,12 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
     readFile(join(import.meta.dirname, "server.mjs"), "utf8"),
   ]);
 
-  // Shell regions and engineering fallback are still present.
+  // Shell regions jsou přítomné; interní debug tabulka se do denního UI neposílá.
   expect(html).toContain('id="spaceSwitcherButton"');
   expect(html).toContain('id="spaceSwitcherMenu"');
   expect(html).toContain('id="appsGrid"');
-  expect(html).toContain('class="debug-table"');
+  expect(html).not.toContain('class="debug-table"');
+  expect(html).not.toContain('id="appsTable"');
   expect(html).not.toContain('id="organizationRail"');
   expect(html).not.toContain('id="companyFilter"');
   expect(html).not.toContain('id="filterRail"');
@@ -66,16 +67,15 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(js).toContain("const requestId = ++sidePanelRequestGeneration;");
   expect(js).toContain("sidePanelResponseIsCurrent({");
   expect(js).toContain("return filtered(state.apps)");
-  expect(js).toContain("--space-logo-hue");
+  expect(js).not.toContain("--space-logo-hue");
   expect(js).toContain("space.organization.logo_url");
   expect(js).toContain("function applyOrganizationTheme");
-  expect(js).toContain("space.organization.theme");
-  expect(js).toContain('root.setAttribute("data-organization-theme"');
-  expect(js).toContain("ORGANIZATION_THEME_TOKENS");
-  expect(js).toContain('"--on-accent"');
-  expect(js).toContain("safeOrganizationThemeValue");
+  expect(js).not.toContain("space.organization.theme");
+  expect(js).toContain('root.removeAttribute("data-organization-theme"');
+  expect(js).not.toContain("ORGANIZATION_THEME_TOKENS");
+  expect(js).not.toContain("safeOrganizationThemeValue");
   expect(js).toContain("accentLockedByOrganization");
-  expect(js).toContain('if (state.filters.scope === "org") return false');
+  expect(js).toContain("accentLockedByOrganization: true");
   expect(js).toContain('if (space.kind === "personal")');
   expect(js).not.toContain("https://github.com/");
   const profileBlock = js.slice(js.indexOf("function spaceProfileCard"), js.indexOf("function profileInitials"));
@@ -107,7 +107,7 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(switcherBlock).not.toContain("chip(");
   expect(js).toContain("function renderAppsGrid");
   expect(js).toContain("reconcileSelectedAppId");
-  expect(js).toContain("if (firstSuccessfulScopeLoad) state.suppressNextDrawerOpen = true");
+  expect(js).not.toContain("state.selectedAppId = state.apps[0].id");
   expect(js).toContain("function scrollBelowStickyTopbar");
   expect(js).toContain("window.scrollBy({ top: delta, behavior: \"smooth\" })");
   expect(js).toContain("function primaryNextAction");
@@ -149,9 +149,9 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(css).toContain(".space-logo-organization");
   expect(css).toContain(".space-logo img");
   expect(css).toContain("var(--launchpad-body-background)");
-  expect(css).toContain("color-mix(in srgb, var(--bg) 96%, #000)");
+  expect(css).toContain("--launchpad-body-background: var(--lz-white)");
   expect(css).toContain("var(--font-heading, var(--font-body))");
-  expect(css).toContain("--on-accent: #fff;");
+  expect(css).toContain("--on-accent: var(--lz-white);");
   const primaryButtonBlock = css.slice(css.indexOf(".btn-primary {"), css.indexOf("}", css.indexOf(".btn-primary {")) + 1);
   expect(primaryButtonBlock).toContain("color: var(--on-accent);");
   expect(css).toContain("min-height: 34px");
@@ -167,36 +167,13 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(css).toContain(".app-card");
 });
 
-test("Organization theme klient přijme stejné neprůhledné on-accent barvy jako server", async () => {
+test("Launchpad drží kanonické Lazurio a nepřebírá skin Organizace", async () => {
   const js = await readFile(join(publicRoot, "app.js"), "utf8");
-  const safeOrganizationThemeValue = extractClientThemeValidator(js);
-
-  for (const value of [
-    "#fff",
-    "#ffffffff",
-    "rgb(255, 255, 255)",
-    "rgb(255 255 255 / 1)",
-    "rgba(255 255 255 / 1.0)",
-    "hsl(0 0% 100% / 100%)",
-    "hsla(0 0% 100% / 100.0%)",
-    "black",
-  ]) {
-    expect(safeOrganizationThemeValue("--on-accent", value)).toBe(true);
-  }
-
-  for (const value of [
-    "transparent",
-    "#ffffff80",
-    "rgba(255, 255, 255, 0.5)",
-    "rgb(255 255 255 / 50%)",
-    "hsl(0 0% 100% / 0.5)",
-    "rgb(255 255 255 /)",
-    "rgb(255, 255, 255 / 1)",
-  ]) {
-    expect(safeOrganizationThemeValue("--on-accent", value)).toBe(false);
-  }
-
-  expect(safeOrganizationThemeValue("--accent", "rgb(255 255 255 / 1)")).toBe(false);
+  expect(js).toContain("function applyOrganizationTheme");
+  expect(js).toContain('root.removeAttribute("data-organization-theme")');
+  expect(js).toContain('root.removeAttribute("data-accent")');
+  expect(js).not.toContain("safeOrganizationThemeValue");
+  expect(js).not.toContain("space.organization.theme");
 });
 
 test("Launchpad shell ships GEN2-like command center, theme and feedback affordances", async () => {
@@ -258,17 +235,16 @@ test("Launchpad shell ships GEN2-like command center, theme and feedback afforda
   expect(js).toContain("launchpad-theme");
   expect(js).toContain("localStorage.removeItem(LEGACY_THEME_MODE_STORAGE)");
   expect(js).toContain("setMode: () => false");
-  expect(css).toContain('[data-theme="dark"]');
+  expect(css).not.toContain('[data-theme="dark"]');
 
-  // Accent zůstává připravený pro osobní prostory; režim je do dokončení
-  // tmavého návrhu uzamčený na light.
+  // Accent preset ani tmavá varianta se nenabízí, dokud nejsou schválené.
   expect(js).toContain("function applyTheme");
   expect(js).toContain("window.LaunchpadTheme");
   expect(js).toContain("launchpad-accent");
-  expect(css).toContain('[data-accent="emerald"]');
+  expect(css).not.toContain('[data-accent="emerald"]');
   expect(css).toContain("color-mix(in srgb, var(--accent)");
 
-  // Search + user-facing two-option view filter in the workbench.
+  // Vyhledávání a dvoupolohový filtr zůstávají jediným ovládáním rozcestníku.
   expect(html).toContain('id="appsSearch"');
   expect(html).toContain('data-status-segment="all"');
   expect(html).not.toContain('data-status-segment="healthy"');
@@ -278,7 +254,6 @@ test("Launchpad shell ships GEN2-like command center, theme and feedback afforda
   expect(js).toContain("state.filters.attentionOnly = true");
   expect(js).toContain("state.filters.attentionOnly = false");
   expect(js).toContain("function syncAttentionToggle");
-  expect(css).toContain(".segmented-control");
   expect(html).toContain('class="segment attention-toggle"');
 
   // Toast + skeleton feedback.
@@ -317,7 +292,7 @@ test("Daily surface hides diagnostics until the hero action requests them", asyn
   expect(html).toContain('id="doctorStatus"');
   expect(html).toContain('aria-controls="problemsPanel"');
   expect(html).toContain('class="doctor-status-alert"');
-  expect(html).toContain('<!-- lucide/stethoscope -->');
+  expect(html).toContain('<!-- iconoir/health-shield -->');
   expect(js).toContain('elements.doctorStatus.addEventListener("click", () => {');
   expect(js).toContain('alert.hidden = !needsAttention');
   expect(js).toContain("closeMobileOverflow();");
@@ -602,12 +577,11 @@ test("CAC-0095: zvoneček nese actor, scope a payload a respektuje izolaci", asy
   expect(js).toContain("changeOriginLabel");
   // Téma změny se bere ze složek, ne z textu commitu.
   expect(js).toContain("topicLabel(item.payload)");
-  // Monogram má barvu odvozenou ze jména autora, sdíleným helperem s logem
-  // Organizace — ne druhou kopií hashovací smyčky.
-  expect(js).toContain("function stringHue");
-  expect(js).toContain('avatar.style.setProperty("--avatar-hue"');
-  expect(css).toContain("hsl(var(--avatar-hue, 250)");
-  expect(css).toContain('[data-theme="dark"] .notification-avatar');
+  // Monogram i fallback loga zůstávají v neutrální produktové paletě Lazuria.
+  expect(js).not.toContain("function stringHue");
+  expect(js).not.toContain('avatar.style.setProperty("--avatar-hue"');
+  expect(css).not.toContain("hsl(var(--avatar-hue, 250)");
+  expect(css).toMatch(/\.notification-avatar[\s\S]*?background: var\(--lz-paper\)/);
   // Počty souborů a řádků v notifikaci nejsou — neříkají, co se stalo.
   expect(js).not.toContain("notificationScaleLabel");
   expect(js).toContain("Vlastními slovy autora");
@@ -857,9 +831,12 @@ test("UI separates physical Organization/Workspace/Productionspace and prepares 
   expect(js).toContain("function organizationSectionNode");
   expect(js).toContain("function workspaceSectionNode");
   expect(js).toContain("function teamSectionNode");
+  const teamSection = js.slice(js.indexOf("function teamSectionNode"), js.indexOf("function teamAccessSummaryNode"));
+  expect(teamSection).not.toContain("team.description");
+  expect(teamSection).not.toContain('description.className = "app-section-note"');
   expect(js).toContain("function teamAccessSummaryNode");
-  expect(js).toContain("Tvoje Teamy");
-  expect(js).toContain("GitHub členství neověřeno");
+  expect(js).toContain("Přístup k Teamům");
+  expect(js).toContain("Členství zatím neověřeno");
   expect(js).toContain("titleRow.append(summaryNode)");
   const titleRowCss = css.slice(
     css.indexOf(".app-section-title-row {"),
@@ -1039,10 +1016,10 @@ test("Owner 2026-07-05: karta modulu je GEN2-minimal dlaždice bez velkých tla�
   expect(js).not.toContain("function secondaryActionNodes");
   expect(js).not.toContain("function ghostButton");
 
-  // Žádné trvalé statusové chipy: běžící stav přidá jediný chip a jen když modul
-  // opravdu běží. Ostatní stavy jdou do warning panelu / detailu.
-  expect(js).toContain("const running = app.runtime_status === \"healthy\";");
-  expect(js).toContain("if (running) {");
+  // Žádné trvalé statusové chipy. Běžné stavy běží/zastaveno patří do detailu;
+  // pouze problémy vstupují do warning panelu a filtru Ke kontrole.
+  const card = js.slice(js.indexOf("function appCard"), js.indexOf("function cardWarningModel"));
+  expect(card).not.toContain("runtimeChip(app)");
 
   // Sofistikovaný warning panel se ukáže, jen když je co řešit (null jinak).
   expect(js).toContain("function cardWarningModel");
@@ -1083,6 +1060,13 @@ test("Owner 2026-07-05: karta modulu je GEN2-minimal dlaždice bez velkých tla�
   expect(css).toContain("white-space: nowrap");
   expect(css).toContain(".app-menu-action");
   expect(css).toContain(".app-menu-divider");
+});
+
+test("rozcestník automaticky nevybírá první aplikaci ani neukazuje běžný runtime stav", async () => {
+  const js = await readFile(join(publicRoot, "app.js"), "utf8");
+  expect(js).not.toContain("state.selectedAppId = state.apps[0].id");
+  const card = js.slice(js.indexOf("function appCard"), js.indexOf("function cardWarningModel"));
+  expect(card).not.toContain("runtimeChip(app)");
 });
 
 test("Launchpad používá jednotný kompaktní modulový grid bez stínů", async () => {

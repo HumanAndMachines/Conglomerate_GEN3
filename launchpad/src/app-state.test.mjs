@@ -28,12 +28,13 @@ const apps = [
   app("betaco-app-1", "BetaCo", "needs_install"),
 ];
 
-test("Launchpad selection follows the active Organization filter", () => {
+test("Launchpad drží jen explicitní výběr, první aplikaci rozcestníku nevybírá", () => {
   const filters = baseFilters({ company: "OmegaCo" });
 
   expect(filterApps(apps, filters).map((item) => item.id)).toEqual(["omegaco-app-1", "omegaco-app-2"]);
-  expect(reconcileSelectedAppId(apps, filters, "democo-app-1")).toBe("omegaco-app-1");
+  expect(reconcileSelectedAppId(apps, filters, "democo-app-1")).toBe(null);
   expect(reconcileSelectedAppId(apps, filters, "omegaco-app-2")).toBe("omegaco-app-2");
+  expect(reconcileSelectedAppId(apps, filters, null)).toBe(null);
 });
 
 test("Launchpad selection becomes empty when no filtered app is visible", () => {
