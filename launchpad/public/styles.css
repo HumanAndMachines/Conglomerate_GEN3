@@ -1,35 +1,34 @@
-/* =========================================================
-   Launchpad GEN3 — local operator shell
-   Visual language adapted from the GEN2 Launchpad:
-   indigo accent (#6058E9), Manrope, restrained workstation
-   surfaces, light + dark via [data-theme]. Behaviour, policy
-   and discovery contracts are unchanged — this is skin + IA.
-   ========================================================= */
+@import url("/fonts/fonts.css");
+@import url("/vendor/lazurio/components.css");
+
+/* Launchpad GEN3 používá kanonické runtime tokeny a komponentové základy
+   design systému Lazurio. Lokální proměnné níže jsou pouze kompatibilní
+   adaptér pro existující selektory Launchpadu. */
 
 :root {
   /* Accent palette — GEN2 Launchpad ramp (accent-500 #6058E9). The named tokens
      stay --c-accent-* so a picked accent (data-accent) can override the ramp
      while the GEN2 default keeps 1:1 visual parity. */
   /* Ultramarín 239° — rampa značky Lazuria (`design-system-lazurio/tokens.css`). */
-  --c-accent-200: #a8b9fb;
-  --c-accent-400: #3a48ef;
-  --c-accent-500: #0d12db;
-  --c-accent-700: #0b0e91;
-  --c-accent-800: #0c0d72;
-  --c-accent-900: #0c0c53;
+  --c-accent-200: var(--lz-blue-200);
+  --c-accent-400: var(--lz-blue-400);
+  --c-accent-500: var(--lz-blue-500);
+  --c-accent-700: var(--lz-blue-700);
+  --c-accent-800: var(--lz-blue-800);
+  --c-accent-900: var(--lz-blue-900);
 
   /* Neutrals — GEN2 set. */
-  --c-white: #ffffff;
+  --c-white: var(--lz-white);
   /* Šedá s teplým sklonem. Původní měla modrý nádech (#f7f8fb) a vedle
      sytého ultramarínu působila studeně a špinavě. */
-  --c-neutral-050: #fbfaf9;
-  --c-neutral-100: #f5f4f3;
-  --c-neutral-200: #ecebea;
-  --c-neutral-300: #dddcdb;
-  --c-neutral-500: #707070;
-  --c-neutral-700: #3d3d3d;
-  --c-neutral-900: #171717;
-  --c-neutral-950: #090909;
+  --c-neutral-050: var(--lz-paper);
+  --c-neutral-100: var(--lz-gray-100);
+  --c-neutral-200: var(--lz-gray-200);
+  --c-neutral-300: var(--lz-line);
+  --c-neutral-500: var(--lz-ink-muted);
+  --c-neutral-700: var(--lz-gray-700);
+  --c-neutral-900: var(--lz-ink);
+  --c-neutral-950: var(--lz-ink);
 
   /* State */
   /* Text nese tmavý stupeň, PLOCHA světlý. Tmavý stupeň v ploše dá blátivý
@@ -37,18 +36,18 @@
      Plocha se počítá z téhož odstínu při PLNÉ sytosti a světlosti 0,92:
      sytost pod 0,7 v téhle světlosti dá béžovou, protože na barvu už
      nezbývá místo. Regulovat se má světlostí, ne sytostí. */
-  --c-success: #1e7b49;
-  --c-success-bg: #d6ffe9;
-  --c-success-line: #70ffb3;
-  --c-success-dot: #229d5c;
-  --c-warn: #876612;
-  --c-warn-bg: #fff3d6;
-  --c-warn-line: #ffd770;
-  --c-warn-dot: #ac8113;
-  --c-danger: #a61e19;
-  --c-danger-bg: #ffd8d6;
-  --c-danger-line: #ff7570;
-  --c-danger-dot: #cc221c;
+  --c-success: var(--lz-success);
+  --c-success-bg: var(--lz-success-bg);
+  --c-success-line: var(--lz-success-border);
+  --c-success-dot: var(--lz-success);
+  --c-warn: var(--lz-warning);
+  --c-warn-bg: var(--lz-warning-bg);
+  --c-warn-line: var(--lz-warning-border);
+  --c-warn-dot: var(--lz-warning);
+  --c-danger: var(--lz-danger);
+  --c-danger-bg: var(--lz-danger-bg);
+  --c-danger-line: var(--lz-danger-border);
+  --c-danger-dot: var(--lz-danger);
 
   /* Semantic (light) */
   --bg: var(--c-white);
@@ -57,27 +56,27 @@
   --bg-subtle: var(--c-neutral-100);
   --bg-muted: var(--c-neutral-050);
   --surface: var(--c-white);
-  --surface-console: #171717;
+  --surface-console: var(--lz-ink);
   /* Ink is intentionally decoupled from the accent ramp so swapping the accent
      (light/dark or a future picked colour) never tints body text. */
   /* Dva stupně inkoustu, ne tři. Třetí (`ink-faint`) je v identitě role pro
      VELKÝ text; na štítku 12 px má 2,85:1 a propadá. Tři stupně, z nichž
      jeden je nečitelný, nejsou tři stupně. */
-  --text: #171717;
-  --text-muted: #707070;
-  --text-subtle: #707070;
-  --line: #dddcdb;
-  --line-strong: #c3c2c1;
+  --text: var(--lz-ink);
+  --text-muted: var(--lz-ink-muted);
+  --text-subtle: var(--lz-ink-muted);
+  --line: var(--lz-line);
+  --line-strong: var(--lz-gray-300);
   /* Accent is driven by a single ramp. Everything accent-flavoured (soft fills,
      focus rings, the primary button, the brand mark) derives from --accent via
      color-mix, so a theme/accent switch only has to change the ramp below. */
   --accent: var(--c-accent-500);
-  --on-accent: #fff;
+  --on-accent: var(--lz-white);
   /* Hlavní akce je inkoustová, ne modrá. Modrá plocha velikosti
      tlačítka přebije všechno ostatní; modrá zůstává na ohnisko,
      odkaz a graf. */
-  --accent-button: var(--c-neutral-950);
-  --accent-button-hover: #262626;
+  --accent-button: var(--lz-accent-button);
+  --accent-button-hover: var(--lz-accent-button-hover);
   --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
   --accent-ring: color-mix(in srgb, var(--accent) 35%, transparent);
 
@@ -86,11 +85,11 @@
   /* Poloměr rozlišuje ROLI: plocha 0, formulářové pole 3, ovládací prvek 6,
      stav pilulka. Pilulka na tlačítku, štítku i poli znamená, že ten tvar
      přestane cokoli znamenat — a pak nemá smysl ani u stavu. */
-  --r-xs: 3px;
-  --r-sm: 6px;
-  --r-md: 6px;
-  --r-lg: 6px;
-  --r-pill: 999px;
+  --r-xs: var(--lz-radius-xs);
+  --r-sm: var(--lz-radius-sm);
+  --r-md: var(--lz-radius-md);
+  --r-lg: var(--lz-radius-md);
+  --r-pill: var(--lz-radius-pill);
 
   /* Motion */
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
@@ -108,68 +107,12 @@
   --scroll-offset: calc(var(--topbar-h) + 0.75rem);
 
   /* Fonts */
-  --font-body: "Inter Tight", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-body: var(--lz-font-sans);
   --font-heading: var(--font-body);
-  --font-mono: "Geist Mono", "SF Mono", "Menlo", "Consolas", monospace;
-  --launchpad-body-background: color-mix(in srgb, var(--bg) 96%, #000);
+  --font-mono: var(--lz-font-mono);
+  --launchpad-body-background: var(--lz-white);
 
   color-scheme: light;
-}
-
-[data-theme="dark"] {
-  --bg: #0b0e14;
-  --bg-elevated: #12161e;
-  --bg-subtle: #161b25;
-  --bg-muted: #0f131b;
-  --surface: #151a24;
-  --surface-console: #0a0d14;
-  --text: #f3f4f8;
-  --text-muted: #a2a9bb;
-  --text-subtle: #6b7385;
-  --line: rgba(255, 255, 255, 0.08);
-  --line-strong: rgba(255, 255, 255, 0.16);
-  /* Only the accent endpoint changes for dark; --accent-soft / --accent-ring
-     inherit the color-mix definitions from :root and re-resolve against it. */
-  --accent: var(--c-accent-400);
-
-  color-scheme: dark;
-}
-
-/* ---------- Accent presets ----------------------------------------------
-   A future appearance/settings panel can switch the whole accent by setting
-   data-accent on <html> (see window.LaunchpadTheme.setAccent). Each preset only
-   overrides the accent ramp; every accent-derived token follows automatically,
-   in both light and dark mode. Add a new accent by adding one block here. */
-[data-accent="emerald"] {
-  --c-accent-200: #a7f3d0;
-  --c-accent-400: #34d399;
-  --c-accent-500: #10b981;
-  --c-accent-700: #047857;
-  --c-accent-900: #064e3b;
-}
-
-[data-accent="amber"] {
-  --c-accent-200: #fde68a;
-  --c-accent-400: #fbbf24;
-  --c-accent-500: #f59e0b;
-  --c-accent-700: #b45309;
-  --c-accent-900: #78350f;
-}
-
-[data-accent="rose"] {
-  --c-accent-200: #fecdd3;
-  --c-accent-400: #fb7185;
-  --c-accent-500: #f43f5e;
-  --c-accent-700: #be123c;
-  --c-accent-900: #881337;
-}
-
-[data-accent="slate"] {
-  --c-accent-200: #cbd5e1;
-  --c-accent-400: #64748b;
-  --c-accent-500: #475569;
-  --c-accent-700: #334155;
-  --c-accent-900: #1e293b;
 }
 
 *,
@@ -200,10 +143,6 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
-}
-
-[data-theme="dark"] body {
-  background: var(--launchpad-body-background);
 }
 
 h1,
@@ -241,7 +180,7 @@ select:focus-visible,
 input:focus-visible,
 .segment:focus-visible,
 .app-card:focus-visible {
-  outline: 2px solid var(--accent-ring);
+  outline: 2px solid var(--lz-ink);
   outline-offset: 2px;
   border-radius: var(--r-sm);
 }
@@ -369,9 +308,9 @@ input:focus-visible,
 }
 
 .space-logo-organization {
-  border-color: hsl(var(--space-logo-hue, 250) 45% 78%);
-  background: hsl(var(--space-logo-hue, 250) 62% 93%);
-  color: hsl(var(--space-logo-hue, 250) 52% 32%);
+  border-color: var(--lz-line);
+  background: var(--lz-paper);
+  color: var(--lz-ink);
 }
 
 .space-logo img {
@@ -724,19 +663,6 @@ input:focus-visible,
   to { transform: rotate(360deg); }
 }
 
-[data-theme="dark"] .status-ok {
-  color: #6ee7b7;
-}
-[data-theme="dark"] .status-warn {
-  color: #fbbf24;
-}
-[data-theme="dark"] .status-fail {
-  color: #fca5a5;
-}
-[data-theme="dark"] .status-incomplete {
-  color: #c4b5fd;
-}
-
 .icon-btn {
   width: 34px;
   height: 34px;
@@ -830,10 +756,6 @@ input:focus-visible,
 .btn-primary:hover:not(:disabled) {
   background: var(--accent-button-hover);
   border-color: var(--accent-button-hover);
-}
-
-[data-theme="dark"] .btn-primary {
-  background: linear-gradient(135deg, var(--c-accent-400), var(--c-accent-500));
 }
 
 /* Bílá plocha a linka, ne akcentní nádech. Modrá plocha znamená OHNISKO;
@@ -971,18 +893,6 @@ input:focus-visible,
 
 .hero.hero-danger .btn-secondary:hover:not(:disabled) {
   background: color-mix(in srgb, var(--c-danger) 21%, var(--surface));
-}
-
-[data-theme="dark"] .hero.hero-ok .btn-secondary {
-  color: #a7f3d0;
-}
-
-[data-theme="dark"] .hero.hero-warn .btn-secondary {
-  color: #fde68a;
-}
-
-[data-theme="dark"] .hero.hero-danger .btn-secondary {
-  color: #fecaca;
 }
 
 .space-health-badge {
@@ -1132,7 +1042,7 @@ input:focus-visible,
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.06em;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 /* ---------- Workspace panel ---------- */
@@ -1405,13 +1315,6 @@ input:focus-visible,
   color: #b91c1c;
 }
 
-[data-theme="dark"] .action-ok {
-  color: #6ee7b7;
-}
-[data-theme="dark"] .action-fail {
-  color: #fca5a5;
-}
-
 /* ---------- App cards ---------- */
 .apps-stack {
   display: grid;
@@ -1469,7 +1372,7 @@ input:focus-visible,
 .app-section-workspace {
   padding: 0.9rem;
   border: 1px solid var(--line);
-  border-radius: var(--r-lg);
+  border-radius: 0;
   background: var(--surface);
 }
 
@@ -1536,10 +1439,6 @@ input:focus-visible,
 .chip-prod {
   background: var(--c-warn-bg);
   color: #9a5b00;
-}
-
-[data-theme="dark"] .chip-prod {
-  color: #fbbf24;
 }
 
 /* ---------- Personalspace section (private, in the main plane) ----------
@@ -1985,7 +1884,7 @@ input:focus-visible,
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.02em;
-  text-transform: uppercase;
+  text-transform: none;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2123,11 +2022,27 @@ a.primary-action:hover {
 /* ---------- Skeleton loading ---------- */
 .skeleton-card {
   min-height: 148px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: linear-gradient(100deg, var(--bg-subtle) 0%, var(--bg-muted) 40%, var(--bg-subtle) 80%);
+  border: 0;
+  border-radius: 0;
+  background: linear-gradient(100deg, var(--lz-gray-50) 0%, var(--lz-paper) 40%, var(--lz-gray-50) 80%);
   background-size: 200% 100%;
   animation: shimmer 1.4s infinite linear;
+}
+
+.skeleton-head {
+  min-height: 1.5rem;
+  display: flex;
+  align-items: center;
+}
+
+.skeleton-line {
+  display: block;
+  height: 0.85rem;
+  background: var(--lz-gray-100);
+}
+
+.skeleton-title {
+  width: 7.5rem;
 }
 
 @keyframes shimmer {
@@ -2154,7 +2069,7 @@ a.primary-action:hover {
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
+  text-transform: none;
   list-style: none;
 }
 
@@ -2201,7 +2116,7 @@ th {
   color: var(--text-subtle);
   font-size: 14px;
   font-weight: 600;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 tbody tr {
@@ -2388,7 +2303,7 @@ tbody tr.selected {
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.06em;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .detail-summary h3 {
@@ -2460,7 +2375,7 @@ tbody tr.selected {
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .detail-list dd {
@@ -2713,7 +2628,7 @@ tbody tr.selected {
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
+  text-transform: none;
   list-style: none;
 }
 
@@ -2771,7 +2686,7 @@ tbody tr.selected {
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
+  text-transform: none;
   list-style: none;
 }
 
@@ -3148,7 +3063,7 @@ tbody tr.selected {
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
+  text-transform: none;
   line-height: 1.5;
   white-space: nowrap;
   text-decoration: none;
@@ -3467,18 +3382,11 @@ button.runtime-stage.is-available:hover {
   width: 1.9rem;
   height: 1.9rem;
   border-radius: var(--r-pill);
-  background: hsl(var(--avatar-hue, 250) 62% 93%);
-  border: 1px solid hsl(var(--avatar-hue, 250) 45% 78%);
-  color: hsl(var(--avatar-hue, 250) 52% 32%);
+  background: var(--lz-paper);
+  border: 1px solid var(--lz-line);
+  color: var(--lz-ink);
   font-size: 14px;
   font-weight: 600;
-}
-/* V tmavém režimu by světlá kolečka svítila; drží se stejný odstín, jen
-   obrácený kontrast. */
-[data-theme="dark"] .notification-avatar {
-  background: hsl(var(--avatar-hue, 250) 38% 24%);
-  border-color: hsl(var(--avatar-hue, 250) 35% 38%);
-  color: hsl(var(--avatar-hue, 250) 65% 86%);
 }
 /* Agent má obrys, ne jinou barvu — druhá barevná rampa by šla proti identitě. */
 .notification-avatar[data-kind="agent"] {
@@ -3505,7 +3413,7 @@ button.runtime-stage.is-available:hover {
   color: var(--text-subtle);
   font-size: 14px;
   font-weight: 600;
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: 0.04em;
 }
 .notification-meta {
@@ -3561,7 +3469,7 @@ button.runtime-stage.is-available:hover {
   color: var(--text-subtle);
   font-size: 14px;
   font-weight: 600;
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: 0.04em;
 }
 .notification-description {
@@ -3737,7 +3645,7 @@ button.runtime-stage.is-available:hover {
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
+  text-transform: none;
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   color: var(--accent);
 }
@@ -3791,7 +3699,7 @@ button.runtime-stage.is-available:hover {
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.06em;
-  text-transform: uppercase;
+  text-transform: none;
 }
 .personalspace-gbrain-buttons {
   display: flex;
@@ -4081,7 +3989,7 @@ button.runtime-stage.is-available:hover {
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .buddy-card h2 {
@@ -4589,9 +4497,109 @@ body {
   background-attachment: fixed;
 }
 
-[data-theme="dark"] body {
-  background-image: none;
-  background-color: var(--launchpad-body-background);
+/* =========================================================
+   Kanonická Lazurio vrstva
+   ========================================================= */
+
+.topbar {
+  background: var(--lz-paper);
+  border-bottom-color: var(--lz-line);
+}
+
+.space-switcher-button,
+.space-logo {
+  border-radius: var(--lz-radius-sm);
+}
+
+.space-logo-organization,
+.notification-avatar {
+  background: var(--lz-paper);
+  border-color: var(--lz-line);
+  color: var(--lz-ink);
+}
+
+.space-switcher-menu,
+.space-profile-card,
+.notifications-panel,
+.app-version-menu-panel,
+.topbar-overflow-menu,
+.side-panel,
+.detail-panel {
+  border-radius: 0;
+}
+
+.space-switcher-option,
+.notification-item,
+.app-menu-action {
+  border-radius: var(--lz-radius-sm);
+}
+
+.rail-eyebrow,
+.app-card-org {
+  letter-spacing: var(--lz-track-body);
+  text-transform: none;
+}
+
+.app-card {
+  border-radius: 0;
+  transition: background-color var(--t-fast) var(--ease);
+}
+
+.app-card:hover,
+.app-card:focus-within {
+  transform: none;
+  background: var(--lz-gray-50);
+}
+
+.app-card.selected {
+  background: var(--lz-gray-100);
+  box-shadow: inset 2px 0 0 var(--lz-ink);
+  outline: 0;
+}
+
+.app-card.selected:focus-visible {
+  outline: 2px solid var(--lz-ink);
+  outline-offset: 2px;
+}
+
+.app-card.is-running::before,
+.app-card.is-attention::before,
+.app-card.is-blocked::before {
+  display: none;
+}
+
+.app-card-icon {
+  background: var(--lz-paper);
+  border-color: var(--lz-line);
+  color: var(--lz-ink);
+}
+
+.chip-success {
+  background: var(--lz-success-bg);
+  border-color: var(--lz-success-border);
+  color: var(--lz-success);
+}
+
+.chip-warn {
+  background: var(--lz-warning-bg);
+  border-color: var(--lz-warning-border);
+  color: var(--lz-warning);
+}
+
+.chip-danger {
+  background: var(--lz-danger-bg);
+  border-color: var(--lz-danger-border);
+  color: var(--lz-danger);
+}
+
+.chip-status-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+:focus-visible {
+  outline-color: var(--lz-ink);
 }
 
 /* `<strong>` a `<b>` mají prohlížečovou výchozí váhu 700. Dvě váhy znamenají
@@ -4599,4 +4607,594 @@ body {
 strong,
 b {
   font-weight: 600;
+}
+
+/* =========================================================
+   Kanonický Lazurio Personalspace
+   Osobní prostor používá stejnou typografii, hrany a stavový jazyk jako
+   Organization. Žlutá zůstává jen v Buddy ilustraci, ne v ovládání.
+   ========================================================= */
+.space-logo-personal {
+  border-color: var(--lz-blue-200);
+  background: var(--lz-blue-50);
+  color: var(--lz-blue-500);
+}
+
+.privacy-pill {
+  border-color: var(--lz-success-border);
+  background: var(--lz-success-bg);
+  color: var(--lz-success);
+}
+
+.layout.is-personal .problems-panel,
+.personalspace-friendly-empty,
+.personalspace-overview,
+.buddy-card,
+.buddy-portrait,
+.buddy-routines,
+.buddy-application,
+.buddy-routine,
+.personalspace-app,
+.personalspace-app-icon,
+.personalspace-apps-empty,
+.personal-support-card,
+.personalspace-gbrain-browser,
+.personalspace-gbrain-note {
+  border-radius: 0;
+}
+
+.personalspace-overview {
+  gap: 1px;
+  border: 1px solid var(--lz-line);
+  background: var(--lz-line);
+}
+
+.buddy-card,
+.buddy-routines {
+  border: 0;
+  background: var(--lz-paper);
+}
+
+.buddy-card {
+  border-color: var(--lz-line);
+}
+
+.buddy-portrait {
+  border-color: var(--lz-line);
+  background: var(--lz-gray-50);
+}
+
+.buddy-eyebrow {
+  color: var(--lz-ink-muted);
+  font-size: var(--lz-size-body);
+  font-weight: 600;
+  letter-spacing: var(--lz-track-body);
+}
+
+.buddy-card h2 {
+  margin-top: var(--lz-space-4);
+  font-size: var(--lz-size-display);
+  line-height: var(--lz-leading-display);
+  letter-spacing: var(--lz-track-display);
+}
+
+.buddy-status,
+.buddy-application-state,
+.personalspace-private-badge {
+  gap: var(--lz-space-4);
+  border: 1px solid;
+  letter-spacing: var(--lz-track-body);
+}
+
+.buddy-status,
+.buddy-application-state {
+  border-color: var(--lz-success-border);
+  background: var(--lz-success-bg);
+  color: var(--lz-success);
+}
+
+.personalspace-private-badge {
+  border-color: var(--lz-blue-200);
+  background: var(--lz-blue-50);
+  color: var(--lz-blue-600);
+}
+
+.buddy-description {
+  color: var(--lz-ink-muted);
+  font-size: var(--lz-size-body);
+  line-height: var(--lz-leading-body);
+}
+
+.buddy-application,
+.buddy-routine {
+  border-color: var(--lz-line-faint);
+  background: var(--lz-gray-50);
+}
+
+.buddy-application-icon,
+.buddy-application-icon.is-telegram {
+  border-radius: var(--lz-radius-sm);
+  border: 1px solid var(--lz-line);
+  background: var(--lz-paper);
+  color: var(--lz-ink);
+}
+
+.buddy-routine-schedule {
+  background: var(--lz-gray-100);
+  color: var(--lz-ink);
+}
+
+.buddy-actions .btn:disabled {
+  opacity: 1;
+  border-color: var(--lz-line-faint);
+  background: var(--lz-gray-100);
+  color: var(--lz-ink-faint);
+}
+
+.personalspace-app {
+  border-color: transparent;
+  background: var(--lz-paper);
+}
+
+.personalspace-app.is-running,
+.personalspace-app.is-blocked,
+.personalspace-app.is-attention {
+  border-color: transparent;
+}
+
+.personalspace-app:hover,
+.personalspace-app:focus-within {
+  background: var(--lz-gray-50);
+}
+
+.personalspace-app:focus-within {
+  box-shadow: inset 2px 0 0 var(--lz-ink);
+}
+
+.personalspace-app-icon {
+  border-color: var(--lz-line);
+  background: var(--lz-paper);
+  color: var(--lz-ink);
+}
+
+.personalspace-apps-empty {
+  border-color: var(--lz-line);
+  background: var(--lz-paper);
+}
+
+.personal-support-grid {
+  gap: 1px;
+  border-block: 1px solid var(--lz-line);
+  background: var(--lz-line);
+}
+
+.personal-support-card {
+  border: 0;
+  background: var(--lz-paper);
+}
+
+.personalspace-gbrain-browser {
+  background: var(--lz-gray-50);
+}
+
+.personalspace-gbrain-file.is-active {
+  background: var(--lz-gray-100);
+  color: var(--lz-ink);
+  box-shadow: inset 2px 0 0 var(--lz-ink);
+}
+
+/* Filtr aplikací: dvě samostatné pilulky, ne segment v podbarveném pouzdře. */
+.apps-toolbar .segmented-control {
+  gap: var(--lz-space-8);
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+  background: transparent;
+}
+
+.apps-toolbar .segment {
+  min-width: auto;
+  min-height: 42px;
+  padding: 0 var(--lz-space-16);
+  border: 1px solid var(--lz-line);
+  border-radius: var(--lz-radius-pill);
+  background: var(--lz-white);
+  color: var(--lz-ink-muted);
+  box-shadow: none;
+  font-size: var(--lz-size-meta);
+  font-weight: 600;
+}
+
+.apps-toolbar .segment[aria-pressed="true"],
+.apps-toolbar .segment.is-active {
+  border-color: var(--lz-ink);
+  background: var(--lz-ink);
+  color: var(--lz-white);
+  box-shadow: none;
+}
+
+.apps-toolbar .segment:hover:not(.is-active),
+.apps-toolbar .segment:focus-visible:not(.is-active) {
+  background: var(--lz-gray-50);
+  color: var(--lz-ink);
+}
+
+/* Organizace a Workspace jsou strukturální záložky na hraně sekce.
+   Nadpis se neduplikuje: záložka je stále sémantické h2 v sentence case. */
+.app-section-organization:not(.skeleton-section),
+.app-section-workspace {
+  position: relative;
+  margin-top: 30px;
+  border-top-color: var(--lz-blue-500);
+}
+
+.app-section-organization:not(.skeleton-section) > .app-section-head:first-child,
+.app-section-workspace > .app-section-head:first-child {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  transform: translateY(-100%);
+}
+
+.app-section-organization:not(.skeleton-section) > .app-section-head:first-child .app-section-title-row,
+.app-section-workspace > .app-section-head:first-child .app-section-title-row {
+  gap: var(--lz-space-12);
+  align-items: stretch;
+  width: 100%;
+  padding-left: var(--lz-space-16);
+  border-bottom: 1px solid var(--lz-blue-500);
+}
+
+.app-section-organization:not(.skeleton-section) > .app-section-head:first-child .app-section-title,
+.app-section-workspace > .app-section-head:first-child .app-section-title {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 var(--lz-space-12);
+  border-radius: var(--lz-radius-sm) var(--lz-radius-sm) 0 0;
+  background: var(--lz-blue-500);
+  color: var(--lz-white);
+  font-size: var(--lz-size-meta);
+  font-weight: 600;
+}
+
+.app-section-organization:not(.skeleton-section) > .app-section-head:first-child .app-section-summary,
+.app-section-workspace > .app-section-head:first-child .app-section-summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  color: var(--lz-ink-muted);
+  font-size: var(--lz-size-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 760px) {
+  .app-section-organization:not(.skeleton-section) > .app-section-head:first-child .app-section-title-row,
+  .app-section-workspace > .app-section-head:first-child .app-section-title-row {
+    padding-left: var(--lz-space-12);
+  }
+}
+
+/* Modulová dlaždice přebírá akcent své systémové rodiny. Ikona je volná
+   kresba bez obalu; stejná barva se na hover/focus vrátí na hraně karty. */
+.app-card {
+  --app-accent: var(--lz-blue-500);
+  transition:
+    border-color var(--t-fast) var(--ease),
+    background-color var(--t-fast) var(--ease);
+}
+
+.app-card:hover,
+.app-card:focus-within {
+  border-color: var(--app-accent);
+}
+
+.app-card-icon {
+  width: auto;
+  height: 2.6rem;
+  justify-content: flex-start;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--app-accent, var(--app-icon-color));
+}
+
+.app-card-icon svg {
+  width: 28px;
+  height: 28px;
+}
+
+/* Experiment dlaždic podle produktové reference (Principál 2026-08-09).
+   Vědomě předbíhá současný kánon Lazuria: plocha má stálou zaoblenou hranu
+   a volnější vertikální rytmus. Barvy a typografie zůstávají tokenové. */
+.apps-grid {
+  gap: var(--lz-space-16);
+  align-items: stretch;
+}
+
+.app-card {
+  min-height: 250px;
+  gap: 0;
+  padding: var(--lz-space-24);
+  border: 1px solid color-mix(in srgb, var(--lz-line-faint) 50%, var(--lz-line));
+  border-radius: 18px;
+  background: var(--lz-white);
+}
+
+.app-card:hover,
+.app-card:focus-within {
+  border-color: var(--app-accent);
+  background: var(--lz-gray-50);
+}
+
+.app-card.selected {
+  border-color: var(--app-accent);
+  border-radius: 18px;
+  background: var(--lz-gray-50);
+  box-shadow: inset 3px 0 0 var(--app-accent);
+}
+
+.app-card-head {
+  gap: var(--lz-space-16);
+}
+
+.app-title-block {
+  width: 100%;
+  gap: 28px;
+}
+
+.app-title-body {
+  display: grid;
+  gap: var(--lz-space-16);
+}
+
+.app-card-icon {
+  height: 32px;
+}
+
+.app-card-icon svg {
+  width: 32px;
+  height: 32px;
+}
+
+.app-card-title {
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.app-card-desc {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+.app-more-button {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  background: var(--lz-gray-100);
+}
+
+.app-card > .card-warning.is-jen-akce {
+  margin-top: auto;
+  padding-top: var(--lz-space-24);
+}
+
+.app-card > .card-warning:not(.is-jen-akce),
+.app-card > .runtime-stages,
+.app-card > .card-feedback:not(.empty) {
+  margin-top: var(--lz-space-24);
+}
+
+@media (max-width: 760px) {
+  .app-card {
+    min-height: 230px;
+    padding: var(--lz-space-16);
+  }
+
+  .app-title-block {
+    gap: var(--lz-space-24);
+  }
+}
+
+/* Klidná pracovní plocha: teplý Lazurio papír bez mřížky. Bílé objekty na
+   něm získají čitelnější materiál a hierarchii bez dekorativních efektů. */
+body {
+  background-color: var(--lz-paper);
+  background-image: none;
+}
+
+.app-section-organization:not(.skeleton-section),
+.app-section-workspace {
+  padding: var(--lz-space-24) 0 0;
+  border: 0;
+  background: transparent;
+}
+
+.workspace-team {
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* Dlouhé názvy modulů zůstávají celé: zalomí se nejvýše na dva řádky.
+   Verze se drží u prvního řádku místo toho, aby název zkrátila elipsa. */
+.app-card-title-row {
+  align-items: flex-start;
+}
+
+.app-card-title {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: -webkit-box;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.app-version-badge {
+  margin-top: 2px;
+}
+
+/* Přístup k Teamům je doplňující kontext. V ploše zůstává jen popisek
+   s otazníkem; stav a vysvětlení se otevřou v malém nativním popoveru. */
+.team-access-summary {
+  position: relative;
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  padding: var(--lz-space-12) var(--lz-space-16);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.team-access-summary > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lz-space-8);
+  cursor: pointer;
+  list-style: none;
+  outline: none;
+}
+
+.team-access-summary > summary::-webkit-details-marker {
+  display: none;
+}
+
+.team-access-summary > summary:focus-visible {
+  border-radius: var(--lz-radius-sm);
+  outline: 2px solid var(--lz-blue-500);
+  outline-offset: 3px;
+}
+
+.team-access-summary > summary strong {
+  color: var(--lz-blue-500);
+  font-size: var(--lz-size-meta);
+  font-weight: 600;
+}
+
+.team-access-help {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 1px solid var(--lz-blue-500);
+  border-radius: 50%;
+  color: var(--lz-blue-500);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.team-access-content {
+  position: absolute;
+  top: calc(100% - var(--lz-space-4));
+  left: var(--lz-space-16);
+  z-index: 4;
+  display: grid;
+  width: min(420px, calc(100vw - 64px));
+  gap: var(--lz-space-8);
+  padding: var(--lz-space-16);
+  border: 1px solid var(--lz-line);
+  border-radius: var(--lz-radius-sm);
+  background: var(--lz-white);
+}
+
+.team-access-summary .chip {
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--lz-ink);
+  font-size: var(--lz-size-meta);
+  font-weight: 600;
+}
+
+.team-access-summary p {
+  margin: 0;
+  font-size: var(--lz-size-meta);
+  line-height: 1.45;
+}
+
+@media (max-width: 820px) {
+  .team-access-content {
+    position: static;
+    width: min(100%, 420px);
+    margin-top: var(--lz-space-8);
+  }
+}
+
+/* Materiálový průchod inspirovaný referencí: stejnoměrnější hrany,
+   odstupňované neutrály a bílé pracovní objekty na teplém papíru. */
+.topbar {
+  border-bottom-width: 1.5px;
+  background: var(--lz-white);
+}
+
+.search-field {
+  border-width: 1.5px;
+  border-color: var(--lz-line);
+  border-radius: var(--lz-radius-sm);
+  background: var(--lz-gray-50);
+}
+
+.search-field:focus-within {
+  background: var(--lz-white);
+}
+
+.app-section-organization:not(.skeleton-section) > .app-section-head:first-child .app-section-title-row,
+.app-section-workspace > .app-section-head:first-child .app-section-title-row {
+  border-bottom-width: 1.5px;
+}
+
+.app-card {
+  border-width: 1.5px;
+  border-color: var(--lz-line);
+  background: var(--lz-white);
+}
+
+.app-card:hover,
+.app-card:focus-within,
+.app-card.selected {
+  background: var(--lz-gray-50);
+}
+
+.app-card > .card-warning.is-jen-akce {
+  border-top: 1px solid var(--lz-line-faint);
+}
+
+.btn.btn-secondary,
+.side-panel,
+.organization-git-status,
+.team-access-content {
+  border-width: 1.5px;
+}
+
+.btn.btn-secondary {
+  background: var(--lz-white);
+}
+
+.btn.btn-secondary:hover,
+.btn.btn-secondary:focus-visible {
+  background: var(--lz-gray-50);
+}
+
+.side-panel {
+  background: var(--lz-white);
+}
+
+.organization-git-status {
+  background: var(--lz-paper);
 }

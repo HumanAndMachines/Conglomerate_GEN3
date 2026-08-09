@@ -1,0 +1,324 @@
+/*
+ * Lazurio - design tokeny
+ *
+ * Tenhle soubor je source of truth barev, typografie a tvaru produktu Lazurio.
+ * Rozhodovací historie a sondy, ze kterých hodnoty vzešly, jsou v
+ * HumanAndMachines: brand/lazurio/ a docs/decisions/0111.
+ *
+ * POZOR na scope: úroveň Lazuria (Conglomerate vs produkt Organizace
+ * Rozjedeme-ai) není uzavřená a je eskalovaná na foundera. Hodnoty níž platí;
+ * to, kde je jejich kanonický domov, ne. Detail v AGENTS.md.
+ *
+ * Princip (Principál, 2026-07-25):
+ * minimalismus, stupně šedi + černá a bílá, JEDINÝ výrazný prvek je
+ * sytá modrá inspirovaná lapis lazuli. Žádná druhá barevná rampa.
+ *
+ * Historie odstínu (všechno 2026-07-25, tři iterace):
+ *   1. akvamarín (~187°) - odmítnuto, "moc petrolejová"
+ *   2. ultramarín (~231°) - odmítnuto, "moc do fialové"
+ *   3. KOBALT (~217°) - VYBRÁNO. Čistě modrá bez fialového tahu.
+ * Rampa se jmenuje `blue`, ne `lapis` ani `kobalt`: lapis je brand příběh
+ * (Lazurio <- lazurit), ale zvolený odstín je kobaltový, a název podle
+ * pigmentu by při další iteraci lhal. `blue` přežije i změnu odstínu.
+ */
+
+:root {
+	/* --- Neutrály: papír, inkoust, linky ------------------------------ */
+	/* REVIZE 4. 8. 2026 (Principál): rampa byla chladně neutrální a vedle
+	 * kobaltového akcentu se to sečetlo do studeného dojmu. Původní důvod
+	 * („vedle syté modré nesmí šedá táhnout do teplé, jinak vypadá
+	 * zažloutle") platí pro VÝRAZNĚ teplou šedou; tenhle posun je 2 body.
+	 *
+	 * Náklon je konstantní přes celou rampu, ne vlna — první pokus měl na
+	 * světlém konci 4 body, uprostřed 13 a to bylo vidět. A drží ho jen
+	 * světlá polovina: teplo patří papíru, ne inkoustu, takže od `gray-400`
+	 * dolů, kde začíná text a ikony, je rampa přesně neutrální.
+	 *
+	 * Světlost se nemění, mění se jen odstín — neutrál se hledá podle WCAG
+	 * jasu, ne jako průměr kanálů. Kontrasty se posunuly nejvýš o 0,09.
+	 * Odvozeno v `tools/brand/prvky.py` (`tepla_rampa`). */
+	--lz-white: #ffffff;
+	--lz-gray-25: #fbfaf9;
+	--lz-gray-50: #f5f4f3;
+	--lz-gray-100: #ecebea;
+	--lz-gray-200: #dddcdb;
+	--lz-gray-300: #c3c2c1;
+	--lz-gray-400: #999999;
+	--lz-gray-500: #707070;
+	--lz-gray-600: #515151;
+	--lz-gray-700: #3d3d3d;
+	--lz-gray-800: #262626;
+	--lz-gray-900: #171717;
+	--lz-gray-950: #090909;
+	--lz-black: #000000;
+
+	/* --- Modrá: rampa rozhraní --------------------------------------- */
+	/* REVIZE 4. 8. 2026 (Principál): ULTRAMARÍN, odstín 239°, vysoká sytost.
+	 * Dřív tu stál kobalt na 221° s poznámkou „proti ultramarínu chybí
+	 * fialový tah" — jenže značka se jmenuje po lapisu a lapis lazuli JE
+	 * ultramarín. Odstín se tedy otočil za pigmentem.
+	 *
+	 * Posun není po rampě konstantní, a to je podstatné. Světlá modrá se
+	 * s rostoucím jasem posouvá do fialova sama (Abneyho jev), takže stejné
+	 * číslo není stejný odstín v oku; tint musí být v číslech blíž azurové,
+	 * aby vypadal jako táž modrá. Posun proto jede naplno v tmavé a střední
+	 * části, kde akcent žije, a k světlému konci se pouští do nuly:
+	 * `blue-500` a tmavší sedí na 239°, `blue-300` na 232°, `blue-100`
+	 * na 225° a `blue-50` se nezměnil vůbec — je to podklad pillu
+	 * a informační hlášky, tedy místo, kde by fialová byla nejvíc vidět.
+	 *
+	 * Odvozeno v `tools/brand/prvky.py` (`posun_pro`). Střed rampy je signature odstín, tmavý konec je
+	 * hloubka, světlý konec je pro dark mode a jemné podklady.
+	 *
+	 * V rozhraní zůstávají tlačítka, odkazy, stavy a aktivní prvky modré,
+	 * neutrální nebo výhradně sémantické. */
+	--lz-blue-50: #ebf1fe;
+	--lz-blue-100: #d2ddfd;
+	--lz-blue-200: #a8b9fb;
+	--lz-blue-300: #7083f7;
+	--lz-blue-400: #3a48ef;
+	--lz-blue-500: #0d12db;
+	--lz-blue-600: #0b0eb4;
+	--lz-blue-700: #0b0e91;
+	--lz-blue-800: #0c0d72;
+	--lz-blue-900: #0c0c53;
+	--lz-blue-950: #080935;
+
+	/* --- Expresivní barvy mimo rozhraní ----------------------------- */
+	/* Schválená sada z `specimens/08-prvky.html`. Tyto barvy nesmějí nést
+	 * stav ani aktivní prvek produktového UI; patří ilustracím, maskotům,
+	 * obálkám a kampaním. Základ je nejsytější poloha odstínu. Varianta
+	 * `-figure` je pouze pro menší figuru na papíru a drží kontrast 3:1. */
+	--lz-expressive-orange: #ff8800;
+	--lz-expressive-yellow: #ffcc00;
+	--lz-expressive-mint: #00ffaa;
+	--lz-expressive-vermilion: #ff0004;
+	--lz-expressive-orange-figure: #db7500;
+	--lz-expressive-yellow-figure: #ad8b00;
+	--lz-expressive-mint-figure: #00a36d;
+	--lz-expressive-vermilion-figure: #ff0004;
+
+	/* Tři typy agentů. Kresba ikony je JEDNA a liší se jen barvou (rozhodnutí
+	 * Principála 2026-08-01; dřív měly Kolega a Buddy vlastní siluety).
+	 * DŮSLEDEK: v jednobarevném provedení jsou nerozlišitelné. Kde na rozdílu
+	 * záleží a barva není k dispozici, musí ho nést popisek. */
+	--lz-persona-agent: var(--lz-blue-500);
+	/* Role se liší odstínem ze schválené expresivní sady. Pro postavy se
+	 * používá varianta figury s kontrastem 3:1 na papíru. */
+	--lz-persona-kolega: var(--lz-expressive-mint-figure);
+	--lz-persona-buddy: var(--lz-expressive-yellow-figure);
+
+	/* --- Signál: sémantické barvy ------------------------------------ */
+	/* Sémantická barva NENÍ barva značky, je to signál. Nesmí se použít
+	 * dekorativně, nesmí se z ní stát akcent a nesmí nést stav sama. Objeví se
+	 * jen tam, kde systém hlásí výsledek; mimo to v identitě neexistuje.
+	 *
+	 * Varování používá vlastní jantarové hodnoty pouze jako sémantický signál.
+	 * Není to značka ani ilustrační rampa.
+	 *
+	 * ZMĚŘENO, a je to důvod pro tvrdé pravidlo níž: po simulaci deuteranopie
+	 * (Viénot 1999) neprojde ANI JEDNA ze šesti dvojic přes 3:1, což je
+	 * minimum pro grafický prvek. Nejhorší je varování proti úspěchu na
+	 * 1,08:1, chyba proti varování 1,26:1. Ani nejlepší možná kombinace
+	 * stupňů to nespraví — je to vlastnost těch čtyř významů, ne vada výběru.
+	 *
+	 * OPRAVA 2026-08-01: tady dřív stálo 1,39:1 a 1,37:1. Ta čísla byla blízko
+	 * NEsimulovanému stavu a vydávala se za simulovaná. Stránka Barvy je teď
+	 * počítá živě z těchhle tokenů, aby znovu odejít nemohla.
+	 *
+	 * PROTO: stav vždy nese BARVA + IKONA + SLOVO. Nikdy barva sama. */
+	--lz-red-50: #f9f4f4;
+	--lz-red-100: #f0dedd;
+	--lz-red-200: #e8bab8;
+	--lz-red-300: #e08582;
+	--lz-red-400: #de4c47;
+	--lz-red-500: #cc221c;
+	--lz-red-600: #a61e19;
+	--lz-red-700: #821b17;
+	--lz-red-800: #611916;
+	--lz-red-900: #471615;
+	--lz-red-950: #2e100f;
+
+	--lz-green-50: #f4f8f6;
+	--lz-green-100: #dfefe6;
+	--lz-green-200: #bbe5ce;
+	--lz-green-300: #88daae;
+	--lz-green-400: #51d58e;
+	--lz-green-500: #28c06f;
+	--lz-green-600: #229d5c;
+	--lz-green-700: #1e7b49;
+	--lz-green-800: #1b5d3a;
+	--lz-green-900: #18442c;
+	--lz-green-950: #112c1e;
+
+	--lz-danger: var(--lz-red-600); /* text a ikona chyby */
+	--lz-danger-bg: var(--lz-red-50);
+	--lz-danger-border: var(--lz-red-200);
+	--lz-warning: #876612;
+	--lz-warning-bg: #f9f7f3;
+	--lz-warning-border: #eadbb6;
+	--lz-success: var(--lz-green-700);
+	--lz-success-bg: var(--lz-green-50);
+	--lz-success-border: var(--lz-green-200);
+	--lz-info: var(--lz-blue-700);
+	--lz-info-bg: var(--lz-blue-50);
+	--lz-info-border: var(--lz-blue-200);
+
+	/* --- Role ------------------------------------------------------- */
+	--lz-paper: var(--lz-gray-25);
+	--lz-surface: var(--lz-white);
+	--lz-ink: var(--lz-gray-950);
+	--lz-ink-muted: var(--lz-gray-500);
+	--lz-ink-faint: var(--lz-gray-400);
+	--lz-line: var(--lz-gray-200);
+	--lz-line-faint: var(--lz-gray-100);
+
+	/* Velká výhoda tmavé syté modré proti akvamarínu: TENTÝŽ odstín unese
+	 * plochu i text. U kyanové to nešlo (2,4:1) a musely být tři různé
+	 * tokeny. Tady stačí jeden signature odstín. `blue-400` má na bílé
+	 * 6,26:1 a jako běžný text prochází; `blue-300` s 3,34:1 už ne. */
+	--lz-accent: var(--lz-blue-500); /* glow, grafika, akcentní text, odkazy */
+	--lz-accent-strong: var(--lz-blue-600); /* akcent v malém, badge text */
+	--lz-accent-deep: var(--lz-blue-900); /* hloubka, tmavé podklady */
+	--lz-accent-on-dark: var(--lz-blue-300); /* akcent na tmavém podkladu */
+	--lz-accent-soft: var(--lz-blue-50); /* podklad pillu, jemné zvýraznění */
+	--lz-on-accent: var(--lz-white); /* text na accent ploše */
+
+	/* Tlačítka jsou ČERNÁ (Principál 2026-07-31: „pozadí ve stupních bílé
+	 * a šedi, tlačítka černé, aby to odpovídalo technologii").
+	 *
+	 * Ruší to zápis z 2026-07-25 („tlačítka trošku ztmavit" = blue-700).
+	 * Ta změna není jen estetická: uvolní modré ruce. Dokud byla modrá
+	 * zároveň CTA i akcent, nemohla nést nic jiného; teď je CTA neutrální
+	 * a modrá může být nosným prvkem grafiky.
+	 *
+	 * Hover jde o stupeň VÝŠ, ne níž — u tmavé plochy čte zesvětlení jako
+	 * interakce lépe než ztmavení. */
+	--lz-accent-button: var(--lz-gray-950);
+	--lz-accent-button-hover: var(--lz-gray-800);
+
+	/* --- Typografie -------------------------------------------------- */
+	/* Inter Tight vybral Principál 2026-07-25. Je to Inter s předstaženým
+	 * trackingem, tedy přesně ten „reference look" bez dolaďování.
+	 * Inter nemá sesterský mono řez, takže mono je párované zvlášť —
+	 * Geist Mono je z neutrálních monospace nejblíž metrikám Interu.
+	 *
+	 * NÁHRADNÍ PÍSMO (rozhodl Principál 2026-08-01): když Inter Tight není,
+	 * nastupuje Inter. Je to užší řez téže kresby, takže záskok drží tvar
+	 * písmen; mění se šířka, ne charakter.
+	 *
+	 * Pozor na hranici, která se snadno splete: `Inter` v tomhle výčtu chytá
+	 * jen LOKÁLNĚ nainstalovaný Inter. Webfont Inter tu nehostujeme schválně —
+	 * padal by ze stejného původu jako Inter Tight, takže by selhal s ním
+	 * a jen by zdvojil stahování. Na téhle mašině Inter nainstalovaný není,
+	 * takže tam řetěz projde rovnou na system-ui; to je v pořádku a je to
+	 * očekávaný stav, ne chyba.
+	 *
+	 * ŠIŘKA: Inter je širší než Inter Tight, takže při záskoku se sazba
+	 * roztáhne a stažený tracking přestane sedět. Kompenzace se ZATÍM
+	 * nezavádí — musela by se změřit na nainstalovaném Interu, ne odhadnout.
+	 *
+	 * PRVNÍ POLOŽKA MUSÍ ZŮSTAT „Inter Tight Variable". Fontsource registruje
+	 * variabilní řez pod tímhle jménem, ne pod „Inter Tight". Kdyby tu bylo
+	 * jen „Inter Tight", vlastní hosting by se NEPOUŽIL a stránka by tiše
+	 * jela na system-ui — vypadá to skoro stejně, takže se to nepozná okem.
+	 * Druhá položka „Inter Tight" chytá lokálně nainstalovaný statický řez. */
+	--lz-font-sans: "Inter Tight Variable", "Inter Tight", Inter, system-ui, sans-serif;
+	--lz-font-mono: "Geist Mono", ui-monospace, monospace;
+
+	/* Tracking je u tohohle typu identity důležitější než volba fontu.
+	 * Referenční weby drží nadpisy stažené a ve váze 500, ne 700. */
+	--lz-track-hero: -0.045em;
+	--lz-track-display: -0.035em;
+	--lz-track-title: -0.02em;
+	--lz-track-body: -0.005em;
+	/* ZASTARALÉ. Verzálky se od 4. 8. 2026 nepoužívají nikde a tenhle
+	 * tracking dává smysl jen u nich. Token zůstává kvůli zpětné
+	 * kompatibilitě; nové použití patří na `--lz-track-body`. */
+	--lz-track-eyebrow: 0.12em;
+
+	/* REVIZE 4. 8. 2026. Do té doby platilo „váha 500 místo 700" jako nález
+	 * z výběru fontu. Principál nad renderem rozhodl, že značka musí být
+	 * výraznější — nadpisy jdou na 600, tlačítka a popisky na 600, běžný
+	 * text zůstává 400. Wordmark si drží vlastních 550 (jiná kresba, viz
+	 * logo manuál). */
+	--lz-weight-hero: 600;
+	--lz-weight-title: 600;
+	--lz-weight-body: 400;
+	--lz-weight-akce: 600;   /* tlačítka, odkazy v navigaci, popisky */
+
+	/* --- Velikosti písma a proklady ----------------------------------- */
+	/* DOPLNĚNO 4. 8. 2026. Do té doby byly v identitě ukotvené jen ROLE,
+	 * takže si každý dokument sázel vlastní čísla a `content/brand/stav`
+	 * vedl typografickou škálu jako `část`. Hodnoty vznikly na listu prvků
+	 * (`specimens/08-prvky.html`) a jsou po dvou revizích Principála:
+	 * nejdřív nahoru, protože první návrh byl příliš drobný, pak váhy na 600.
+	 *
+	 * Poměr je kolem 1,25 nahoře a dolů se zplošťuje. `lead` a `title` mají
+	 * schválně TOUŽ velikost a liší se prokladem a váhou — je to táž
+	 * důležitost řečená jednou jako nadpis a jednou jako odstavec. */
+	--lz-size-hero: 56px;
+	--lz-size-display: 34px;
+	--lz-size-title: 20px;
+	--lz-size-lead: 20px;
+	--lz-size-body: 16.5px;
+	--lz-size-meta: 14px;
+
+	--lz-leading-hero: 1.02;
+	--lz-leading-display: 1.12;
+	--lz-leading-title: 1.3;
+	--lz-leading-lead: 1.55;
+	--lz-leading-body: 1.6;
+	--lz-leading-meta: 1.5;
+
+	/* --- Odstupy ------------------------------------------------------ */
+	/* Osminový rytmus do 32, pak skoky po celých krocích mřížky. Klíč je
+	 * hodnota v pixelech, ne pořadí — `--lz-space-24` je jednoznačné,
+	 * `--lz-space-5` by se muselo dohledávat. Nad 64 už to nejsou odstupy
+	 * uvnitř prvku, ale vzdálenosti v rozvržení, a proto sedí na mřížce. */
+	--lz-space-4: 4px;
+	--lz-space-8: 8px;
+	--lz-space-12: 12px;
+	--lz-space-16: 16px;
+	--lz-space-24: 24px;
+	--lz-space-32: 32px;
+	--lz-space-48: 48px;
+	--lz-space-64: 64px;   /* = krok mřížky */
+	--lz-space-96: 96px;
+	--lz-space-128: 128px; /* = viditelný krok mřížky, dva moduly */
+
+	/* --- Tvar a struktura -------------------------------------------- */
+	/* REVIZE 4. 8. 2026: přibylo `xs` pro formulářová pole. Plochy jsou
+	 * hranaté, takže i ovládací prvky sjely dolů — a pole ještě o stupeň
+	 * níž než tlačítko. Ten rozdíl je jediný, který je v systému žádoucí:
+	 * říká, co se mačká, a co se vyplňuje. `md` už se nepoužívá. */
+	--lz-radius-xs: 3px;
+	--lz-radius-sm: 6px;
+	--lz-radius-md: 10px;
+	--lz-radius-pill: 999px;
+	/* Mřížka jako nosná struktura, ne dekorace. Jeden krok pro celou identitu. */
+	--lz-grid-step: 64px;
+}
+
+/*
+ * Kontrastní kontrakt (spočítáno, ne odhadnuto):
+ *   blue-300 na bílé ....... 3,34:1  -> POD AA, nikdy jako běžný text
+ *   blue-400 na bílé ....... 6,26:1  -> AA, akcentní text a odkazy
+ *   blue-500 na bílé ....... 9,88:1  -> AAA
+ *   blue-600 na bílé ...... 12,10:1  -> AAA
+ *   blue-300 na gray-900 ... 5,36:1  -> akcent v dark režimu
+ *   bílá na gray-950 ....... 19,91:1 -> tlačítko v klidu
+ *   bílá na gray-800 ....... 15,13:1 -> hover tlačítka
+ *
+ * Symbol značky, tmavá rampa (nejtmavší faseta proti podkladu ikony):
+ *   blue-300 na gray-900 ... 5,36:1  -> OK, minimum pro grafiku je 3:1
+ *   blue-400 na gray-900 ... 2,86:1  -> POD prahem, nesmí být nejtmavší
+ *
+ * Sémantické barvy, text na svém podkladu:
+ *   danger  na danger-bg .. 6,83:1
+ *   warning na warning-bg . 4,98:1
+ *   success na success-bg . 4,92:1
+ *   info    na info-bg .... 9,51:1
+ *   po simulaci deuteranopie žádná dvojice nedá 3:1 (nejhorší 1,08:1)
+ *   -> barva sama NESTAČÍ; počítá se živě na stránce Barvy
+ */
