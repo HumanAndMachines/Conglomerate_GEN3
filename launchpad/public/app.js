@@ -29,6 +29,10 @@ import {
 } from "./commit-copy.js";
 import { semanticAppIconKey } from "./app-icon-key.js";
 import {
+  isCodexPortConflict,
+  openCodexPortConflictDialog,
+} from "./codex-handoff.js";
+import {
   organizationHash,
   personalspaceHash,
   resolveLaunchpadHash,
@@ -1283,7 +1287,8 @@ function spaceProblemNode(issue) {
       const action = document.createElement("button");
       action.type = "button";
       action.className = "btn btn-secondary btn-sm space-problem-action";
-      action.textContent = "Zobrazit aplikaci";
+      action.dataset.appId = app.id;
+      action.textContent = isCodexPortConflict(app) ? "Vyřešit s Codexem" : "Zobrazit aplikaci";
       action.addEventListener("click", () => revealAppDetail(app));
       node.append(action);
     }
@@ -2155,6 +2160,7 @@ function renderMostUsed() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "quick-app";
+    if (app) button.dataset.appId = app.id;
     const mark = document.createElement("span");
     mark.className = "quick-app-mark app-card-icon";
     mark.style.cssText = appIconStyle(appIconKey(app ?? item));
@@ -2170,7 +2176,9 @@ function renderMostUsed() {
     text.append(strong, small);
     const action = document.createElement("span");
     action.className = "quick-app-action";
-    action.textContent = blocked ? "Zobrazit detail" : app ? openActionLabel(app) : "Otevřít";
+    action.textContent = blocked
+      ? (isCodexPortConflict(app) ? "Vyřešit s Codexem" : "Zobrazit detail")
+      : app ? openActionLabel(app) : "Otevřít";
     button.append(mark, text, action);
     if (app && !isProductionspace(app)) {
       button.addEventListener("click", () => blocked ? revealAppDetail(app) : void openAppChain(app, {}));
@@ -3058,7 +3066,7 @@ function cardWarningModel(app, gitRepo) {
     return {
       tone: "danger",
       title: app.runtime?.owner === "foreign-port" ? "Cizí checkout na portu" : "Checkout procesu nelze ověřit",
-      actionLabel: "Zobrazit detail",
+      actionLabel: isCodexPortConflict(app) ? "Vyřešit s Codexem" : "Zobrazit detail",
       run: () => revealAppDetail(app),
     };
   }
@@ -3232,6 +3240,10 @@ function warningGlyph(tone) {
 // Vybere modul do detailu a odroluje na detail panel — cíl „Zobrazit detail
 // a logy" z ⋯ menu i z warning panelu.
 function revealAppDetail(app) {
+  if (isCodexPortConflict(app)) {
+    openCodexPortConflictDialog(app);
+    return;
+  }
   selectAppDetail(app.id);
   elements.appDetail?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
