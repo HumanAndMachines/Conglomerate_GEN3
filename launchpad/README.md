@@ -75,7 +75,10 @@ Při přechodu z dříve in-tree složky na samostatný Doctor-managed checkout
 materializace nejdřív prokáže přístup ke zdrojovému repu. Existující target
 automaticky odloží jen tehdy, když obsahuje výhradně konzervativně rozpoznané
 dependency/framework cache (`node_modules`, `.astro`, `.next`, `.vite` a
-obdobné skryté cache); recovery cesta zůstane v lokálním state adresáři.
+obdobné skryté cache); recovery cesta zůstane v gitignored lokálním
+`<Conglomerate>/.companiesascode-state/` vedle checkoutu. Tím zůstává na
+stejném filesystemu i tehdy, když je Conglomerate na jiném Windows volume nebo
+disku než uživatelský profil.
 Zdrojové nebo neznámé soubory a obecné `build`, `dist` či `out` adresáře se
 nikdy automaticky nepřesouvají. Když clone nebo jeho ověření selže, původní
 cache se obnoví a neúplný checkout zůstane v recovery pro ruční kontrolu.

@@ -1,7 +1,7 @@
 import { afterAll, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { runGit } from "./git-lib.mjs";
 import {
   generatedResiduePathAllowed,
@@ -60,6 +60,8 @@ test("materializes an active manifest slot on its exact repository and branch", 
 test("quarantines generated-only in-tree residue before materializing a standalone checkout", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
+  await writeFile(join(root, ".gitignore"), ".companiesascode-state/\n");
+  await initGitRepo(root);
   const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
   await prepareOrganizationRoot(organizationRoot);
   const remote = join(root, "remotes", "design-system.git");
@@ -83,12 +85,9 @@ test("quarantines generated-only in-tree residue before materializing a standalo
   });
   const inventory = await buildGitInventory({ companiesRoot: root });
   const repo = inventory.repos.find((entry) => entry.key === "BetaCo::design-system");
-  const recoveryStateRoot = join(root, "recovery-state");
-
   const result = await materializeRepoCheckout({
     companiesRoot: root,
     repo,
-    deps: { recoveryStateRoot },
   });
 
   expect(result).toMatchObject({
@@ -97,10 +96,63 @@ test("quarantines generated-only in-tree residue before materializing a standalo
     branch: "main",
     remote,
   });
-  expect(result.residue_recovery_path).toStartWith(recoveryStateRoot);
+  expect(result.residue_recovery_path).toStartWith(
+    join(root, ".companiesascode-state", "companiesascode", "doctor-recovery"),
+  );
   expect(await readFile(join(target, "README.md"), "utf8")).toContain("# main");
   expect(await readFile(join(result.residue_recovery_path, "app", "node_modules", "fixture", "package.json"), "utf8"))
     .toBe('{"name":"fixture"}\n');
+});
+
+test("shared root keeps the co-located default recovery state gitignored", async () => {
+  const repositoryRoot = resolve(import.meta.dir, "../..");
+  const recoveryRoot = join(repositoryRoot, ".companiesascode-state");
+  const ignored = await runGit(
+    ["check-ignore", "--quiet", "--no-index", "--", `${recoveryRoot}/`],
+    { cwd: repositoryRoot },
+  );
+
+  expect(ignored.ok).toBe(true);
+});
+
+test("refuses default recovery before mutation when a shared root lacks the ignore contract", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  await initGitRepo(root);
+  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
+  await prepareOrganizationRoot(organizationRoot);
+  const remote = join(root, "remotes", "design-system.git");
+  await mkdir(join(root, "sources"), { recursive: true });
+  await initGitRepo(join(root, "sources", "design-system"), { remotePath: remote });
+  const target = join(organizationRoot, "design-system");
+  const cached = join(target, ".vite", "cache.json");
+  await mkdir(join(target, ".vite"), { recursive: true });
+  await writeFile(cached, "{}\n");
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "BetaCo",
+    github_org: "BetaCo",
+    module_slots: [
+      {
+        path: "design-system",
+        space: "root",
+        git: { url: remote, branch: "main" },
+      },
+    ],
+  });
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  const repo = inventory.repos.find((entry) => entry.key === "BetaCo::design-system");
+
+  const result = await materializeRepoCheckout({ companiesRoot: root, repo });
+
+  expect(result).toMatchObject({
+    ok: false,
+    outcome: "failed",
+    code: "materialization_recovery_required",
+  });
+  expect(result.message).toContain("nemá lokální recovery cestu gitignored");
+  expect(await readFile(cached, "utf8")).toBe("{}\n");
+  expect(existsSync(join(root, ".companiesascode-state"))).toBe(false);
 });
 
 test("generated residue policy is cross-platform and rejects ambiguous output roots", () => {

@@ -7,7 +7,7 @@ import {
   rename,
   rm,
 } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
   GIT_FETCH_TIMEOUT_MS,
@@ -52,9 +52,15 @@ export async function materializeRepoCheckout({
     makeRecoveryDirectory = mkdtemp,
     move = rename,
     remove = rm,
-    recoveryStateRoot = defaultRecoveryStateRoot(),
     now = () => new Date(),
   } = deps;
+  const usesDefaultRecoveryStateRoot = !(
+    typeof deps.recoveryStateRoot === "string"
+    && deps.recoveryStateRoot.trim() !== ""
+  );
+  const recoveryStateRoot = usesDefaultRecoveryStateRoot
+    ? defaultRecoveryStateRoot(companiesRoot)
+    : resolve(deps.recoveryStateRoot);
 
   const validation = await validateMaterializationTarget({ companiesRoot, repo, run });
   if (!validation.ok) return validation;
@@ -74,6 +80,14 @@ export async function materializeRepoCheckout({
     return targetExists(
       "Cílová cesta už existuje, není samostatným Git checkoutem a obsahuje neznámá nebo uživatelská data; Launchpad ji nepřepíše ani nepřesune.",
     );
+  }
+  if (existingTarget && usesDefaultRecoveryStateRoot) {
+    const recoveryContract = await validateDefaultRecoveryStateRoot({
+      companiesRoot,
+      recoveryStateRoot,
+      run,
+    });
+    if (!recoveryContract.ok) return recoveryContract;
   }
 
   const targetParent = dirname(targetPath);
@@ -351,15 +365,41 @@ async function restoreGeneratedResidue({ targetPath, recoveryPath, move }) {
   }
 }
 
-function defaultRecoveryStateRoot() {
-  const configured = process.env.XDG_STATE_HOME?.trim();
-  if (configured) return resolve(configured);
-  if (process.platform === "win32") {
-    const localAppData = process.env.LOCALAPPDATA?.trim();
-    if (localAppData) return resolve(localAppData);
+function defaultRecoveryStateRoot(companiesRoot) {
+  // The Organization mounts normally share the Conglomerate filesystem. A
+  // co-located ignored state root therefore preserves atomic directory rename
+  // semantics even when the checkout itself lives on a different volume than
+  // HOME/XDG_STATE_HOME/LOCALAPPDATA.
+  return resolve(companiesRoot, ".companiesascode-state");
+}
+
+async function validateDefaultRecoveryStateRoot({
+  companiesRoot,
+  recoveryStateRoot,
+  run,
+}) {
+  const boundary = await inspectCanonicalPathBoundary({
+    rootPath: companiesRoot,
+    targetPath: recoveryStateRoot,
+    allowMissingTarget: true,
+  });
+  if (!boundary.ok) {
+    return recoveryFailure(
+      "Lokální recovery cesta vede mimo kanonický Conglomerate root; nic se nepřesunulo.",
+      recoveryStateRoot,
+    );
   }
-  const userHome = homedir();
-  return userHome ? resolve(userHome, ".local", "state") : resolve(tmpdir());
+  const ignored = await run(
+    ["check-ignore", "--quiet", "--no-index", "--", `${recoveryStateRoot}/`],
+    { cwd: companiesRoot, timeoutMs: GIT_LOCAL_TIMEOUT_MS },
+  );
+  if (!ignored.ok) {
+    return recoveryFailure(
+      "Sdílený root nemá lokální recovery cestu gitignored; nic se nepřesunulo. Aktualizuj Conglomerate checkout a akci zopakuj.",
+      recoveryStateRoot,
+    );
+  }
+  return { ok: true };
 }
 
 function safeRecoverySegment(value) {
