@@ -72,6 +72,8 @@ test("filtr aplikací používá dvě samostatné Lazurio pilulky", async () => 
   expect(styles).toMatch(/\.apps-toolbar \.segment\s*{[\s\S]*?border-radius: var\(--lz-radius-pill\)/);
   expect(styles).toContain('.apps-toolbar .segment[aria-pressed="true"]');
   expect(styles).toMatch(/\.apps-toolbar \.segment\[aria-pressed="true"\],[\s\S]*?background: var\(--lz-ink\)[\s\S]*?color: var\(--lz-white\)/);
+  expect(styles).toMatch(/\.search-field:focus-within\s*{[\s\S]*?outline: none;/);
+  expect(styles).toMatch(/\.search-field input:focus-visible\s*{[\s\S]*?outline: none;/);
 });
 
 test("Organizace, Workspace a Productionspace používají nadpis jako modrou záložku na hraně", async () => {

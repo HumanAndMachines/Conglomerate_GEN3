@@ -1092,9 +1092,8 @@ input:focus-visible,
 }
 
 .search-field:focus-within {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
-  outline: 3px solid var(--accent-soft);
-  outline-offset: 1px;
+  border-color: var(--line);
+  outline: none;
 }
 
 .search-field input {
@@ -5203,6 +5202,10 @@ body {
 
 .search-field:focus-within {
   background: var(--lz-white);
+}
+
+.search-field input:focus-visible {
+  outline: none;
 }
 
 .app-section-organization:not(.skeleton-section) > .app-section-head:first-child .app-section-title-row,
