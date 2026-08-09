@@ -1,5 +1,5 @@
 import { existsSync } from "fs";
-import { win32 } from "path";
+import { posix, win32 } from "path";
 
 export const GIT_LOCAL_TIMEOUT_MS = 10_000;
 export const GIT_FETCH_TIMEOUT_MS = 20_000;
@@ -23,11 +23,10 @@ export async function resolveGitExecutable(options = {}) {
 async function resolveGitExecutableUncached({
   platform = process.platform,
   env = processEnv(),
-  which = defaultWhich,
   pathExists = existsSync,
   probe = probeGitExecutable,
 } = {}) {
-  for (const candidate of orderedGitExecutableCandidates({ platform, env, which, pathExists })) {
+  for (const candidate of orderedGitExecutableCandidates({ platform, env, pathExists })) {
     if (await probe(candidate)) return candidate;
   }
   return null;
@@ -48,11 +47,10 @@ export function resolveGitExecutableSync(options = {}) {
 function resolveGitExecutableSyncUncached({
   platform = process.platform,
   env = processEnv(),
-  which = defaultWhich,
   pathExists = existsSync,
   probe = probeGitExecutableSync,
 } = {}) {
-  for (const candidate of orderedGitExecutableCandidates({ platform, env, which, pathExists })) {
+  for (const candidate of orderedGitExecutableCandidates({ platform, env, pathExists })) {
     if (probe(candidate)) return candidate;
   }
   return null;
@@ -114,13 +112,41 @@ export function safeGitCommandEnv(platform = process.platform, base = processEnv
 }
 
 export function gitExecutableCandidates({ platform = process.platform, env = processEnv() } = {}) {
-  if (platform !== "win32") return [];
+  const configured = typeof env.COMPANIESASCODE_GIT_EXECUTABLE === "string"
+    ? env.COMPANIESASCODE_GIT_EXECUTABLE.trim()
+    : "";
+  // PATH je nedůvěryhodný vstup: Organization checkout ani launcher nesmí
+  // podstrčit jiný `git`. Kandidáti jsou proto jen explicitní absolutní
+  // override a známé instalační prefixy; každý ještě projde `--version` probe.
+  if (platform === "darwin") {
+    return uniqueCandidates([
+      configured,
+      "/usr/bin/git",
+      "/opt/homebrew/bin/git",
+      "/usr/local/bin/git",
+    ]);
+  }
+  if (platform === "linux") {
+    return uniqueCandidates([
+      configured,
+      "/usr/bin/git",
+      "/usr/local/bin/git",
+      "/bin/git",
+    ]);
+  }
+  if (platform !== "win32") return uniqueCandidates([configured]);
   const roots = [
     env.ProgramW6432,
     env.ProgramFiles,
     env["ProgramFiles(x86)"],
   ].filter(Boolean);
-  const candidates = [];
+  const candidates = [
+    configured,
+    "C:\\Program Files\\Git\\cmd\\git.exe",
+    "C:\\Program Files\\Git\\bin\\git.exe",
+    "C:\\Program Files (x86)\\Git\\cmd\\git.exe",
+    "C:\\Program Files (x86)\\Git\\bin\\git.exe",
+  ];
   for (const root of roots) {
     candidates.push(
       win32.join(root, "Git", "cmd", "git.exe"),
@@ -130,7 +156,11 @@ export function gitExecutableCandidates({ platform = process.platform, env = pro
   if (env.LOCALAPPDATA) {
     candidates.push(win32.join(env.LOCALAPPDATA, "Programs", "Git", "cmd", "git.exe"));
   }
-  return [...new Set(candidates)];
+  return uniqueCandidates(candidates);
+}
+
+function uniqueCandidates(candidates) {
+  return [...new Set(candidates.filter(Boolean))];
 }
 
 export function resetGitExecutableCacheForTests() {
@@ -320,24 +350,11 @@ function unsafeAmbientGitEnvironmentKey(key) {
   );
 }
 
-function defaultWhich(command) {
-  try {
-    return typeof Bun.which === "function" ? Bun.which(command) : null;
-  } catch {
-    return null;
-  }
-}
-
-function orderedGitExecutableCandidates({ platform, env, which, pathExists }) {
-  const pathCommand = platform === "win32" ? "git.exe" : "git";
-  const fromPath = which(pathCommand) ?? which("git");
-  const installedCandidates = gitExecutableCandidates({ platform, env })
+function orderedGitExecutableCandidates({ platform, env, pathExists }) {
+  const platformPath = platform === "win32" ? win32 : posix;
+  return gitExecutableCandidates({ platform, env })
+    .filter((candidate) => platformPath.isAbsolute(candidate))
     .filter((candidate) => pathExists(candidate));
-  return [...new Set([
-    fromPath,
-    ...installedCandidates,
-    pathCommand,
-  ].filter(Boolean))];
 }
 
 async function probeGitExecutable(executable) {

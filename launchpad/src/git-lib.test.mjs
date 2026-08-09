@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
@@ -51,6 +51,45 @@ test("runGit returns stdout and protects remote probes from interactive credenti
     GIT_ASKPASS: "/bin/false",
     SSH_ASKPASS: "/bin/false",
   });
+});
+
+test.skipIf(process.platform === "win32")("fresh Git runner ignores an executable injected through PATH", async () => {
+  const root = await mkdtemp(join(tmpdir(), "launchpad-git-path-takeover-"));
+  const fakeBin = join(root, "bin");
+  const fakeGit = join(fakeBin, "git");
+  const marker = join(root, "fake-git-ran");
+  const childScript = join(root, "run-git.mjs");
+  try {
+    await Bun.write(fakeGit, `#!/bin/sh\n: > "$FAKE_GIT_MARKER"\nprintf 'git version fake\\n'\n`);
+    await chmod(fakeGit, 0o755);
+    await writeFile(childScript, `
+      import { runGit } from ${JSON.stringify(new URL("./git-lib.mjs", import.meta.url).href)};
+      const result = await runGit(["--version"], { cwd: process.cwd() });
+      process.stdout.write(JSON.stringify(result));
+      if (!result.ok) process.exit(1);
+    `);
+
+    const childEnv = {
+      ...process.env,
+      PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+      FAKE_GIT_MARKER: marker,
+    };
+    delete childEnv.COMPANIESASCODE_GIT_EXECUTABLE;
+    const child = Bun.spawnSync([process.execPath, childScript], {
+      cwd: root,
+      env: childEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const result = JSON.parse(child.stdout.toString());
+
+    expect(child.exitCode).toBe(0);
+    expect(result.ok).toBe(true);
+    expect(result.stdout).not.toContain("fake");
+    await expect(readFile(marker, "utf8")).rejects.toThrow();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test.skipIf(process.platform === "win32")("POSIX Git timeout kills descendants that keep command pipes open", async () => {
@@ -186,21 +225,72 @@ test("Windows Git resolver falls back to standard Git for Windows locations", as
   const resolved = await resolveGitExecutable({
     platform: "win32",
     env,
-    which: () => null,
     pathExists: (candidate) => candidate === expected,
     probe: async (candidate) => candidate === expected,
   });
   expect(resolved).toBe(expected);
 });
 
-test("Git resolver přeskočí nefunkční WindowsApps alias a ověří skutečný Git for Windows", async () => {
-  const broken = "C:\\Users\\builder\\AppData\\Local\\Microsoft\\WindowsApps\\git.exe";
+test("Git resolver accepts only an absolute configured override", async () => {
+  const configured = "/nix/store/example-git/bin/git";
+  const resolved = await resolveGitExecutable({
+    platform: "linux",
+    env: { COMPANIESASCODE_GIT_EXECUTABLE: configured },
+    pathExists: (candidate) => candidate === configured,
+    probe: async (candidate) => candidate === configured,
+  });
+  const relative = await resolveGitExecutable({
+    platform: "linux",
+    env: { COMPANIESASCODE_GIT_EXECUTABLE: "custom/bin/git" },
+    pathExists: () => true,
+    probe: async (candidate) => candidate === "custom/bin/git",
+  });
+
+  expect(resolved).toBe(configured);
+  expect(relative).toBeNull();
+});
+
+test("Git resolver continues after an existing candidate fails its version probe", async () => {
+  const broken = "/usr/bin/git";
+  const working = "/usr/local/bin/git";
+  const asyncProbes = [];
+  const syncProbes = [];
+  const options = {
+    platform: "linux",
+    env: {},
+    pathExists: (candidate) => candidate === broken || candidate === working,
+  };
+
+  const asyncResolved = await resolveGitExecutable({
+    ...options,
+    probe: async (candidate) => {
+      asyncProbes.push(candidate);
+      return candidate === working;
+    },
+  });
+  const syncResolved = resolveGitExecutableSync({
+    ...options,
+    probe: (candidate) => {
+      syncProbes.push(candidate);
+      return candidate === working;
+    },
+  });
+
+  expect(asyncResolved).toBe(working);
+  expect(syncResolved).toBe(working);
+  expect(asyncProbes).toEqual([broken, working]);
+  expect(syncProbes).toEqual([broken, working]);
+});
+
+test("Git resolver ignoruje PATH alias a ověří skutečný Git for Windows", async () => {
   const working = "C:\\Program Files\\Git\\cmd\\git.exe";
   const probes = [];
   const options = {
     platform: "win32",
-    env: { ProgramFiles: "C:\\Program Files" },
-    which: () => broken,
+    env: {
+      ProgramFiles: "C:\\Program Files",
+      PATH: "C:\\Users\\builder\\AppData\\Local\\Microsoft\\WindowsApps",
+    },
     pathExists: (candidate) => candidate === working,
   };
 
@@ -218,7 +308,7 @@ test("Git resolver přeskočí nefunkční WindowsApps alias a ověří skutečn
 
   expect(asyncResolved).toBe(working);
   expect(syncResolved).toBe(working);
-  expect(probes).toEqual([broken, working]);
+  expect(probes).toEqual([working]);
 });
 
 test("local Git probes use the Windows-proven timeout and bounded concurrency", () => {

@@ -352,7 +352,7 @@ nikdy aplikace nespouští ani nezastavuje.
 
 Doctor report zároveň obsahuje platform, Git a `.gitignore` checks:
 
-- podporovaný OS, Bun a Git v PATH
+- podporovaný OS, Bun a Git z důvěryhodné absolutní instalační cesty
 - Git root a working tree stav Launchpad GEN3 root
 - použitelnost submodulů a organization mountpointů
 - ochranu runtime/log cest v rootu a `private/`/`archive/` cest v Company
@@ -367,13 +367,16 @@ Z Launchpad GEN3 rootu existují stejné spouštěče pro lidi:
 - Windows: `Launchpad.cmd` nebo `Launchpad.ps1`
 - Linux: `launchpad.sh`
 
-Windows launchery a runtime nespoléhají na PATH zděděný z interaktivního
-terminálu: Bun hledají také v uživatelských instalačních cestách a Git také ve
-standardních cestách Git for Windows. Každého kandidáta před použitím ověří
-pomocí `--version`, takže nefunkční WindowsApps alias nezastíní skutečnou
-instalaci. `Launchpad.ps1` musí mít právě jeden UTF-8 BOM, aby český text
-správně načetl i Windows PowerShell 5.1. Git probe jsou neinteraktivní, bez
-POSIX askpass cesty a se skrytými child okny.
+Git runtime na žádné platformě nehledá executable přes ambientní `PATH`, aby
+Organization checkout nebo launcher nemohl podstrčit cizí binárku. Používá jen
+známé absolutní systémové a uživatelské instalační cesty; nestandardní Nix,
+portable nebo vlastní instalace se nastaví explicitním absolutním
+`COMPANIESASCODE_GIT_EXECUTABLE`. Každého kandidáta před použitím ověří pomocí
+`--version`, takže nefunkční WindowsApps alias ani rozbitý systémový shim
+nezastíní další platnou instalaci. Windows launchery obdobně hledají Bun také v
+uživatelských instalačních cestách. `Launchpad.ps1` musí mít právě jeden UTF-8
+BOM, aby český text správně načetl i Windows PowerShell 5.1. Git probe jsou
+neinteraktivní, bez POSIX askpass cesty a se skrytými child okny.
 
 ## Web shell v1
 
