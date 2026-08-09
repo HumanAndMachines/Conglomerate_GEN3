@@ -25,7 +25,7 @@ test("Launchpad nepoužívá neschválenou kapitalizaci ani Lucide ikony", async
 test("výběr dlaždice drží důraz hranou a stav není barevný pruh", async () => {
   const [styles, app] = await Promise.all([source("styles.css"), source("app.js")]);
   const experiment = styles.slice(styles.indexOf("/* Experiment dlaždic podle produktové reference"));
-  expect(experiment).toMatch(/\.app-card\.selected\s*{[\s\S]*?border-color: var\(--app-accent\);[\s\S]*?box-shadow: inset 3px 0 0 var\(--app-accent\)/);
+    expect(experiment).toMatch(/\.app-card\.selected\s*{[\s\S]*?border-color: var\(--app-focus-accent, var\(--app-accent\)\);[\s\S]*?box-shadow: inset 3px 0 0 var\(--app-focus-accent, var\(--app-accent\)\)/);
   expect(styles).toMatch(/\.app-card\.is-running::before[\s\S]*?display: none/);
   expect(styles).toMatch(/\.app-section-organization,[\s\S]*?\.app-section-workspace[\s\S]*?border-radius: 0/);
   expect(styles).toMatch(/\.skeleton-card[\s\S]*?border-radius: 0/);
@@ -40,13 +40,19 @@ test("modulové ikony a hover hrany používají schválenou expresivní sadu", 
   expect(app).not.toContain("#ccffee");
   expect(app).not.toContain("#ffe7cc");
   expect(app).toContain('stavba: { color: "var(--lz-blue-500)"');
-  expect(app).toContain('obsah: { color: "var(--lz-expressive-orange-figure)"');
+  expect(app).toContain('color: "var(--lz-expressive-orange-figure)"');
+  expect(app).toContain('accent: "var(--lz-expressive-orange)"');
+  expect(app).toContain('focusAccent: "var(--lz-expressive-orange-figure)"');
   expect(app).toContain('stroj: { color: "var(--lz-expressive-mint-figure)"');
   expect(app).toContain('obchod: { color: "var(--lz-expressive-vermilion-figure)"');
   expect(app).toContain('kampan: { color: "var(--lz-expressive-yellow-figure)"');
   expect(app).toContain('card.style.setProperty("--app-accent"');
-  expect(styles).toMatch(/\.app-card:hover,[\s\S]*?border-color: var\(--app-accent\)/);
-  expect(styles).toMatch(/\.app-card-icon\s*{[\s\S]*?border: 0;[\s\S]*?background: transparent;[\s\S]*?color: var\(--app-accent/);
+  expect(app).toContain('card.style.setProperty("--app-focus-accent"');
+  expect(app).toContain("return style.accent ?? style.color");
+  expect(app).toContain("return style.focusAccent ?? style.color");
+  expect(styles).toMatch(/\.app-card:hover\s*{[\s\S]*?border-color: var\(--app-accent\)/);
+  expect(styles).toMatch(/\.app-card:focus-within\s*{[\s\S]*?border-color: var\(--app-focus-accent, var\(--app-accent\)\)/);
+  expect(styles).toMatch(/\.app-card-icon\s*{[\s\S]*?border: 0;[\s\S]*?background: transparent;[\s\S]*?color: var\(--app-icon-color\)/);
 });
 
 test("Personalspace používá ostré Lazurio plochy a stavové ikony", async () => {
@@ -68,14 +74,17 @@ test("filtr aplikací používá dvě samostatné Lazurio pilulky", async () => 
   expect(styles).toMatch(/\.apps-toolbar \.segment\[aria-pressed="true"\],[\s\S]*?background: var\(--lz-ink\)[\s\S]*?color: var\(--lz-white\)/);
 });
 
-test("Organizace a Workspace používají nadpis jako modrou záložku na hraně", async () => {
+test("Organizace, Workspace a Productionspace používají nadpis jako modrou záložku na hraně", async () => {
   const [styles, app] = await Promise.all([source("styles.css"), source("app.js")]);
   expect(styles).toMatch(/\.app-section-organization:not\(\.skeleton-section\),[\s\S]*?border-top-color: var\(--lz-blue-500\)/);
   expect(styles).toMatch(/\.app-section-workspace > \.app-section-head:first-child[\s\S]*?transform: translateY\(-100%\)/);
   expect(styles).toMatch(/\.app-section-workspace > \.app-section-head:first-child \.app-section-title[\s\S]*?background: var\(--lz-blue-500\)[\s\S]*?color: var\(--lz-white\)/);
+  expect(styles).toMatch(/\.app-section-productionspace > \.app-section-head:first-child\s*{[\s\S]*?position: static;[\s\S]*?transform: none/);
+  expect(styles).toMatch(/\.app-section-productionspace > \.app-section-head:first-child \.app-section-title[\s\S]*?background: var\(--lz-blue-500\)[\s\S]*?color: var\(--lz-white\)/);
   expect(styles).toContain("font-variant-numeric: tabular-nums");
   expect(app).toContain('appSectionHead("Organizace"');
   expect(app).toContain('appSectionHead("Workspace"');
+  expect(app).toContain('entry.productionspace.display_name ?? "Productionspace"');
   expect(app).not.toContain("app-section-eyebrow");
 });
 
@@ -88,7 +97,8 @@ test("experimentální modulové dlaždice mají stálou hranu a vzdušný rytmu
   expect(experiment).toMatch(/\.app-title-block\s*{[\s\S]*?gap: 28px/);
   expect(experiment).toMatch(/\.app-title-body\s*{[\s\S]*?gap: var\(--lz-space-16\)/);
   expect(experiment).toMatch(/\.app-card-desc\s*{[\s\S]*?font-size: 15px;[\s\S]*?line-height: 1\.55/);
-  expect(experiment).toMatch(/\.app-card:hover,[\s\S]*?border-color: var\(--app-accent\)/);
+  expect(experiment).toMatch(/\.app-card:hover\s*{[\s\S]*?border-color: var\(--app-accent\)/);
+  expect(experiment).toMatch(/\.app-card\.selected\s*{[\s\S]*?border-color: var\(--app-focus-accent, var\(--app-accent\)\)/);
   expect(app).toContain('app.module === "mission-control" ? "" : variantTag(app, moduleName)');
   expect(app).toContain('control: "Procesy, automatizace a koordinace práce."');
   expect(app).toContain('book: "Návody, dokumentace a sdílené znalosti."');
@@ -105,10 +115,10 @@ test("pracovní plocha používá teplý papír bez mřížky a obvodových line
 
 test("záložky sekcí mají vodicí linku a dlouhé názvy modulů se nezkracují elipsou", async () => {
   const styles = await source("styles.css");
-  const tabs = styles.slice(styles.indexOf("/* Organizace a Workspace jsou strukturální záložky"));
+  const tabs = styles.slice(styles.indexOf("/* Organizace, Workspace a Productionspace jsou strukturální záložky"));
   const finalSurface = styles.slice(styles.indexOf("/* Klidná pracovní plocha"));
   expect(tabs).toMatch(/\.app-section-workspace > \.app-section-head:first-child\s*{[\s\S]*?left: 0;[\s\S]*?right: 0/);
-  expect(tabs).toMatch(/\.app-section-workspace > \.app-section-head:first-child \.app-section-title-row\s*{[\s\S]*?border-bottom: 1px solid var\(--lz-blue-500\)/);
+  expect(tabs).toMatch(/\.app-section-workspace > \.app-section-head:first-child \.app-section-title-row,[\s\S]*?\.app-section-productionspace > \.app-section-head:first-child \.app-section-title-row\s*{[\s\S]*?border-bottom: 1px solid var\(--lz-blue-500\)/);
   expect(finalSurface).toMatch(/\.app-card-title\s*{[\s\S]*?text-overflow: clip;[\s\S]*?white-space: normal;[\s\S]*?-webkit-line-clamp: 2;[\s\S]*?line-clamp: 2/);
 });
 
@@ -131,6 +141,11 @@ test("materiálový průchod používá výraznější hrany a odstupňované La
   expect(styles).toMatch(/\.app-card > \.card-warning\.is-fact,[\s\S]*?\.app-card > \.card-warning\.is-jen-akce\s*{[\s\S]*?display: flex;[\s\S]*?min-height: 52px;[\s\S]*?margin-top: auto;[\s\S]*?border-top: 1px solid var\(--lz-line-faint\)/);
   expect(styles).toContain(".app-card > .card-warning:not(.is-jen-akce):not(.is-fact)");
   expect(material).toMatch(/\.organization-git-status\s*{[\s\S]*?background: var\(--lz-paper\)/);
+});
+
+test("uvítání pracovního prostoru používá display hierarchii Lazuria", async () => {
+  const styles = await source("styles.css");
+  expect(styles).toMatch(/\.workspace-welcome-title\s*{[\s\S]*?font-size: var\(--lz-size-display\);[\s\S]*?font-weight: var\(--lz-weight-title\);[\s\S]*?line-height: var\(--lz-leading-display\);[\s\S]*?letter-spacing: var\(--lz-track-display\)/);
 });
 
 test("menu dalších možností se rozbalí uvnitř dlaždice bez vrstveného hoveru", async () => {

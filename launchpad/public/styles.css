@@ -1063,10 +1063,10 @@ input:focus-visible,
 .workspace-welcome-title {
   margin: 0;
   color: var(--text);
-  font-size: 20px;
-  font-weight: 600;
-  line-height: 1.25;
-  letter-spacing: -0.02em;
+  font-size: var(--lz-size-display);
+  font-weight: var(--lz-weight-title);
+  line-height: var(--lz-leading-display);
+  letter-spacing: var(--lz-track-display);
 }
 
 /* ---------- Apps toolbar ---------- */
@@ -4813,7 +4813,7 @@ b {
   color: var(--lz-ink);
 }
 
-/* Organizace a Workspace jsou strukturální záložky na hraně sekce.
+/* Organizace, Workspace a Productionspace jsou strukturální záložky na hraně sekce.
    Nadpis se neduplikuje: záložka je stále sémantické h2 v sentence case. */
 .app-section-organization:not(.skeleton-section),
 .app-section-workspace {
@@ -4832,8 +4832,25 @@ b {
   transform: translateY(-100%);
 }
 
+/* Productionspace může mít vlastní dlouhý název. Záložka proto zůstává
+   v toku stránky: vypadá stejně, ale při zalomení nepřekryje předchozí sekci. */
+.app-section-productionspace {
+  position: relative;
+  margin-top: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.app-section-productionspace > .app-section-head:first-child {
+  position: static;
+  transform: none;
+}
+
 .app-section-organization:not(.skeleton-section) > .app-section-head:first-child .app-section-title-row,
-.app-section-workspace > .app-section-head:first-child .app-section-title-row {
+.app-section-workspace > .app-section-head:first-child .app-section-title-row,
+.app-section-productionspace > .app-section-head:first-child .app-section-title-row {
   gap: var(--lz-space-12);
   align-items: stretch;
   width: 100%;
@@ -4842,7 +4859,8 @@ b {
 }
 
 .app-section-organization:not(.skeleton-section) > .app-section-head:first-child .app-section-title,
-.app-section-workspace > .app-section-head:first-child .app-section-title {
+.app-section-workspace > .app-section-head:first-child .app-section-title,
+.app-section-productionspace > .app-section-head:first-child .app-section-title {
   display: inline-flex;
   align-items: center;
   min-height: 30px;
@@ -4855,7 +4873,8 @@ b {
 }
 
 .app-section-organization:not(.skeleton-section) > .app-section-head:first-child .app-section-summary,
-.app-section-workspace > .app-section-head:first-child .app-section-summary {
+.app-section-workspace > .app-section-head:first-child .app-section-summary,
+.app-section-productionspace > .app-section-head:first-child .app-section-summary {
   display: inline-flex;
   align-items: center;
   min-height: 30px;
@@ -4866,7 +4885,8 @@ b {
 
 @media (max-width: 760px) {
   .app-section-organization:not(.skeleton-section) > .app-section-head:first-child .app-section-title-row,
-  .app-section-workspace > .app-section-head:first-child .app-section-title-row {
+  .app-section-workspace > .app-section-head:first-child .app-section-title-row,
+  .app-section-productionspace > .app-section-head:first-child .app-section-title-row {
     padding-left: var(--lz-space-12);
   }
 }
@@ -4880,9 +4900,12 @@ b {
     background-color var(--t-fast) var(--ease);
 }
 
-.app-card:hover,
-.app-card:focus-within {
+.app-card:hover {
   border-color: var(--app-accent);
+}
+
+.app-card:focus-within {
+  border-color: var(--app-focus-accent, var(--app-accent));
 }
 
 .app-card-icon {
@@ -4892,7 +4915,7 @@ b {
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--app-accent, var(--app-icon-color));
+  color: var(--app-icon-color);
 }
 
 .app-card-icon svg {
@@ -4923,17 +4946,21 @@ b {
   background: var(--lz-white);
 }
 
-.app-card:hover,
-.app-card:focus-within {
+.app-card:hover {
   border-color: var(--app-accent);
   background: var(--lz-gray-50);
 }
 
+.app-card:focus-within {
+  border-color: var(--app-focus-accent, var(--app-accent));
+  background: var(--lz-gray-50);
+}
+
 .app-card.selected {
-  border-color: var(--app-accent);
+  border-color: var(--app-focus-accent, var(--app-accent));
   border-radius: 18px;
   background: var(--lz-gray-50);
-  box-shadow: inset 3px 0 0 var(--app-accent);
+  box-shadow: inset 3px 0 0 var(--app-focus-accent, var(--app-accent));
 }
 
 .app-card-head {
