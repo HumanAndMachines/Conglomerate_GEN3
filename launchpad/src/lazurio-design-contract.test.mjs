@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 
 const publicUrl = new URL("../public/", import.meta.url);
+const rootUrl = new URL("../../", import.meta.url);
 
 async function source(path) {
   return readFile(new URL(path, publicUrl), "utf8");
@@ -14,6 +15,29 @@ test("Launchpad načítá kanonické Lazurio tokeny a lokální fonty", async ()
   expect(html).not.toContain("fonts.googleapis.com");
   expect(html).not.toContain("fonts.gstatic.com");
   expect(styles).not.toMatch(/var\(--lz-space-(?:1|2)\)/);
+});
+
+test("Launchpad používá kanonické Lazurio logo ve webové i systémové ikoně", async () => {
+  const [html, server, favicon, webIco, touchIcon, shortcutSvg, shortcutIco] = await Promise.all([
+    source("index.html"),
+    readFile(new URL("launchpad/src/server.mjs", rootUrl), "utf8"),
+    readFile(new URL("favicon.svg", publicUrl), "utf8"),
+    readFile(new URL("favicon.ico", publicUrl)),
+    readFile(new URL("apple-touch-icon.png", publicUrl)),
+    readFile(new URL("assets/launchpad.svg", rootUrl), "utf8"),
+    readFile(new URL("assets/launchpad.ico", rootUrl)),
+  ]);
+
+  expect(html).toContain('<link rel="icon" type="image/svg+xml" href="/favicon.svg" />');
+  expect(html).toContain('<link rel="icon" href="/favicon.ico" sizes="any" />');
+  expect(html).toContain('<link rel="apple-touch-icon" href="/apple-touch-icon.png" />');
+  expect(server).toContain('if (path.endsWith(".ico")) return "image/x-icon";');
+  expect(favicon).toContain('viewBox="0 0 1024 1024"');
+  expect(shortcutSvg).toContain('viewBox="0 0 1024 1024"');
+  expect(shortcutSvg).toContain('fill="#171717"');
+  expect(webIco.subarray(0, 4)).toEqual(new Uint8Array([0, 0, 1, 0]));
+  expect(touchIcon.byteLength).toBeGreaterThan(1_000);
+  expect(shortcutIco.subarray(0, 4)).toEqual(new Uint8Array([0, 0, 1, 0]));
 });
 
 test("Launchpad nepoužívá neschválenou kapitalizaci ani Lucide ikony", async () => {
