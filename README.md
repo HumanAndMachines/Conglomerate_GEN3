@@ -159,8 +159,9 @@ bun run install:windows-shortcut
 ```
 
 Instalátor vytvoří položku `HumanAndMachine Launchpad GEN3` ve Start Menu,
-nastaví pracovní složku na tento Conglomerate root, použije dodanou ikonu a
-požádá Windows o připnutí na hlavní panel. Existující aktivní zkratku
+nastaví pracovní složku zástupce na stabilní LocalAppData adresář
+`%LOCALAPPDATA%\HumanAndMachine\Launchpad`, použije dodanou ikonu a požádá
+Windows o připnutí na hlavní panel. Existující aktivní zkratku
 se stejným názvem instalátor nahradí; její původní podobu nejdřív zachová
 v oddělené záloze pro Start Menu nebo taskbar pod
 `%LOCALAPPDATA%\HumanAndMachine\Launchpad\shortcut-backups\<timestamp>`.
@@ -168,7 +169,32 @@ v oddělené záloze pro Start Menu nebo taskbar pod
 Windows 11 může programové připnutí na hlavní panel podle místní policy
 odmítnout. V takovém případě zůstane ověřená položka ve Start Menu: vyhledej
 `HumanAndMachine Launchpad GEN3`, klikni pravým tlačítkem a zvol
-**Připnout na hlavní panel**. Instalátor nevypíná ani nemaže starší launchery.
+**Připnout na hlavní panel**.
+
+Zástupci míří na stabilní bootstrap pod
+`%LOCALAPPDATA%\HumanAndMachine\Launchpad`, ne přímo do Git checkoutu.
+Bootstrap načte jediný uložený kanonický root, ověří jeho marker a odmítne
+přímou `.worktrees` cestu i existující junction/symlink alias, takže dočasná
+vývojová kopie se nemůže stát trvalou instalací. Jde o trusted-local integrity
+guard proti přetrvalému omylem uloženému aliasu, ne o TOCTOU sandbox proti
+souběžnému zásahu stejného uživatele, který může měnit config i checkout.
+Ikona a bootstrap se nejdřív dokončí v unikátním staging souboru stejného
+adresáře a atomicky publikují; config jde až jako poslední. Instalátor
+navíc kontroluje
+jen doloženou legacy task identitu v root TaskPath `\`:
+`HumanAndMachine Launchpad GEN3`; pouze když její akce míří do `.worktrees`,
+úlohu vypne (nikdy nemaže) a přesný výsledek
+vrátí v instalačním JSON reportu jako `legacy_scheduled_tasks`.
+
+**Závazný Windows kontrakt:** Pracovní složka zástupce zůstává ve stabilním
+LocalAppData adresáři `%LOCALAPPDATA%\HumanAndMachine\Launchpad`; fallback na
+jiný Git checkout se nikdy nepoužije. Legacy Scheduled Task se vypne jen při
+exact tuple: TaskName `HumanAndMachine Launchpad GEN3`, root TaskPath `\` a
+akce míří do `.worktrees`; prefix i non-root task zůstávají aktivní. Reparse
+ochrana je trusted-local integrity guard proti přetrvalému aliasu, ne o TOCTOU
+sandbox proti souběžnému zásahu stejného uživatele. Každý asset se nejdřív
+dokončí v unikátním staging souboru stejného adresáře a atomicky publikuje;
+config jde až jako poslední.
 
 Jen Start Menu bez pokusu o připnutí:
 

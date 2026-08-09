@@ -305,6 +305,68 @@
           "path": "../HumanAndMachines/mission-control/plans/2026/06/CAC-0035-spectoda-gen3-migration-dogfood.yaml"
         }
       ]
+    },
+    {
+      "id": "issue-2026-08-09-001",
+      "title": "Oddělit Windows Launchpad instalaci a runtime od vývojového checkoutu",
+      "status": "partially_mitigated_decision_needed",
+      "severity": "high",
+      "owner": "Launchpad architect",
+      "created_at": "2026-08-09",
+      "updated_at": "2026-08-09",
+      "tags": [
+        "launchpad",
+        "windows",
+        "installation",
+        "runtime",
+        "release-channel",
+        "reliability",
+        "CAC-0083"
+      ],
+      "question": "Jak má cílová Windows instalace vlastnit verzi, runtime stav, logy a jediný launcher tak, aby vývojový checkout nebo worktree nemohl znovu převzít roli trvalé instalace?",
+      "impact": "Incident 2026-08-09 ukázal, že legacy Scheduled Task připnutý k uzavřenému worktree přežil review cyklus a po ukončení nechal prohlížeč ukazovat stale Launchpad shell. Uživatel pak viděl obecnou chybu cílové aplikace, přestože selhala řídicí vrstva. Stabilní LocalAppData bootstrap a quarantine worktree úloh blokují přesnou reprodukci, ale direct-pull root stále není verzovaná desktopová instalace a runtime/log custody zůstává checkout-owned.",
+      "implemented_mitigation": [
+        "Start Menu a taskbar zástupci míří na stabilní LocalAppData bootstrap s jediným kanonickým rootem; pracovní složku zástupce drží stejná LocalAppData custody.",
+        "Uživatelský Windows launcher má pevný origin http://127.0.0.1:4174 a při kolizi nesmí tiše přejít na jiný port.",
+        "Bootstrap fail-closed odmítá `.worktrees`, existující junction/symlink alias a ověřuje marker `launchpad.gen3.json`; jde o trusted-local integrity guard proti přetrvalému aliasu, ne TOCTOU sandbox proti souběžnému zásahu stejného uživatele.",
+        "Ikona a bootstrap se stagingem atomicky publikují ve stejném adresáři; config jde až jako poslední a first-install závod failne zavřeně místo přepsání souběžně vytvořeného cíle.",
+        "Instalátor vypíná, nemaže a auditně reportuje pouze task v root TaskPath `\\` s doloženou legacy identitou `HumanAndMachine Launchpad GEN3`, pokud jeho akce míří do `.worktrees`.",
+        "Windows GitHub-hosted regresní test ověřuje exact root-TaskPath quarantine i prefixovou kolizi na ephemeral runneru.",
+        "Pracovní složka zástupce zůstává ve stabilním LocalAppData adresáři `%LOCALAPPDATA%\\HumanAndMachine\\Launchpad`; fallback na jiný Git checkout se nikdy nepoužije.",
+        "Legacy Scheduled Task se vypne jen při exact tuple: TaskName `HumanAndMachine Launchpad GEN3`, root TaskPath `\\` a akce míří do `.worktrees`; prefix i non-root task zůstávají aktivní.",
+        "Reparse ochrana je trusted-local integrity guard proti přetrvalému aliasu, ne o TOCTOU sandbox proti souběžnému zásahu stejného uživatele.",
+        "Každý asset se nejdřív dokončí v unikátním staging souboru stejného adresáře a atomicky publikuje; config jde až jako poslední."
+      ],
+      "decision_needed_for": [
+        "verzovaný Stable instalační artefakt a atomický rollback",
+        "jedinou autoritu Windows launcher lifecycle",
+        "runtime identity a log custody mimo Git checkouty",
+        "watchdog nebo on-demand repair s pravdivou klasifikací control-plane vs app failure",
+        "post-update smoke bez zápisu do zákaznických aplikací"
+      ],
+      "acceptance_criteria": [
+        "Stable kanál má konkrétní release target a instalace nese přesnou verzi/commit s rollbackem na předchozí zdravou verzi.",
+        "Na Windows existuje právě jeden kanonický launcher owner; legacy Startup/Scheduled Task/shortcut mechanismy jsou inventarizované a konflikty failují nebo se vědomě quarantinují s auditní stopou.",
+        "Runtime state, PID evidence a logy žijí pod instalační custody mimo source checkout a worktrees.",
+        "Relaunch rozlišuje stejný root s jinou verzí a nikdy tiše nepřevezme stale server jen podle cesty rootu.",
+        "UI a support report odliší mrtvý control plane, cizí/stale instalaci, invalid manifest, dependencies a skutečný app start failure.",
+        "Post-update smoke ověří instalační identitu, discovery a Doctor na Windows bez spuštění nebo zápisu do zákaznických aplikací."
+      ],
+      "next_action": "Matěj jako Launchpad architekt rozhodne cílový versioned-install/runtime-custody kontrakt; následný plán rozdělí release artefakt, launcher ownership, runtime relocation a support diagnostiku do samostatných reviewovatelných slices.",
+      "links": [
+        {
+          "label": "Incidentní podklad pro architekta",
+          "path": "manual/incidents/2026-08-09-windows-launchpad-startup-reliability.md"
+        },
+        {
+          "label": "Superseded široký reliability pokus",
+          "url": "https://github.com/HumanAndMachines/Conglomerate_GEN3/pull/62"
+        },
+        {
+          "label": "Windows runtime ownership successor",
+          "url": "https://github.com/HumanAndMachines/Conglomerate_GEN3/pull/77"
+        }
+      ]
     }
   ]
 }

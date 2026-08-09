@@ -1,0 +1,129 @@
+#Requires -Version 5.1
+
+[CmdletBinding()]
+param(
+    [Parameter()]
+    [string]$ConfigPath = (Join-Path $PSScriptRoot 'install.json')
+)
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+function Get-FullPath {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    return [System.IO.Path]::GetFullPath($Path)
+}
+
+function Test-PathContainsReparsePoint {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $fullPath = Get-FullPath -Path $Path
+    $pathRoot = [System.IO.Path]::GetPathRoot($fullPath)
+    if ([string]::IsNullOrWhiteSpace($pathRoot)) {
+        throw "Launchpad cannot determine the configured root path: $fullPath"
+    }
+
+    $relativePath = $fullPath.Substring($pathRoot.Length).TrimStart([char[]]'\\/')
+    $currentPath = $pathRoot
+    foreach ($segment in ($relativePath -split '[\\/]' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
+        $currentPath = Join-Path $currentPath $segment
+        if (-not (Test-Path -LiteralPath $currentPath)) {
+            return $false
+        }
+
+        $item = Get-Item -LiteralPath $currentPath -Force
+        if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+try {
+    if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
+        throw "Launchpad installation config is missing: $ConfigPath"
+    }
+
+    $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding utf8 | ConvertFrom-Json
+    if ($null -eq $config.root -or [string]::IsNullOrWhiteSpace([string]$config.root)) {
+        throw 'Launchpad installation config does not contain a canonical root.'
+    }
+    $portProperty = $config.PSObject.Properties['port']
+    $port = 0
+    if (
+        $null -eq $portProperty -or
+        -not [int]::TryParse([string]$portProperty.Value, [ref]$port) -or
+        $port -lt 1 -or
+        $port -gt 65535
+    ) {
+        throw 'Launchpad installation config does not contain a valid fixed port.'
+    }
+
+    $root = Get-FullPath -Path ([string]$config.root)
+    $pathSegments = $root -split '[\\/]'
+    if ($pathSegments -contains '.worktrees') {
+        throw "Launchpad refuses to start from a temporary worktree: $root"
+    }
+    # Trusted-local integrity guard: this rejects a stale persisted alias (including
+    # a junction or symlink) into a review worktree. It is not a sandbox against
+    # a concurrent same-user attacker who can also rewrite this config or checkout.
+    if (Test-PathContainsReparsePoint -Path $root) {
+        throw "Launchpad refuses a configured root through a reparse point: $root"
+    }
+
+    $rootMarker = Join-Path $root 'launchpad.gen3.json'
+    $packageManifest = Join-Path $root 'package.json'
+    if (-not (Test-Path -LiteralPath $rootMarker -PathType Leaf)) {
+        throw "Configured Launchpad root is not valid: $root"
+    }
+    if (-not (Test-Path -LiteralPath $packageManifest -PathType Leaf)) {
+        throw "Configured Launchpad package manifest is missing: $packageManifest"
+    }
+
+    $bunCandidates = @()
+    $bunCommands = Get-Command bun -All -CommandType Application -ErrorAction SilentlyContinue
+    foreach ($bunCommand in $bunCommands) {
+        if ($bunCommand.Path) {
+            $bunCandidates += $bunCommand.Path
+        }
+        elseif ($bunCommand.Source) {
+            $bunCandidates += $bunCommand.Source
+        }
+    }
+    if ($env:USERPROFILE) {
+        $bunCandidates += Join-Path $env:USERPROFILE '.bun\bin\bun.exe'
+    }
+    if ($env:LOCALAPPDATA) {
+        $bunCandidates += Join-Path $env:LOCALAPPDATA 'bun\bin\bun.exe'
+    }
+
+    $bunExecutable = $null
+    foreach ($candidate in ($bunCandidates | Where-Object { $_ } | Select-Object -Unique)) {
+        try {
+            & $candidate --version *> $null
+            if ($LASTEXITCODE -eq 0) {
+                $bunExecutable = $candidate
+                break
+            }
+        }
+        catch {
+            # A broken WindowsApps alias must not hide another valid Bun install.
+        }
+    }
+    if (-not $bunExecutable) {
+        throw 'Bun is not installed or no working installation was found.'
+    }
+
+    Set-Location -LiteralPath $root
+    & $bunExecutable run launchpad -- --port $port
+    exit $LASTEXITCODE
+}
+catch {
+    Write-Host ''
+    Write-Host 'Launchpad could not start from its canonical installation.' -ForegroundColor Red
+    Write-Host $_.Exception.Message -ForegroundColor Red
+    Write-Host 'Run Install-LaunchpadShortcut.ps1 again from the primary Conglomerate checkout.'
+    exit 1
+}
