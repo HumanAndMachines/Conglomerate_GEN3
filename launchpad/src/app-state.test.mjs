@@ -66,6 +66,26 @@ test("platný detail zůstane detailem bez zneplatněného výběru", () => {
   })).toBe("detail");
 });
 
+test("ztráta výběru nemění ne-detailový drawer", () => {
+  expect(appState.reconcileDetailDrawerView({
+    drawerView: "overview",
+    appSelectionWasCleared: true,
+    readonlyDetailWasCleared: false,
+  })).toBe("overview");
+});
+
+test("filtrování skutečně vrátí otevřený detail aplikace do overview", () => {
+  expect(appState.reconcileFilteredAppDetailState({
+    apps,
+    filters: baseFilters({ query: "nenalezeno" }),
+    selectedAppId: "democo-app-1",
+    drawerView: "detail",
+  })).toEqual({
+    selectedAppId: null,
+    drawerView: "overview",
+  });
+});
+
 test("partial-failure Personalspace odpověď odstraní revokovaný prostor i soukromá Buddy data", () => {
   const profile = { display_name: "Ownerka", email: "owner@example.com" };
   const previous = {

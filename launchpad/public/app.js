@@ -12,7 +12,7 @@ import {
   offersMoreThanLocalRun,
   replacePersonalspaceResponse,
   reconcileDetailDrawerView,
-  reconcileSelectedAppId,
+  reconcileFilteredAppDetailState,
   runtimeStagesForApp,
   sidePanelResponseIsCurrent,
   summarizeOrganizationSpaceHealth,
@@ -959,7 +959,14 @@ function render() {
     state.selectedAppId = null;
     state.selectedLogs = null;
   } else {
-    state.selectedAppId = reconcileSelectedAppId(state.apps, state.filters, state.selectedAppId);
+    const reconciledAppDetail = reconcileFilteredAppDetailState({
+      apps: state.apps,
+      filters: state.filters,
+      selectedAppId: state.selectedAppId,
+      drawerView: state.drawerView,
+    });
+    state.selectedAppId = reconciledAppDetail.selectedAppId;
+    state.drawerView = reconciledAppDetail.drawerView;
     if (previousSelectedAppId !== state.selectedAppId && state.selectedLogs?.app_id !== state.selectedAppId) {
       state.selectedLogs = null;
     }
@@ -969,10 +976,8 @@ function render() {
       setDrawer(true);
     }
   }
-  const appSelectionWasCleared = Boolean(previousSelectedAppId && !state.selectedAppId);
   state.drawerView = reconcileDetailDrawerView({
     drawerView: state.drawerView,
-    appSelectionWasCleared,
     readonlyDetailWasCleared,
   });
 

@@ -106,7 +106,7 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(switcherBlock).not.toContain("organization-mount");
   expect(switcherBlock).not.toContain("chip(");
   expect(js).toContain("function renderAppsGrid");
-  expect(js).toContain("reconcileSelectedAppId");
+  expect(js).toContain("reconcileFilteredAppDetailState");
   expect(js).not.toContain("state.selectedAppId = state.apps[0].id");
   expect(js).toContain("function scrollBelowStickyTopbar");
   expect(js).toContain("window.scrollBy({ top: delta, behavior: \"smooth\" })");
@@ -323,15 +323,15 @@ test("Daily surface hides diagnostics until the hero action requests them", asyn
   expect(detailRender).not.toContain("renderDetailPaths");
 });
 
-test("Launchpad po odfiltrování aktivního detailu zobrazí drawer overview", async () => {
+test("Launchpad po odfiltrování aktivního detailu používá stavový přechod do overview", async () => {
   const js = await readFile(join(publicRoot, "app.js"), "utf8");
   const renderBlock = js.slice(js.indexOf("function render()"), js.indexOf("function computeHeroState"));
 
-  expect(js).toContain("reconcileDetailDrawerView");
+  expect(js).toContain("reconcileFilteredAppDetailState");
   expect(renderBlock).toContain("const readonlyDetailWasCleared");
-  expect(renderBlock).toContain("const appSelectionWasCleared");
-  expect(renderBlock).toContain("state.drawerView = reconcileDetailDrawerView({");
-  expect(renderBlock).toContain("appSelectionWasCleared,");
+  expect(renderBlock).toContain("const reconciledAppDetail = reconcileFilteredAppDetailState({");
+  expect(renderBlock).toContain("state.selectedAppId = reconciledAppDetail.selectedAppId;");
+  expect(renderBlock).toContain("state.drawerView = reconciledAppDetail.drawerView;");
   expect(renderBlock).toContain("readonlyDetailWasCleared,");
 });
 

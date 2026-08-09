@@ -44,6 +44,22 @@ export function reconcileDetailDrawerView({
   return appSelectionWasCleared || readonlyDetailWasCleared ? "overview" : drawerView;
 }
 
+export function reconcileFilteredAppDetailState({
+  apps,
+  filters,
+  selectedAppId,
+  drawerView,
+} = {}) {
+  const nextSelectedAppId = reconcileSelectedAppId(apps, filters, selectedAppId);
+  return {
+    selectedAppId: nextSelectedAppId,
+    drawerView: reconcileDetailDrawerView({
+      drawerView,
+      appSelectionWasCleared: Boolean(selectedAppId && !nextSelectedAppId),
+    }),
+  };
+}
+
 export function createLatestDataLoadCoordinator({ run } = {}) {
   if (typeof run !== "function") throw new TypeError("data load coordinator requires a run function");
 
