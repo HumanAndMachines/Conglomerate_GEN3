@@ -374,7 +374,11 @@ export function formatUpdateLaneReport(result) {
 
   for (const entry of result.organizations) {
     const marker = ORG_ATTENTION_OUTCOMES.has(entry.outcome) ? "BLOKOVÁNO — " : "";
-    lines.push(`${entry.organization} · ${entry.repo_path}: ${marker}${entry.message}`);
+    const recoveryPath = entry.recovery_path ?? entry.residue_recovery_path ?? null;
+    const recoverySuffix = recoveryPath && !String(entry.message).includes(recoveryPath)
+      ? ` Recovery: ${recoveryPath}.`
+      : "";
+    lines.push(`${entry.organization} · ${entry.repo_path}: ${marker}${entry.message}${recoverySuffix}`);
   }
   for (const message of result.selector_errors) lines.push(`BLOKOVÁNO — ${message}`);
 

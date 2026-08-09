@@ -1343,7 +1343,7 @@ function platformChecks(companiesRoot) {
       args: ["--version"],
       cwd: companiesRoot,
       okMessage: (result) => result.stdout,
-      failMessage: "Git nebyl nalezen ani neprošel validací executable kandidáta.",
+      failMessage: "Git nebyl nalezen ani neprošel validací executable kandidáta. Pro nestandardní instalaci nastav COMPANIESASCODE_GIT_EXECUTABLE na důvěryhodnou absolutní cestu.",
       env: safeGitCommandEnv(),
     }),
   ];
@@ -1725,7 +1725,7 @@ function runGit(args, cwd) {
       exitCode: null,
       stdout: "",
       stderr: "",
-      error: "Git executable was not found or failed validation.",
+      error: "Git executable was not found or failed validation. Set COMPANIESASCODE_GIT_EXECUTABLE to a trusted absolute path for a non-standard installation.",
     };
   }
   return runCommand(executable, args, { cwd, env: safeGitCommandEnv() });

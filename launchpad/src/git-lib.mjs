@@ -66,7 +66,7 @@ export async function runGit(args, { cwd, timeoutMs = GIT_LOCAL_TIMEOUT_MS, env 
       timedOut: false,
       stdout: "",
       stderr: "",
-      error: "Git executable was not found.",
+      error: "Git executable was not found. Set COMPANIESASCODE_GIT_EXECUTABLE to a trusted absolute path for a non-standard installation.",
     };
   }
   return runCommand([executable, ...args], {

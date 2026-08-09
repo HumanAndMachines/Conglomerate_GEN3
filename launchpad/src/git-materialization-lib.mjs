@@ -275,7 +275,7 @@ export function generatedResiduePathAllowed(relativePath) {
     || generatedRootIndex >= 0;
 }
 
-export async function isGeneratedOnlyMigrationResidue(targetPath) {
+export async function isGeneratedOnlyMigrationResidue(targetPath, { readDirectory = readdir } = {}) {
   const rootEntry = await lstatOrNull(targetPath);
   if (!rootEntry?.isDirectory() || rootEntry.isSymbolicLink()) return false;
 
@@ -284,7 +284,14 @@ export async function isGeneratedOnlyMigrationResidue(targetPath) {
   try {
     while (stack.length > 0) {
       const current = stack.pop();
-      const entries = await readdir(current.absolutePath, { withFileTypes: true });
+      if (current.relativePath && generatedResidueDirectoryBoundaryReached(current.relativePath)) {
+        // Jakmile vstoupíme do explicitně rebuildable cache rootu, jeho obsah
+        // už nemůže změnit klasifikaci. Adresář přesouváme atomicky jako celek,
+        // bez následování vnořených linků nebo drahého průchodu node_modules.
+        leafCount += 1;
+        continue;
+      }
+      const entries = await readDirectory(current.absolutePath, { withFileTypes: true });
       if (entries.length === 0) {
         if (current.relativePath === "") return true;
         if (!generatedResiduePathAllowed(current.relativePath)) return false;
@@ -316,6 +323,13 @@ export async function isGeneratedOnlyMigrationResidue(targetPath) {
     return false;
   }
   return leafCount > 0;
+}
+
+function generatedResidueDirectoryBoundaryReached(relativePath) {
+  const normalized = String(relativePath ?? "").replaceAll("\\", "/");
+  const segments = normalized.split("/").filter(Boolean);
+  return segments.some((segment) => GENERATED_RESIDUE_DIRECTORIES.has(segment))
+    && generatedResiduePathAllowed(normalized);
 }
 
 async function quarantineGeneratedResidue({

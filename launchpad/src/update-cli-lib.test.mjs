@@ -58,7 +58,13 @@ const rootSlotRepo = {
   repo_path: "organizations/Spectoda_GEN3/mission-control",
 };
 
-function laneDeps({ rootState = "up_to_date", repoStatuses = {}, pulls = {}, inventories = null } = {}) {
+function laneDeps({
+  rootState = "up_to_date",
+  repoStatuses = {},
+  pulls = {},
+  inventories = null,
+  materialization = null,
+} = {}) {
   const calls = {
     performRoot: [],
     pullFastForward: [],
@@ -106,7 +112,7 @@ function laneDeps({ rootState = "up_to_date", repoStatuses = {}, pulls = {}, inv
       },
       materializeRepo: async ({ repo }) => {
         calls.materializeRepo.push(repo.key);
-        return {
+        return materialization ?? {
           ok: true,
           outcome: "materialized",
           message: "Nový manifestovaný modul byl bezpečně naklonovaný.",
@@ -361,5 +367,27 @@ describe("report formatting", () => {
     expect(report).toContain("BLOKOVÁNO");
     expect(report).toContain("Souhrn Organizací:");
     expect(report).toContain("vyžaduje pozornost");
+  });
+
+  test("report prints the recovery path for a failed materialization", async () => {
+    const recoveryPath = "/state/companiesascode/doctor-recovery/spectoda/failed-clone";
+    const { deps } = laneDeps({
+      inventories: [{ repos: [newModuleRepo] }],
+      repoStatuses: { "spectoda::lazurio": { status: "repo_missing", counts: {} } },
+      materialization: {
+        ok: false,
+        outcome: "failed",
+        message: "Materializace selhala; zkontroluj uvedenou recovery cestu ručně.",
+        recovery_path: recoveryPath,
+      },
+    });
+    const result = await runUpdateLane({
+      rootPath: "/x",
+      options: { orgs: ["spectoda"], allOrgs: false, check: false, preserve: false },
+      deps,
+    });
+    const report = formatUpdateLaneReport(result);
+
+    expect(report).toContain(`Recovery: ${recoveryPath}.`);
   });
 });

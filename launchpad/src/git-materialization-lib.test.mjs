@@ -355,6 +355,25 @@ test("accepts an empty high-confidence cache but rejects an arbitrary empty dire
   expect(await isGeneratedOnlyMigrationResidue(authoredTarget)).toBe(false);
 });
 
+test("generated cache classification stops at the rebuildable directory boundary", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const target = join(root, "generated-cache-target");
+  await mkdir(join(target, "node_modules", "package", "deep", "tree"), { recursive: true });
+  await writeFile(join(target, "node_modules", "package", "deep", "tree", "index.js"), "export {};\n");
+  let directoryReads = 0;
+
+  const result = await isGeneratedOnlyMigrationResidue(target, {
+    readDirectory: async (...args) => {
+      directoryReads += 1;
+      return readdir(...args);
+    },
+  });
+
+  expect(result).toBe(true);
+  expect(directoryReads).toBe(1);
+});
+
 test("preserves an in-tree target containing authored or ambiguous output data", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
