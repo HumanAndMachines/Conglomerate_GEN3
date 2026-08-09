@@ -1202,6 +1202,21 @@ input:focus-visible,
   line-height: 1.45;
 }
 
+.problems-heading-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.problems-close {
+  color: var(--text-muted);
+}
+
+.problems-close:hover {
+  color: var(--text);
+}
+
 .space-problems-list {
   display: flex;
   flex-wrap: wrap;
@@ -1324,6 +1339,11 @@ input:focus-visible,
   .problems-heading {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .problems-heading-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .space-problem-item {
