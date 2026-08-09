@@ -1179,80 +1179,133 @@ input:focus-visible,
   background: color-mix(in srgb, var(--c-warn) 5%, var(--surface));
 }
 
-.problems-details summary {
+.problems-heading {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
-  cursor: pointer;
-  padding: 0.6rem 0.85rem;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.problems-heading h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.2;
+  font-weight: 650;
+}
+
+.problems-heading p {
+  margin: 0.3rem 0 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.space-problems-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  background: var(--line);
+}
+
+.space-problem-item {
+  display: grid;
+  flex: 1 1 280px;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: start;
+  gap: 0.75rem;
+  min-height: 178px;
+  padding: 1rem;
+  background: var(--surface);
+}
+
+.space-problem-marker {
+  display: inline-grid;
+  place-items: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border: 1px solid currentColor;
+  border-radius: var(--r-pill);
+  color: var(--c-danger);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.space-problem-item.is-warning .space-problem-marker {
+  color: var(--c-warn);
+}
+
+.space-problem-item h3 {
+  margin: 0;
   color: var(--text);
+  font-size: 17px;
+  line-height: 1.25;
+  font-weight: 650;
+}
+
+.space-problem-item p {
+  margin: 0.4rem 0 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.space-problem-item .space-problem-next-step {
+  color: var(--text);
+}
+
+.space-problem-action {
+  grid-column: 2;
+  justify-self: start;
+  align-self: end;
+  margin-top: 0.9rem;
+}
+
+.technical-problems {
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.technical-problems > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  color: var(--text-subtle);
   font-size: 14px;
   font-weight: 600;
   list-style: none;
 }
 
-.problems-details summary::-webkit-details-marker {
+.technical-problems > summary::-webkit-details-marker {
   display: none;
 }
 
-.problems-dot {
-  flex: 0 0 auto;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--c-warn);
-}
-
-.problems-panel.is-danger .problems-dot {
-  background: var(--c-danger);
-}
-
-.problems-summary-label {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.problems-summary-hint {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  color: var(--text-subtle);
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.problems-summary-hint::before {
+.technical-problems > summary::before {
   content: "▸";
   display: inline-block;
   transition: transform var(--t-fast) var(--ease);
 }
 
-.problems-details[open] .problems-summary-hint::before {
+.technical-problems[open] > summary::before {
   transform: rotate(90deg);
 }
 
-.problems-list {
+.technical-problems-list {
+  display: grid;
+  gap: 0.9rem;
   max-height: 320px;
   overflow: auto;
-  border-top: 1px solid var(--line);
-}
-
-.problem-item {
-  padding: 0.7rem 0.9rem;
+  padding: 0.9rem 1rem 1rem;
   border-top: 1px solid var(--line);
   color: var(--text);
   font-size: 14px;
 }
 
-.problems-list > .problem-item:first-child {
-  border-top: 0;
-}
-
-.problem-item strong {
+.technical-problems-list strong {
   display: block;
   font-weight: 600;
 }
@@ -1265,6 +1318,17 @@ input:focus-visible,
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 14px;
+}
+
+@media (max-width: 640px) {
+  .problems-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .space-problem-item {
+    min-height: 0;
+  }
 }
 
 .action-panel {
