@@ -441,9 +441,13 @@ test("Version families render as one card with a default version and a more-menu
   expect(js).toContain("function versionOptionNode");
   expect(js).toContain("app-version-menu");
   expect(js).toContain("app-version-badge");
+  expect(js).toContain('trigger.setAttribute("aria-expanded", String(isOpen))');
+  expect(js).toContain('if (inlineMenuPanel) card.append(inlineMenuPanel)');
   expect(css).toContain(".app-version-menu");
   expect(css).toContain(".app-version-badge");
   expect(css).toContain(".app-version-option");
+  expect(css).toMatch(/\.app-version-menu-panel\s*{[\s\S]*?position: static;[\s\S]*?width: 100%;[\s\S]*?border-top: 1px solid var\(--lz-line-faint\)/);
+  expect(css).toContain(".app-card.has-open-menu:not(.selected)");
 });
 
 test("CAC-0044: karty jsou celé klikatelné a spouští one-click open s guardem", async () => {

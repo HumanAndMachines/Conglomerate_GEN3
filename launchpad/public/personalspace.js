@@ -39,7 +39,11 @@ const PERSONAL_OPEN_STARTING_POLL_MS = 1_500;
 // Zavři otevřené ⋯ menu při kliknutí kamkoli mimo něj (port app.js). Menu drží
 // stav ve state.openMenu, aby ho tiché 5s obnovení nezavíralo uprostřed práce.
 document.addEventListener("click", (event) => {
-  if (state.openMenu && event.target instanceof Element && !event.target.closest(".app-version-menu")) {
+  if (
+    state.openMenu
+    && event.target instanceof Element
+    && !event.target.closest(".app-version-menu, .app-version-menu-panel")
+  ) {
     state.openMenu = null;
     rerender();
   }
@@ -506,11 +510,13 @@ function personalAppCard(app) {
   if (menu) {
     const topActions = document.createElement("div");
     topActions.className = "personalspace-app-top-actions";
-    topActions.append(menu);
+    topActions.append(menu.trigger);
+    if (menu.panel) card.classList.add("has-open-menu");
     head.append(topActions);
   }
 
   card.append(head);
+  if (menu?.panel) card.append(menu.panel);
   // Sofistikovaný warning panel jen když je co řešit: nainstalovat/opravit
   // balíčky, blokující manifest, nebo vysvětlit spadlé spuštění. Jinak zůstává
   // dlaždice čistá.
@@ -974,18 +980,20 @@ function personalMenuNode(app) {
   const actions = personalMenuActions(app);
   if (actions.length === 0) return null;
 
-  const details = document.createElement("details");
-  details.className = "app-version-menu";
-  details.open = state.openMenu === app.id;
-  details.addEventListener("click", (event) => event.stopPropagation());
+  const isOpen = state.openMenu === app.id;
+  const menu = document.createElement("div");
+  menu.className = "app-version-menu";
+  menu.addEventListener("click", (event) => event.stopPropagation());
 
-  const summary = document.createElement("summary");
-  summary.className = `app-more-button ${app.runtime_status === "healthy" ? "has-running" : ""}`.trim();
-  summary.setAttribute("aria-label", "Další možnosti aplikace");
-  summary.title = "Další možnosti";
-  summary.innerHTML =
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = `app-more-button ${app.runtime_status === "healthy" ? "has-running" : ""}`.trim();
+  trigger.setAttribute("aria-label", "Další možnosti aplikace");
+  trigger.setAttribute("aria-expanded", String(isOpen));
+  trigger.title = "Další možnosti";
+  trigger.innerHTML =
     '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>';
-  summary.addEventListener("click", (event) => {
+  trigger.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
     state.openMenu = state.openMenu === app.id ? null : app.id;
@@ -994,10 +1002,13 @@ function personalMenuNode(app) {
 
   const panel = document.createElement("div");
   panel.className = "app-version-menu-panel";
+  panel.setAttribute("role", "group");
+  panel.setAttribute("aria-label", "Další možnosti aplikace");
+  panel.addEventListener("click", (event) => event.stopPropagation());
   panel.append(...actions.map((action) => menuActionRow(action)));
 
-  details.append(summary, panel);
-  return details;
+  menu.append(trigger);
+  return { trigger: menu, panel: isOpen ? panel : null };
 }
 
 // „Další možnosti" pod ⋯: zastavit/restart vlastněné instance a logy běžící
@@ -1026,7 +1037,6 @@ function menuActionRow(action) {
   button.disabled = action.pending ? state.pendingAction === action.pending : false;
   button.addEventListener("click", (event) => {
     event.stopPropagation();
-    button.closest("details")?.removeAttribute("open");
     state.openMenu = null;
     action.run();
   });
