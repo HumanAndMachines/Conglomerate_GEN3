@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, realpathSync } from "fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "fs";
 import { readFile, readdir, stat } from "fs/promises";
 import { basename, join, resolve } from "path";
 import { discoverLaunchpadApps, readJson } from "./discovery-lib.mjs";
@@ -1160,12 +1160,33 @@ function isOwnGitCheckout(checkoutPath) {
   if (!existsSync(checkoutPath)) return false;
   const topLevel = runGit(["rev-parse", "--show-toplevel"], checkoutPath);
   if (!topLevel.ok || !topLevel.stdout) return false;
+  const expectedPath = resolve(checkoutPath);
+  const actualPath = resolve(topLevel.stdout);
   try {
-    const expected = realpathSync(resolve(checkoutPath));
-    const actual = realpathSync(resolve(topLevel.stdout));
-    return process.platform === "win32"
-      ? actual.toLowerCase() === expected.toLowerCase()
-      : actual === expected;
+    const canonicalize = realpathSync.native ?? realpathSync;
+    const expected = canonicalize(expectedPath);
+    const actual = canonicalize(actualPath);
+    if (process.platform === "win32") {
+      const windowsPathKey = (value) => value
+        .replaceAll("\\", "/")
+        .replace(/^\/\/\?\/UNC\//i, "//")
+        .replace(/^\/\/\?\//, "")
+        .toLowerCase();
+      if (windowsPathKey(actual) === windowsPathKey(expected)) return true;
+    } else if (actual === expected) {
+      return true;
+    }
+  } catch {
+    // Device/inode fallback níže pokryje runtime, který neumí realpath.
+  }
+  try {
+    const expectedStats = statSync(expectedPath);
+    const actualStats = statSync(actualPath);
+    return expectedStats.isDirectory() &&
+      actualStats.isDirectory() &&
+      expectedStats.ino !== 0 &&
+      expectedStats.dev === actualStats.dev &&
+      expectedStats.ino === actualStats.ino;
   } catch {
     return false;
   }
