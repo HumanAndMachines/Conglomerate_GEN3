@@ -168,7 +168,15 @@ v oddělené záloze pro Start Menu nebo taskbar pod
 Windows 11 může programové připnutí na hlavní panel podle místní policy
 odmítnout. V takovém případě zůstane ověřená položka ve Start Menu: vyhledej
 `HumanAndMachine Launchpad GEN3`, klikni pravým tlačítkem a zvol
-**Připnout na hlavní panel**. Instalátor nevypíná ani nemaže starší launchery.
+**Připnout na hlavní panel**.
+
+Zástupci míří na stabilní bootstrap pod
+`%LOCALAPPDATA%\HumanAndMachine\Launchpad`, ne přímo do Git checkoutu.
+Bootstrap načte jediný uložený kanonický root, ověří jeho marker a odmítne
+`.worktrees`, takže dočasná vývojová kopie se nemůže stát trvalou instalací.
+Instalátor navíc vyhledá a vypne (nikdy nemaže) naplánované Launchpad úlohy,
+jejichž akce míří do `.worktrees`; přesný výsledek vrátí v instalačním JSON
+reportu jako `legacy_scheduled_tasks`.
 
 Jen Start Menu bez pokusu o připnutí:
 
