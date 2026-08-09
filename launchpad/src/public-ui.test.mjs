@@ -301,7 +301,11 @@ test("Daily surface hides diagnostics until the hero action requests them", asyn
   expect(js).toContain('summary.textContent = "Technické detaily"');
   expect(js).toContain('action.textContent = "Zobrazit aplikaci"');
   expect(js).toContain('refresh.textContent = "Obnovit stav"');
-  expect(js).toContain('const panelDisclosed = state.problemsRequested || state.filters.scope === "personal"');
+  expect(js).toContain('close.setAttribute("aria-label", "Zavřít přehled problémů")');
+  expect(js).toContain("function hideProblems()");
+  expect(js).toContain('state.problemsIncludeSystem || state.filters.scope === "personal"');
+  expect(js).toContain("state.problemsDismissed = true");
+  expect(js).toContain('state.filters.scope === "personal" && !state.problemsDismissed');
   expect(js).toContain('panelDisclosed ? "" : " hidden"');
   expect(js).toContain("state.problemsRequested = false");
   expect(js).not.toContain("Něco není v pořádku");
@@ -323,6 +327,8 @@ test("Daily surface hides diagnostics until the hero action requests them", asyn
   expect(css).toContain(".space-problems-list");
   expect(css).toContain(".space-problem-next-step");
   expect(css).toContain(".technical-problems");
+  expect(css).toContain(".problems-heading-actions");
+  expect(css).toContain(".problems-close");
   expect(css).toContain(".problems-panel.is-danger");
 
   // Endpoints / paths / packages / raw JSON live behind a collapsed

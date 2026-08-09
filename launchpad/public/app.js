@@ -79,6 +79,7 @@ const state = {
   problemsRequested: false,
   problemsExpanded: false,
   problemsIncludeSystem: false,
+  problemsDismissed: false,
   loaded: false,
   spaceMenuOpen: false,
   suppressNextDrawerOpen: false,
@@ -1089,6 +1090,7 @@ function revealProblems({ includeSystem = false } = {}) {
   state.problemsRequested = true;
   state.problemsExpanded = false;
   state.problemsIncludeSystem = includeSystem;
+  state.problemsDismissed = false;
   renderProblems(heroDiagnostics(activeSpaceApps()));
   const target = state.problemsVisible ? elements.problemsPanel : elements.appsGrid;
   scrollBelowStickyTopbar(target);
@@ -1156,7 +1158,8 @@ function renderProblems(spaceHealth) {
     return;
   }
 
-  const panelDisclosed = state.problemsRequested || state.filters.scope === "personal";
+  const panelDisclosed = state.problemsRequested
+    || (state.filters.scope === "personal" && !state.problemsDismissed);
   const heading = document.createElement("div");
   heading.className = "problems-heading";
   const headingCopy = document.createElement("div");
@@ -1172,7 +1175,17 @@ function renderProblems(spaceHealth) {
   refresh.className = "btn btn-secondary btn-sm";
   refresh.textContent = "Obnovit stav";
   refresh.addEventListener("click", () => loadData({ fresh: true }));
-  heading.append(headingCopy, refresh);
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "btn btn-icon problems-close";
+  close.setAttribute("aria-label", "Zavřít přehled problémů");
+  close.title = "Zavřít";
+  close.innerHTML = '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="M6 6 18 18"/></svg>';
+  close.addEventListener("click", () => hideProblems());
+  const headingActions = document.createElement("div");
+  headingActions.className = "problems-heading-actions";
+  headingActions.append(refresh, close);
+  heading.append(headingCopy, headingActions);
 
   const list = document.createElement("div");
   list.className = "space-problems-list";
@@ -1185,6 +1198,18 @@ function renderProblems(spaceHealth) {
   elements.doctorStatus.setAttribute("aria-expanded", String(panelDisclosed));
   elements.problemsPanel.className = `problems-panel ${visibleHasDanger ? "is-danger" : "is-warn"}${panelDisclosed ? "" : " hidden"}`;
   elements.problemsPanel.replaceChildren(heading, list, technical);
+}
+
+function hideProblems() {
+  const returnTarget = state.problemsIncludeSystem || state.filters.scope === "personal"
+    ? elements.doctorStatus
+    : elements.heroCta;
+  state.problemsRequested = false;
+  state.problemsExpanded = false;
+  state.problemsIncludeSystem = false;
+  state.problemsDismissed = true;
+  renderProblems(heroDiagnostics(activeSpaceApps()));
+  returnTarget?.focus();
 }
 
 function systemProblemIssue() {
@@ -1581,6 +1606,8 @@ function resetSpaceSelection() {
   state.selectedLogs = null;
   state.problemsRequested = false;
   state.problemsExpanded = false;
+  state.problemsIncludeSystem = false;
+  state.problemsDismissed = false;
   setDrawer(false);
 }
 
