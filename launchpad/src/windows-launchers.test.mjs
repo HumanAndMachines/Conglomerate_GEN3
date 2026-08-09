@@ -10,7 +10,7 @@ test("Launchpad.ps1 má právě jeden UTF-8 BOM pro Windows PowerShell 5.1", asy
 
   expect(contents.subarray(0, utf8Bom.length).equals(utf8Bom)).toBe(true);
   expect(contents.subarray(utf8Bom.length, utf8Bom.length * 2).equals(utf8Bom)).toBe(false);
-  expect(contents.subarray(utf8Bom.length, utf8Bom.length + 1).toString("utf8")).toBe("$");
+  expect(contents.subarray(utf8Bom.length, utf8Bom.length + 1).toString("utf8")).toBe("[");
   expect(contents.toString("utf8").match(/\uFEFF/g)).toHaveLength(1);
 });
 
@@ -29,4 +29,6 @@ test("Launchpad.ps1 validuje Bun kandidáta před spuštěním Launchpadu", asyn
   expect(contents).toContain("Get-Command bun -All -CommandType Application");
   expect(contents).toContain("& $candidate --version");
   expect(contents).toContain("$LASTEXITCODE -eq 0");
+  expect(contents).toContain("[int]$Port = 4174");
+  expect(contents).toContain("run launchpad -- --port $Port");
 });

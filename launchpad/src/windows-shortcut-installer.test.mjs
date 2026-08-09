@@ -28,11 +28,15 @@ test("Windows installer používá stabilní bootstrap a zneškodní worktree sc
 
   expect(contents).toContain("Launchpad-Bootstrap.ps1");
   expect(contents).toContain("humanandmachine.launchpad.windows_install.v1");
+  expect(contents).toContain("[int]$LaunchpadPort = 4174");
+  expect(contents).toContain("port = $LaunchpadPort");
   expect(contents).toContain("Disable-TemporaryLaunchpadScheduledTasks");
   expect(contents).toContain(".worktrees");
   expect(contents).toContain("Microsoft\\Windows\\Start Menu\\Programs");
   expect(bootstrap).toContain("$pathSegments -contains '.worktrees'");
   expect(bootstrap).toContain("launchpad.gen3.json");
+  expect(bootstrap).toContain("Get-Command bun -All -CommandType Application");
+  expect(bootstrap).toContain("run launchpad -- --port $port");
 });
 
 windowsTest("Windows installer zachová dva backupy ze stejné sekundy bez kolize", async () => {
@@ -46,6 +50,8 @@ windowsTest("Windows installer zachová dva backupy ze stejné sekundy bez koliz
   const firstReport = JSON.parse(firstResult.stdout.toString());
   expect(firstReport.installed_bootstrap).toContain("Launchpad-Bootstrap.ps1");
   expect(firstReport.install_config).toContain("install.json");
+  expect(firstReport.launchpad_port).toBe(4174);
+  expect(JSON.parse((await readFile(firstReport.install_config, "utf8")).replace(/^\uFEFF/, "")).port).toBe(4174);
   expect(firstReport.backups).toHaveLength(1);
   const firstBackup = firstReport.backups[0];
   expect(await readFile(firstBackup, "utf8")).toBe("first-original");
@@ -70,6 +76,7 @@ windowsTest("Windows bootstrap odmítne dočasný worktree jako instalaci", asyn
   await writeFile(configPath, JSON.stringify({
     schema_version: "humanandmachine.launchpad.windows_install.v1",
     root: join(fixture.root, ".worktrees", "root", "temporary-launchpad"),
+    port: 4174,
   }), "utf8");
 
   const result = Bun.spawnSync([
@@ -85,6 +92,43 @@ windowsTest("Windows bootstrap odmítne dočasný worktree jako instalaci", asyn
 
   expect(result.exitCode).toBe(1);
   expect(result.stdout.toString()).toContain("refuses to start from a temporary worktree");
+}, 30_000);
+
+windowsTest("Windows bootstrap spustí kanonický Launchpad na pevném portu", async () => {
+  const fixture = await shortcutFixture("bootstrap-fixed-port");
+  const canonicalRoot = join(fixture.root, "canonical-root");
+  const configPath = join(fixture.root, "install.json");
+  await mkdir(canonicalRoot);
+  await writeFile(join(canonicalRoot, "launchpad.gen3.json"), "{}", "utf8");
+  await writeFile(join(canonicalRoot, "package.json"), JSON.stringify({
+    scripts: { launchpad: "bun record-args.mjs" },
+  }), "utf8");
+  await writeFile(join(canonicalRoot, "record-args.mjs"), [
+    "await Bun.write(new URL('observed-args.json', import.meta.url), JSON.stringify(Bun.argv.slice(2)));",
+    "process.exit(0);",
+  ].join("\n"), "utf8");
+  await writeFile(configPath, JSON.stringify({
+    schema_version: "humanandmachine.launchpad.windows_install.v1",
+    root: canonicalRoot,
+    port: 4174,
+  }), "utf8");
+
+  const result = Bun.spawnSync([
+    powershellPath(),
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    join(root, "assets", "Launchpad-Bootstrap.ps1"),
+    "-ConfigPath",
+    configPath,
+  ], { stdout: "pipe", stderr: "pipe" });
+
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(await readFile(join(canonicalRoot, "observed-args.json"), "utf8"))).toEqual([
+    "--port",
+    "4174",
+  ]);
 }, 30_000);
 
 windowsTest("Windows installer skutečně vypne worktree scheduled task a zachová audit", async () => {

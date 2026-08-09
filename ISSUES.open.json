@@ -327,6 +327,7 @@
       "impact": "Incident 2026-08-09 ukázal, že legacy Scheduled Task připnutý k uzavřenému worktree přežil review cyklus a po ukončení nechal prohlížeč ukazovat stale Launchpad shell. Uživatel pak viděl obecnou chybu cílové aplikace, přestože selhala řídicí vrstva. Stabilní LocalAppData bootstrap a quarantine worktree úloh blokují přesnou reprodukci, ale direct-pull root stále není verzovaná desktopová instalace a runtime/log custody zůstává checkout-owned.",
       "implemented_mitigation": [
         "Start Menu a taskbar zástupci míří na stabilní LocalAppData bootstrap s jediným kanonickým rootem.",
+        "Uživatelský Windows launcher má pevný origin http://127.0.0.1:4174 a při kolizi nesmí tiše přejít na jiný port.",
         "Bootstrap fail-closed odmítá `.worktrees` a ověřuje marker `launchpad.gen3.json`.",
         "Instalátor vypíná, nemaže a auditně reportuje Launchpad Scheduled Tasks mířící do `.worktrees`.",
         "Windows regresní test vytváří skutečnou worktree-pinned úlohu a ověřuje přechod do stavu Disabled."

@@ -18,6 +18,10 @@ param(
     [string]$InstalledRoot,
 
     [Parameter()]
+    [ValidateRange(1, 65535)]
+    [int]$LaunchpadPort = 4174,
+
+    [Parameter()]
     [switch]$StartMenuOnly,
 
     [Parameter()]
@@ -286,6 +290,7 @@ if ($PSCmdlet.ShouldProcess($resolvedRoot, 'Install HumanAndMachine Launchpad ic
     [pscustomobject]@{
         schema_version = 'humanandmachine.launchpad.windows_install.v1'
         root = $resolvedRoot
+        port = $LaunchpadPort
         installed_at = (Get-Date).ToString('o')
     } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $installConfigPath -Encoding utf8
 
@@ -354,6 +359,7 @@ if ($installApplied -and (-not $startMenuValid -or (-not $StartMenuOnly -and -no
     installed_root = $InstalledRoot
     installed_bootstrap = $installedBootstrapPath
     install_config = $installConfigPath
+    launchpad_port = $LaunchpadPort
     installed_icon = $iconPath
     start_menu_shortcut = $startMenuShortcut
     start_menu_valid = $startMenuValid

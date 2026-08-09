@@ -24,6 +24,16 @@ try {
     if ($null -eq $config.root -or [string]::IsNullOrWhiteSpace([string]$config.root)) {
         throw 'Launchpad installation config does not contain a canonical root.'
     }
+    $portProperty = $config.PSObject.Properties['port']
+    $port = 0
+    if (
+        $null -eq $portProperty -or
+        -not [int]::TryParse([string]$portProperty.Value, [ref]$port) -or
+        $port -lt 1 -or
+        $port -gt 65535
+    ) {
+        throw 'Launchpad installation config does not contain a valid fixed port.'
+    }
 
     $root = Get-FullPath -Path ([string]$config.root)
     $pathSegments = $root -split '[\\/]'
@@ -32,16 +42,50 @@ try {
     }
 
     $rootMarker = Join-Path $root 'launchpad.gen3.json'
-    $launcher = Join-Path $root 'Launchpad.ps1'
+    $packageManifest = Join-Path $root 'package.json'
     if (-not (Test-Path -LiteralPath $rootMarker -PathType Leaf)) {
         throw "Configured Launchpad root is not valid: $root"
     }
-    if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) {
-        throw "Configured Launchpad launcher is missing: $launcher"
+    if (-not (Test-Path -LiteralPath $packageManifest -PathType Leaf)) {
+        throw "Configured Launchpad package manifest is missing: $packageManifest"
+    }
+
+    $bunCandidates = @()
+    $bunCommands = Get-Command bun -All -CommandType Application -ErrorAction SilentlyContinue
+    foreach ($bunCommand in $bunCommands) {
+        if ($bunCommand.Path) {
+            $bunCandidates += $bunCommand.Path
+        }
+        elseif ($bunCommand.Source) {
+            $bunCandidates += $bunCommand.Source
+        }
+    }
+    if ($env:USERPROFILE) {
+        $bunCandidates += Join-Path $env:USERPROFILE '.bun\bin\bun.exe'
+    }
+    if ($env:LOCALAPPDATA) {
+        $bunCandidates += Join-Path $env:LOCALAPPDATA 'bun\bin\bun.exe'
+    }
+
+    $bunExecutable = $null
+    foreach ($candidate in ($bunCandidates | Where-Object { $_ } | Select-Object -Unique)) {
+        try {
+            & $candidate --version *> $null
+            if ($LASTEXITCODE -eq 0) {
+                $bunExecutable = $candidate
+                break
+            }
+        }
+        catch {
+            # A broken WindowsApps alias must not hide another valid Bun install.
+        }
+    }
+    if (-not $bunExecutable) {
+        throw 'Bun is not installed or no working installation was found.'
     }
 
     Set-Location -LiteralPath $root
-    & $launcher
+    & $bunExecutable run launchpad -- --port $port
     exit $LASTEXITCODE
 }
 catch {

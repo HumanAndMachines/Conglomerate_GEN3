@@ -364,6 +364,11 @@ instalaci. `Launchpad.ps1` musí mít právě jeden UTF-8 BOM, aby český text
 správně načetl i Windows PowerShell 5.1. Git probe jsou neinteraktivní, bez
 POSIX askpass cesty a se skrytými child okny.
 
+Windows zástupce ukládá kanonický root a pevný port `4174` do stabilního
+LocalAppData bootstrapu. Kliknutí proto vždy otevírá
+`http://127.0.0.1:4174`; kolize s cizím procesem skončí čitelnou chybou a
+nesmí tiše přeskočit na jinou adresu.
+
 ## Web shell v1
 
 RM-0006 redesign source of truth: `launchpad/docs/launchpad-gen3-redesign-spec.md`.

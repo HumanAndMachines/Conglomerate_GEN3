@@ -58,6 +58,9 @@ kanonický, ani aktivně vyřadit ten, který mířil do dočasné review větve
   checkoutu.
 - Bootstrap čte `install.json` s jediným kanonickým rootem, ověří
   `launchpad.gen3.json` a odmítne každou cestu obsahující `.worktrees`.
+- Instalace ukládá pevný uživatelský origin `http://127.0.0.1:4174`; bootstrap
+  předá port explicitně. Obsazený cizí port proto skončí čitelnou chybou místo
+  tichého otevření jiné adresy.
 - Reinstalace vyhledá Launchpad scheduled tasks, jejichž akce míří do
   `.worktrees`, a bezpečně je vypne. Úlohy nemaže a reportuje přesnou identitu,
   akci a výsledek pro rollback/audit.
@@ -111,7 +114,7 @@ ani zápis do zákaznických aplikací.
 
 1. Nainstalovat zástupce z primárního `main` checkoutu.
 2. Ověřit, že oba zástupci míří do LocalAppData bootstrapu a config míří na
-   primární root.
+   primární root a pevný port `4174`.
 3. Vytvořit testovací scheduled task s Launchpad akcí pod `.worktrees`, znovu
    spustit instalátor a ověřit stav `Disabled` bez smazání úlohy.
 4. Přesunout nebo zneplatnit konfigurovaný root a potvrdit čitelnou fail-closed
