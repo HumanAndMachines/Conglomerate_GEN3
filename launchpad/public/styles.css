@@ -602,8 +602,8 @@ input:focus-visible,
 }
 
 /* Globální update banner (CAC-0083): dostupná nová verze Conglomerate nesmí
-   být přehlédnutelná — full-width pás uvnitř sticky topbaru, viditelný
-   v každém scope i na úzké obrazovce (žádné schovávání do overflow menu). */
+   být přehlédnutelná. Banner žije v hlavním obsahu pod sticky hlavičkou,
+   viditelný v každém scope i na úzké obrazovce. */
 .update-banner {
   display: flex;
   align-items: center;
@@ -2859,6 +2859,17 @@ tbody tr.selected {
     padding: 0 1rem 2.5rem;
   }
 
+  .update-banner {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    justify-content: stretch;
+  }
+
+  .update-banner-action {
+    grid-column: 1 / -1;
+    justify-self: center;
+  }
+
   .apps-toolbar {
     grid-template-columns: minmax(0, 1fr);
     align-items: stretch;
@@ -4399,14 +4410,15 @@ button.runtime-stage.is-available:hover {
   box-shadow: 0 1px 3px rgba(20, 18, 24, 0.12), inset 0 0 0 1px var(--line);
 }
 
-/* --- BANNER O NOVÉ VERZI je nabídka, ne úkol ------------------------
-   Ztišen na řádek s tečkou; barvu nese tečka, ne pás přes celou šířku. */
+/* --- BANNER O NOVÉ VERZI je nabídka, ne součást navigace ------------
+   Samostatný blok pod hlavičkou odděluje globální stav od navigace. Barvu
+   nese tečka, ne pás přes celou šířku. */
 .update-banner {
-  background: none;
-  border: 0;
-  border-bottom: 1px solid var(--c-neutral-200);
-  border-radius: 0;
-  padding: 10px 0;
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
   gap: 10px;
   align-items: center;
 }

@@ -1133,11 +1133,12 @@ test("CAC-0083: dostupný root update je nepřehlédnutelný — banner ve všec
     readFile(join(publicRoot, "styles.css"), "utf8"),
   ]);
 
-  // Banner žije uvnitř sticky topbar headeru, ne v overflow menu — je vidět
-  // v každém scope i na úzké obrazovce.
+  // Banner je první samostatný blok hlavního obsahu pod sticky hlavičkou.
+  // Neprodlužuje navigační header, ale zůstává vidět v každém scope.
   expect(html).toContain('id="updateBanner"');
-  expect(html.indexOf('id="updateBanner"')).toBeLessThan(html.indexOf("</header>"));
-  expect(html.indexOf('id="topbarOverflow"')).toBeLessThan(html.indexOf('id="updateBanner"'));
+  expect(html.indexOf("</header>")).toBeLessThan(html.indexOf('id="updateBanner"'));
+  expect(html.indexOf('<main class="page">')).toBeLessThan(html.indexOf('id="updateBanner"'));
+  expect(html.indexOf('id="updateBanner"')).toBeLessThan(html.indexOf('<div class="layout">'));
   expect(html).toContain('id="updateBannerText"');
   expect(html).toContain('id="updateBannerAction"');
 
