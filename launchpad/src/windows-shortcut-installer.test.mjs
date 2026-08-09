@@ -38,6 +38,18 @@ test("Windows installer publikuje bootstrap a config atomickým přejmenováním
   expect(contents).toContain("Write-AtomicUtf8File -DestinationPath $installConfigPath");
 });
 
+test("Windows atomic publish fallback připouští Move jen pro FileNotFoundException", async () => {
+  const contents = await readFile(installer, "utf8");
+  const functionStart = contents.indexOf("function Publish-AtomicTemporaryFile {");
+  const functionEnd = contents.indexOf("function Publish-AtomicFile {", functionStart);
+  expect(functionStart).toBeGreaterThan(0);
+  expect(functionEnd).toBeGreaterThan(functionStart);
+  const atomicPublisher = contents.slice(functionStart, functionEnd);
+
+  expect(atomicPublisher).toContain("if ($replaceFailure -is [System.IO.FileNotFoundException]) {");
+  expect(atomicPublisher).toMatch(/\[System\.IO\.File\]::Move\(\$TemporaryPath, \$DestinationPath\)\r?\n\s*}\r?\n\s*else\s*{\r?\n\s*throw\r?\n\s*}/);
+});
+
 test("Windows installer používá stabilní bootstrap a quarantinuje jen vlastní worktree scheduled task", async () => {
   const contents = await readFile(installer, "utf8");
   const bootstrap = await readFile(join(root, "assets", "Launchpad-Bootstrap.ps1"), "utf8");
