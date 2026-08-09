@@ -150,7 +150,14 @@ const BLOCKING_APP_STATES = new Set([
   "runtime_failed",
 ]);
 
-export function summarizeOrganizationSpaceHealth({ apps = [], organization = null, spaceFailures = [], extraWarnings = 0 } = {}) {
+export function summarizeOrganizationSpaceHealth({
+  apps = [],
+  organization = null,
+  spaceFailures = [],
+  spaceWarnings = [],
+  loadFailures = [],
+  extraWarnings = 0,
+} = {}) {
   const spaceApps = organization?.slug
     ? apps.filter((app) => app.company === organization.slug)
     : apps;
@@ -174,14 +181,156 @@ export function summarizeOrganizationSpaceHealth({ apps = [], organization = nul
   const conformanceWarnings = organization?.workspace_conformance_issues?.length ?? 0;
 
   return {
-    blockers: spaceFailures.length + blockingApps.length + blockingSlots.length,
-    warnings: attentionApps.length + conformanceWarnings + extraWarnings,
+    blockers: spaceFailures.length + loadFailures.length + blockingApps.length + blockingSlots.length,
+    warnings: attentionApps.length + conformanceWarnings + spaceWarnings.length + extraWarnings,
     attention: attentionApps.length,
     running: spaceApps.filter((app) => app.runtime_status === "healthy").length,
     expected_restrictions: expectedRestrictions.length,
     blocking_apps: blockingApps,
     blocking_slots: blockingSlots,
+    attention_apps: attentionApps,
+    space_failures: [...spaceFailures],
+    space_warnings: [...spaceWarnings],
+    load_failures: [...loadFailures],
+    conformance_issues: [...(organization?.workspace_conformance_issues ?? [])],
   };
+}
+
+export function buildSpaceProblemModel(health = {}) {
+  const issues = [
+    ...(health.blocking_apps ?? []).map(appBlockerModel),
+    ...(health.blocking_slots ?? []).map(slotBlockerModel),
+    ...(health.space_failures ?? []).map((failure) => ({
+      severity: "danger",
+      title: "Osobní prostor se nepodařilo načíst",
+      impact: "Část osobního prostoru proto nemusí být dostupná.",
+      nextStep: "Opravte uvedené nastavení a potom obnovte stav.",
+      technical: [String(failure)],
+    })),
+    ...(health.load_failures ?? []).map((failure) => ({
+      severity: "danger",
+      title: "Stav prostoru se nepodařilo obnovit",
+      impact: "Zobrazené informace mohou být zastaralé, dokud se kontrola znovu nepodaří.",
+      nextStep: "Zkontrolujte připojení a potom znovu obnovte stav.",
+      technical: [String(failure)],
+    })),
+    ...(health.attention_apps ?? []).map(appWarningModel),
+    ...(health.space_warnings ?? []).map((warning) => ({
+      severity: "warning",
+      title: "Osobní prostor se nepodařilo úplně obnovit",
+      impact: "Některé informace v osobním prostoru mohou být dočasně zastaralé.",
+      nextStep: "Zkontrolujte připojení nebo nastavení a potom obnovte stav.",
+      technical: [String(warning)],
+    })),
+    ...(health.conformance_issues ?? []).map((warning) => ({
+      severity: "warning",
+      title: "Nastavení pracovního prostoru potřebuje kontrolu",
+      impact: "Některé aplikace mohou být zařazené nebo popsané nepřesně.",
+      nextStep: "Zkontrolujte nastavení prostoru a potom obnovte stav.",
+      technical: [String(warning)],
+    })),
+  ];
+  const modeledWarnings = issues.filter((issue) => issue.severity === "warning").length;
+  for (let index = modeledWarnings; index < (health.warnings ?? 0); index += 1) {
+    issues.push({
+      severity: "warning",
+      title: "Prostor potřebuje kontrolu",
+      impact: "Kontrola našla upozornění, které nebrání běžné práci.",
+      nextStep: "Obnovte stav. Pokud upozornění zůstane, otevřete technické informace prostoru.",
+      technical: [],
+    });
+  }
+
+  return {
+    issues,
+    blockers: issues.filter((issue) => issue.severity === "danger").length,
+    warnings: issues.filter((issue) => issue.severity === "warning").length,
+  };
+}
+
+function appBlockerModel(app) {
+  const title = problemAppTitle(app);
+  const runtimeMessage = app.runtime?.message;
+  const dependencyMessage = app.dependencies?.message;
+  const technical = [runtimeMessage, dependencyMessage, app.dependencies?.cwd].filter(Boolean);
+
+  if (app.runtime?.failure_kind === "port_owner_cwd_mismatch") {
+    return {
+      severity: "danger",
+      title: `${title} běží z jiného pracovního umístění`,
+      impact: "Launchpad tuto běžící kopii nepřevzal, aby nezasáhl do jiné rozdělané práce.",
+      nextStep: "Zavřete druhou kopii aplikace a potom obnovte stav.",
+      appId: app.id,
+      technical,
+    };
+  }
+
+  const dependencyState = app.dependencies?.state;
+  if (["missing_access", "restricted"].includes(dependencyState)) {
+    return {
+      severity: "danger",
+      title: `${title} není v tomto prostoru dostupný`,
+      impact: "Launchpad nemá oprávnění potřebná k bezpečnému otevření aplikace.",
+      nextStep: "Požádejte správce prostoru o přístup a potom obnovte stav.",
+      appId: app.id,
+      technical,
+    };
+  }
+  if (["missing_package", "unknown_package_manager", "invalid_manifest"].includes(dependencyState)) {
+    return {
+      severity: "danger",
+      title: `${title} potřebuje opravit nastavení`,
+      impact: "Launchpad aplikaci v aktuálním stavu neumí bezpečně připravit ani otevřít.",
+      nextStep: "Opravte nastavení aplikace a potom obnovte stav.",
+      appId: app.id,
+      technical,
+    };
+  }
+
+  return {
+    severity: "danger",
+    title: `${title} teď nejde spolehlivě otevřít`,
+    impact: "Launchpad zjistil provozní chybu a aplikaci proto nepovažuje za připravenou.",
+    nextStep: "Otevřete detail aplikace, vyřešte uvedenou chybu a potom obnovte stav.",
+    appId: app.id,
+    technical,
+  };
+}
+
+function slotBlockerModel(slot) {
+  const label = humanizePathTail(slot.path);
+  return {
+    severity: "danger",
+    title: `${label} není připravený`,
+    impact: "Tato část prostoru chybí nebo k ní nemáte očekávaný přístup.",
+    nextStep: "Doplňte modul nebo potřebné oprávnění a potom obnovte stav.",
+    technical: [slot.message, slot.reason, slot.path].filter(Boolean),
+  };
+}
+
+function appWarningModel(app) {
+  const title = problemAppTitle(app);
+  return {
+    severity: "warning",
+    title: `${title} potřebuje kontrolu`,
+    impact: "Aplikace je v přechodném stavu nebo čeká na drobnou údržbu.",
+    nextStep: "Otevřete detail aplikace a zkontrolujte doporučený další krok.",
+    appId: app.id,
+    technical: [app.runtime?.message, app.dependencies?.message, app.dependencies?.cwd].filter(Boolean),
+  };
+}
+
+function problemAppTitle(app) {
+  return String(app.title ?? app.id ?? "Aplikace").replace(/\s+v\d+$/i, "");
+}
+
+function humanizePathTail(path) {
+  const tail = String(path ?? "modul").split("/").filter(Boolean).at(-1) ?? "modul";
+  return tail
+    .split(/[-_]/g)
+    .filter(Boolean)
+    .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
+    .join(" ");
 }
 
 export function computeSpaceHeroState(health) {

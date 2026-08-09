@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   appBaseTitle,
   appVersionLabel,
+  buildSpaceProblemModel,
   computeSpaceHeroState,
   createLatestDataLoadCoordinator,
   familyTitle,
@@ -418,6 +419,68 @@ test("nezdravý runtime je prostorový blokátor i s ready dependencies", () => 
 
   expect(health).toMatchObject({ blockers: 1, warnings: 0 });
   expect(computeSpaceHeroState(health).tone).toBe("danger");
+});
+
+test("problémový panel používá stejné tři blokátory jako aktivní prostor", () => {
+  const blockingApps = ["Guide", "Mission Control", "Invoices"].map((title, index) => ({
+    ...app(`blocked-${index}`, "Rozjedeme-ai", "ready"),
+    title,
+    runtime_status: "unhealthy",
+    runtime: {
+      failure_kind: "port_owner_cwd_mismatch",
+      message: `Port ${5391 + index} používá proces z jiného checkoutu.`,
+    },
+  }));
+  const health = summarizeOrganizationSpaceHealth({
+    organization: { slug: "Rozjedeme-ai", workspaces: [] },
+    apps: blockingApps,
+  });
+  const model = buildSpaceProblemModel(health);
+
+  expect(model.blockers).toBe(health.blockers);
+  expect(model.warnings).toBe(0);
+  expect(model.issues.map((issue) => issue.title)).toEqual([
+    "Guide běží z jiného pracovního umístění",
+    "Mission Control běží z jiného pracovního umístění",
+    "Invoices běží z jiného pracovního umístění",
+  ]);
+  expect(model.issues.every((issue) => issue.nextStep.includes("obnovte stav"))).toBe(true);
+});
+
+test("problémový panel nepřimíchá globální Doctor nálezy z jiných Organizací", () => {
+  const health = summarizeOrganizationSpaceHealth({
+    organization: { slug: "Rozjedeme-ai", workspaces: [] },
+    apps: [],
+  });
+  const model = buildSpaceProblemModel(health);
+
+  expect(model).toEqual({ issues: [], blockers: 0, warnings: 0 });
+});
+
+test("problémový panel vysvětlí selhání obnovení bez globálních Doctor nálezů", () => {
+  const health = summarizeOrganizationSpaceHealth({
+    organization: { slug: "Rozjedeme-ai", workspaces: [] },
+    loadFailures: ["Síť není dostupná"],
+  });
+  const model = buildSpaceProblemModel(health);
+
+  expect(model).toMatchObject({ blockers: 1, warnings: 0 });
+  expect(model.issues[0]).toMatchObject({
+    title: "Stav prostoru se nepodařilo obnovit",
+    technical: ["Síť není dostupná"],
+  });
+});
+
+test("osobní prostor zachová text transportního varování", () => {
+  const health = summarizeOrganizationSpaceHealth({
+    spaceWarnings: ["Osobní prostor se nepodařilo obnovit: spojení vypršelo"],
+  });
+  const model = buildSpaceProblemModel(health);
+
+  expect(model).toMatchObject({ blockers: 0, warnings: 1 });
+  expect(model.issues[0].technical).toEqual([
+    "Osobní prostor se nepodařilo obnovit: spojení vypršelo",
+  ]);
 });
 
 test("startující nebo neznámý runtime drží prostor ve warning stavu", () => {

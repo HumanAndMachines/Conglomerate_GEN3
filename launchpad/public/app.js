@@ -1,6 +1,7 @@
 import {
   appBaseTitle,
   appVersionLabel,
+  buildSpaceProblemModel,
   computeSpaceHeroState,
   createLatestDataLoadCoordinator,
   familyTitle,
@@ -44,6 +45,7 @@ const state = {
   companies: [],
   failures: [],
   warnings: [],
+  loadError: null,
   personalspace: null,
   personalspaceError: null,
   doctor: null,
@@ -76,6 +78,7 @@ const state = {
   // explicitně z agregovaného hero banneru.
   problemsRequested: false,
   problemsExpanded: false,
+  problemsIncludeSystem: false,
   loaded: false,
   spaceMenuOpen: false,
   suppressNextDrawerOpen: false,
@@ -118,12 +121,6 @@ const ACTIVE_POLL_INTERVAL_MS = 15_000;
 // Root update status dělá git fetch (síť); v quiet pollu se obnovuje nejvýš
 // jednou za tenhle interval, aby update indikace nezastarala na dobu session.
 const UPDATE_STATUS_REFRESH_INTERVAL_MS = 5 * 60_000;
-// `blocked` (decision 0118) je kontrola, která MĚLA běžet a nešla pozorovat.
-// Musí být v panelu vidět, jinak by se z nepozorování stalo prázdné místo —
-// `not_applicable` naopak vidět být nemá, to je fakt o topologii, ne nález.
-// Konstanta musí být inicializovaná před prvním loadData(): ten během module
-// initu synchronně vstoupí do renderProblems().
-const REPORTED_CHECK_STATUSES = new Set(["fail", "warn", "blocked"]);
 let lastUpdateStatusAt = 0;
 const mobilePanelQuery = window.matchMedia("(max-width: 900px)");
 const mobileTopbarQuery = window.matchMedia("(max-width: 900px)");
@@ -337,7 +334,7 @@ elements.updateBannerAction?.addEventListener("click", () => runRootUpdate());
 elements.heroCta.addEventListener("click", () => runHeroAction());
 elements.doctorStatus.addEventListener("click", () => {
   closeMobileOverflow();
-  revealProblems();
+  revealProblems({ includeSystem: true });
 });
 elements.spaceSwitcherButton.addEventListener("click", (event) => {
   event.stopPropagation();
@@ -623,7 +620,7 @@ async function loadDoctorInBackground() {
     return doctorLoadInFlight;
   }
   state.doctorRunState = "running";
-  renderDoctorStatus();
+  renderDoctorStatus(currentSpaceHealth());
   doctorLoadInFlight = fetchJson("/api/doctor");
   try {
     const doctor = await doctorLoadInFlight;
@@ -708,7 +705,7 @@ async function runLoadData({ quiet = false, isCurrent = () => true } = {}) {
   const firstSuccessfulScopeLoad = !launchpadScopeDataReady;
   if (!quiet) {
     state.doctorRunState = "running";
-    renderDoctorStatus();
+    renderDoctorStatus(currentSpaceHealth());
     elements.reloadButton.disabled = true;
     elements.reloadButton.classList.add("is-busy");
   }
@@ -737,6 +734,7 @@ async function runLoadData({ quiet = false, isCurrent = () => true } = {}) {
     state.companies = appsResponse.companies ?? [];
     state.failures = appsResponse.failures ?? [];
     state.warnings = appsResponse.warnings ?? [];
+    state.loadError = null;
     // Transportní výpadek oddělené personalspace lane zachová poslední stav.
     // Jakákoli úspěšná HTTP odpověď je ale aktuální autorita i s ok:false:
     // odebraný/revokovaný prostor ani jeho soukromá Buddy data nesmíme vrátit.
@@ -766,6 +764,7 @@ async function runLoadData({ quiet = false, isCurrent = () => true } = {}) {
       state.warnings = [];
     }
     state.failures = [error.message];
+    state.loadError = error.message;
     if (!quiet) state.doctorRunState = "unavailable";
     state.loaded = true;
     if (!quiet || !state.doctor) {
@@ -1001,7 +1000,7 @@ function render() {
   const heroApps = activeSpaceApps();
   const spaceHealth = heroDiagnostics(heroApps);
   renderHero(heroApps, spaceHealth);
-  renderDoctorStatus();
+  renderDoctorStatus(spaceHealth);
   renderProblems(spaceHealth);
   renderActionMessage();
   renderAppsGrid(filteredApps);
@@ -1086,9 +1085,10 @@ function runHeroAction() {
   revealProblems();
 }
 
-function revealProblems() {
+function revealProblems({ includeSystem = false } = {}) {
   state.problemsRequested = true;
-  state.problemsExpanded = true;
+  state.problemsExpanded = false;
+  state.problemsIncludeSystem = includeSystem;
   renderProblems(heroDiagnostics(activeSpaceApps()));
   const target = state.problemsVisible ? elements.problemsPanel : elements.appsGrid;
   scrollBelowStickyTopbar(target);
@@ -1108,17 +1108,24 @@ function scrollBelowStickyTopbar(target) {
    Doctor + problems
    ========================================================= */
 
-function renderDoctorStatus() {
-  const status = state.doctor?.summary?.status ?? "unknown";
+function renderDoctorStatus(spaceHealth = {}) {
   const runState = state.doctorRunState;
+  const spaceStatus = spaceHealth.blockers > 0 ? "fail" : spaceHealth.warnings > 0 ? "warn" : "ok";
+  const doctorStatus = state.doctor?.summary?.status ?? "unknown";
+  const discoveryStatus = state.failures.length > 0 ? "fail" : state.warnings.length > 0 ? "warn" : "ok";
+  const status = [spaceStatus, doctorStatus, discoveryStatus].some((value) => ["fail", "incomplete", "blocked", "error"].includes(value))
+    ? "fail"
+    : [spaceStatus, doctorStatus, discoveryStatus].includes("warn")
+      ? "warn"
+      : "ok";
   const chipStatus = runState === "unavailable" ? "fail" : runState === "complete" ? status : "unknown";
   const label = runState === "running"
-    ? "Doktor: kontroluje…"
+    ? "Kontrola systému: probíhá…"
     : runState === "unavailable"
-      ? "Doktor: nedostupný"
+      ? "Kontrola systému: nedostupná"
       : runState === "complete"
-        ? `Doktor: dokončeno · ${statusLabel(status)}`
-        : "Doktor: bez výsledku";
+        ? `Kontrola systému: ${statusLabel(status)}`
+        : "Kontrola systému: bez výsledku";
   const needsAttention = runState === "unavailable"
     || ["fail", "warn", "incomplete", "blocked", "error"].includes(status);
   elements.doctorStatus.dataset.status = chipStatus;
@@ -1129,153 +1136,164 @@ function renderDoctorStatus() {
 }
 
 function renderProblems(spaceHealth) {
-  const reportedChecks = (state.doctor?.checks ?? []).filter((check) => REPORTED_CHECK_STATUSES.has(check.status));
-  const hasRuntimeAppCheck = reportedChecks.some((check) => check.id.startsWith("launchpad.runtime."));
-  const failedChecks = reportedChecks.filter((check) => check.id !== "launchpad.runtime" || !hasRuntimeAppCheck);
-  const activeSlotBlockers = activeOrganizationSlotBlockers(failedChecks);
-  const currentAppBlockers = spaceHealth?.blocking_apps ?? [];
-  const activeAppBlockers = currentAppBlockers.filter(
-    (app) => !failedChecks.some((check) => check.id === `launchpad.runtime.${app.id}`),
-  );
-  const appSeverityAdjustments = currentAppBlockers.filter((app) => {
-    const check = failedChecks.find((item) => item.id === `launchpad.runtime.${app.id}`);
-    return check?.status !== "fail";
-  }).length;
-  const rawPersonalFailures = state.filters.scope === "personal"
-    ? (state.personalspace?.failures ?? [])
-    : [];
-  const personalFailures = rawPersonalFailures.filter((failure) => !failedChecks.some(
-        (check) => check.id === "launchpad.personalspace"
-          && (check.details ?? []).some((detail) => String(detail).includes(failure)),
-      ));
-  const personalWarnings = state.filters.scope === "personal"
-    ? [
-        ...(state.personalspace?.warnings ?? []),
-        ...(state.personalspace?.presentation_warnings ?? []),
-      ].filter((warning) => !failedChecks.some(
-        (check) => check.id === "launchpad.personalspace"
-          && (check.details ?? []).some((detail) => String(detail).includes(warning)),
-      ))
-    : [];
-  const personalspaceTransportError = state.personalspaceError
-    && (state.personalspace?.failures?.length ?? 0) === 0
-    ? state.personalspaceError
-    : null;
-  const problemNodes = [
-    ...failedChecks.map(problemCheckNode),
-    ...activeSlotBlockers.map((slot) => problemTextNode(
-      `Blokátor aktivního prostoru: ${slot.path}${slot.message ? ` — ${slot.message}` : ""}`,
-    )),
-    ...activeAppBlockers.map((app) => problemTextNode(
-      `Blokátor aplikace ${app.title ?? app.id}: ${app.dependencies?.message ?? app.runtime?.message ?? "aplikace není použitelná"}`,
-    )),
-    ...personalFailures.map((failure) => problemTextNode(`Blokátor osobního prostoru: ${failure}`)),
-    ...personalWarnings.map((warning) => problemTextNode(`Varování osobního prostoru: ${warning}`)),
-    ...state.failures.map(problemTextNode),
-    ...state.warnings.map((warning) => problemTextNode(`Varování: ${warning}`)),
-    ...(personalspaceTransportError ? [problemTextNode(`Varování: ${personalspaceTransportError}`)] : []),
-  ];
-  if (problemNodes.length === 0) {
+  const model = buildSpaceProblemModel(spaceHealth);
+  const systemIssue = systemProblemIssue();
+  const spaceIssues = model.blockers > 0
+    ? model.issues.filter((issue) => issue.severity === "danger")
+    : model.issues;
+  const visibleIssues = state.problemsIncludeSystem && systemIssue
+    ? [...spaceIssues, systemIssue]
+    : spaceIssues;
+  const visibleHasDanger = visibleIssues.some((issue) => issue.severity === "danger");
+  if (visibleIssues.length === 0) {
     state.problemsRequested = false;
     state.problemsExpanded = false;
     state.problemsVisible = false;
-    elements.doctorStatus.disabled = true;
+    elements.doctorStatus.disabled = !systemIssue;
     elements.doctorStatus.setAttribute("aria-expanded", "false");
     elements.problemsPanel.classList.add("hidden");
     elements.problemsPanel.replaceChildren();
     return;
   }
 
-  const hardFailureCount = failedChecks.filter((check) => check.status === "fail").length
-    + state.failures.length
-    + activeSlotBlockers.length
-    + appSeverityAdjustments
-    + personalFailures.length;
-  const warnCount = problemNodes.length - hardFailureCount;
-  const hasPersonalspaceDoctorFailure = failedChecks.some(
-    (check) => check.id === "launchpad.personalspace" && check.status === "fail",
-  );
-  const personalspaceFailureVisible = state.filters.scope === "personal"
-    && (rawPersonalFailures.length > 0 || hasPersonalspaceDoctorFailure || personalspaceTransportError);
-  const panelDisclosed = state.problemsRequested || personalspaceFailureVisible;
-
-  // Diagnostický detail se materializuje až po explicitní akci z hero banneru;
-  // denní seznam aplikací tak neopakuje stejný alarm podruhé.
-  const details = document.createElement("details");
-  details.className = "problems-details";
-  details.open = state.problemsExpanded;
-  const summary = document.createElement("summary");
-  const dot = document.createElement("span");
-  dot.className = "problems-dot";
-  const label = document.createElement("span");
-  label.className = "problems-summary-label";
-  label.textContent =
-    hardFailureCount > 0
-      ? `Diagnostické detaily · ${hardFailureCount} ${pluralBlocker(hardFailureCount)}${warnCount > 0 ? `, ${warnCount} varování` : ""}`
-      : `Diagnostické detaily · ${problemNodes.length} varování`;
-  const hint = document.createElement("span");
-  hint.className = "problems-summary-hint";
-  hint.textContent = "Zobrazit detail";
-  summary.append(dot, label, hint);
+  const panelDisclosed = state.problemsRequested || state.filters.scope === "personal";
+  const heading = document.createElement("div");
+  heading.className = "problems-heading";
+  const headingCopy = document.createElement("div");
+  const title = document.createElement("h2");
+  title.textContent = visibleHasDanger ? "Co je potřeba vyřešit" : "Co je potřeba zkontrolovat";
+  const intro = document.createElement("p");
+  intro.textContent = state.problemsIncludeSystem && systemIssue
+    ? `Nejdřív vidíte prostor ${activeSpace().label}, potom širší kontrolu systému. U každé položky najdete další krok.`
+    : `Týká se pouze prostoru ${activeSpace().label}. U každé položky najdete dopad a další krok.`;
+  headingCopy.append(title, intro);
+  const refresh = document.createElement("button");
+  refresh.type = "button";
+  refresh.className = "btn btn-secondary btn-sm";
+  refresh.textContent = "Obnovit stav";
+  refresh.addEventListener("click", () => loadData({ fresh: true }));
+  heading.append(headingCopy, refresh);
 
   const list = document.createElement("div");
-  list.className = "problems-list";
-  list.append(...problemNodes);
-  details.append(summary, list);
-  details.addEventListener("toggle", () => {
-    state.problemsExpanded = details.open;
-    elements.doctorStatus.setAttribute("aria-expanded", String(details.open));
-  });
+  list.className = "space-problems-list";
+  for (const issue of visibleIssues) list.append(spaceProblemNode(issue));
+
+  const technical = technicalProblemsNode(visibleIssues);
 
   state.problemsVisible = true;
   elements.doctorStatus.disabled = false;
-  elements.doctorStatus.setAttribute("aria-expanded", String(state.problemsExpanded));
-  elements.problemsPanel.className = `problems-panel ${hardFailureCount > 0 ? "is-danger" : "is-warn"}${panelDisclosed ? "" : " hidden"}`;
-  elements.problemsPanel.replaceChildren(details);
+  elements.doctorStatus.setAttribute("aria-expanded", String(panelDisclosed));
+  elements.problemsPanel.className = `problems-panel ${visibleHasDanger ? "is-danger" : "is-warn"}${panelDisclosed ? "" : " hidden"}`;
+  elements.problemsPanel.replaceChildren(heading, list, technical);
 }
 
-function activeOrganizationSlotBlockers(reportedChecks = []) {
-  if (state.filters.scope !== "org") return [];
-  const organization = state.companies.find((company) => company.slug === state.filters.company);
-  const reportedDetails = reportedChecks
-    .find((check) => check.id === "launchpad.workspace_declarations")
-    ?.details ?? [];
-  return (organization?.space_readiness?.blocking_slots ?? []).filter((slot) => {
-    const detailPrefix = `${organization.path}/${slot.path}:`;
-    return !reportedDetails.some((detail) => String(detail).startsWith(detailPrefix));
-  });
+function systemProblemIssue() {
+  if (state.doctorRunState === "unavailable") {
+    return {
+      severity: "danger",
+      title: "Kontrola systému teď není dostupná",
+      impact: "Launchpad proto nemůže potvrdit, že je celé pracovní prostředí v pořádku.",
+      nextStep: "Obnovte stav. Pokud se kontrola znovu nespustí, obraťte se na správce pracovního prostředí.",
+      technical: [],
+    };
+  }
+  const status = state.doctor?.summary?.status;
+  const hasDiscoveryFailures = state.failures.length > 0;
+  const hasDiscoveryWarnings = state.warnings.length > 0;
+  if (!hasDiscoveryFailures && !hasDiscoveryWarnings && !["fail", "warn", "incomplete", "blocked", "error"].includes(status)) return null;
+  const severity = hasDiscoveryFailures || ["fail", "incomplete", "blocked", "error"].includes(status)
+    ? "danger"
+    : "warning";
+  return {
+    severity,
+    title: "Širší kontrola systému potřebuje pozornost",
+    impact: "Tato kontrola zahrnuje i společné technické části mimo právě otevřený prostor.",
+    nextStep: "Obnovte stav. Pokud upozornění zůstane, předejte ho správci pracovního prostředí.",
+    technical: [
+      ...state.failures.map((value) => `Discovery: ${value}`),
+      ...state.warnings.map((value) => `Discovery: ${value}`),
+      ...doctorTechnicalDetails(),
+    ],
+  };
 }
 
-function problemCheckNode(check) {
-  const node = document.createElement("div");
-  node.className = "problem-item";
-  const title = document.createElement("strong");
-  title.textContent = `${check.id}: ${check.message}`;
-  node.append(title);
-  // `blocked` bez remedy je tichá díra s hezčím jménem (decision 0118), takže
-  // se remedy ukazuje hned vedle důvodu — ne schovaná mezi detaily.
-  const blockedMeta = check.status === "blocked"
-    ? [check.blocked_reason, check.remedy ? `Náprava: ${check.remedy}` : null].filter(Boolean)
-    : [];
-  const meta = [...blockedMeta, ...(check.paths ?? []), ...(check.details ?? [])];
-  if (meta.length > 0) {
-    const list = document.createElement("ul");
-    list.className = "problem-meta";
-    for (const item of meta) {
-      const li = document.createElement("li");
-      li.textContent = item;
-      list.append(li);
+function doctorTechnicalDetails() {
+  const relevantStatuses = new Set(["fail", "warn", "incomplete", "blocked", "error"]);
+  return (state.doctor?.checks ?? [])
+    .filter((check) => relevantStatuses.has(check.status))
+    .flatMap((check) => {
+      const values = [
+        [check.id, check.message].filter(Boolean).join(": "),
+        check.path,
+        check.reason,
+        check.blocked_reason,
+        check.remedy,
+        ...(check.paths ?? []),
+        ...(check.details ?? []),
+      ].filter(Boolean);
+      return values.map((value) => typeof value === "string" ? value : JSON.stringify(value));
+    });
+}
+
+function spaceProblemNode(issue) {
+  const node = document.createElement("article");
+  node.className = `space-problem-item is-${issue.severity}`;
+  const marker = document.createElement("span");
+  marker.className = "space-problem-marker";
+  marker.textContent = "!";
+  marker.setAttribute("aria-hidden", "true");
+  const copy = document.createElement("div");
+  const title = document.createElement("h3");
+  title.textContent = issue.title;
+  const impact = document.createElement("p");
+  impact.textContent = issue.impact;
+  const nextStep = document.createElement("p");
+  nextStep.className = "space-problem-next-step";
+  nextStep.textContent = `Co udělat: ${issue.nextStep}`;
+  copy.append(title, impact, nextStep);
+  node.append(marker, copy);
+  if (issue.appId) {
+    const app = state.apps.find((item) => item.id === issue.appId);
+    if (app) {
+      const action = document.createElement("button");
+      action.type = "button";
+      action.className = "btn btn-secondary btn-sm space-problem-action";
+      action.textContent = "Zobrazit aplikaci";
+      action.addEventListener("click", () => revealAppDetail(app));
+      node.append(action);
     }
-    node.append(list);
   }
   return node;
 }
 
-function problemTextNode(text) {
-  const node = document.createElement("div");
-  node.className = "problem-item";
-  node.textContent = text;
-  return node;
+function technicalProblemsNode(issues) {
+  const details = document.createElement("details");
+  details.className = "technical-problems";
+  details.open = state.problemsExpanded;
+  const summary = document.createElement("summary");
+  summary.textContent = "Technické detaily";
+  const list = document.createElement("div");
+  list.className = "technical-problems-list";
+  for (const issue of issues) {
+    if ((issue.technical ?? []).length === 0) continue;
+    const item = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = issue.title;
+    const meta = document.createElement("ul");
+    meta.className = "problem-meta";
+    for (const value of issue.technical) {
+      const row = document.createElement("li");
+      row.textContent = value;
+      meta.append(row);
+    }
+    item.append(title, meta);
+    list.append(item);
+  }
+  details.append(summary, list);
+  details.addEventListener("toggle", () => {
+    state.problemsExpanded = details.open;
+  });
+  return details;
 }
 
 function renderActionMessage() {
@@ -5040,6 +5058,10 @@ function activeSpaceApps() {
   return (state.personalspace?.spaces ?? []).flatMap((space) => space.apps ?? []);
 }
 
+function currentSpaceHealth() {
+  return heroDiagnostics(activeSpaceApps());
+}
+
 function heroDiagnostics(apps) {
   const personalScope = state.filters.scope === "personal";
   const organization = !personalScope
@@ -5047,18 +5069,26 @@ function heroDiagnostics(apps) {
     : null;
   const personalFailures = personalScope ? (state.personalspace?.failures ?? []) : [];
   const personalWarnings = personalScope ? (state.personalspace?.warnings ?? []) : [];
-  const transientPersonalspaceWarning = personalScope
+  const personalPresentationWarnings = personalScope
+    ? (state.personalspace?.presentation_warnings ?? [])
+    : [];
+  const transientPersonalspaceWarnings = personalScope
     && state.personalspaceError
     && personalFailures.length === 0
-    ? 1
-    : 0;
+    ? [state.personalspaceError]
+    : [];
   return summarizeOrganizationSpaceHealth({
     apps,
     organization,
     // Root discovery chyby patří do Doctor chipu a panelu problémů. Bez
     // strukturovaného scope je nesmíme připsat každé vybrané Organizaci.
     spaceFailures: personalFailures,
-    extraWarnings: personalWarnings.length + transientPersonalspaceWarning,
+    spaceWarnings: [
+      ...personalWarnings,
+      ...personalPresentationWarnings,
+      ...transientPersonalspaceWarnings,
+    ],
+    loadFailures: state.loadError ? [state.loadError] : [],
   });
 }
 
@@ -5161,10 +5191,6 @@ function surfaceLabel(surface) {
 
 function pluralApp(count) {
   return count === 1 ? "aplikace" : "aplikací";
-}
-
-function pluralBlocker(count) {
-  return count === 1 ? "blocker" : count >= 2 && count <= 4 ? "blockery" : "blockerů";
 }
 
 function pluralCommit(count) {

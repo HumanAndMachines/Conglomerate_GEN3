@@ -111,7 +111,7 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(js).toContain("function scrollBelowStickyTopbar");
   expect(js).toContain("window.scrollBy({ top: delta, behavior: \"smooth\" })");
   expect(js).toContain("function primaryNextAction");
-  expect(js).toContain("problems-details");
+  expect(js).toContain("technical-problems");
   expect(js).toContain("stale_lockfile");
   expect(js).toContain("missing_access");
   expect(js).toContain("planned_slot");
@@ -199,13 +199,21 @@ test("Launchpad shell ships GEN2-like command center, theme and feedback afforda
   expect(js).toContain("renderHero(heroApps, spaceHealth)");
   expect(js).toContain("renderProblems(spaceHealth)");
   expect(js).toContain("spaceFailures: personalFailures");
+  expect(js).toContain("...personalPresentationWarnings");
+  expect(js).toContain("...transientPersonalspaceWarnings");
+  expect(js).toContain("state.personalspace?.presentation_warnings ?? []");
+  expect(js).toContain("loadFailures: state.loadError ? [state.loadError] : []");
   expect(js).not.toContain("spaceFailures: state.failures");
-  expect(js).toContain("Doktor: dokončeno ·");
+  expect(js).toContain("Kontrola systému:");
+  expect(js).toContain("state.doctor?.summary?.status");
+  expect(js).toContain("state.failures.length > 0 ? \"fail\"");
+  expect(js).toContain("...state.failures.map((value) => `Discovery: ${value}`)");
   expect(js).toContain("function slotAccessChip");
-  expect(js).toContain("function activeOrganizationSlotBlockers");
-  expect(js).toContain("Blokátor aktivního prostoru:");
-  expect(js).toContain("Blokátor aplikace");
-  expect(js).toContain("Blokátor osobního prostoru:");
+  expect(js).toContain("buildSpaceProblemModel");
+  expect(js).toContain("function spaceProblemNode");
+  expect(js).toContain("function technicalProblemsNode");
+  expect(js).toContain("Co je potřeba vyřešit");
+  expect(js).toContain("Co udělat:");
   expect(js).toContain("Chybí očekávaný přístup");
   expect(js).toContain("Očekávaně omezený přístup");
   expect(js).not.toContain("elements.heroSubtitle");
@@ -275,20 +283,34 @@ test("Daily surface hides diagnostics until the hero action requests them", asyn
     readFile(join(publicRoot, "styles.css"), "utf8"),
   ]);
 
-  // Agregovaný hero zůstává pravdivý, ale duplicitní červený panel není
-  // součástí denního seznamu. Explicitní CTA detail odhalí a rovnou otevře.
+  // Agregovaný hero i odhalený panel používají stejný scoped model aktivního
+  // prostoru. Globální Doctor nálezy z jiných Organizací se sem nepřimíchají.
   expect(js).toContain("problemsRequested: false");
   expect(js).toContain("problemsExpanded: false");
   expect(js).toContain("state.problemsRequested = true");
-  expect(js).toContain("state.problemsExpanded = true");
-  expect(js).toContain("details.open = state.problemsExpanded");
-  expect(js).toContain("const panelDisclosed = state.problemsRequested || personalspaceFailureVisible");
+  expect(js).toContain("state.problemsExpanded = false");
+  expect(js).toContain("const model = buildSpaceProblemModel(spaceHealth)");
+  expect(js).toContain("function systemProblemIssue()");
+  expect(js).toContain("revealProblems({ includeSystem: true })");
+  expect(js.match(/renderDoctorStatus\(currentSpaceHealth\(\)\);/g)?.length).toBe(2);
+  expect(js).toContain("renderDoctorStatus(spaceHealth);");
+  expect(js).toContain('model.issues.filter((issue) => issue.severity === "danger")');
+  expect(js).toContain('title.textContent = visibleHasDanger ? "Co je potřeba vyřešit"');
+  expect(js).toContain("Týká se pouze prostoru ${activeSpace().label}");
+  expect(js).toContain('nextStep.textContent = `Co udělat: ${issue.nextStep}`');
+  expect(js).toContain('summary.textContent = "Technické detaily"');
+  expect(js).toContain('action.textContent = "Zobrazit aplikaci"');
+  expect(js).toContain('refresh.textContent = "Obnovit stav"');
+  expect(js).toContain('const panelDisclosed = state.problemsRequested || state.filters.scope === "personal"');
   expect(js).toContain('panelDisclosed ? "" : " hidden"');
   expect(js).toContain("state.problemsRequested = false");
   expect(js).not.toContain("Něco není v pořádku");
-  expect(js).toContain("problems-summary-label");
-  // Globální Doctor chyby mohou být mimo scoped hero agregaci. Stavový chip je
-  // proto druhá explicitní, klávesnicí dostupná cesta ke stejnému detailu.
+  expect(js).not.toContain("problemCheckNode");
+  expect(js).toContain("function doctorTechnicalDetails()");
+  expect(js).toContain("state.doctor?.checks ?? []");
+  expect(js).toContain('visibleIssues.some((issue) => issue.severity === "danger")');
+  // Stavový chip je druhá explicitní, klávesnicí dostupná cesta ke stejnému
+  // scoped a srozumitelnému panelu.
   expect(html).toContain('id="doctorStatus"');
   expect(html).toContain('aria-controls="problemsPanel"');
   expect(html).toContain('class="doctor-status-alert"');
@@ -296,11 +318,11 @@ test("Daily surface hides diagnostics until the hero action requests them", asyn
   expect(js).toContain('elements.doctorStatus.addEventListener("click", () => {');
   expect(js).toContain('alert.hidden = !needsAttention');
   expect(js).toContain("closeMobileOverflow();");
-  expect(js).toContain('elements.doctorStatus.setAttribute("aria-expanded", String(details.open))');
-  expect(js).toContain('check.id === "launchpad.personalspace" && check.status === "fail"');
-  expect(js).toContain("rawPersonalFailures.length > 0 || hasPersonalspaceDoctorFailure");
+  expect(js).toContain('elements.doctorStatus.setAttribute("aria-expanded", String(panelDisclosed))');
   expect(css).toContain(".status-pill:not(:disabled)");
-  expect(css).toContain(".problems-list");
+  expect(css).toContain(".space-problems-list");
+  expect(css).toContain(".space-problem-next-step");
+  expect(css).toContain(".technical-problems");
   expect(css).toContain(".problems-panel.is-danger");
 
   // Endpoints / paths / packages / raw JSON live behind a collapsed
