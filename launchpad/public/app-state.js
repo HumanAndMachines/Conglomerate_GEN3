@@ -35,6 +35,23 @@ export function reconcileSelectedAppId(apps, filters, selectedAppId) {
   return null;
 }
 
+export function reconcileDetailDrawerState({
+  drawerView,
+  drawerOpen,
+  previousSelectedAppId = null,
+  selectedAppId = null,
+  previousReadonlyDetailId = null,
+  selectedReadonlyDetailId = null,
+  focusInsideDrawer = false,
+}) {
+  const hadDetailSelection = Boolean(previousSelectedAppId || previousReadonlyDetailId);
+  const hasDetailSelection = Boolean(selectedAppId || selectedReadonlyDetailId);
+  if (drawerView === "detail" && hadDetailSelection && !hasDetailSelection) {
+    return { drawerView: "overview", drawerOpen: false, restoreFocus: Boolean(focusInsideDrawer) };
+  }
+  return { drawerView, drawerOpen, restoreFocus: true };
+}
+
 export function createLatestDataLoadCoordinator({ run } = {}) {
   if (typeof run !== "function") throw new TypeError("data load coordinator requires a run function");
 

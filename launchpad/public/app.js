@@ -10,6 +10,7 @@ import {
   groupWorkspaceFamiliesByTeam,
   isAttentionState,
   offersMoreThanLocalRun,
+  reconcileDetailDrawerState,
   replacePersonalspaceResponse,
   reconcileSelectedAppId,
   runtimeStagesForApp,
@@ -428,7 +429,7 @@ function closeMobileOverflow() {
   }
 }
 
-function setDrawer(open) {
+function setDrawer(open, { restoreFocus = true } = {}) {
   const wasOpen = state.drawerOpen;
   if (open && !wasOpen) {
     drawerReturnFocus = document.activeElement instanceof HTMLElement
@@ -438,7 +439,10 @@ function setDrawer(open) {
   state.drawerOpen = open;
   applyDrawerState();
   if (open && !wasOpen && mobilePanelQuery.matches) focusMobileDrawer();
-  if (!open && wasOpen) restoreDrawerFocus();
+  if (!open && wasOpen) {
+    if (restoreFocus) restoreDrawerFocus();
+    else drawerReturnFocus = null;
+  }
 }
 
 function drawerFocusableElements() {
@@ -943,6 +947,7 @@ function render() {
   if (launchpadScopeDataReady) syncActiveSpaceHash({ replace: true });
   applyOrganizationTheme();
   const previousSelectedAppId = state.selectedAppId;
+  const previousReadonlyDetailId = state.selectedReadonlyDetail?.id ?? null;
   const suppressDrawerOpen = state.suppressNextDrawerOpen;
   state.suppressNextDrawerOpen = false;
   if (state.selectedReadonlyDetail && !readonlyDetailInView(state.selectedReadonlyDetail)) {
@@ -964,6 +969,23 @@ function render() {
       state.drawerView = "detail";
       setDrawer(true);
     }
+  }
+
+  const reconciledDrawer = reconcileDetailDrawerState({
+    drawerView: state.drawerView,
+    drawerOpen: state.drawerOpen,
+    previousSelectedAppId,
+    selectedAppId: state.selectedAppId,
+    previousReadonlyDetailId,
+    selectedReadonlyDetailId: state.selectedReadonlyDetail?.id ?? null,
+    focusInsideDrawer: elements.detailDrawer?.contains(document.activeElement) ?? false,
+  });
+  state.drawerView = reconciledDrawer.drawerView;
+  if (reconciledDrawer.drawerOpen !== state.drawerOpen) {
+    // Filtr se ovládá mimo drawer, takže jeho focus zachováme. Pokud ale
+    // data zneplatní detail, ve kterém focus právě je, vrátíme jej bezpečně
+    // na původní kartu nebo fallback ovládání místo ponechání v inert panelu.
+    setDrawer(reconciledDrawer.drawerOpen, { restoreFocus: reconciledDrawer.restoreFocus });
   }
 
   // Anotace git_attention z git read modelu — nezávislý toggle ji zahrne

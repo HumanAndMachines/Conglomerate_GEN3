@@ -12,6 +12,7 @@ import {
   matchesQuery,
   offersMoreThanLocalRun,
   productionUrl,
+  reconcileDetailDrawerState,
   replacePersonalspaceResponse,
   reconcileSelectedAppId,
   runtimeStagesForApp,
@@ -39,6 +40,43 @@ test("Launchpad drží jen explicitní výběr, první aplikaci rozcestníku nev
 
 test("Launchpad selection becomes empty when no filtered app is visible", () => {
   expect(reconcileSelectedAppId(apps, baseFilters({ company: "MissingCo" }), "democo-app-1")).toBe(null);
+});
+
+test("filtrem skrytá běžná aplikace zavře detail místo prázdného draweru", () => {
+  expect(reconcileDetailDrawerState({
+    drawerView: "detail",
+    drawerOpen: true,
+    previousSelectedAppId: "democo-app-1",
+    selectedAppId: null,
+  })).toEqual({ drawerView: "overview", drawerOpen: false, restoreFocus: false });
+});
+
+test("filtrem skrytý read-only modul zavře detail místo prázdného draweru", () => {
+  expect(reconcileDetailDrawerState({
+    drawerView: "detail",
+    drawerOpen: true,
+    previousReadonlyDetailId: "workspace-module:democo:office:guide",
+    selectedReadonlyDetailId: null,
+  })).toEqual({ drawerView: "overview", drawerOpen: false, restoreFocus: false });
+});
+
+test("viditelný výběr nechává detail drawer beze změny", () => {
+  expect(reconcileDetailDrawerState({
+    drawerView: "detail",
+    drawerOpen: true,
+    previousSelectedAppId: "democo-app-1",
+    selectedAppId: "democo-app-1",
+  })).toEqual({ drawerView: "detail", drawerOpen: true, restoreFocus: true });
+});
+
+test("zneplatněný detail s focusem uvnitř vrátí focus mimo inert drawer", () => {
+  expect(reconcileDetailDrawerState({
+    drawerView: "detail",
+    drawerOpen: true,
+    previousSelectedAppId: "democo-app-1",
+    selectedAppId: null,
+    focusInsideDrawer: true,
+  })).toEqual({ drawerView: "overview", drawerOpen: false, restoreFocus: true });
 });
 
 test("partial-failure Personalspace odpověď odstraní revokovaný prostor i soukromá Buddy data", () => {
