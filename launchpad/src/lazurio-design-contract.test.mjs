@@ -33,10 +33,12 @@ test("Launchpad používá kanonické Lazurio logo ve webové i systémové ikon
   expect(html).toContain('<link rel="apple-touch-icon" href="/apple-touch-icon.png" />');
   expect(server).toContain('if (path.endsWith(".ico")) return "image/x-icon";');
   expect(favicon).toContain('viewBox="0 0 1024 1024"');
-  expect(shortcutSvg).toContain('viewBox="0 0 1024 1024"');
-  expect(shortcutSvg).toContain('fill="#171717"');
+  expect(shortcutSvg).toContain('viewBox="-14.02 -16.25 128 128"');
+  expect(shortcutSvg).toContain('fill="#ffffff"');
+  expect(shortcutSvg).toContain('stop-color="#0d12db"');
   expect(webIco.subarray(0, 4)).toEqual(new Uint8Array([0, 0, 1, 0]));
-  expect(touchIcon.byteLength).toBeGreaterThan(1_000);
+  expect(touchIcon.readUInt32BE(16)).toBe(180);
+  expect(touchIcon.readUInt32BE(20)).toBe(180);
   expect(shortcutIco.subarray(0, 4)).toEqual(new Uint8Array([0, 0, 1, 0]));
 });
 
