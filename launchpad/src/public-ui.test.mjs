@@ -138,7 +138,7 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(openChainBlock).toContain('openResultUrl(app.url, null, app)');
   expect(js).toContain('label: "Checkout procesu nelze ověřit"');
   expect(js).toContain('small.textContent = blocked ? "blokovaná"');
-  expect(js).toContain('action.textContent = blocked ? "Zobrazit detail"');
+  expect(js).toContain('? (isCodexPortConflict(app) ? "Vyřešit s Codexem" : "Zobrazit detail")');
   expect(js).toContain('primaryNextAction(app).type !== "disabled"');
 
   expect(css).toContain(".space-switcher-menu");
@@ -299,7 +299,7 @@ test("Daily surface hides diagnostics until the hero action requests them", asyn
   expect(js).toContain("Týká se pouze prostoru ${activeSpace().label}");
   expect(js).toContain('nextStep.textContent = `Co udělat: ${issue.nextStep}`');
   expect(js).toContain('summary.textContent = "Technické detaily"');
-  expect(js).toContain('action.textContent = "Zobrazit aplikaci"');
+  expect(js).toContain('action.textContent = isCodexPortConflict(app) ? "Vyřešit s Codexem" : "Zobrazit aplikaci"');
   expect(js).toContain('refresh.textContent = "Obnovit stav"');
   expect(js).toContain('close.setAttribute("aria-label", "Zavřít přehled problémů")');
   expect(js).toContain("function hideProblems()");
