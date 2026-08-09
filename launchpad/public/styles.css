@@ -5285,6 +5285,7 @@ body {
 }
 
 .search-field:focus-within {
+  border-color: var(--lz-gray-700);
   background: var(--lz-white);
 }
 

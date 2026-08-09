@@ -259,6 +259,8 @@ test("Personalspace dlaždice je GEN2-minimal (port GEN2-minimal karty): tile-fi
   expect(js).toContain("function menuActionRow");
   expect(js).toContain('trigger.className = `app-more-button');
   expect(js).toContain('trigger.setAttribute("aria-expanded", String(isOpen))');
+  expect(js).toContain('trigger.dataset.menuFocusKey = app.id');
+  expect(js).toContain("focusMenuTriggerAfterRender(document, app.id)");
   expect(js).toContain('if (menu?.panel) card.append(menu.panel)');
   expect(js).toContain('button.className = "app-menu-action";');
 
