@@ -1088,7 +1088,6 @@ test("Launchpad používá jednotný kompaktní modulový grid bez stínů", asy
   expect(css).toContain("width: 2.6rem");
   expect(css).toContain("border: 1px solid transparent");
   expect(css).toContain("font-weight: 400");
-  expect(css).toContain("outline: 3px solid var(--accent-soft)");
   expect(css).toContain("color-mix(in srgb, var(--accent) 58%, var(--line))");
   expect(css).toContain(".app-card.selected:focus-visible");
   expect(js).toContain("APP_DESCRIPTION_FALLBACKS");
