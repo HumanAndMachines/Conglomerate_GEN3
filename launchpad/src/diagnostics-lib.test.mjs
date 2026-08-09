@@ -1123,6 +1123,19 @@ test("planned root slot nemá git a smí zůstat planned jen dokud není materia
   );
   await rm(join(designSystemPath, ".git"));
 
+  if (process.platform !== "win32") {
+    await symlink(
+      join(root, "missing-git-marker-target"),
+      join(designSystemPath, ".git"),
+    );
+    const danglingMarkerCheck = await doctor();
+    expect(danglingMarkerCheck?.status).toBe("fail");
+    expect(danglingMarkerCheck?.details.join("\n")).toContain(
+      "root slot design-system obsahuje neplatný .git marker",
+    );
+    await rm(join(designSystemPath, ".git"));
+  }
+
   delete manifest.module_slots[0].status;
   manifest.module_slots[0].git = {
     url: "git@github.com:OmegaCo/design-system.git",

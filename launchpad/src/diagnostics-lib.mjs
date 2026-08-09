@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, realpathSync, statSync } from "fs";
+import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "fs";
 import { readFile, readdir, stat } from "fs/promises";
 import { basename, join, resolve } from "path";
 import { discoverLaunchpadApps, readJson } from "./discovery-lib.mjs";
@@ -817,8 +817,14 @@ async function readOrganizationSpaces(companiesRoot, organization, localConfig =
     (workspace) => workspace.slug === "productionspace" || workspace.path === "productionspace",
   );
   const manifest = await readOrganizationModuleManifest(companiesRoot, organization);
+  const rootSlotCheckoutProbes = new Map();
   const moduleSlots = (Array.isArray(manifest?.module_slots) ? manifest.module_slots.map(normalizeModuleSlot).filter(Boolean) : [])
-    .map((slot) => moduleSlotWithReadiness(organizationRoot, slot, principalRoles));
+    .map((slot) => moduleSlotWithReadiness(
+      organizationRoot,
+      slot,
+      principalRoles,
+      rootSlotCheckoutProbes,
+    ));
   // Decision 0041: deklarace modules[].workspace v company.gen3.json je druhý
   // deklarativní povrch; manifest module_slots[] má přednost při konfliktu.
   // Config-only sloty (bez manifest protějšku) se počítají do tiles i
@@ -826,7 +832,12 @@ async function readOrganizationSpaces(companiesRoot, organization, localConfig =
   const manifestPaths = new Set(moduleSlots.map((slot) => slot.path));
   const configOnlyModules = (Array.isArray(config?.modules) ? config.modules.map(normalizeModuleSlot).filter(Boolean) : [])
     .filter((slot) => !manifestPaths.has(slot.path))
-    .map((slot) => moduleSlotWithReadiness(organizationRoot, slot, principalRoles));
+    .map((slot) => moduleSlotWithReadiness(
+      organizationRoot,
+      slot,
+      principalRoles,
+      rootSlotCheckoutProbes,
+    ));
   const moduleDeclarations = [...moduleSlots, ...configOnlyModules];
   // Vnořený child slot i explicitní repository-db slot jsou technické mounty
   // pro Doctor/search/publish flow, ne samostatné Launchpad module dlaždice.
@@ -901,6 +912,7 @@ async function readOrganizationSpaces(companiesRoot, organization, localConfig =
       manifest,
       config,
       organizationRoot,
+      rootSlotCheckoutProbes,
     ),
     slot_scope_contract_issues: slotScopeContractIssues(manifest, config),
   };
@@ -1011,7 +1023,7 @@ function slotScopeContractIssues(manifest, config) {
 // Organization root checkout boundaries mají přísnější kontrakt než běžné
 // Team moduly: scope musí být explicitní, aktivní slot musí nést přesné checkout
 // souřadnice a Mission Control app/data deklarace tvoří jeden pár.
-function rootSlotContractIssues(manifest, config, organizationRoot) {
+function rootSlotContractIssues(manifest, config, organizationRoot, checkoutProbes = new Map()) {
   const issues = [];
   const rootLayerPaths = new Set(["design-system", "infra", "mission-control"]);
   const slots = Array.isArray(manifest?.module_slots) ? manifest.module_slots : [];
@@ -1058,8 +1070,10 @@ function rootSlotContractIssues(manifest, config, organizationRoot) {
     const gitUrl = typeof slot.git?.url === "string" ? slot.git.url.trim() : "";
     const gitBranch = typeof slot.git?.branch === "string" ? slot.git.branch.trim() : "";
     const checkoutPath = join(organizationRoot, path);
-    const gitMarkerExists = existsSync(join(checkoutPath, ".git"));
-    const checkoutExists = isOwnGitCheckout(checkoutPath);
+    const { checkoutExists, gitMarkerExists } = rootSlotCheckoutProbe(
+      checkoutPath,
+      checkoutProbes,
+    );
     if (gitMarkerExists && !checkoutExists) {
       issues.push(
         `modules.manifest.json: root slot ${path} obsahuje neplatný .git marker; oprav nebo odstraň marker dřív, než bude checkout dostupný`,
@@ -1145,15 +1159,37 @@ function rootSlotContractIssues(manifest, config, organizationRoot) {
 // missing_access = deklarované repo bez lokálního checkoutu (typicky chybějící
 // GitHub přístup nebo zatím nespuštěný doctor sync), planned_slot = slot bez
 // repo deklarace.
-function moduleSlotStatus(organizationRoot, slot) {
+function moduleSlotStatus(organizationRoot, slot, checkoutProbes = new Map()) {
   if (isOrganizationRootSlotPath(slot.path)) {
-    if (isOwnGitCheckout(join(organizationRoot, slot.path))) return "available";
+    const checkoutPath = join(organizationRoot, slot.path);
+    if (rootSlotCheckoutProbe(checkoutPath, checkoutProbes).checkoutExists) return "available";
     const gitUrl = typeof slot.git?.url === "string" ? slot.git.url.trim() : "";
     const normalizedRepo = typeof slot.repo === "string" ? slot.repo.trim() : "";
     return gitUrl || normalizedRepo ? "missing_access" : "planned_slot";
   }
   if (existsSync(join(organizationRoot, slot.path))) return "available";
   return slot.repo ? "missing_access" : "planned_slot";
+}
+
+function rootSlotCheckoutProbe(checkoutPath, checkoutProbes) {
+  const key = resolve(checkoutPath);
+  const cached = checkoutProbes.get(key);
+  if (cached) return cached;
+  const result = {
+    checkoutExists: isOwnGitCheckout(checkoutPath),
+    gitMarkerExists: pathEntryExists(join(checkoutPath, ".git")),
+  };
+  checkoutProbes.set(key, result);
+  return result;
+}
+
+function pathEntryExists(path) {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function isOwnGitCheckout(checkoutPath) {
@@ -1192,8 +1228,13 @@ function isOwnGitCheckout(checkoutPath) {
   }
 }
 
-function moduleSlotWithReadiness(organizationRoot, slot, principalRoles = null) {
-  const status = moduleSlotStatus(organizationRoot, slot);
+function moduleSlotWithReadiness(
+  organizationRoot,
+  slot,
+  principalRoles = null,
+  checkoutProbes = new Map(),
+) {
+  const status = moduleSlotStatus(organizationRoot, slot, checkoutProbes);
   return {
     ...slot,
     status,
