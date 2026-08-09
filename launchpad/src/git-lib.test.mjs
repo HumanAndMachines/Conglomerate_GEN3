@@ -12,6 +12,8 @@ import {
   resolveGitExecutableSync,
   runGit,
   safeGitCommandEnv,
+  safeGitMaterializationConfig,
+  safeGitMaterializationEnv,
   safeGitRemoteEnv,
 } from "./git-lib.mjs";
 import { initGitRepo } from "./git-fixture-helpers.test.mjs";
@@ -208,6 +210,35 @@ test("Windows remote Git environment never contains a POSIX askpass executable",
     GCM_INTERACTIVE: "never",
     SSH_ASKPASS_REQUIRE: "never",
   });
+});
+
+test("materialization Git ignores user config and pins command-capable settings", () => {
+  const environment = safeGitMaterializationEnv("linux", {
+    HOME: "/tmp/poisoned-home",
+    XDG_CONFIG_HOME: "/tmp/poisoned-xdg",
+    USERPROFILE: "C:\\poisoned-user",
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "core.gitProxy",
+    GIT_CONFIG_VALUE_0: "/tmp/poison-helper",
+    SSH_AUTH_SOCK: "/tmp/ssh-agent.sock",
+  });
+  const config = safeGitMaterializationConfig("linux");
+
+  expect(environment.HOME).toBeUndefined();
+  expect(environment.XDG_CONFIG_HOME).toBeUndefined();
+  expect(environment.USERPROFILE).toBeUndefined();
+  expect(environment.GIT_CONFIG_GLOBAL).toBe("/dev/null");
+  expect(environment.GIT_CONFIG_NOSYSTEM).toBe("1");
+  expect(environment.GIT_CONFIG_COUNT).toBe("0");
+  expect(environment.GIT_CONFIG_KEY_0).toBeUndefined();
+  expect(environment.GIT_CONFIG_VALUE_0).toBeUndefined();
+  expect(environment.SSH_AUTH_SOCK).toBe("/tmp/ssh-agent.sock");
+  expect(config).toContain("core.hooksPath=/dev/null");
+  expect(config).toContain("core.sshCommand=/usr/bin/ssh");
+  expect(config).toContain("core.gitProxy=");
+  expect(config).toContain("protocol.ext.allow=never");
+  expect(safeGitMaterializationConfig("win32", { SystemRoot: "D:\\Windows" }))
+    .toContain("core.sshCommand=D:/Windows/System32/OpenSSH/ssh.exe");
 });
 
 test("Windows Git resolver falls back to standard Git for Windows locations", async () => {

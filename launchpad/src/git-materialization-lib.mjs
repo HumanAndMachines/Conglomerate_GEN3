@@ -13,7 +13,8 @@ import {
   GIT_FETCH_TIMEOUT_MS,
   GIT_LOCAL_TIMEOUT_MS,
   runGit,
-  safeGitRemoteEnv,
+  safeGitMaterializationConfig,
+  safeGitMaterializationEnv,
 } from "./git-lib.mjs";
 import {
   inspectCanonicalPathBoundary,
@@ -54,12 +55,24 @@ export async function materializeRepoCheckout({
     remove = rm,
     now = () => new Date(),
   } = deps;
+  const materializationConfig = safeGitMaterializationConfig();
+  const materializationEnv = safeGitMaterializationEnv(
+    process.platform,
+    deps.environment ?? process.env,
+  );
+  const safeRun = (args, options = {}) => {
+    const { env: _ignoredEnvironment, ...safeOptions } = options;
+    return run([...materializationConfig, ...args], {
+      ...safeOptions,
+      env: materializationEnv,
+    });
+  };
   const usesDefaultRecoveryStateRoot = !(
     typeof deps.recoveryStateRoot === "string"
     && deps.recoveryStateRoot.trim() !== ""
   );
 
-  const validation = await validateMaterializationTarget({ companiesRoot, repo, run });
+  const validation = await validateMaterializationTarget({ companiesRoot, repo, run: safeRun });
   if (!validation.ok) return validation;
 
   const {
@@ -89,12 +102,11 @@ export async function materializeRepoCheckout({
     // Probe access from a neutral cwd so the Organization checkout cannot
     // supply transport configuration. A missing/private source leaves no
     // manifest target behind.
-    const source = await run(
+    const source = await safeRun(
       ["ls-remote", "--exit-code", "--heads", "--", remote, `refs/heads/${branch}`],
       {
         cwd: transportCwd,
         timeoutMs: GIT_FETCH_TIMEOUT_MS,
-        env: safeGitRemoteEnv(),
       },
     );
     if (!source.ok || !source.stdout) return missingAccess();
@@ -103,7 +115,7 @@ export async function materializeRepoCheckout({
       const recoveryContract = await validateDefaultRecoveryStateRoot({
         organizationRoot,
         recoveryStateRoot,
-        run,
+        run: safeRun,
       });
       if (!recoveryContract.ok) return recoveryContract;
     }
@@ -174,7 +186,7 @@ export async function materializeRepoCheckout({
       return cloneFailure();
     }
 
-    const clone = await run(
+    const clone = await safeRun(
       [
         "clone",
         "--branch",
@@ -189,7 +201,6 @@ export async function materializeRepoCheckout({
       {
         cwd: transportCwd,
         timeoutMs: GIT_CLONE_TIMEOUT_MS,
-        env: safeGitRemoteEnv(),
       },
     );
     if (!clone.ok) {
@@ -210,7 +221,7 @@ export async function materializeRepoCheckout({
       path: targetPath,
       branch,
       remote,
-      run,
+      run: safeRun,
     });
     if (!verification.ok) {
       if (residueRecovery) {

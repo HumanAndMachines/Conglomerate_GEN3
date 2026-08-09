@@ -111,6 +111,28 @@ export function safeGitCommandEnv(platform = process.platform, base = processEnv
   return commandEnvironment(base, safeGitRemoteEnv(platform));
 }
 
+export function safeGitMaterializationEnv(platform = process.platform, base = processEnv()) {
+  return {
+    ...safeGitCommandEnv(platform, base),
+    HOME: undefined,
+    XDG_CONFIG_HOME: undefined,
+    USERPROFILE: undefined,
+    GIT_CONFIG_GLOBAL: platform === "win32" ? "NUL" : "/dev/null",
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_COUNT: "0",
+  };
+}
+
+export function safeGitMaterializationConfig(platform = process.platform, base = processEnv()) {
+  return [
+    "-c", `core.hooksPath=${platform === "win32" ? "NUL" : "/dev/null"}`,
+    "-c", "core.fsmonitor=false",
+    "-c", `core.sshCommand=${trustedSshExecutable(platform, base)}`,
+    "-c", "core.gitProxy=",
+    "-c", "protocol.ext.allow=never",
+  ];
+}
+
 export function gitExecutableCandidates({ platform = process.platform, env = processEnv() } = {}) {
   const configured = typeof env.COMPANIESASCODE_GIT_EXECUTABLE === "string"
     ? env.COMPANIESASCODE_GIT_EXECUTABLE.trim()
@@ -161,6 +183,18 @@ export function gitExecutableCandidates({ platform = process.platform, env = pro
 
 function uniqueCandidates(candidates) {
   return [...new Set(candidates.filter(Boolean))];
+}
+
+function trustedSshExecutable(platform, env) {
+  if (platform !== "win32") return "/usr/bin/ssh";
+  const candidate = String(env.SystemRoot ?? env.SYSTEMROOT ?? "C:\\Windows").replaceAll("\\", "/");
+  if (
+    !/^[A-Za-z]:\/(?:[^/]+\/?)*$/.test(candidate)
+    || candidate.split("/").some((segment) => segment === "." || segment === "..")
+  ) {
+    return "C:/Windows/System32/OpenSSH/ssh.exe";
+  }
+  return `${candidate.replace(/\/+$/, "")}/System32/OpenSSH/ssh.exe`;
 }
 
 export function resetGitExecutableCacheForTests() {

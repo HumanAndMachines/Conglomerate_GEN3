@@ -1,6 +1,7 @@
 import { afterAll, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import {
+  chmod,
   lstat,
   mkdir,
   readFile,
@@ -537,7 +538,7 @@ test("restores generated residue when clone fails after quarantine", async () =>
     deps: {
       recoveryStateRoot: join(root, "recovery-state"),
       run: async (args, options) => (
-        args[0] === "clone"
+        args.includes("clone")
           ? { ok: false, stdout: "", stderr: "simulated clone failure" }
           : runGit(args, options)
       ),
@@ -587,7 +588,7 @@ test("restores generated residue when clone verification fails", async () => {
     deps: {
       recoveryStateRoot: join(root, "recovery-state"),
       run: async (args, options) => (
-        args[0] === "clone"
+        args.includes("clone")
           ? { ok: true, stdout: "", stderr: "" }
           : runGit(args, options)
       ),
@@ -636,6 +637,61 @@ test("treats an inaccessible manifest repository as missing_access and leaves no
     ? await readdir(join(organizationRoot, "workspace"))
     : [];
   expect(workspaceEntries.some((entry) => entry.includes(".materialize-"))).toBe(false);
+});
+
+test.skipIf(process.platform === "win32")("materialization ignores poisoned global Git transport config", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
+  await prepareOrganizationRoot(organizationRoot);
+  const target = join(organizationRoot, "workspace", "private-module");
+  const poisonedHome = join(root, "poisoned-home");
+  const poisonedXdg = join(root, "poisoned-xdg");
+  const helper = join(root, "git-proxy-helper");
+  const marker = join(root, "git-proxy-marker");
+  await mkdir(join(poisonedXdg, "git"), { recursive: true });
+  await mkdir(poisonedHome, { recursive: true });
+  await writeFile(helper, `#!/bin/sh\n: > ${JSON.stringify(marker)}\nexit 1\n`);
+  await chmod(helper, 0o755);
+  const poisonConfig = `[core]\n\tgitProxy = ${helper}\n`;
+  await writeFile(join(poisonedHome, ".gitconfig"), poisonConfig);
+  await writeFile(join(poisonedXdg, "git", "config"), poisonConfig);
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "BetaCo",
+    github_org: "BetaCo",
+    module_slots: [
+      {
+        path: "workspace/private-module",
+        git: { url: "git://127.0.0.1:9/not-accessible.git", branch: "main" },
+      },
+    ],
+  });
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  const repo = inventory.repos.find((entry) => entry.key === "BetaCo::private-module");
+
+  const result = await materializeRepoCheckout({
+    companiesRoot: root,
+    repo,
+    deps: {
+      environment: {
+        ...process.env,
+        HOME: poisonedHome,
+        XDG_CONFIG_HOME: poisonedXdg,
+        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_KEY_0: "core.gitProxy",
+        GIT_CONFIG_VALUE_0: helper,
+      },
+    },
+  });
+
+  expect(result).toMatchObject({
+    ok: false,
+    outcome: "missing_access",
+    code: "materialization_source_unavailable",
+  });
+  expect(existsSync(marker)).toBe(false);
+  expect(existsSync(target)).toBe(false);
 });
 
 test("refuses a target that does not exactly match the manifest inventory boundary", async () => {
@@ -793,7 +849,7 @@ test("leaves a claimed target visible when clone fails", async () => {
     repo,
     deps: {
       run: async (args, options) => (
-        args[0] === "clone"
+        args.includes("clone")
           ? { ok: false, stdout: "", stderr: "simulated clone failure" }
           : runGit(args, options)
       ),

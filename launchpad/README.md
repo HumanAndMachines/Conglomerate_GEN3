@@ -378,6 +378,12 @@ uživatelských instalačních cestách. `Launchpad.ps1` musí mít právě jede
 BOM, aby český text správně načetl i Windows PowerShell 5.1. Git probe jsou
 neinteraktivní, bez POSIX askpass cesty a se skrytými child okny.
 
+Explicitní materializace chybějícího checkoutu má ještě užší Git hranici:
+nečte uživatelský ani systémový Git config, odstraňuje `HOME`/XDG kontext a
+pinne command-capable `core.*` a `protocol.ext` hodnoty přes bezpečný `-c`
+prefix. SSH přístup dál používá systémový OpenSSH a existující `SSH_AUTH_SOCK`;
+podvržený globální proxy, hook nebo SSH command se nespustí.
+
 ## Web shell v1
 
 RM-0006 redesign source of truth: `launchpad/docs/launchpad-gen3-redesign-spec.md`.
