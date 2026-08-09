@@ -587,14 +587,13 @@ test("Mission Control app/code a data jsou root sloty mimo Team dlaždice", asyn
     organization_generation: "gen3",
     company: { slug: "OmegaCo", display_name: "OmegaCo" },
     workspaces: [{ slug: "workspace", display_name: "OmegaCo Workspace", default: true }],
-    layers: [{ path: "mission-control", kind: "root-docs", ownership: "manual" }],
+    layers: [{ path: "mission-control", kind: "mission-control", ownership: "manual" }],
   });
   await writeJson(join(companyRoot, "modules.manifest.json"), {
     organization_generation: "gen3",
     company: "OmegaCo",
     module_slots: [
-      // Physical root placement is sufficient; manifest need not repeat space.
-      { path: "mission-control", git: { url: "git@github.com:OmegaCo/mission-control.git", branch: "main" } },
+      { path: "mission-control", space: "root", git: { url: "git@github.com:OmegaCo/mission-control.git", branch: "main" } },
       { path: "mission-control/db", space: "root", category: "planning-data", git: { url: "git@github.com:OmegaCo/mission-control-data.git", branch: "v3" } },
       { path: "workspace/wiki", space: "workspace", workspace: "workspace" },
     ],
@@ -625,6 +624,7 @@ test("Mission Control app/code a data jsou root sloty mimo Team dlaždice", asyn
       },
     },
   });
+  await initGitRepo(join(companyRoot, "mission-control"));
 
   const response = await buildLaunchpadAppsResponse({
     companiesRoot: root,
@@ -1096,14 +1096,57 @@ test("planned root slot nemá git a smí zůstat planned jen dokud není materia
     "planned root slot design-system nesmí deklarovat git",
   );
 
-  await mkdir(join(companyRoot, "design-system"), { recursive: true });
+  const designSystemPath = join(companyRoot, "design-system");
+  await mkdir(designSystemPath, { recursive: true });
+  const compatibilityWithCoordinatesCheck = await doctor();
+  expect(compatibilityWithCoordinatesCheck?.status).toBe("fail");
+  expect(compatibilityWithCoordinatesCheck?.details.join("\n")).not.toContain(
+    'materializovaný root slot design-system nesmí zůstat status: "planned_slot"',
+  );
+  expect(compatibilityWithCoordinatesCheck?.details.join("\n")).toContain(
+    "planned root slot design-system nesmí deklarovat git",
+  );
+
+  delete manifest.module_slots[0].git;
+  await writeJson(manifestPath, manifest);
+  const compatibilityDirectoryCheck = await doctor();
+  expect(compatibilityDirectoryCheck?.status).toBe("ok");
+  expect(compatibilityDirectoryCheck?.details).toContain(
+    "module slots: available 0, missing_access 0, planned_slot 1",
+  );
+
+  await writeFile(join(designSystemPath, ".git"), "gitdir: /definitely/not/a/gitdir\n");
+  const invalidMarkerCheck = await doctor();
+  expect(invalidMarkerCheck?.status).toBe("fail");
+  expect(invalidMarkerCheck?.details.join("\n")).toContain(
+    "root slot design-system obsahuje neplatný .git marker",
+  );
+  await rm(join(designSystemPath, ".git"));
+
+  delete manifest.module_slots[0].status;
+  manifest.module_slots[0].git = {
+    url: "git@github.com:OmegaCo/design-system.git",
+    branch: "main",
+  };
+  await writeJson(manifestPath, manifest);
+  const missingCheckoutCheck = await doctor();
+  expect(missingCheckoutCheck?.details).toContain(
+    "module slots: available 0, missing_access 1, planned_slot 0",
+  );
+
+  manifest.module_slots[0].status = "planned_slot";
+  const sourceRepo = join(root, "design-system-source");
+  await initGitRepo(sourceRepo);
+  await rm(designSystemPath, { recursive: true, force: true });
+  runGit(["worktree", "add", "-b", "fixture-design-system", designSystemPath], sourceRepo);
+  await writeJson(manifestPath, manifest);
   const materializedWithCoordinatesCheck = await doctor();
   expect(materializedWithCoordinatesCheck?.status).toBe("fail");
   expect(materializedWithCoordinatesCheck?.details.join("\n")).toContain(
     'materializovaný root slot design-system nesmí zůstat status: "planned_slot"',
   );
   expect(materializedWithCoordinatesCheck?.details.join("\n")).not.toContain(
-    "planned root slot design-system nesmí deklarovat git",
+    "neplatný .git marker",
   );
 
   delete manifest.module_slots[0].git;

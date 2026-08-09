@@ -1,6 +1,6 @@
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, realpathSync } from "fs";
 import { readFile, readdir, stat } from "fs/promises";
-import { basename, join } from "path";
+import { basename, join, resolve } from "path";
 import { discoverLaunchpadApps, readJson } from "./discovery-lib.mjs";
 import { UPDATE_CHANNELS, selectHighestStableTag } from "./update-lib.mjs";
 import { buildGitApiResponse, compactGitSummaryForApp } from "./git-api-lib.mjs";
@@ -1057,7 +1057,14 @@ function rootSlotContractIssues(manifest, config, organizationRoot) {
 
     const gitUrl = typeof slot.git?.url === "string" ? slot.git.url.trim() : "";
     const gitBranch = typeof slot.git?.branch === "string" ? slot.git.branch.trim() : "";
-    const checkoutExists = existsSync(join(organizationRoot, path));
+    const checkoutPath = join(organizationRoot, path);
+    const gitMarkerExists = existsSync(join(checkoutPath, ".git"));
+    const checkoutExists = isOwnGitCheckout(checkoutPath);
+    if (gitMarkerExists && !checkoutExists) {
+      issues.push(
+        `modules.manifest.json: root slot ${path} obsahuje neplatný .git marker; oprav nebo odstraň marker dřív, než bude checkout dostupný`,
+      );
+    }
     const checkoutCoordinatesStarted = slot.git !== undefined;
     if (slot.status === "planned_slot" && checkoutExists) {
       issues.push(
@@ -1139,8 +1146,29 @@ function rootSlotContractIssues(manifest, config, organizationRoot) {
 // GitHub přístup nebo zatím nespuštěný doctor sync), planned_slot = slot bez
 // repo deklarace.
 function moduleSlotStatus(organizationRoot, slot) {
+  if (isOrganizationRootSlotPath(slot.path)) {
+    if (isOwnGitCheckout(join(organizationRoot, slot.path))) return "available";
+    const gitUrl = typeof slot.git?.url === "string" ? slot.git.url.trim() : "";
+    const normalizedRepo = typeof slot.repo === "string" ? slot.repo.trim() : "";
+    return gitUrl || normalizedRepo ? "missing_access" : "planned_slot";
+  }
   if (existsSync(join(organizationRoot, slot.path))) return "available";
   return slot.repo ? "missing_access" : "planned_slot";
+}
+
+function isOwnGitCheckout(checkoutPath) {
+  if (!existsSync(checkoutPath)) return false;
+  const topLevel = runGit(["rev-parse", "--show-toplevel"], checkoutPath);
+  if (!topLevel.ok || !topLevel.stdout) return false;
+  try {
+    const expected = realpathSync(resolve(checkoutPath));
+    const actual = realpathSync(resolve(topLevel.stdout));
+    return process.platform === "win32"
+      ? actual.toLowerCase() === expected.toLowerCase()
+      : actual === expected;
+  } catch {
+    return false;
+  }
 }
 
 function moduleSlotWithReadiness(organizationRoot, slot, principalRoles = null) {

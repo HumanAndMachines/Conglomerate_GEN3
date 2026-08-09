@@ -3,11 +3,18 @@ import { mkdir, readFile, rename, rm, symlink, writeFile } from "fs/promises";
 import { join } from "path";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
 import { createLaunchpadGitFixture } from "./git-fixture-helpers.test.mjs";
+import { isCanonicalOrganizationRepositorySlotPath } from "./organization-slot-scope-lib.mjs";
 
 const tempRoots = [];
 
 afterAll(async () => {
   await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
+});
+
+test("repository-db child slot zůstává app-owned a není Organization repository slot", () => {
+  expect(isCanonicalOrganizationRepositorySlotPath("workspace/warehouse/db")).toBe(false);
+  expect(isCanonicalOrganizationRepositorySlotPath("modules/warehouse/db")).toBe(false);
+  expect(isCanonicalOrganizationRepositorySlotPath("workspace/warehouse/db/archive")).toBe(false);
 });
 
 test("inventory reads repo paths from Organization manifests and does not infer layout from filesystem", async () => {
