@@ -170,8 +170,8 @@ const APP_ICON_STYLES = {
 // Org-agnostic lidské fallbacky drží karty čitelné i ve firmě, která ještě
 // nedoplnila prezentační metadata. Manifest zůstává autorita a vždy vyhrává.
 const APP_DESCRIPTION_FALLBACKS = Object.freeze({
-  control: "Procesy, automatizace a koordinace každodenní práce.",
-  book: "Dokumentace, návody a sdílené znalosti.",
+  control: "Procesy, automatizace a koordinace práce.",
+  book: "Návody, dokumentace a sdílené znalosti.",
   pen: "Tvorba, správa a publikace obsahu.",
   palette: "Vizuální systém, značka a sdílené komponenty.",
   deal: "Obchodní případy, nabídky a práce se zákazníky.",
@@ -188,7 +188,7 @@ const APP_DESCRIPTION_FALLBACKS = Object.freeze({
   examples: "Ukázky, vzory a referenční řešení.",
   database: "Data, záznamy a jejich bezpečná správa.",
   app: "Pracovní podklady a soubory tohoto modulu.",
-  system: "Provozní nástroje a technická infrastruktura.",
+  system: "Provozní nástroje a technické zázemí.",
 });
 
 // Ikony rozhraní jsou Iconoir (MIT) — sada, kterou drží identita Lazuria
@@ -2734,7 +2734,10 @@ function appCard(app, family = { key: app.id, members: [app], primary: app }) {
   title.className = "app-card-title";
   title.textContent = moduleName;
   titleRow.append(title);
-  const versionBadge = badgeNode(variantTag(app, moduleName));
+  // Mission Control už je kanonický produktový název. Jeho interní generace
+  // zůstává dostupná ve variantách, ale v rozcestníkové dlaždici nepomáhá.
+  const cardTag = app.module === "mission-control" ? "" : variantTag(app, moduleName);
+  const versionBadge = badgeNode(cardTag);
   if (versionBadge) titleRow.append(versionBadge);
 
   const desc = document.createElement("p");
@@ -5153,7 +5156,7 @@ function appDescription(app) {
     return app.description.trim();
   }
   const purpose = APP_DESCRIPTION_FALLBACKS[appIconKey(app)] ?? `Aplikace pro každodenní práci v modulu ${appBaseTitle(app)}.`;
-  const surface = ["manual", "admin", "productionspace", "public-preview"].includes(app.surface)
+  const surface = ["admin", "productionspace", "public-preview"].includes(app.surface)
     ? surfaceLabel(app.surface)
     : null;
   return surface ? `${surface} · ${purpose}` : purpose;
