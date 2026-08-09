@@ -1,6 +1,14 @@
 import { afterAll, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  lstat,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { runGit } from "./git-lib.mjs";
 import {
@@ -102,6 +110,59 @@ test("quarantines generated-only in-tree residue before materializing a standalo
   expect(await readFile(join(target, "README.md"), "utf8")).toContain("# main");
   expect(await readFile(join(result.residue_recovery_path, "app", "node_modules", "fixture", "package.json"), "utf8"))
     .toBe('{"name":"fixture"}\n');
+});
+
+test("preserves a generated-cache link as a leaf during co-located residue recovery", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  await writeFile(join(root, ".gitignore"), ".companiesascode-state/\n");
+  await initGitRepo(root);
+  const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
+  await prepareOrganizationRoot(organizationRoot);
+  const remote = join(root, "remotes", "design-system-linked.git");
+  await mkdir(join(root, "sources"), { recursive: true });
+  await initGitRepo(join(root, "sources", "design-system-linked"), { remotePath: remote });
+  const target = join(organizationRoot, "design-system");
+  const externalCache = join(root, "external-cache");
+  await mkdir(target, { recursive: true });
+  await mkdir(externalCache, { recursive: true });
+  await writeFile(join(externalCache, "user-data.json"), '{"keep":true}\n');
+  await symlink(
+    externalCache,
+    join(target, "node_modules"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "BetaCo",
+    github_org: "BetaCo",
+    module_slots: [
+      {
+        path: "design-system",
+        space: "root",
+        git: { url: remote, branch: "main" },
+      },
+    ],
+  });
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  const repo = inventory.repos.find((entry) => entry.key === "BetaCo::design-system");
+  expect(await readdir(target)).toEqual(["node_modules"]);
+  expect((await lstat(join(target, "node_modules"))).isSymbolicLink()).toBe(true);
+  expect(await isGeneratedOnlyMigrationResidue(target)).toBe(true);
+
+  const result = await materializeRepoCheckout({ companiesRoot: root, repo });
+
+  expect(result).toMatchObject({
+    ok: true,
+    outcome: "materialized",
+    branch: "main",
+    remote,
+  });
+  expect((await lstat(join(result.residue_recovery_path, "node_modules"))).isSymbolicLink())
+    .toBe(true);
+  expect(await readFile(join(externalCache, "user-data.json"), "utf8"))
+    .toBe('{"keep":true}\n');
+  expect(await readFile(join(target, "README.md"), "utf8")).toContain("# main");
 });
 
 test("shared root keeps the co-located default recovery state gitignored", async () => {
