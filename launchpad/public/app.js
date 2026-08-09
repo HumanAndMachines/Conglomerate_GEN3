@@ -2448,12 +2448,6 @@ function teamSectionNode(section, organization) {
     team?.display_name ?? humanizeModuleSlug(section.team),
     `${moduleCount} ${pluralModule(moduleCount)}`,
   ));
-  if (team?.description) {
-    const description = document.createElement("p");
-    description.className = "app-section-note";
-    description.textContent = team.description;
-    node.append(description);
-  }
   const grid = familyGridNode(section.families);
   grid.append(...(section.modules ?? []).map((module) => workspaceModuleCard(module, organization.slug, {
     kind: "workspace-module",

@@ -857,6 +857,7 @@ test("UI separates physical Organization/Workspace/Productionspace and prepares 
   expect(js).toContain("function organizationSectionNode");
   expect(js).toContain("function workspaceSectionNode");
   expect(js).toContain("function teamSectionNode");
+  expect(js).not.toContain("description.textContent = team.description");
   expect(js).toContain("function teamAccessSummaryNode");
   expect(js).toContain("Tvoje Teamy");
   expect(js).toContain("GitHub členství neověřeno");
