@@ -4916,6 +4916,12 @@ b {
   align-items: stretch;
 }
 
+/* Každá dlaždice vyplní výšku svého gridového řádku. Tím se i read-only
+   systémové moduly srovnají s interaktivními kartami bez pevné výšky. */
+.apps-grid > .app-card {
+  align-self: stretch;
+}
+
 .app-card {
   min-height: 250px;
   gap: 0;
