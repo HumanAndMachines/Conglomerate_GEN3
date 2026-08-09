@@ -109,7 +109,8 @@ async function isApprovedOrganizationDesignSystem({
     if (!configBytes) return false;
     const config = JSON.parse(configBytes.toString("utf8"));
     return (
-      config?.mode === "organization"
+      config?.schema_version === "design-system.v1"
+      && config?.mode === "organization"
       && config?.content_status === "approved"
       && config?.organization?.slug === organizationSlug
     );

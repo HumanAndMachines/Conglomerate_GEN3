@@ -117,6 +117,10 @@ test("Organization theme odmítne chybějící, cizí, neplatný i symlinkovaný
       configure: (organizationRoot) => writeDesignSystemConfig(organizationRoot, { mode: "template" }),
     },
     {
+      name: "wrong-schema-version",
+      configure: (organizationRoot) => writeDesignSystemConfig(organizationRoot, { schemaVersion: "design-system.v2" }),
+    },
+    {
       name: "invalid-json",
       configure: (organizationRoot) => writeFile(
         join(organizationRoot, "design-system", "design-system.config.json"),
@@ -289,11 +293,16 @@ function readExampleTheme(root) {
 
 async function writeDesignSystemConfig(
   organizationRoot,
-  { slug = "Example", mode = "organization", contentStatus = "approved" } = {},
+  {
+    slug = "Example",
+    mode = "organization",
+    contentStatus = "approved",
+    schemaVersion = "design-system.v1",
+  } = {},
 ) {
   await writeFile(
     join(organizationRoot, "design-system", "design-system.config.json"),
-    designSystemConfig({ slug, mode, contentStatus }),
+    designSystemConfig({ slug, mode, contentStatus, schemaVersion }),
   );
 }
 
@@ -301,9 +310,10 @@ function designSystemConfig({
   slug = "Example",
   mode = "organization",
   contentStatus = "approved",
+  schemaVersion = "design-system.v1",
 } = {}) {
   return JSON.stringify({
-    schema_version: "design-system.v1",
+    schema_version: schemaVersion,
     mode,
     organization: { slug, display_name: slug },
     content_status: contentStatus,
