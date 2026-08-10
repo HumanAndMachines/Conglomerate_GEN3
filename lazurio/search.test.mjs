@@ -77,6 +77,41 @@ test("scope nepropustí jinou Organization, Personalspace, template, private ani
   expect(JSON.stringify(result)).not.toContain("OrganizationTemplate");
 });
 
+test("zděděný ripgrep config nemůže následovat symlink mimo exact ani snapshot scope", async () => {
+  const fixture = await searchFixture();
+  const configPath = join(fixture.root, "poisoned-ripgrep.conf");
+  const canary = "EXACT_LANE_EXTERNAL_CANARY";
+  await writeFile(configPath, "--follow\n", "utf8");
+  await writeFile(join(fixture.personalspace, "external.md"), `${canary}\n`, "utf8");
+
+  const previousConfigPath = process.env.RIPGREP_CONFIG_PATH;
+  process.env.RIPGREP_CONFIG_PATH = configPath;
+  try {
+    const before = await buildLazurioSearchStatus({
+      root: fixture.root,
+      principalId: "immakermatty",
+    });
+    await symlink(fixture.personalspace, join(fixture.website, "linked-personalspace"));
+
+    const exact = await searchLazurioExact({
+      root: fixture.root,
+      query: canary,
+      principalId: "immakermatty",
+    });
+    const after = await buildLazurioSearchStatus({
+      root: fixture.root,
+      principalId: "immakermatty",
+    });
+
+    expect(exact.results).toEqual([]);
+    expect(after.exact.file_count).toBe(before.exact.file_count);
+    expect(JSON.stringify(exact)).not.toContain("personalspace");
+  } finally {
+    if (previousConfigPath === undefined) delete process.env.RIPGREP_CONFIG_PATH;
+    else process.env.RIPGREP_CONFIG_PATH = previousConfigPath;
+  }
+});
+
 test("Organization containment odmítne symlinkovaný pilotní source", async () => {
   const fixture = await searchFixture({ withoutWebsite: true });
   const outside = await tempRoot("lazurio-search-outside-");

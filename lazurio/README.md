@@ -61,7 +61,9 @@ Launchpad containment kontrolami. Samotný název adresáře nic neautorizuje.
 Personalspace, jiné Organizace, Organization templates, worktrees, `.git`,
 `node_modules`, build/output/cache adresáře, `private/`, `secrets`, `.env`,
 binární typy a symlinkované stromy se do pilotu nedostanou. Exact `rg` symlinky
-nenásleduje. QMD standardně skenuje s `followSymbolicLinks: false`; adapter
+nenásleduje a `--no-config` spolu s odstraněním `RIPGREP_CONFIG_PATH` brání
+zděděné konfiguraci toto pravidlo přepsat. QMD standardně skenuje s
+`followSymbolicLinks: false`; adapter
 navíc fail-closed odmítne rozbitý symlink nebo target mimo deklarovaný source.
 Bezpečný interní symlink přeskočí, takže nevytvoří duplicitu kanonického obsahu.
 

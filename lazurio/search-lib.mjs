@@ -263,7 +263,7 @@ export async function searchLazurioExact({
   for (const source of scope.sources) {
     const result = spawn("rg", rgSearchArgs(normalizedQuery), {
       cwd: source.absolute_path,
-      env: process.env,
+      env: rgEnvironment(),
     });
     if (result.error) {
       throw new LazurioSearchError(
@@ -608,6 +608,7 @@ function assertCanonicalDirectory(path, organizationRoot, label) {
 
 function rgSearchArgs(query) {
   return [
+    "--no-config",
     "--json",
     "--fixed-strings",
     "--smart-case",
@@ -623,6 +624,7 @@ function rgSearchArgs(query) {
 
 function rgFilesArgs() {
   return [
+    "--no-config",
     "--files",
     "--no-ignore-parent",
     "--no-messages",
@@ -630,6 +632,12 @@ function rgFilesArgs() {
     ...excludedGlobs.flatMap((glob) => ["--glob", glob]),
     ".",
   ];
+}
+
+function rgEnvironment() {
+  const environment = { ...process.env };
+  delete environment.RIPGREP_CONFIG_PATH;
+  return environment;
 }
 
 function parseRipgrepMatches(stdout, { scope, source }) {
@@ -682,7 +690,7 @@ function normalizeRgPath(path) {
 async function buildSourceSnapshot(scope, { spawn }) {
   const rows = [];
   for (const source of scope.sources) {
-    const result = spawn("rg", rgFilesArgs(), { cwd: source.absolute_path, env: process.env });
+    const result = spawn("rg", rgFilesArgs(), { cwd: source.absolute_path, env: rgEnvironment() });
     if (result.error || ![0, 1].includes(result.status)) {
       return {
         status: "not_evaluated",
