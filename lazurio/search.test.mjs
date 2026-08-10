@@ -240,6 +240,35 @@ test("QMD update uloží source fingerprint a status rozliší fresh od stale", 
     status: "stale",
     reason: "source_snapshot_changed_since_update",
   });
+
+  const unknown = await buildLazurioSearchStatus({
+    root: fixture.root,
+    principalId: "immakermatty",
+    spawn: qmdStub({ version: "2.6.3", rgUnavailable: true }),
+  });
+  expect(unknown.exact.status).toBe("not_evaluated");
+  expect(unknown.qmd.freshness).toEqual({ status: "not_evaluated", reason: "rg_unavailable" });
+});
+
+test("QMD update bez source snapshotu nikdy nezapíše falešný fresh state", async () => {
+  const fixture = await searchFixture();
+  const scope = await discoverLazurioSearchScope({
+    root: fixture.root,
+    principalId: "immakermatty",
+  });
+  const layout = qmdStorageLayout(scope);
+  await mkdir(dirname(layout.database_path), { recursive: true });
+  await writeFile(layout.database_path, "fixture index", "utf8");
+
+  await expect(updateLazurioQmdIndex({
+    root: fixture.root,
+    principalId: "immakermatty",
+    spawn: qmdStub({ version: "2.6.3", rgUnavailable: true }),
+  })).rejects.toMatchObject({
+    code: "source_snapshot_unavailable",
+    lazurioExitCode: 3,
+  });
+  expect(existsSync(layout.state_path)).toBe(false);
 });
 
 test("QMD lexical adapter normalizuje výsledek do stejné scoped provenance", async () => {
@@ -453,8 +482,12 @@ function qmdStub({
   statusCode = 0,
   statusError = "",
   queryOutput = "[]",
+  rgUnavailable = false,
 } = {}) {
   return (command, args, options) => {
+    if (command === "rg" && rgUnavailable) {
+      return { status: null, stdout: "", stderr: "", error: new Error("spawn rg ENOENT") };
+    }
     if (command !== "qmd") return realSpawn(command, args, options);
     if (args.includes("--version")) return commandResult(0, `qmd ${version}\n`);
     if (args.includes("status")) return commandResult(statusCode, "", statusError);

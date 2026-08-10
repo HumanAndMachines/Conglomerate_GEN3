@@ -34,7 +34,9 @@ Exact lane spouští `rg` samostatně v každém povoleném source. Používá
 `--no-ignore-parent`, aby parent `.gitignore` Launchpad rootu neschoval
 deklarovaný nested repo, ale nepoužívá `--no-ignore` ani plošný scan rootu.
 Proto vidí čerstvou, dosud neindexovanou změnu a současně respektuje ignore
-pravidla samotného source repa.
+pravidla samotného source repa. `rg` je proto explicitní runtime závislost
+exact lane; když chybí, status vrátí `not_evaluated` a QMD update nezapíše
+falešný freshness fingerprint.
 
 ## Pilotní scope a hranice
 
