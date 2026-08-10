@@ -66,6 +66,9 @@ zděděné konfiguraci toto pravidlo přepsat. QMD standardně skenuje s
 `followSymbolicLinks: false`; adapter
 navíc fail-closed odmítne rozbitý symlink nebo target mimo deklarovaný source.
 Bezpečný interní symlink přeskočí, takže nevytvoří duplicitu kanonického obsahu.
+Každý QMD hit se před publikací znovu ověří proti aktuální source boundary:
+excluded, chybějící, binární a symlinkované cesty se zahodí i tehdy, když je
+stale lokální index ještě obsahuje.
 
 `provider_access_status: not_evaluated` je záměrně pravdivý: lokální manifest a
 mount nejsou živý GitHub provider readback. Pilot tedy prokazuje lokální scope,

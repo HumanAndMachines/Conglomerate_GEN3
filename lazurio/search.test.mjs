@@ -546,6 +546,61 @@ test("QMD lexical adapter normalizuje výsledek do stejné scoped provenance", a
   })]);
 });
 
+test("QMD adapter nepublikuje stale hity mimo aktuální source boundary", async () => {
+  const fixture = await searchFixture();
+  await mkdir(join(fixture.knowledge, "private"), { recursive: true });
+  await writeFile(join(fixture.knowledge, "private", "stale.md"), "STALE_INDEX_PRIVATE_CANARY\n", "utf8");
+  await writeFile(join(fixture.personalspace, "external.md"), "STALE_INDEX_SYMLINK_CANARY\n", "utf8");
+  await symlink(join(fixture.personalspace, "external.md"), join(fixture.knowledge, "external-link.md"));
+  const scope = await discoverLazurioSearchScope({
+    root: fixture.root,
+    principalId: "immakermatty",
+  });
+  const layout = qmdStorageLayout(scope);
+  await expect(materializeQmdConfig(scope, layout)).rejects.toMatchObject({ code: "qmd_source_symlink" });
+  await mkdir(dirname(layout.database_path), { recursive: true });
+  await writeFile(layout.database_path, "fixture", "utf8");
+  const spawn = qmdStub({
+    version: QMD_MIN_VERSION,
+    queryOutput: JSON.stringify([
+      {
+        file: "qmd://knowledge/index.md?index=lazurio-humanandmachine-ai-immakermatty",
+        line: 1,
+        snippet: "Lazurio znalosti",
+      },
+      {
+        file: "qmd://knowledge/private/stale.md?index=lazurio-humanandmachine-ai-immakermatty",
+        line: 1,
+        snippet: "STALE_INDEX_PRIVATE_CANARY",
+      },
+      {
+        file: "qmd://knowledge/missing.md?index=lazurio-humanandmachine-ai-immakermatty",
+        line: 1,
+        snippet: "STALE_INDEX_MISSING_CANARY",
+      },
+      {
+        file: "qmd://knowledge/external-link.md?index=lazurio-humanandmachine-ai-immakermatty",
+        line: 1,
+        snippet: "STALE_INDEX_SYMLINK_CANARY",
+      },
+    ]),
+  });
+
+  const result = await searchLazurioQmd({
+    root: fixture.root,
+    principalId: "immakermatty",
+    query: "stale boundary",
+    mode: "lexical",
+    spawn,
+  });
+
+  expect(result.results).toEqual([expect.objectContaining({
+    path: "workspace/knowledgebase/data/v2/lazurio-ai/index.md",
+    text: "Lazurio znalosti",
+  })]);
+  expect(JSON.stringify(result)).not.toContain("STALE_INDEX_");
+});
+
 test("CLI exact search vrací strojově čitelný scoped výsledek", async () => {
   const fixture = await searchFixture();
   await writeFile(join(fixture.knowledge, "cli.md"), "Česká CLI zkouška.\n", "utf8");
