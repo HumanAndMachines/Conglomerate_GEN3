@@ -413,7 +413,7 @@ export async function searchLazurioQmd({
   requireAvailableQmd(runtime);
   if (runtime.index.state !== "present") {
     throw new LazurioSearchError(
-      "QMD index ještě neexistuje; spusť `lazurio search update`.",
+      "QMD index ještě neexistuje; spusť `lazurio search --update`.",
       { code: "qmd_index_absent", exitCode: 3 },
     );
   }
