@@ -100,7 +100,10 @@ qmd doctor
 ```
 
 QMD vyžaduje Node.js 22 nebo novější. Lazurio adapter globální instalaci sám
-nemění; pouze ji diagnostikuje a exact režim nechává dostupný.
+nemění; pouze ji diagnostikuje a exact režim nechává dostupný. Každý QMD child
+process explicitně nastavuje izolované `QMD_CONFIG_DIR` a `XDG_CACHE_HOME` a
+odstraňuje zděděný `INDEX_PATH`, který by jinak přesměroval SQLite databázi
+mimo deklarovanou Organization/Principál boundary.
 
 Launchpad pole „Hledat aplikaci“ zůstává filtrem karet. Search UI ani obecný
 cross-Organization search nejsou součástí tohoto slice.

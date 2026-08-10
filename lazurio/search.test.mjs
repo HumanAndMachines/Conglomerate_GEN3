@@ -149,6 +149,55 @@ test("QMD storage je fyzicky oddělený podle Organization a Principála", async
   expect(first.index_name).toContain("humanandmachine-ai-immakermatty");
 });
 
+test("QMD child environment vždy odstraní zděděný INDEX_PATH", async () => {
+  const fixture = await searchFixture();
+  const scope = await discoverLazurioSearchScope({
+    root: fixture.root,
+    principalId: "immakermatty",
+  });
+  const layout = qmdStorageLayout(scope);
+  await materializeQmdConfig(scope, layout);
+  await mkdir(dirname(layout.database_path), { recursive: true });
+  await writeFile(layout.database_path, "fixture index", "utf8");
+  const qmdCalls = [];
+  const spawn = qmdStub({ calls: qmdCalls });
+
+  const previousIndexPath = process.env.INDEX_PATH;
+  process.env.INDEX_PATH = join(fixture.personalspace, "external-qmd.sqlite");
+  try {
+    await buildLazurioSearchStatus({
+      root: fixture.root,
+      principalId: "immakermatty",
+      spawn,
+    });
+    await searchLazurioQmd({
+      root: fixture.root,
+      principalId: "immakermatty",
+      query: "izolace",
+      mode: "lexical",
+      spawn,
+    });
+    await updateLazurioQmdIndex({
+      root: fixture.root,
+      principalId: "immakermatty",
+      embed: true,
+      spawn,
+    });
+  } finally {
+    if (previousIndexPath === undefined) delete process.env.INDEX_PATH;
+    else process.env.INDEX_PATH = previousIndexPath;
+  }
+
+  for (const operation of ["--version", "status", "search", "update", "embed"]) {
+    expect(qmdCalls.some(({ args }) => args.includes(operation))).toBe(true);
+  }
+  for (const { options } of qmdCalls) {
+    expect(options.env.INDEX_PATH).toBeUndefined();
+    expect(options.env.QMD_CONFIG_DIR).toBe(layout.config_dir);
+    expect(options.env.XDG_CACHE_HOME).toBe(layout.cache_home);
+  }
+});
+
 test("QMD config materializuje jen tři explicitní textové collections s boundary excludes", async () => {
   const fixture = await searchFixture();
   const scope = await discoverLazurioSearchScope({
@@ -563,12 +612,14 @@ function qmdStub({
   statusError = "",
   queryOutput = "[]",
   rgUnavailable = false,
+  calls,
 } = {}) {
   return (command, args, options) => {
     if (command === "rg" && rgUnavailable) {
       return { status: null, stdout: "", stderr: "", error: new Error("spawn rg ENOENT") };
     }
     if (command !== "qmd") return realSpawn(command, args, options);
+    calls?.push({ args: [...args], options: { cwd: options.cwd, env: { ...options.env } } });
     if (args.includes("--version")) return commandResult(0, `qmd ${version}\n`);
     if (args.includes("status")) return commandResult(statusCode, "", statusError);
     if (args.some((arg) => ["search", "vsearch", "query"].includes(arg))) {
