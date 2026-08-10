@@ -542,7 +542,7 @@ test.skipIf(process.platform === "win32")(
     await symlink(join(targetRoot, "personal.gen3.json"), join(root, "personal.gen3.json"));
 
     const context = await buildLazurioContext({ root });
-    const doctor = run([process.execPath, cliPath, "doctor", "--json", "--root", root], root);
+    const doctor = run([process.execPath, "run", cliPath, "doctor", "--json", "--root", root], root);
 
     expect(context.root).toEqual({ kind: "personalspace" });
     expect(context.principal.status).toBe("not_evaluated");
@@ -622,7 +622,7 @@ test("rootless doctor spouští deklarovaný Personalspace doctor a propustí re
   await writeJson(join(root, "personal.gen3.json"), personalConfig("owner-login", {
     doctor: {
       schema_version: "humanandmachines.doctor.declaration.v1",
-      command: [process.execPath, "fixture-doctor.mjs"],
+      command: [process.execPath, "run", "fixture-doctor.mjs"],
       scope_type: "personalspace",
       timeout_ms: 5_000,
     },
@@ -634,7 +634,7 @@ test("rootless doctor spouští deklarovaný Personalspace doctor a propustí re
   expect(result.exit_code).toBe(0);
   expect(result.report).toEqual(report);
 
-  const cli = run([process.execPath, cliPath, "doctor", "--json", "--root", root], root);
+  const cli = run([process.execPath, "run", cliPath, "doctor", "--json", "--root", root], root);
   expect(cli.exitCode).toBe(0);
   expect(JSON.parse(cli.stdout)).toEqual(report);
 }, platformTestTimeout(5_000));
@@ -643,7 +643,7 @@ test("doctor bez deklarace vrací no_report exit 3, ne incomplete exit 2", async
   const root = await tempRoot("lazurio-rootless-doctor-missing-");
   await writeJson(join(root, "personal.gen3.json"), personalConfig("owner-login"));
 
-  const cli = run([process.execPath, cliPath, "doctor", "--json", "--root", root], root);
+  const cli = run([process.execPath, "run", cliPath, "doctor", "--json", "--root", root], root);
 
   expect(cli.exitCode).toBe(3);
   expect(cli.stdout).toBe("");
@@ -664,7 +664,7 @@ test("schema-nevalidní manifest nespustí deklarovaný rootless Doctor", async 
     },
   }));
 
-  const cli = run([process.execPath, cliPath, "doctor", "--json", "--root", root], root);
+  const cli = run([process.execPath, "run", cliPath, "doctor", "--json", "--root", root], root);
 
   expect(cli.exitCode).toBe(3);
   expect(cli.stdout).toBe("");
@@ -701,13 +701,13 @@ test("doctor s validním reportem a chybným exit kódem vrací incomplete 2", a
   await writeJson(join(root, "personal.gen3.json"), personalConfig("owner-login", {
     doctor: {
       schema_version: "humanandmachines.doctor.declaration.v1",
-      command: [process.execPath, "fixture-doctor.mjs"],
+      command: [process.execPath, "run", "fixture-doctor.mjs"],
       scope_type: "personalspace",
       timeout_ms: 5_000,
     },
   }));
 
-  const cli = run([process.execPath, cliPath, "doctor", "--json", "--root", root], root);
+  const cli = run([process.execPath, "run", cliPath, "doctor", "--json", "--root", root], root);
 
   expect(cli.exitCode).toBe(2);
   expect(cli.stdout).toBe("");
@@ -737,7 +737,7 @@ test("CLI context --json funguje z čisté Agent session bez privátního obsahu
     gbrain: { content: "CLI_PRIVATE_CANARY" },
   }));
 
-  const result = run([process.execPath, cliPath, "context", "--json", "--root", root], root);
+  const result = run([process.execPath, "run", cliPath, "context", "--json", "--root", root], root);
 
   expect(result.exitCode).toBe(0);
   expect(result.stderr).toBe("");
