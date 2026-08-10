@@ -147,9 +147,11 @@ organizations/ClientX_GEN3/
 ```
 
 Tyhle adresáře jsou na konkrétní mašině samostatné git repozitáře Organizací a
-jsou v root repu ignorované. Na GitHubu v `HumanAndMachines/Conglomerate_GEN3` má být
-uvnitř `organizations/` trackovaný pouze `README.md`; template a scaffold kód
-patří do `templates/`, ne jako submodule pod `organizations/`.
+jsou v root repu ignorované. Na GitHubu v `HumanAndMachines/Conglomerate_GEN3`
+má být uvnitř `organizations/` trackovaný pouze `README.md`. Modulové template
+a scaffold zdroje patří do `templates/`; pracovní Organization template smí
+být samostatný nested repo checkout pouze uvnitř `productionspace/` spravující
+Organizace (decision 0127), nikdy root submodule nebo druhý alias.
 
 ## Základní agentní balík
 

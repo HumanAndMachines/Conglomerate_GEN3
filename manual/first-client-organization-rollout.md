@@ -33,34 +33,183 @@ Vyplň před tím, než vytvoříš nebo mountneš klientský checkout:
 | Klientské podklady | Hledej ve schválené delivery/sales knowledgebase dodavatele a souvisejících deal/quote/proposal záznamech; vendor-specific cesty patří do AGENTS.md dané dodavatelské Organizace, ne do sdíleného runbooku. Do nové Organizace přenášej jen relevantní, netajný delivery kontext, ne raw interní reasoning ani secrets |
 | Shared Guide | bere se ze sdíleného `HumanAndMachines/Conglomerate_GEN3/guide`, nekopíruje se ani neforkuje do klientské Organizace |
 | Productionspace | co je release/produkční systém a nesmí být běžný workspace modul |
+| Zastřešující Admin Organizace | Nastav absolutní `ADMIN_ORGANIZATION_ROOT`, například `/Users/example/Conglomerate/organizations/AdminOrganization_GEN3`; musí být přímý Organization child tohoto Conglomerate rootu. |
+| Organization template checkout | Nastav absolutní `ORGANIZATION_TEMPLATE_ROOT` přesně na `$ADMIN_ORGANIZATION_ROOT/productionspace/OrganizationTemplate_GEN3`; checkout musí používat kanonický SSH origin. |
 
 ## Rollout fáze
 
 ### 0. Root preflight
 
-V shared rootu:
+Před spuštěním přečti root `AGENTS.md`, potom
+`$ADMIN_ORGANIZATION_ROOT/AGENTS.md` a nakonec
+`$ORGANIZATION_TEMPLATE_ROOT/AGENTS.md`. V shared rootu spusť:
 
 ```sh
-cd /path/to/Conglomerate
+preflight_gen3_rollout() {
+cd /path/to/Conglomerate || return 1
+conglomerate_root="$(pwd -P)" || return 1
+git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || {
+  echo "Conglomerate root nemá čitelný Git common directory" >&2
+  return 1
+}
+primary_conglomerate_root="$(cd "$git_common_dir/.." && pwd -P)" || return 1
 git status --short --branch
-git fetch origin main
-git rev-parse HEAD
-git rev-parse origin/main
-bun run check
-bun run doctor
-
-for path in \
-  organizations/OrganizationTemplate_GEN3 \
-  templates/TemplatesRozjedeme-ai/MissionControlTemplate \
-  templates/TemplatesRozjedeme-ai/KnowledgebaseTemplate \
-  templates/TemplatesRozjedeme-ai/DesignSystemTemplate
-do
-  test -d "$path/.git" || test -f "$path/.git" || {
-    echo "Chybí required template Git checkout: $path" >&2
-    exit 1
+git fetch --no-tags origin main || return 1
+current_branch="$(git symbolic-ref --short HEAD 2>/dev/null)" || {
+  echo "Conglomerate root nesmí být detached" >&2
+  return 1
+}
+test -z "$(git status --porcelain)" || {
+  echo "Conglomerate root musí být čistý" >&2
+  return 1
+}
+if [ "$current_branch" = "main" ]; then
+  test "$(git rev-parse HEAD)" = "$(git rev-parse FETCH_HEAD)" || {
+    echo "Conglomerate main musí být na exact čerstvém origin/main" >&2
+    return 1
   }
-  git -C "$path" status --short --branch
+else
+  test "$conglomerate_root" != "$primary_conglomerate_root" || {
+    echo "Feature branch smí rollout preflight spustit jen z izolovaného linked worktree" >&2
+    return 1
+  }
+  git merge-base --is-ancestor FETCH_HEAD HEAD || {
+    echo "Worktree branch musí obsahovat čerstvý origin/main" >&2
+    return 1
+  }
+fi
+bun run check || return 1
+bun run doctor || return 1
+
+organization_template_root="${ORGANIZATION_TEMPLATE_ROOT:-}"
+if [ -z "$organization_template_root" ] || [ "${organization_template_root#/}" = "$organization_template_root" ]; then
+  echo "Nastav ORGANIZATION_TEMPLATE_ROOT na absolutní productionspace checkout OrganizationTemplate_GEN3" >&2
+  return 1
+fi
+
+organization_template_root="$(cd "$organization_template_root" 2>/dev/null && pwd -P)" || {
+  echo "OrganizationTemplate checkout neexistuje: $ORGANIZATION_TEMPLATE_ROOT" >&2
+  return 1
+}
+
+admin_organization_root="${ADMIN_ORGANIZATION_ROOT:-}"
+if [ -z "$admin_organization_root" ] || [ "${admin_organization_root#/}" = "$admin_organization_root" ]; then
+  echo "Nastav ADMIN_ORGANIZATION_ROOT na absolutní root zastřešující Admin Organizace" >&2
+  return 1
+fi
+admin_organization_root="$(cd "$admin_organization_root" 2>/dev/null && pwd -P)" || {
+  echo "Admin Organization checkout neexistuje: $ADMIN_ORGANIZATION_ROOT" >&2
+  return 1
+}
+test "$(git -C "$admin_organization_root" rev-parse --show-toplevel 2>/dev/null)" = "$admin_organization_root" || {
+  echo "ADMIN_ORGANIZATION_ROOT musí být přesný Git root Organizace" >&2
+  return 1
+}
+test -f "$admin_organization_root/company.gen3.json" || {
+  echo "ADMIN_ORGANIZATION_ROOT nemá company.gen3.json" >&2
+  return 1
+}
+jq -e '(.organization_kind // "organization") == "organization"' "$admin_organization_root/company.gen3.json" >/dev/null || {
+  echo "ADMIN_ORGANIZATION_ROOT musí být běžná Organizace, ne template mount" >&2
+  return 1
+}
+admin_relative="${admin_organization_root#"$primary_conglomerate_root"/organizations/}"
+case "$admin_relative" in
+  ""|*/*)
+    echo "ADMIN_ORGANIZATION_ROOT musí být přímý child tohoto Conglomerate organizations/" >&2
+    return 1
+    ;;
+esac
+
+expected_organization_template_root="$admin_organization_root/productionspace/OrganizationTemplate_GEN3"
+test "$organization_template_root" = "$expected_organization_template_root" || {
+  echo "OrganizationTemplate musí být přesně $expected_organization_template_root" >&2
+  return 1
+}
+test -f "$organization_template_root/company.gen3.json" && \
+  test -f "$organization_template_root/modules.manifest.json" || {
+  echo "OrganizationTemplate postrádá company.gen3.json nebo modules.manifest.json" >&2
+  return 1
+}
+jq -e '
+  .organization_generation == "gen3" and
+  .organization_kind == "template" and
+  (.company.slug | type == "string" and length > 0)
+' "$organization_template_root/company.gen3.json" >/dev/null || {
+  echo "OrganizationTemplate company.gen3.json nemá platnou GEN3 template identitu" >&2
+  return 1
+}
+jq -e '
+  .organization_generation == "gen3" and
+  (.company | type == "string" and length > 0) and
+  (.module_slots | type == "array")
+' "$organization_template_root/modules.manifest.json" >/dev/null || {
+  echo "OrganizationTemplate modules.manifest.json nemá očekávaný GEN3 kontrakt" >&2
+  return 1
+}
+test "$(jq -r '.company.slug' "$organization_template_root/company.gen3.json")" = \
+  "$(jq -r '.company' "$organization_template_root/modules.manifest.json")" || {
+  echo "OrganizationTemplate company a modules manifest nemají shodnou identitu" >&2
+  return 1
+}
+test -r "$admin_organization_root/AGENTS.md" && \
+  test -r "$organization_template_root/AGENTS.md" || {
+  echo "Admin Organization nebo OrganizationTemplate postrádá čitelný AGENTS.md scope" >&2
+  return 1
+}
+bash "$admin_organization_root/company/scripts/doctor.sh" check --quick || return 1
+bash "$admin_organization_root/company/scripts/doctor.sh" workspace-tasks || return 1
+(
+  cd "$organization_template_root" || exit 1
+  bun run doctor:task
+) || return 1
+
+test "$(git -C "$organization_template_root" remote get-url origin)" = \
+  "git@github.com:TemplatesRozjedeme-ai/OrganizationTemplate_GEN3.git" || {
+  echo "OrganizationTemplate má neočekávaný origin: $(git -C "$organization_template_root" remote get-url origin 2>/dev/null || echo '<chybí>')" >&2
+  echo "Očekáváno: git@github.com:TemplatesRozjedeme-ai/OrganizationTemplate_GEN3.git" >&2
+  return 1
+}
+test "$(git -C "$organization_template_root" symbolic-ref --short HEAD)" = "main" || {
+  echo "OrganizationTemplate checkout musí být na main" >&2
+  return 1
+}
+test -z "$(git -C "$organization_template_root" status --porcelain)" || {
+  echo "OrganizationTemplate checkout musí být čistý" >&2
+  return 1
+}
+git -C "$organization_template_root" fetch --no-tags origin main || {
+  echo "OrganizationTemplate origin/main nelze čerstvě ověřit" >&2
+  return 1
+}
+test "$(git -C "$organization_template_root" rev-parse HEAD)" = \
+  "$(git -C "$organization_template_root" rev-parse FETCH_HEAD)" || {
+  echo "OrganizationTemplate checkout musí být na exact čerstvém origin/main" >&2
+  return 1
+}
+
+for template_checkout in \
+  "$organization_template_root" \
+  "$primary_conglomerate_root/templates/TemplatesRozjedeme-ai/MissionControlTemplate" \
+  "$primary_conglomerate_root/templates/TemplatesRozjedeme-ai/KnowledgebaseTemplate" \
+  "$primary_conglomerate_root/templates/TemplatesRozjedeme-ai/DesignSystemTemplate"
+do
+  test -d "$template_checkout/.git" || test -f "$template_checkout/.git" || {
+    echo "Chybí required template Git checkout: $template_checkout" >&2
+    return 1
+  }
+  test "$(git -C "$template_checkout" symbolic-ref --short HEAD)" = "main" || {
+    echo "Required template checkout musí být na main: $template_checkout" >&2
+    return 1
+  }
+  test -z "$(git -C "$template_checkout" status --porcelain)" || {
+    echo "Required template checkout musí být čistý: $template_checkout" >&2
+    return 1
+  }
 done
+}
+
+preflight_gen3_rollout
 ```
 
 Pokračuj jen pokud:
@@ -326,7 +475,7 @@ Template gate pro první instalaci:
 
 | Template | Musí být |
 |---|---|
-| OrganizationTemplate_GEN3 | lokální Git checkout pod `organizations/OrganizationTemplate_GEN3` (decision 0077), clean, na `main` |
+| OrganizationTemplate_GEN3 | explicitní absolutní `ORGANIZATION_TEMPLATE_ROOT` na `organizations/<AdminOrganization>/productionspace/OrganizationTemplate_GEN3` (decision 0127), clean, na `main` |
 | MissionControlTemplate | GitHub `is_template=true`; lokální Git checkout pod `templates/TemplatesRozjedeme-ai/MissionControlTemplate`, clean, `bun run check && bun test` OK; klientský `mission-control/app/v1/package.json` vychází z `templates/launchpad-app/package.json.template` |
 | KnowledgebaseTemplate | lokální Git checkout pod `templates/TemplatesRozjedeme-ai/KnowledgebaseTemplate`, clean, `app/v1/package.json` obsahuje `companyascode.app`; `dev`/`preview` runtime čte Launchpad `PORT`/`HOST` env; `cd app/v1 && bun run check && bun run build` OK |
 | DesignSystemTemplate | GitHub `is_template=true`; lokální Git checkout pod `templates/TemplatesRozjedeme-ai/DesignSystemTemplate`, clean, na `main`; je required provisioning input i tehdy, když klientský Design System zůstává neobjednaný `planned_slot` |
