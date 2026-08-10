@@ -14,7 +14,8 @@ od cíle mohou lišit do dokončení migrace `CAC-0092`.
 
 První interní řez Lazurio CLI je záměrně read-only a nestabilní. Agentovi
 zpřístupňuje bezpečnou projekci identity Principála, aktuální Mašiny a stavu
-Personalspace; nečte SOUL, obsah GBrainu, chat, sessions, secrets ani mandáty.
+Personalspace a úzký manifest-scoped search pilot pro Lazurio; nečte SOUL,
+obsah GBrainu, chat, sessions, secrets ani mandáty.
 Chybějící lokální mount není tvrzení o GitHub přístupu — provider authority
 zůstává `not_evaluated`, dokud ji neověří živý provider readback.
 
@@ -23,6 +24,8 @@ Ve vývojovém checkoutu se CLI spouští přes Bun:
 ```sh
 bun run lazurio -- context --json
 bun run lazurio -- doctor
+bun run lazurio -- search "český dotaz"
+bun run lazurio -- search status
 ```
 
 Oba příkazy přijímají `--root <cesta>`. Root může být buď tento Launchpad root
@@ -31,6 +34,15 @@ s `launchpad.gen3.json`, nebo samostatný Personalspace root na Buddy VPS s
 Launchpad rootu používá existující strukturované Doctor jádro, v Personalspace
 rootu spouští přesně doctor command deklarovaný jeho manifestem. CLI v0 není
 distribuční package, veřejné Core API, MCP server ani write surface.
+
+Search ve výchozím `exact` režimu čte aktuální filesystem přes `rg`, takže vidí
+i novou neindexovanou změnu v explicitně deklarovaném nested repu, přestože
+jeho Organization mount ignoruje parent root Git. Nespouští však plošné
+`rg --no-ignore` nad Konglomerátem: povolené zdroje skládá z Launchpad discovery,
+Organization manifestu a verzovaného pilotního registru. QMD lane je volitelný
+lokální index pro `lexical`, `semantic` a `hybrid`; jeho stav a čerstvost ukáže
+`search status` a rozbitý QMD neblokuje exact lane. Úplný kontrakt, bezpečnostní
+hranice a příkazy drží [lazurio/README.md](lazurio/README.md).
 
 ## Začíná se v chatu
 
