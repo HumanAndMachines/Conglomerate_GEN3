@@ -82,7 +82,9 @@ Podporovaný kontrakt je QMD `>=2.5.3` a `<3.0.0`. Ověřuje se `qmd --version` 
 `qmd status`; chybějící CLI, nepodporovaná verze, runtime chyba i známý Node
 native ABI mismatch mají strukturovaný stav. Exact lane zůstává dostupná.
 `search --update` zapisuje fingerprint povolených textových souborů, podle nějž
-`search --status` rozliší `fresh`, `stale`, `absent` a `not_evaluated`.
+`search --status` rozliší `fresh`, `stale`, `absent` a `not_evaluated`. Adapter
+porovná snapshot před a po QMD indexaci; pokud se source během update změní,
+success state nezapíše a vyžádá bezpečné opakování.
 
 Kontrakt byl 2026-08-10 porovnán s oficiální dokumentací QMD pro pojmenované
 indexy, `QMD_CONFIG_DIR`, `XDG_CACHE_HOME`, config collections/ignore a příkazy

@@ -352,6 +352,13 @@ export async function updateLazurioQmdIndex({
   const runtime = qmdRuntimeStatus({ layout, spawn, checkConfiguredRuntime: false });
   requireAvailableQmd(runtime);
   await materializeQmdConfig(scope, layout);
+  const beforeSnapshot = await buildSourceSnapshot(scope, { spawn });
+  if (beforeSnapshot.status !== "available" || !beforeSnapshot.fingerprint) {
+    throw new LazurioSearchError(
+      `QMD update nelze bezpečně spustit: source snapshot není dostupný (${beforeSnapshot.reason}).`,
+      { code: "source_snapshot_unavailable", exitCode: 3 },
+    );
+  }
 
   const update = runQmd(layout, ["update"], spawn);
   if (update.status !== 0) {
@@ -371,11 +378,17 @@ export async function updateLazurioQmdIndex({
     }
     embeddedAt = new Date().toISOString();
   }
-  const snapshot = await buildSourceSnapshot(scope, { spawn });
-  if (snapshot.status !== "available" || !snapshot.fingerprint) {
+  const afterSnapshot = await buildSourceSnapshot(scope, { spawn });
+  if (afterSnapshot.status !== "available" || !afterSnapshot.fingerprint) {
     throw new LazurioSearchError(
-      `QMD index se aktualizoval, ale source freshness nelze bezpečně uložit (${snapshot.reason}).`,
+      `QMD index se aktualizoval, ale source freshness nelze bezpečně uložit (${afterSnapshot.reason}).`,
       { code: "source_snapshot_unavailable", exitCode: 3 },
+    );
+  }
+  if (beforeSnapshot.fingerprint !== afterSnapshot.fingerprint) {
+    throw new LazurioSearchError(
+      "Source se během QMD update změnil; fresh state nebyl publikovaný. Spusť update znovu.",
+      { code: "source_changed_during_qmd_update", exitCode: 3 },
     );
   }
   const state = {
@@ -383,7 +396,7 @@ export async function updateLazurioQmdIndex({
     scope_id: scope.id,
     organization_slug: scope.organization.slug,
     principal_github_username: scope.principal.github_username,
-    source_fingerprint: snapshot.fingerprint,
+    source_fingerprint: afterSnapshot.fingerprint,
     updated_at: new Date().toISOString(),
     embedded_at: embeddedAt,
   };
