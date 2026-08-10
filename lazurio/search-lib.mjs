@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { spawnSync as nodeSpawnSync } from "node:child_process";
 import { closeSync, existsSync, lstatSync, openSync, readSync, realpathSync } from "node:fs";
-import { mkdir, open, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import {
@@ -259,6 +259,10 @@ export async function searchLazurioExact({
   const normalizedQuery = normalizeQuery(query);
   const normalizedLimit = normalizeLimit(limit);
   const scope = await discoverLazurioSearchScope({ root, scopeId, principalId, discover });
+  await assertNoHardLinkedTextFiles(scope, {
+    code: "search_source_hard_link",
+    message: "Exact source obsahuje hard-linked textový soubor; scan je fail-closed.",
+  });
   const matches = [];
 
   for (const source of scope.sources) {
@@ -480,6 +484,10 @@ export function qmdStorageLayout(scope) {
 
 export async function materializeQmdConfig(scope, layout = qmdStorageLayout(scope)) {
   assertLocalStorageLayout(layout);
+  await assertNoHardLinkedTextFiles(scope, {
+    code: "qmd_source_hard_link",
+    message: "QMD source obsahuje hard-linked textový soubor; indexace je fail-closed.",
+  });
   await assertQmdSourceTreesSafe(scope);
   await mkdir(layout.config_dir, { recursive: true });
   await mkdir(layout.cache_home, { recursive: true });
@@ -495,6 +503,49 @@ export async function materializeQmdConfig(scope, layout = qmdStorageLayout(scop
   };
   await writeFile(layout.config_path, `${JSON.stringify(config, null, 2)}\n`, "utf8");
   return { config, path: layout.config_path };
+}
+
+async function assertNoHardLinkedTextFiles(scope, { code, message }) {
+  for (const source of scope.sources) await walk(source.absolute_path);
+
+  async function walk(directory) {
+    let entries;
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch {
+      throw new LazurioSearchError("Search source tree nelze bezpečně přečíst.", {
+        code: "search_source_unreadable",
+        exitCode: 3,
+      });
+    }
+    for (const entry of entries) {
+      const entryPath = join(directory, entry.name);
+      if (entry.isSymbolicLink()) continue;
+      if (entry.isDirectory() && !excludedDirectoryNames.has(entry.name)) {
+        await walk(entryPath);
+        continue;
+      }
+      if (
+        !entry.isFile()
+        || isEnvironmentPathPart(entry.name)
+        || !textExtensionSet.has(extname(entry.name).slice(1).toLowerCase())
+      ) {
+        continue;
+      }
+      let metadata;
+      try {
+        metadata = await lstat(entryPath);
+      } catch {
+        throw new LazurioSearchError("Search source tree nelze bezpečně přečíst.", {
+          code: "search_source_unreadable",
+          exitCode: 3,
+        });
+      }
+      if (metadata.nlink !== 1) {
+        throw new LazurioSearchError(message, { code, exitCode: 3 });
+      }
+    }
+  }
 }
 
 async function assertQmdSourceTreesSafe(scope) {
@@ -671,13 +722,8 @@ function parseRipgrepMatches(stdout, { scope, source }) {
     }
     if (event.type !== "match") continue;
     const relativePath = normalizeRgPath(event.data?.path?.text);
-    const absolutePath = resolve(source.absolute_path, relativePath);
-    if (!isPathInside(source.absolute_path, absolutePath)) {
-      throw new LazurioSearchError("rg vrátil výsledek mimo deklarovaný source.", {
-        code: "rg_result_escape",
-        exitCode: 3,
-      });
-    }
+    const absolutePath = resolveCurrentSearchResultFile(source, relativePath);
+    if (!absolutePath) continue;
     const submatches = Array.isArray(event.data?.submatches) && event.data.submatches.length > 0
       ? event.data.submatches
       : [{ start: 0, end: 0 }];
@@ -722,8 +768,16 @@ async function buildSourceSnapshot(scope, { spawn }) {
     for (const file of files) {
       const filePath = resolve(source.absolute_path, file);
       if (!isPathInside(source.absolute_path, filePath)) continue;
-      const metadata = await stat(filePath);
-      if (!metadata.isFile()) continue;
+      const metadata = await lstat(filePath);
+      if (!metadata.isFile() || metadata.isSymbolicLink()) continue;
+      if (metadata.nlink !== 1) {
+        return {
+          status: "not_evaluated",
+          reason: "source_hard_link",
+          file_count: 0,
+          fingerprint: null,
+        };
+      }
       const contentFingerprint = createHash("sha256")
         .update(await readFile(filePath))
         .digest("hex");
@@ -871,7 +925,7 @@ function normalizeQmdResult(entry, scope) {
     return null;
   }
   const relativePath = normalizeRgPath(decodedPath);
-  const absolutePath = resolveCurrentQmdResultFile(source, relativePath);
+  const absolutePath = resolveCurrentSearchResultFile(source, relativePath);
   if (!absolutePath) return null;
   return {
     path: joinPosix(source.path, relativePath),
@@ -884,13 +938,12 @@ function normalizeQmdResult(entry, scope) {
   };
 }
 
-function resolveCurrentQmdResultFile(source, relativePath) {
+function resolveCurrentSearchResultFile(source, relativePath) {
   const pathParts = relativePath.split("/");
   const basename = pathParts.at(-1);
   if (
     pathParts.some((part) => excludedDirectoryNames.has(part))
-    || basename === ".env"
-    || basename.startsWith(".env.")
+    || pathParts.some(isEnvironmentPathPart)
     || !textExtensionSet.has(extname(basename).slice(1).toLowerCase())
   ) {
     return null;
@@ -904,6 +957,7 @@ function resolveCurrentQmdResultFile(source, relativePath) {
       if (metadata.isSymbolicLink()) return null;
       if (index < pathParts.length - 1 && !metadata.isDirectory()) return null;
       if (index === pathParts.length - 1 && !metadata.isFile()) return null;
+      if (index === pathParts.length - 1 && metadata.nlink !== 1) return null;
     }
     const canonicalSourceRoot = realpathSync(source.absolute_path);
     const canonicalCandidate = realpathSync(candidate);
@@ -922,6 +976,10 @@ function resolveCurrentQmdResultFile(source, relativePath) {
   } catch {
     return null;
   }
+}
+
+function isEnvironmentPathPart(part) {
+  return part === ".env" || part.startsWith(".env.");
 }
 
 function resultProvenance(scope, source) {
