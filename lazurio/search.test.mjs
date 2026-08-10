@@ -9,6 +9,7 @@ import {
   buildLazurioSearchStatus,
   discoverLazurioSearchScope,
   materializeQmdConfig,
+  QMD_MIN_VERSION,
   qmdStorageLayout,
   searchLazurioExact,
   searchLazurioQmd,
@@ -148,6 +149,29 @@ test("QMD config fail-closed odmítne nested symlink uvnitř povoleného source"
   });
 });
 
+test("QMD config bezpečně přeskočí interní symlink bez duplikace kanonického obsahu", async () => {
+  const fixture = await searchFixture();
+  const canonical = join(fixture.designSystem, "content");
+  await mkdir(canonical, { recursive: true });
+  await writeFile(join(canonical, "canonical.md"), "kanonický obsah\n", "utf8");
+  await mkdir(join(fixture.designSystem, "app", "public"), { recursive: true });
+  await symlink(canonical, join(fixture.designSystem, "app", "public", "content"));
+  const scope = await discoverLazurioSearchScope({
+    root: fixture.root,
+    principalId: "immakermatty",
+  });
+
+  await expect(materializeQmdConfig(scope)).resolves.toMatchObject({
+    config: {
+      collections: {
+        "design-system": {
+          path: fixture.designSystem,
+        },
+      },
+    },
+  });
+});
+
 test("QMD config fail-closed odmítne binární obsah s textovou příponou", async () => {
   const fixture = await searchFixture();
   await writeFile(join(fixture.knowledge, "disguised.md"), Buffer.from("text\0binary"));
@@ -197,7 +221,7 @@ test("QMD ABI failure je diagnostikovaný bez zveřejnění backend stack trace"
     root: fixture.root,
     principalId: "immakermatty",
     spawn: qmdStub({
-      version: "2.6.3",
+      version: QMD_MIN_VERSION,
       statusCode: 1,
       statusError: "better_sqlite3.node was compiled against NODE_MODULE_VERSION 141",
     }),
@@ -217,7 +241,7 @@ test("QMD update uloží source fingerprint a status rozliší fresh od stale", 
   const layout = qmdStorageLayout(scope);
   await mkdir(dirname(layout.database_path), { recursive: true });
   await writeFile(layout.database_path, "fixture index", "utf8");
-  const spawn = qmdStub({ version: "2.6.3" });
+  const spawn = qmdStub({ version: QMD_MIN_VERSION });
 
   const fresh = await updateLazurioQmdIndex({
     root: fixture.root,
@@ -244,7 +268,7 @@ test("QMD update uloží source fingerprint a status rozliší fresh od stale", 
   const unknown = await buildLazurioSearchStatus({
     root: fixture.root,
     principalId: "immakermatty",
-    spawn: qmdStub({ version: "2.6.3", rgUnavailable: true }),
+    spawn: qmdStub({ version: QMD_MIN_VERSION, rgUnavailable: true }),
   });
   expect(unknown.exact.status).toBe("not_evaluated");
   expect(unknown.qmd.freshness).toEqual({ status: "not_evaluated", reason: "rg_unavailable" });
@@ -263,7 +287,7 @@ test("QMD update bez source snapshotu nikdy nezapíše falešný fresh state", a
   await expect(updateLazurioQmdIndex({
     root: fixture.root,
     principalId: "immakermatty",
-    spawn: qmdStub({ version: "2.6.3", rgUnavailable: true }),
+    spawn: qmdStub({ version: QMD_MIN_VERSION, rgUnavailable: true }),
   })).rejects.toMatchObject({
     code: "source_snapshot_unavailable",
     lazurioExitCode: 3,
@@ -282,9 +306,9 @@ test("QMD lexical adapter normalizuje výsledek do stejné scoped provenance", a
   await mkdir(dirname(layout.database_path), { recursive: true });
   await writeFile(layout.database_path, "fixture", "utf8");
   const spawn = qmdStub({
-    version: "2.6.3",
+    version: QMD_MIN_VERSION,
     queryOutput: JSON.stringify([{
-      file: "qmd://knowledge/index.md",
+      file: "qmd://knowledge/index.md?index=lazurio-humanandmachine-ai-immakermatty",
       line: 7,
       score: 0.91,
       snippet: "Český význam Lazuria",
@@ -499,7 +523,7 @@ async function createRepository(path) {
 }
 
 function qmdStub({
-  version = "2.6.3",
+  version = QMD_MIN_VERSION,
   statusCode = 0,
   statusError = "",
   queryOutput = "[]",

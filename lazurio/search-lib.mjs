@@ -480,10 +480,10 @@ export async function materializeQmdConfig(scope, layout = qmdStorageLayout(scop
 
 async function assertQmdSourceTreesSafe(scope) {
   for (const source of scope.sources) {
-    await walk(source.absolute_path);
+    await walk(source.absolute_path, realpathSync(source.absolute_path));
   }
 
-  async function walk(directory) {
+  async function walk(directory, canonicalSourceRoot) {
     let entries;
     try {
       entries = await readdir(directory, { withFileTypes: true });
@@ -494,17 +494,33 @@ async function assertQmdSourceTreesSafe(scope) {
       });
     }
     for (const entry of entries) {
+      const entryPath = join(directory, entry.name);
       if (entry.isSymbolicLink()) {
-        throw new LazurioSearchError("QMD source tree obsahuje symlink; indexace je fail-closed.", {
-          code: "qmd_source_symlink",
-          exitCode: 3,
-        });
+        let canonicalTarget;
+        try {
+          canonicalTarget = realpathSync(entryPath);
+        } catch {
+          throw new LazurioSearchError("QMD source tree obsahuje rozbitý symlink; indexace je fail-closed.", {
+            code: "qmd_source_symlink",
+            exitCode: 3,
+          });
+        }
+        if (!isPathInside(canonicalSourceRoot, canonicalTarget)) {
+          throw new LazurioSearchError("QMD source tree obsahuje symlink mimo deklarovaný source; indexace je fail-closed.", {
+            code: "qmd_source_symlink",
+            exitCode: 3,
+          });
+        }
+        // QMD's standard filesystem scan uses followSymbolicLinks: false.
+        // Keep safe in-source links out of this preflight too, so they cannot
+        // duplicate canonical content already reachable beneath the source.
+        continue;
       }
       if (entry.isDirectory() && !excludedDirectoryNames.has(entry.name)) {
-        await walk(join(directory, entry.name));
+        await walk(entryPath, canonicalSourceRoot);
       }
       if (entry.isFile() && textExtensionSet.has(extname(entry.name).slice(1).toLowerCase())) {
-        await assertTextFile(join(directory, entry.name));
+        await assertTextFile(entryPath);
       }
     }
   }
@@ -805,11 +821,24 @@ function parseQmdJson(stdout) {
 
 function normalizeQmdResult(entry, scope) {
   const file = typeof entry?.file === "string" ? entry.file : typeof entry?.path === "string" ? entry.path : null;
-  const match = file?.match(/^qmd:\/\/([^/]+)\/(.+)$/);
-  if (!match) return null;
-  const source = scope.sources.find((candidate) => candidate.id === match[1]);
+  let documentUri;
+  try {
+    documentUri = new URL(file);
+  } catch {
+    return null;
+  }
+  if (documentUri.protocol !== "qmd:" || documentUri.username || documentUri.password || documentUri.port) {
+    return null;
+  }
+  const source = scope.sources.find((candidate) => candidate.id === documentUri.hostname);
   if (!source) return null;
-  const relativePath = normalizeRgPath(match[2]);
+  let decodedPath;
+  try {
+    decodedPath = decodeURIComponent(documentUri.pathname.replace(/^\//, ""));
+  } catch {
+    return null;
+  }
+  const relativePath = normalizeRgPath(decodedPath);
   return {
     path: joinPosix(source.path, relativePath),
     repository_relative_path: joinPosix(
