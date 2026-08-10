@@ -109,35 +109,35 @@ test("apps cache keeps first paint Git-free and invalidates on force sync and fa
   await createPackageApp({
     root,
     packagePath: "organizations/BetaCo_GEN3/workspace/deals/app/v1",
-    app: { id: "cache-deals-v1", title: "Cache Deals", company: "BetaCo", module: "deals", port: 5411 },
+    app: { id: "betaco-cache-deals-v1", title: "Cache Deals", company: "BetaCo", module: "deals", port: 5411 },
   });
   const { port } = await startLaunchpadServer(root);
 
   const first = await getJson(port, "/api/apps");
-  expect(first.apps.map((app) => app.id)).toContain("cache-deals-v1");
+  expect(first.apps.map((app) => app.id)).toContain("betaco-cache-deals-v1");
   expect(first.apps.every((app) => app.git === undefined)).toBe(true);
 
   await createPackageApp({
     root,
     packagePath: "organizations/BetaCo_GEN3/workspace/knowledgebase/app/v1",
     app: {
-      id: "cache-knowledgebase-v1",
+      id: "betaco-cache-knowledgebase-v1",
       title: "Cache Knowledgebase",
       company: "BetaCo",
       module: "knowledgebase",
       port: 5412,
     },
   });
-  expect((await getJson(port, "/api/apps")).apps.map((app) => app.id)).not.toContain("cache-knowledgebase-v1");
+  expect((await getJson(port, "/api/apps")).apps.map((app) => app.id)).not.toContain("betaco-cache-knowledgebase-v1");
 
   const forced = await postJson(port, "/api/sync", {});
-  expect(forced.apps.map((app) => app.id)).toContain("cache-knowledgebase-v1");
+  expect(forced.apps.map((app) => app.id)).toContain("betaco-cache-knowledgebase-v1");
   expect((await getJson(port, "/api/apps")).generated_at).toBe(forced.generated_at);
 
   await createPackageApp({
     root,
     packagePath: "organizations/OmegaCo_GEN3/workspace/studio/app/v1",
-    app: { id: "cache-studio-v1", title: "Cache Studio", company: "OmegaCo", module: "studio", port: 5413 },
+    app: { id: "omegaco-cache-studio-v1", title: "Cache Studio", company: "OmegaCo", module: "studio", port: 5413 },
   });
   const failedMutation = await fetch(`http://127.0.0.1:${port}/api/apps/not-an-app/start`, {
     method: "POST",
@@ -145,7 +145,7 @@ test("apps cache keeps first paint Git-free and invalidates on force sync and fa
     body: "{}",
   });
   expect(failedMutation.ok).toBe(false);
-  expect((await getJson(port, "/api/apps")).apps.map((app) => app.id)).toContain("cache-studio-v1");
+  expect((await getJson(port, "/api/apps")).apps.map((app) => app.id)).toContain("omegaco-cache-studio-v1");
 });
 
 test("Launchpad server exposes a guarded rebase abort only for a live module rebase", async () => {
@@ -339,13 +339,13 @@ test("mutating APIs reject cross-origin and DNS-rebinding requests before routin
     "/api/git/repos/BetaCo%3A%3Adeals/rebase-abort",
     "/api/git/repos/BetaCo%3A%3Adeals/worktrees/create",
     "/api/git/repos/BetaCo%3A%3Adeals/worktrees/review-fix/publish",
-    "/api/apps/deals-v1/health",
-    "/api/apps/deals-v1/install",
-    "/api/apps/deals-v1/repair",
-    "/api/apps/deals-v1/start",
-    "/api/apps/deals-v1/open",
-    "/api/apps/deals-v1/stop",
-    "/api/apps/deals-v1/restart",
+    "/api/apps/betaco-deals-v1/health",
+    "/api/apps/betaco-deals-v1/install",
+    "/api/apps/betaco-deals-v1/repair",
+    "/api/apps/betaco-deals-v1/start",
+    "/api/apps/betaco-deals-v1/open",
+    "/api/apps/betaco-deals-v1/stop",
+    "/api/apps/betaco-deals-v1/restart",
     "/api/sync",
   ];
 
@@ -383,7 +383,7 @@ test("Launchpad server forwards runtime source from POST body to worktree open",
     root,
     packagePath: "organizations/BetaCo_GEN3/workspace/deals/app/v1",
     app: {
-      id: "deals-v1",
+      id: "betaco-deals-v1",
       title: "Deals v1",
       company: "BetaCo",
       module: "deals",
@@ -421,22 +421,22 @@ test("Launchpad server forwards runtime source from POST body to worktree open",
   const { port } = await startLaunchpadServer(root);
 
   try {
-    const opened = await postJson(port, "/api/apps/deals-v1/open", {
+    const opened = await postJson(port, "/api/apps/betaco-deals-v1/open", {
       source: { type: "worktree", slug: worktreeSlug },
     });
 
     expect(opened.runtime_source).toMatchObject({ type: "worktree", slug: worktreeSlug, plan_code: "CAC-0042" });
     expect(opened.url).not.toBe(`http://127.0.0.1:${mainPort}`);
 
-    const health = await postJson(port, "/api/apps/deals-v1/health", {
+    const health = await postJson(port, "/api/apps/betaco-deals-v1/health", {
       source: { type: "worktree", slug: worktreeSlug },
     });
 
     expect(health.runtime_source).toMatchObject({ type: "worktree", slug: worktreeSlug, plan_code: "CAC-0042" });
     expect(health.port).toBe(opened.runtime.port);
   } finally {
-    await postJson(port, "/api/apps/deals-v1/stop", { source: { type: "worktree", slug: worktreeSlug } }).catch(() => null);
-    await postJson(port, "/api/apps/deals-v1/stop", {}).catch(() => null);
+    await postJson(port, "/api/apps/betaco-deals-v1/stop", { source: { type: "worktree", slug: worktreeSlug } }).catch(() => null);
+    await postJson(port, "/api/apps/betaco-deals-v1/stop", {}).catch(() => null);
   }
 }, platformTestTimeout(15_000));
 

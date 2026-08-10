@@ -198,8 +198,10 @@ V multi-company rootu platí:
   čistou proper-case identitu `ExampleOrg`; shoda je case-sensitive.
 - `companyascode.app.id` musí být unikátní v celém Launchpad GEN3 rootu a
   používat lowercase kebab tvar.
-- doporučený tvar ID je
+- povinný Organization-owned tvar ID je
   `<lowercase-company-slug>-<module-or-app>-<version>`.
+  Pole `company` ve v1 vždy nese přesný Organization slug; Team, brand ani
+  GitHub repository owner se do této osy nepromítají.
 - app surfaces jedné Organizace musí mít unikátní porty; duplicita je hard
   discovery failure s oběma package cestami.
 - app surfaces různých Organizací smějí deklarovat stejný stabilní port.

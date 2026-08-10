@@ -1383,7 +1383,7 @@ test("invalid_manifest appka je viditelná v apps response a doctor ji hlásí j
     companyascode: {
       app: {
         schema_version: "companyascode.launchpad_app.v1",
-        id: "broken-co-good-v1",
+        id: "brokenco-good-v1",
         title: "Good v1",
         company: "BrokenCo",
         surface: "internal",
@@ -1403,7 +1403,7 @@ test("invalid_manifest appka je viditelná v apps response a doctor ji hlásí j
     companyascode: {
       app: {
         schema_version: "companyascode.launchpad_app.v1",
-        id: "broken-co-broken-v1",
+        id: "brokenco-broken-v1",
         title: "Broken v1",
         company: "BrokenCo",
         surface: "internal",
@@ -1426,7 +1426,7 @@ test("invalid_manifest appka je viditelná v apps response a doctor ji hlásí j
   expect(response.summary.failure_count).toBe(0);
   expect(response.summary.app_count).toBe(1);
   expect(response.summary.invalid_app_count).toBe(1);
-  const broken = response.apps.find((app) => app.id === "broken-co-broken-v1");
+  const broken = response.apps.find((app) => app.id === "brokenco-broken-v1");
   expect(broken).toMatchObject({
     manifest_state: "invalid_manifest",
     dependency_status: "invalid_manifest",
@@ -1443,9 +1443,9 @@ test("invalid_manifest appka je viditelná v apps response a doctor ji hlásí j
   const discoveryCheck = report.checks.find((check) => check.id === "launchpad.discovery");
   expect(discoveryCheck?.status).toBe("warn");
   // …a runtime diagnostika běží dál pro všechny appky včetně té nevalidní.
-  const appCheck = report.checks.find((check) => check.id === "launchpad.runtime.broken-co-broken-v1");
+  const appCheck = report.checks.find((check) => check.id === "launchpad.runtime.brokenco-broken-v1");
   expect(appCheck?.status).toBe("warn");
-  const goodCheck = report.checks.find((check) => check.id === "launchpad.runtime.broken-co-good-v1");
+  const goodCheck = report.checks.find((check) => check.id === "launchpad.runtime.brokenco-good-v1");
   expect(goodCheck).toBeDefined();
 });
 

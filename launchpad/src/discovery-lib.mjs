@@ -674,6 +674,13 @@ function isPlaceholderOrganization({ slug }) {
   );
 }
 
+export function organizationAppIdPrefix(companySlug) {
+  if (typeof companySlug !== "string" || companySlug.length === 0) {
+    throw new TypeError("company.slug musí být neprázdný řetězec");
+  }
+  return `${companySlug.toLowerCase()}-`;
+}
+
 // Strojový marker druhu mountu (company.gen3.schema.json organization_kind).
 // Chybějící / neznámá hodnota = organization (zpětná kompatibilita, founder
 // 2026-07-12). Template mount se validuje se stejnými gates jako firma, ale je
@@ -1238,8 +1245,21 @@ export async function discoverLaunchpadApps(
         `${packagePath}: companyascode.app.company musí být ${company.slug}, protože package leží ve ${company.path}`,
       );
     }
+    if (
+      company.organization_kind === "organization"
+      && typeof app.id === "string"
+      && !app.id.startsWith(organizationAppIdPrefix(company.slug))
+    ) {
+      manifestIssues.push(
+        `${packagePath}: companyascode.app.id musí začínat Organization prefixem ${organizationAppIdPrefix(company.slug)}`,
+      );
+    }
 
-    const plugin = manifestIssues.length === 0
+    // Plugin security se ověřuje i tehdy, když už app manifest nese scoped
+    // kvalitativní chybu (např. starý Organization prefix). Jinak by snadno
+    // opravitelná identity chyba zakryla hard boundary violation v plugin cestě
+    // nebo read-only kontraktu.
+    const plugin = typeof app.plugin === "string" && app.plugin.trim() !== ""
       ? await readPluginManifest({
           app,
           companiesRoot,
