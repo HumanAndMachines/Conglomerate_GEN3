@@ -792,8 +792,10 @@ function runQmd(layout, args, spawn) {
 }
 
 function qmdEnvironment(layout) {
+  const environment = { ...process.env };
+  delete environment.INDEX_PATH;
   return {
-    ...process.env,
+    ...environment,
     NO_COLOR: "1",
     QMD_CONFIG_DIR: layout.config_dir,
     XDG_CACHE_HOME: layout.cache_home,
