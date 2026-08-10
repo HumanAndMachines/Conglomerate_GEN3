@@ -494,6 +494,30 @@ test("discovery izoluje nevalidní app manifest jako invalid_apps záznam (decis
   expect(invalid_apps[0].manifest_issues.length).toBeGreaterThan(0);
 });
 
+test("discovery izoluje app.id bez lowercase Organization prefixu", async () => {
+  const root = await createCompaniesWorkspaceFixture({
+    appOverrides: {
+      id: "lazurio-website-v1",
+      company: "test-company",
+    },
+  });
+
+  const { apps, invalid_apps, failures, warnings } = await discoverLaunchpadApps(root);
+
+  expect(failures).toEqual([]);
+  expect(apps).toEqual([]);
+  expect(invalid_apps).toHaveLength(1);
+  expect(invalid_apps[0]).toMatchObject({
+    id: "lazurio-website-v1",
+    company: "test-company",
+    manifest_state: "invalid_manifest",
+  });
+  expect(invalid_apps[0].manifest_issues).toContain(
+    "organizations/TestCompany/modules/demo/app/v1/package.json: companyascode.app.id musí začínat Organization prefixem test-company-",
+  );
+  expect(warnings.some((warning) => warning.includes("invalid app manifest"))).toBe(true);
+});
+
 test("deklarovaný port overlap zachová obě auto-discovered Organizace", async () => {
   const root = await createGenerationMountFixture();
   await writeGenerationOrg({
@@ -715,6 +739,25 @@ test("discovery odmítne Windows drive-qualified plugin cestu mimo Organization 
   const { apps, failures } = await discoverLaunchpadApps(root);
 
   expect(apps).toEqual([]);
+  expect(failures.some((failure) => failure.includes("D:outside.json") && failure.includes("uvnitř"))).toBe(true);
+});
+
+test("Organization prefix chyba nikdy nezakryje plugin boundary violation", async () => {
+  const root = await createCompaniesWorkspaceFixture({
+    plugin: {
+      schema_version: "companyascode.launchpad_plugin.v1",
+      title: "Demo kontext",
+    },
+    appOverrides: {
+      id: "rozjedeme-ai-demo-v1",
+      plugin: "D:outside.json",
+    },
+  });
+
+  const { apps, invalid_apps, failures } = await discoverLaunchpadApps(root);
+
+  expect(apps).toEqual([]);
+  expect(invalid_apps).toEqual([]);
   expect(failures.some((failure) => failure.includes("D:outside.json") && failure.includes("uvnitř"))).toBe(true);
 });
 

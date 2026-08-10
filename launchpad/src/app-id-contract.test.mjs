@@ -20,7 +20,7 @@ import { expect, test } from "bun:test";
 import { readFile, readdir, stat } from "fs/promises";
 import { dirname, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
-import { validateAppManifest } from "./discovery-lib.mjs";
+import { organizationAppIdPrefix, validateAppManifest } from "./discovery-lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..");
@@ -36,6 +36,20 @@ const DOCTOR_CHECK_ID_PATTERN = "^[a-z0-9]+([._-][a-z0-9]+)*$";
 async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"));
 }
+
+test("app identity prefix se odvozuje z Organization slug, ne z Teamu nebo brandu", () => {
+  expect(organizationAppIdPrefix("HumanAndMachine-ai")).toBe("humanandmachine-ai-");
+  expect(organizationAppIdPrefix("LuxiLuxi")).toBe("luxiluxi-");
+
+  const app = {
+    id: "humanandmachine-ai-website-lazurio-v1",
+    company: "HumanAndMachine-ai",
+    module: "website-lazurio",
+  };
+  expect(app.company).toBe("HumanAndMachine-ai");
+  expect(app.id.startsWith(organizationAppIdPrefix(app.company))).toBe(true);
+  expect(app.id.startsWith("lazurio-")).toBe(false);
+});
 
 test("manifestový pattern pro app.id nepovoluje velká písmena", async () => {
   const schema = await readJson(appSchemaPath);
@@ -174,7 +188,10 @@ test("žádný app manifest v pracovním stromu nenese app.id mimo pattern", asy
   const schema = await readJson(appSchemaPath);
   const appIdPattern = new RegExp(schema.properties.id.pattern);
   const checkIdPattern = new RegExp(DOCTOR_CHECK_ID_PATTERN);
-  const organizationsRoot = join(repoRoot, "organizations");
+  const organizationsRoot = resolve(
+    process.env.LAUNCHPAD_CONTRACT_ORGANIZATIONS_ROOT
+      ?? join(repoRoot, "organizations"),
+  );
 
   let entries;
   try {
@@ -188,7 +205,23 @@ test("žádný app manifest v pracovním stromu nenese app.id mimo pattern", asy
   let scanned = 0;
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    for await (const packagePath of walkPackageJson(join(organizationsRoot, entry.name))) {
+    const organizationPath = join(organizationsRoot, entry.name);
+    let companyConfig;
+    try {
+      companyConfig = await readJson(join(organizationPath, "company.gen3.json"));
+    } catch (error) {
+      if (error?.code === "ENOENT") continue;
+      offenders.push(`${relative(repoRoot, organizationPath)}: company.gen3.json nejde přečíst`);
+      continue;
+    }
+    const companySlug = companyConfig?.company?.slug;
+    if (companyConfig?.organization_kind === "template") continue;
+    if (typeof companySlug !== "string" || companySlug.length === 0) {
+      offenders.push(`${relative(repoRoot, organizationPath)}: chybí company.slug`);
+      continue;
+    }
+    const expectedPrefix = organizationAppIdPrefix(companySlug);
+    for await (const packagePath of walkPackageJson(organizationPath)) {
       const packageJson = await readJson(packagePath).catch(() => null);
       const app = packageJson?.companyascode?.app;
       if (!app || app.schema_version !== "companyascode.launchpad_app.v1") continue;
@@ -196,13 +229,21 @@ test("žádný app manifest v pracovním stromu nenese app.id mimo pattern", asy
       const id = app.id;
       if (typeof id !== "string" || !appIdPattern.test(id) || !checkIdPattern.test(`launchpad.runtime.${id}`)) {
         offenders.push(`${relative(repoRoot, packagePath)}: ${JSON.stringify(id)}`);
+      } else if (app.company !== companySlug) {
+        offenders.push(
+          `${relative(repoRoot, packagePath)}: company ${JSON.stringify(app.company)} != ${JSON.stringify(companySlug)}`,
+        );
+      } else if (!id.startsWith(expectedPrefix)) {
+        offenders.push(
+          `${relative(repoRoot, packagePath)}: id ${JSON.stringify(id)} nezačíná ${JSON.stringify(expectedPrefix)}`,
+        );
       }
     }
   }
 
   if (offenders.length > 0) {
     throw new Error(
-      `z ${scanned} app manifestů pod ${relative(repoRoot, organizationsRoot)} porušuje kontrakt `
+      `z ${scanned} app manifestů pod ${organizationsRoot} porušuje Organization identity kontrakt `
       + `${offenders.length}:\n${offenders.join("\n")}`,
     );
   }

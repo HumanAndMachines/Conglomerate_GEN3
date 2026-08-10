@@ -694,7 +694,8 @@ Každá spustitelná appka deklaruje `companyascode.app` ve svém vlastním
 
 `companyascode.app.company` se musí case-sensitive rovnat čistému proper-case
 `company.slug`; app id je globálně unikátní lowercase kebab identifikátor
-s doporučeným lowercase company prefixem. Main port je unikátní uvnitř jedné
+s povinným lowercase Organization prefixem odvozeným z `company.slug`.
+Team, brand ani GitHub repository owner tento prefix neurčují. Main port je unikátní uvnitř jedné
 Organizace; mezi Organizacemi se smí opakovat. `dev_script` musí existovat
 v témže package souboru.
 Workspace grouping pochází z module deklarace, nikoli z package cesty.
