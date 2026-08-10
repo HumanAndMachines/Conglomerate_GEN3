@@ -42,7 +42,7 @@ frameworku se sem nepřenášejí).
 | 0061 | BYOS: agentní runtime a subscription zůstávají na stroji buildera; platforma nedodává LLM účet ani skrytou autonomii. |
 | 0062 | Kanonická čtveřice person: Organization Admin / Steward / Builder / User (nesklonné anglické pojmy). |
 | 0063 | Worker Agent pracuje jen v explicitně autorizovaném tasku pod dozorem; drafty schvaluje persona s pravomocí (Kolega nebo AI Kolega — gate je pravomoc, ne rozdíl člověk vs. AI). |
-| 0077 | Template mount Organizace žije v `organizations/OrganizationTemplate_GEN3` s markerem `organization_kind: "template"`; validuje se stejně, ale stojí mimo runtime a přehledy. |
+| 0077 | OrganizationTemplate rename a template-first flow; template identitu určuje validovaný `organization_kind` marker, runtime ji vyloučí a neodvozuje ji z názvu. Původní top-level mount lokaci superseduje 0127. |
 | 0079 | Personalspace self-service vzniká z veřejného `PersonalspaceTemplate_GEN3`; reálná instance je vždy privátní repo vlastníka. |
 | 0080 | Buddy runtime běží výhradně na dedikované VPS vlastníka; localhost není instalační volba ani fallback. |
 | 0089 | Buddy je důvěryhodný osobní zástupce lidského Principála: morální kontrakt (`CONSTITUTION.md`) + trvalé, scoped, odvolatelné mandáty (`MANDATES.md`); transakčně specifické gates mandát nikdy nenahrazuje a Buddy si mandát sám nevydá. |
@@ -59,3 +59,4 @@ frameworku se sem nepřenášejí).
 | 0113 | Přejmenovatelné jméno (slug, label, deklarace) není autorizační ani join klíč: vazby a výběr drží stabilní identita a ověřený stav, nikdy samotné jméno. |
 | 0118 | Composable doctor surface: root doctor svolává vlastní doctory namountovaných rep podle deklarace v manifestu, agreguje vnořené reporty a rozbitého potomka hlásí nahlas; slovník stavů `not_applicable` / `blocked` / `incomplete`. |
 | 0125 | Stabilní identita modulu a fyzický repository mount jsou oddělené osy: `slug` je explicitní lowercase kebab-case ID pro vazby a UI, zatímco basename `workspace/<repo-name>` nebo `productionspace/<repo-name>` zachovává přesný název GitHub repozitáře včetně case, `_` a `.`. Case-preserving basename bez bezpečně odvoditelného nebo explicitního slugu failuje zavřeně. |
+| 0127 | Pracovní Personalspace/Organization template checkouty žijí jako org-level nested repa v `organizations/<AdminOrganization>/productionspace/`; bez Team membership, aliasu, provider transferu nebo visibility změny. |

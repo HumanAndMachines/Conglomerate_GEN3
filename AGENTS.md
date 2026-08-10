@@ -20,12 +20,12 @@ root metadata — není to allowlist; `planned` sloty a personalspace owner jsou
 per-machine v gitignored `launchpad.gen3.local.json`. Cílové flow je „GitHub přístup
 → Synchronizovat → Organizace/modul se objeví v Launchpadu“; bezpečnostní
 kontroly jsou pro auto-discovered mounty stejně přísné jako pro registrované
-(decision 0042 v manual/decision-register.md). Mount s markerem
-`company.gen3.json` `organization_kind: "template"` se validuje stejnými gates,
-ale zůstává mimo runtime akce, business přehledy i org počty (klasifikace podle
-strojového markeru, ne podle jména). Template mount žije dle decision 0077
-(manual/decision-register.md) v `organizations/OrganizationTemplate_GEN3`
-s `organization_kind` markerem (přesun proveden 2026-07-12).
+(decision 0042 v manual/decision-register.md). Legacy top-level mount s markerem
+`company.gen3.json` `organization_kind: "template"` discovery dál bezpečně
+rozpozná a vyřadí z runtime, business přehledů i org počtů. Nový checkout ale
+na founderově mašině nevytváří druhou top-level Organizaci: podle decision 0127
+žije jako nested repo v `productionspace/` zastřešující Admin Organizace a
+konkrétní template nástroj dostává jeho explicitní cestu.
 
 **Kam se podívat.** Lidská mapa repa („co je co a kde to leží“) je `MAP.md`.
 Když nevíš, jestli změna patří do rootu, do Organizace nebo do modulu, začni
