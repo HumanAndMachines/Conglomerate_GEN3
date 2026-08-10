@@ -45,6 +45,117 @@ test("inventory reads repo paths from Organization manifests and does not infer 
   expect(inventory.planned.map((slot) => `${slot.organization}::${slot.module}`)).toContain("BetaCo::brainstorm");
 });
 
+test("inventory keeps lowercase module ID separate from a case-preserving repository mount", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const manifestPath = `${root}/organizations/OmegaCo_GEN3/modules.manifest.json`;
+  const manifest = await Bun.file(manifestPath).json();
+  manifest.module_slots.push({
+    slug: "buddy-gen2",
+    path: "productionspace/Buddy_GEN2",
+    space: "productionspace",
+    category: "platform-runtime",
+    git: { url: "git@github.com:OmegaCo/Buddy_GEN2.git", branch: "main" },
+  });
+  await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  expect(inventory.repos.find((repo) => repo.key === "OmegaCo::buddy-gen2")).toMatchObject({
+    module: "buddy-gen2",
+    slot_path: "productionspace/Buddy_GEN2",
+    repo_path: "organizations/OmegaCo_GEN3/productionspace/Buddy_GEN2",
+    repo_kind: "productionspace",
+  });
+  expect(inventory.repos.some((repo) => repo.key === "OmegaCo::Buddy_GEN2")).toBe(false);
+});
+
+test("inventory preserves dotted GitHub repository metadata", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const manifestPath = `${root}/organizations/OmegaCo_GEN3/modules.manifest.json`;
+  const manifest = await Bun.file(manifestPath).json();
+  manifest.module_slots.push({
+    slug: "knowledgebase-v2",
+    path: "workspace/Knowledgebase.v2",
+    git: { url: "git@github.com:OmegaCo/Knowledgebase.v2.git", branch: "main" },
+  });
+  await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  const inventory = await buildGitInventory({ companiesRoot: root });
+  expect(inventory.repos.find((repo) => repo.key === "OmegaCo::knowledgebase-v2")?.remote).toEqual({
+    url_kind: "github",
+    owner_repo: "OmegaCo/Knowledgebase.v2",
+  });
+});
+
+test("inventory fails closed when two repository mounts resolve to the same logical ID", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const manifestPath = `${root}/organizations/OmegaCo_GEN3/modules.manifest.json`;
+  const manifest = await Bun.file(manifestPath).json();
+  manifest.module_slots.push(
+    {
+      slug: "buddy-gen2",
+      path: "productionspace/Buddy_GEN2",
+      git: { url: "git@github.com:OmegaCo/Buddy_GEN2.git", branch: "main" },
+    },
+    {
+      slug: "buddy-gen2",
+      path: "productionspace/BuddyLegacy",
+      git: { url: "git@github.com:OmegaCo/BuddyLegacy.git", branch: "main" },
+    },
+  );
+  await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  const inventory = await buildGitInventory({ companiesRoot: root });
+
+  expect(inventory.repos.some((repo) => repo.organization === "OmegaCo" && repo.module !== "root")).toBe(false);
+  expect(inventory.warnings.join("\n")).toContain('repository slug "buddy-gen2"');
+});
+
+test("inventory applies cross-file logical identity collisions to the action surface", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const organizationRoot = join(root, "organizations", "OmegaCo_GEN3");
+  const manifestPath = join(organizationRoot, "modules.manifest.json");
+  const companyPath = join(organizationRoot, "company.gen3.json");
+  const manifest = await Bun.file(manifestPath).json();
+  const company = await Bun.file(companyPath).json();
+  manifest.module_slots.push({
+    slug: "shared",
+    path: "workspace/shared-manifest",
+    repo: "git@github.com:OmegaCo/shared-manifest.git",
+    branch: "main",
+  });
+  company.modules = [{ slug: "shared", path: "workspace/shared-company" }];
+  await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  await Bun.write(companyPath, `${JSON.stringify(company, null, 2)}\n`);
+
+  const inventory = await buildGitInventory({ companiesRoot: root });
+
+  expect(inventory.repos.some((repo) => repo.organization === "OmegaCo" && repo.module !== "root")).toBe(false);
+  expect(inventory.warnings.join("\n")).toContain('repository slug "shared"');
+});
+
+test("inventory reserves the implicit Organization root ID", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const manifestPath = `${root}/organizations/OmegaCo_GEN3/modules.manifest.json`;
+  const manifest = await Bun.file(manifestPath).json();
+  manifest.module_slots.push({
+    slug: "root",
+    path: "workspace/root-tools",
+    repo: "git@github.com:OmegaCo/root-tools.git",
+    branch: "main",
+  });
+  await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  const inventory = await buildGitInventory({ companiesRoot: root });
+
+  expect(inventory.repos.filter((repo) => repo.key === "OmegaCo::root")).toHaveLength(1);
+  expect(inventory.repos.some((repo) => repo.slot_path === "workspace/root-tools")).toBe(false);
+});
+
 test("inventory odmítne existující root, workspace i productionspace checkout přes symlink nebo Windows junction mimo Organizaci", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);

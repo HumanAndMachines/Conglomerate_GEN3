@@ -1,7 +1,11 @@
 import { existsSync, readFileSync } from "fs";
 import { readFile, readdir, stat } from "fs/promises";
 import { basename, join } from "path";
-import { discoverLaunchpadApps, readJson } from "./discovery-lib.mjs";
+import {
+  discoverLaunchpadApps,
+  organizationRelativePathIssue,
+  readJson,
+} from "./discovery-lib.mjs";
 import { UPDATE_CHANNELS, selectHighestStableTag } from "./update-lib.mjs";
 import { buildGitApiResponse, compactGitSummaryForApp } from "./git-api-lib.mjs";
 import { createRuntimeManager, resolveBunExecutable } from "./runtime-lib.mjs";
@@ -27,7 +31,9 @@ import {
   isOrganizationRootSlotPath,
   isOrganizationSlotContainerPath,
   normalizeOrganizationSlotPath,
+  organizationRepositorySlotCollectionIssues,
   organizationSlotPathScope,
+  organizationSlotRepositoryId,
   organizationSlotScope,
   organizationSlotTeams,
   organizationSlotUiExposure,
@@ -817,14 +823,27 @@ async function readOrganizationSpaces(companiesRoot, organization, localConfig =
     (workspace) => workspace.slug === "productionspace" || workspace.path === "productionspace",
   );
   const manifest = await readOrganizationModuleManifest(companiesRoot, organization);
-  const moduleSlots = (Array.isArray(manifest?.module_slots) ? manifest.module_slots.map(normalizeModuleSlot).filter(Boolean) : [])
+  const manifestSlots = Array.isArray(manifest?.module_slots) ? manifest.module_slots : [];
+  const companyModules = Array.isArray(config?.modules) ? config.modules : [];
+  const ambiguousSlots = ambiguousOrganizationRepositorySlots(manifestSlots, companyModules);
+  const readModelEligible = (slot) =>
+    !ambiguousSlots.has(slot)
+    && typeof slot?.path === "string"
+    && organizationRelativePathIssue({ organizationRoot, path: slot.path }) === null;
+  const moduleSlots = manifestSlots
+    .filter(readModelEligible)
+    .map(normalizeModuleSlot)
+    .filter(Boolean)
     .map((slot) => moduleSlotWithReadiness(organizationRoot, slot, principalRoles));
   // Decision 0041: deklarace modules[].workspace v company.gen3.json je druhý
   // deklarativní povrch; manifest module_slots[] má přednost při konfliktu.
   // Config-only sloty (bez manifest protějšku) se počítají do tiles i
   // readiness stejně jako manifest sloty.
   const manifestPaths = new Set(moduleSlots.map((slot) => slot.path));
-  const configOnlyModules = (Array.isArray(config?.modules) ? config.modules.map(normalizeModuleSlot).filter(Boolean) : [])
+  const configOnlyModules = companyModules
+    .filter(readModelEligible)
+    .map(normalizeModuleSlot)
+    .filter(Boolean)
     .filter((slot) => !manifestPaths.has(slot.path))
     .map((slot) => moduleSlotWithReadiness(organizationRoot, slot, principalRoles));
   const moduleDeclarations = [...moduleSlots, ...configOnlyModules];
@@ -906,6 +925,52 @@ async function readOrganizationSpaces(companiesRoot, organization, localConfig =
   };
 }
 
+function ambiguousOrganizationRepositorySlots(manifestSlots, companyModules) {
+  const ambiguous = new Set();
+  const normalizedEntries = (slots) => slots.flatMap((slot) => {
+    if (!slot || typeof slot.path !== "string") return [];
+    const path = normalizeOrganizationSlotPath(slot.path);
+    if (!path || !isCanonicalOrganizationRepositorySlotPath(path)) return [];
+    const id = isCanonicalOrganizationRepositorySlotPath(slot.path)
+      ? organizationSlotRepositoryId(slot, path)
+      : null;
+    return [{ slot, path, id }];
+  });
+  const markRepeated = (entries, keyForEntry) => {
+    const groups = new Map();
+    for (const entry of entries) {
+      const key = keyForEntry(entry);
+      if (key === null) continue;
+      groups.set(key, [...(groups.get(key) ?? []), entry]);
+    }
+    for (const group of groups.values()) {
+      if (group.length > 1) group.forEach(({ slot }) => ambiguous.add(slot));
+    }
+  };
+
+  const manifestEntries = normalizedEntries(manifestSlots);
+  const companyEntries = normalizedEntries(companyModules);
+  for (const entries of [manifestEntries, companyEntries]) {
+    markRepeated(entries, ({ path }) => path.toLowerCase());
+    markRepeated(entries, ({ id }) => id);
+  }
+
+  const combined = [...manifestEntries, ...companyEntries];
+  for (const keyForEntry of [({ path }) => path.toLowerCase(), ({ id }) => id]) {
+    const groups = new Map();
+    for (const entry of combined) {
+      const key = keyForEntry(entry);
+      if (key === null) continue;
+      groups.set(key, [...(groups.get(key) ?? []), entry]);
+    }
+    for (const group of groups.values()) {
+      const projections = new Set(group.map(({ path, id }) => `${path}\0${id}`));
+      if (projections.size > 1) group.forEach(({ slot }) => ambiguous.add(slot));
+    }
+  }
+  return ambiguous;
+}
+
 function unevaluatedTeamAccess() {
   return {
     authority: "github",
@@ -962,17 +1027,53 @@ function workspaceConformanceIssues({ declared, productionBoundary, manifest, co
       );
     }
   }
+  const productionSlotPaths = rawSlots
+    .map(({ slot }) => typeof slot?.path === "string" ? normalizeOrganizationSlotPath(slot.path) : null)
+    .filter((path) => path?.startsWith("productionspace/"));
+  for (const candidate of Array.isArray(config?.productionspace?.candidate_modules)
+    ? config.productionspace.candidate_modules
+    : []) {
+    if (typeof candidate !== "string") {
+      issues.push("company.gen3.json: productionspace.candidate_modules[] musí být cesta deklarovaného productionspace slotu");
+      continue;
+    }
+    if (productionSlotPaths.includes(candidate)) continue;
+    const caseMatch = productionSlotPaths.find(
+      (path) => path.toLowerCase() === candidate.toLowerCase(),
+    );
+    issues.push(
+      caseMatch
+        ? `company.gen3.json: productionspace candidate "${candidate}" neodpovídá přesnému psaní deklarovaného slotu "${caseMatch}"`
+        : `company.gen3.json: productionspace candidate "${candidate}" nemá odpovídající deklarovaný productionspace slot`,
+    );
+  }
   return issues;
 }
 
 function slotScopeContractIssues(manifest, config) {
   const issues = [];
+  const manifestSlots = Array.isArray(manifest?.module_slots) ? manifest.module_slots : [];
+  const companyModules = Array.isArray(config?.modules) ? config.modules : [];
+  issues.push(
+    ...organizationRepositorySlotCollectionIssues(manifestSlots).map(
+      (issue) => `modules.manifest.json: module_slots ${issue}`,
+    ),
+    ...organizationRepositorySlotCollectionIssues(companyModules).map(
+      (issue) => `company.gen3.json: modules ${issue}`,
+    ),
+    ...organizationRepositorySlotCollectionIssues(
+      [...manifestSlots, ...companyModules],
+      { allowEquivalentDuplicates: true },
+    ).map(
+      (issue) => `modules.manifest.json + company.gen3.json: nejednoznačná repo projekce — ${issue}`,
+    ),
+  );
   const rawSlots = [
-    ...(Array.isArray(manifest?.module_slots) ? manifest.module_slots : []).map((slot) => ({
+    ...manifestSlots.map((slot) => ({
       source: "modules.manifest.json",
       slot,
     })),
-    ...(Array.isArray(config?.modules) ? config.modules : []).map((slot) => ({
+    ...companyModules.map((slot) => ({
       source: "company.gen3.json",
       slot,
     })),
@@ -995,6 +1096,12 @@ function slotScopeContractIssues(manifest, config) {
     if (!isCanonicalOrganizationRepositorySlotPath(slot.path)) {
       issues.push(
         `${source}: slot path ${JSON.stringify(slot.path)} není kanonická podporovaná Organization-relative repo boundary`,
+      );
+      continue;
+    }
+    if (organizationSlotRepositoryId(slot, path) === null) {
+      issues.push(
+        `${source}: slot ${path} potřebuje explicitní stabilní lowercase slug, protože jej nelze bezpečně odvodit z repository basename`,
       );
       continue;
     }
@@ -1260,20 +1367,23 @@ function normalizeModuleSlot(slot) {
   ) {
     return null;
   }
+  const slug = organizationSlotRepositoryId(slot, path);
+  if (slug === null) return null;
   const space = organizationSlotScope(slot, path);
   const teams = organizationSlotTeams(slot, path);
   const workspace = organizationSlotWorkspace(slot, path);
   if (space !== "root" && !workspace) return null;
-  // Vnořený slot (mission-control/db) potřebuje jméno z celé org-relativní
-  // cesty, ne jen z basename ("Db").
-  const nestedSegments = path.split("/").filter((segment) => !["workspace", "productionspace", "modules"].includes(segment));
   const repo =
     space === "root" ? slot.git?.url ?? null : slot.repo ?? slot.git?.url ?? null;
   const branch =
     space === "root" ? slot.git?.branch ?? null : slot.branch ?? slot.git?.branch ?? null;
   return {
-    slug: basename(path),
-    name: humanizeSlug(nestedSegments.join("-")),
+    slug,
+    name: slot.name ?? humanizeSlug(
+      space === "root"
+        ? path.split("/").filter((segment) => !["workspace", "modules", "productionspace"].includes(segment)).join("-")
+        : slug,
+    ),
     path,
     space,
     teams,
@@ -1293,9 +1403,11 @@ function productionspaceSystems({ moduleSlots, productionspaceConfig }) {
   const productionSlots = moduleSlots.filter((slot) => slot.space === "productionspace");
   const byPath = new Map(productionSlots.map((slot) => [slot.path, slot]));
   const orderedPaths = Array.isArray(productionspaceConfig?.candidate_modules)
-    ? productionspaceConfig.candidate_modules.map((path) => path.replace(/\\/g, "/"))
+    ? productionspaceConfig.candidate_modules.filter((path) => typeof path === "string")
     : [];
-  const ordered = orderedPaths.map((path) => byPath.get(path) ?? normalizeModuleSlot({ path, workspace: "productionspace" })).filter(Boolean);
+  // candidate_modules je jen pořadí deklarovaných slotů, ne druhý source of
+  // truth schopný syntetizovat vlastní repo ID nebo mount.
+  const ordered = orderedPaths.map((path) => byPath.get(path)).filter(Boolean);
   for (const slot of productionSlots) {
     if (!ordered.some((item) => item.path === slot.path)) ordered.push(slot);
   }

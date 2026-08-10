@@ -45,8 +45,99 @@ export function isCanonicalOrganizationRepositorySlotPath(path) {
   if (normalizedPath === null || path !== normalizedPath) return false;
   return (
     organizationRootSlotPaths.has(normalizedPath)
-    || /^(workspace|modules|productionspace)\/[a-z0-9][a-z0-9-]*$/.test(normalizedPath)
+    // Fyzický basename mountu přesně zachovává jméno repozitáře včetně
+    // case, `_` a `.`; oddělené stabilní ID vrací helper níže (decision 0125).
+    || /^(workspace|modules|productionspace)\/[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9_-])?$/.test(normalizedPath)
   );
+}
+
+export function organizationSlotRepositoryId(slot, normalizedPath = null) {
+  const path = normalizeOrganizationSlotPath(normalizedPath ?? slot?.path);
+  if (!path || !isCanonicalOrganizationRepositorySlotPath(path)) return null;
+  const declared = slot?.slug;
+  const candidate = declared === undefined ? posix.basename(path) : declared;
+  if (typeof candidate !== "string" || candidate.trim() !== candidate) return null;
+  // `root` už vlastní implicitní Organization root záznam v Git inventáři.
+  if (candidate === "root") return null;
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(candidate) ? candidate : null;
+}
+
+export function githubRepositoryCoordinate(remote) {
+  if (typeof remote !== "string" || remote.trim() !== remote || remote === "") return null;
+  const prefixed = remote.match(
+    /^(?:git@github\.com:|ssh:\/\/(?:git@)?github\.com\/|https?:\/\/github\.com\/|git:\/\/github\.com\/)([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/?$/i,
+  );
+  const shorthand = remote.match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/);
+  const match = prefixed ?? shorthand;
+  if (!match) return null;
+  const repository = match[2].endsWith(".git") ? match[2].slice(0, -4) : match[2];
+  if (repository === "") return null;
+  return {
+    owner: match[1],
+    repository,
+    ownerRepo: `${match[1]}/${repository}`,
+  };
+}
+
+export function organizationSlotRepositoryMountIssue(slot, normalizedPath = null) {
+  const path = normalizeOrganizationSlotPath(normalizedPath ?? slot?.path);
+  if (!path || isOrganizationRootSlotPath(path)) return null;
+  // Stejné pořadí jako normalizeModuleSlot: validujeme přesně remote, který
+  // následně vstoupí do Git action surface.
+  const remote = slot?.repo ?? slot?.git?.url ?? slot?.repository;
+  const coordinate = githubRepositoryCoordinate(remote);
+  if (!coordinate) return null;
+  const mountBasename = posix.basename(path);
+  if (mountBasename === coordinate.repository) return null;
+  return `repository mount basename ${JSON.stringify(mountBasename)} neodpovídá přesnému názvu GitHub repozitáře ${JSON.stringify(coordinate.repository)}`;
+}
+
+// Jedna Organization nesmí dvě fyzické repo boundary promítnout do stejného
+// logického ID ani deklarovat dvě cesty, které se na case-insensitive hostu
+// sloučí. Kontrola je záměrně jen nad jedním deklarativním seznamem; manifest a
+// company config smějí stejný slot paralelně popisovat během migrace.
+export function organizationRepositorySlotCollectionIssues(
+  slots,
+  { allowEquivalentDuplicates = false } = {},
+) {
+  const issues = [];
+  const paths = new Map();
+  const ids = new Map();
+  for (const slot of Array.isArray(slots) ? slots : []) {
+    if (!slot || typeof slot.path !== "string") continue;
+    const path = normalizeOrganizationSlotPath(slot.path);
+    if (!path || !isCanonicalOrganizationRepositorySlotPath(slot.path)) continue;
+    const foldedPath = path.toLowerCase();
+    const id = organizationSlotRepositoryId(slot, path);
+    const previousPath = paths.get(foldedPath);
+    if (previousPath) {
+      const equivalent = previousPath.path === path && previousPath.id === id;
+      if (!(allowEquivalentDuplicates && equivalent)) {
+        issues.push(
+          previousPath.path === path
+            ? previousPath.id === id
+              ? `repo cesta ${JSON.stringify(path)} je deklarovaná vícekrát`
+              : `repo cesta ${JSON.stringify(path)} nese rozdílné repository slugs ${JSON.stringify(previousPath.id)} a ${JSON.stringify(id)}`
+            : `repo cesty ${JSON.stringify(previousPath.path)} a ${JSON.stringify(path)} se liší jen velikostí písmen`,
+        );
+      }
+    } else {
+      paths.set(foldedPath, { path, id });
+    }
+
+    if (id === null) continue;
+    const previousIdPath = ids.get(id);
+    if (previousIdPath) {
+      if (!(allowEquivalentDuplicates && previousIdPath === path)) {
+        issues.push(
+          `repository slug ${JSON.stringify(id)} používají zároveň ${JSON.stringify(previousIdPath)} a ${JSON.stringify(path)}`,
+        );
+      }
+    } else {
+      ids.set(id, path);
+    }
+  }
+  return issues;
 }
 
 export function organizationSlotPathScope(path) {
