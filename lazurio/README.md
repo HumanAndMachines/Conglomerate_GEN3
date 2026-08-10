@@ -81,8 +81,9 @@ config, SQLite index a Lazurio freshness state pod gitignored
 Podporovaný kontrakt je QMD `>=2.5.3` a `<3.0.0`. Ověřuje se `qmd --version` a
 `qmd status`; chybějící CLI, nepodporovaná verze, runtime chyba i známý Node
 native ABI mismatch mají strukturovaný stav. Exact lane zůstává dostupná.
-`search --update` zapisuje fingerprint povolených textových souborů, podle nějž
-`search --status` rozliší `fresh`, `stale`, `absent` a `not_evaluated`. Adapter
+`search --update` zapisuje obsahově citlivý SHA-256 fingerprint cest a bytes
+povolených textových souborů, podle nějž `search --status` rozliší `fresh`,
+`stale`, `absent` a `not_evaluated`. Adapter
 porovná snapshot před a po QMD indexaci; pokud se source během update změní,
 success state nezapíše a vyžádá bezpečné opakování.
 
