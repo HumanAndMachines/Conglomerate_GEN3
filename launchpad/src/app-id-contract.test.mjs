@@ -39,7 +39,7 @@ async function readJson(path) {
 
 test("app identity prefix se odvozuje z Organization slug, ne z Teamu nebo brandu", () => {
   expect(organizationAppIdPrefix("HumanAndMachine-ai")).toBe("humanandmachine-ai-");
-  expect(organizationAppIdPrefix("LuxiLuxi")).toBe("luxiluxi-");
+  expect(organizationAppIdPrefix("ExampleOrg")).toBe("exampleorg-");
 
   const app = {
     id: "humanandmachine-ai-website-lazurio-v1",
