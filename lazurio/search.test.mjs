@@ -358,6 +358,41 @@ test("QMD update uloží source fingerprint a status rozliší fresh od stale", 
   expect(unknown.qmd.freshness).toEqual({ status: "not_evaluated", reason: "rg_unavailable" });
 });
 
+test("QMD legacy ani neznámý fingerprint algoritmus nemůže potvrdit fresh stav", async () => {
+  const fixture = await searchFixture();
+  const scope = await discoverLazurioSearchScope({
+    root: fixture.root,
+    principalId: "immakermatty",
+  });
+  const layout = qmdStorageLayout(scope);
+  await mkdir(dirname(layout.database_path), { recursive: true });
+  await writeFile(layout.database_path, "fixture index", "utf8");
+  const spawn = qmdStub({ version: QMD_MIN_VERSION });
+  await updateLazurioQmdIndex({
+    root: fixture.root,
+    principalId: "immakermatty",
+    spawn,
+  });
+  const currentState = JSON.parse(await readFile(layout.state_path, "utf8"));
+
+  for (const algorithm of [undefined, "sha1-path-content-v0"]) {
+    const incompatibleState = { ...currentState };
+    if (algorithm === undefined) delete incompatibleState.source_fingerprint_algorithm;
+    else incompatibleState.source_fingerprint_algorithm = algorithm;
+    await writeFile(layout.state_path, `${JSON.stringify(incompatibleState, null, 2)}\n`, "utf8");
+
+    const status = await buildLazurioSearchStatus({
+      root: fixture.root,
+      principalId: "immakermatty",
+      spawn,
+    });
+    expect(status.qmd.freshness).toEqual({
+      status: "stale",
+      reason: "source_fingerprint_algorithm_unsupported",
+    });
+  }
+});
+
 test("QMD update bez source snapshotu nikdy nezapíše falešný fresh state", async () => {
   const fixture = await searchFixture();
   const scope = await discoverLazurioSearchScope({
