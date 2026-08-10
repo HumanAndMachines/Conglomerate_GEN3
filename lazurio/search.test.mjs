@@ -1,6 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -377,6 +377,53 @@ test("QMD update bez source snapshotu nikdy nezapíše falešný fresh state", a
     lazurioExitCode: 3,
   });
   expect(existsSync(layout.state_path)).toBe(false);
+});
+
+test("QMD update nezapíše fresh state, když se source změní během indexace", async () => {
+  const fixture = await searchFixture();
+  const scope = await discoverLazurioSearchScope({
+    root: fixture.root,
+    principalId: "immakermatty",
+  });
+  const layout = qmdStorageLayout(scope);
+  await mkdir(dirname(layout.database_path), { recursive: true });
+  await writeFile(layout.database_path, "fixture index", "utf8");
+  const baseSpawn = qmdStub({ version: QMD_MIN_VERSION });
+  await updateLazurioQmdIndex({
+    root: fixture.root,
+    principalId: "immakermatty",
+    spawn: baseSpawn,
+  });
+  const previousState = await readFile(layout.state_path, "utf8");
+  let changedDuringUpdate = false;
+  const spawn = (command, args, options) => {
+    const result = baseSpawn(command, args, options);
+    if (command === "qmd" && args.includes("update") && !changedDuringUpdate) {
+      writeFileSync(join(fixture.knowledge, "during-update.md"), "změna po načtení QMD\n", "utf8");
+      changedDuringUpdate = true;
+    }
+    return result;
+  };
+
+  await expect(updateLazurioQmdIndex({
+    root: fixture.root,
+    principalId: "immakermatty",
+    spawn,
+  })).rejects.toMatchObject({
+    code: "source_changed_during_qmd_update",
+    lazurioExitCode: 3,
+  });
+  expect(changedDuringUpdate).toBe(true);
+  expect(await readFile(layout.state_path, "utf8")).toBe(previousState);
+  const status = await buildLazurioSearchStatus({
+    root: fixture.root,
+    principalId: "immakermatty",
+    spawn: baseSpawn,
+  });
+  expect(status.qmd.freshness).toEqual({
+    status: "stale",
+    reason: "source_snapshot_changed_since_update",
+  });
 });
 
 test("QMD lexical adapter normalizuje výsledek do stejné scoped provenance", async () => {
