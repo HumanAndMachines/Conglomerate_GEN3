@@ -1,7 +1,14 @@
-import { existsSync, lstatSync, realpathSync } from "fs";
+import { existsSync, lstatSync, readdirSync, realpathSync } from "fs";
 import { readdir, readFile } from "fs/promises";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "path";
 import { buildPortOwner, buildPortOwnershipIndex } from "./port-ownership-lib.mjs";
+import {
+  isCanonicalOrganizationRepositorySlotPath,
+  normalizeOrganizationSlotPath,
+  organizationRepositorySlotCollectionIssues,
+  organizationSlotRepositoryId,
+  organizationSlotRepositoryMountIssue,
+} from "./organization-slot-scope-lib.mjs";
 
 const ignoredDirs = new Set([
   ".git",
@@ -68,6 +75,33 @@ function canonicalProspectivePath(path) {
   return resolve(realpathSync(cursor), ...missing);
 }
 
+function observedCasePreservingPath({ organizationRoot, declaredPath }) {
+  const observed = [];
+  let cursor = organizationRoot;
+  const segments = declaredPath.split("/");
+  for (const [index, segment] of segments.entries()) {
+    const entries = readdirSync(cursor);
+    const foldedMatches = entries.filter(
+      (entry) => entry.toLowerCase() === segment.toLowerCase(),
+    );
+    if (foldedMatches.length > 1) {
+      throw new Error(
+        `cesta "${declaredPath}" má v "${observed.join("/") || "."}" více case-insensitive protějšků`,
+      );
+    }
+    if (entries.includes(segment)) {
+      observed.push(segment);
+      cursor = join(cursor, segment);
+      continue;
+    }
+    if (foldedMatches.length === 0) return null;
+    // Rozpor v existujícím prefixu je dostatečný důkaz i tehdy, když
+    // deklarovaný leaf ještě není materializovaný.
+    return [...observed, foldedMatches[0], ...segments.slice(index + 1)].join("/");
+  }
+  return observed.join("/");
+}
+
 // Jeden fail-closed gate pro všechny deklarované Organization-relative cesty.
 // Kontroluje lexical formu i kanonický nejbližší existující předek, takže
 // traversal, absolute/drive/UNC formy a symlink do jiné Organization nikdy
@@ -99,10 +133,26 @@ export function organizationRelativePathIssue({ organizationRoot, path }) {
     if (!pathIsWithin(canonicalRoot, canonicalTarget)) {
       return `"${path}" uniká mimo Organization root (canonical containment; existující cesta se přes symlink/junction dostává mimo root Organizace)`;
     }
+    const observedPath = observedCasePreservingPath({
+      organizationRoot: lexicalRoot,
+      declaredPath: normalized,
+    });
+    if (observedPath !== null) {
+      const casingIssue = organizationRepositoryPathCasingIssue({
+        declaredPath: normalized,
+        observedPath,
+      });
+      if (casingIssue) return casingIssue;
+    }
   } catch (error) {
     return `"${path}" uniká mimo Organization root (kanonickou cestu nelze bezpečně ověřit: ${error.message})`;
   }
   return null;
+}
+
+export function organizationRepositoryPathCasingIssue({ declaredPath, observedPath }) {
+  if (declaredPath === observedPath) return null;
+  return `"${declaredPath}" neodpovídá přesnému psaní existující cesty "${observedPath}"`;
 }
 
 // Lokální cross-file gate Organization mountu. Schémata žijí v
@@ -173,6 +223,11 @@ async function organizationMountContractIssues({ organizationRoot, label, warnin
 
   const teamSlugs = declaredOrganizationTeamSlugs(companyConfig);
   const manifestSlots = Array.isArray(manifest?.module_slots) ? manifest.module_slots : [];
+  issues.push(
+    ...organizationRepositorySlotCollectionIssues(manifestSlots).map(
+      (issue) => `${label}: modules.manifest.json module_slots ${issue}`,
+    ),
+  );
   for (const [index, slot] of manifestSlots.entries()) {
     validateDeclaredModule({
       slot,
@@ -190,6 +245,19 @@ async function organizationMountContractIssues({ organizationRoot, label, warnin
   // kanonicky v modules.manifest.json, ale deprecated filesystem cesta nesmí
   // zůstat zelená jen proto, že ji drží pouze tento paralelní seznam.
   const companyModules = Array.isArray(companyConfig?.modules) ? companyConfig.modules : [];
+  issues.push(
+    ...organizationRepositorySlotCollectionIssues(companyModules).map(
+      (issue) => `${label}: company.gen3.json modules ${issue}`,
+    ),
+  );
+  issues.push(
+    ...organizationRepositorySlotCollectionIssues(
+      [...manifestSlots, ...companyModules],
+      { allowEquivalentDuplicates: true },
+    ).map(
+      (issue) => `${label}: modules.manifest.json a company.gen3.json mají nejednoznačnou repo projekci — ${issue}`,
+    ),
+  );
   for (const [index, slot] of companyModules.entries()) {
     validateDeclaredModule({
       slot,
@@ -217,12 +285,27 @@ function validateDeclaredModule({
   warnings,
 }) {
   if (!slot || typeof slot !== "object") return;
-  const path = trimmedString(slot.path)?.replace(/\\/g, "/") ?? null;
-  if (!path) return;
+  if (typeof slot.path !== "string" || slot.path === "") return;
+  const path = slot.path;
 
   const containmentIssue = organizationRelativePathIssue({ organizationRoot, path });
   if (containmentIssue) {
     issues.push(`${label}: ${source}.path ${containmentIssue}`);
+    return;
+  }
+
+  if (!isCanonicalOrganizationRepositorySlotPath(path)) {
+    issues.push(`${label}: ${source}.path "${path}" není kanonická podporovaná Organization-relative repo boundary`);
+    return;
+  }
+  const canonicalPath = normalizeOrganizationSlotPath(path);
+  if (organizationSlotRepositoryId(slot, canonicalPath) === null) {
+    issues.push(`${label}: ${source} pro "${path}" potřebuje explicitní stabilní lowercase slug`);
+    return;
+  }
+  const repositoryMountIssue = organizationSlotRepositoryMountIssue(slot, canonicalPath);
+  if (repositoryMountIssue) {
+    issues.push(`${label}: ${source}.path ${repositoryMountIssue}`);
     return;
   }
 

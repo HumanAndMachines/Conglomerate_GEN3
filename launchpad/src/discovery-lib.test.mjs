@@ -1,8 +1,12 @@
 import { afterAll, expect, test } from "bun:test";
 import { tmpdir } from "os";
 import { join } from "path";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "fs/promises";
-import { discoverLaunchpadApps, organizationRelativePathIssue } from "./discovery-lib.mjs";
+import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from "fs/promises";
+import {
+  discoverLaunchpadApps,
+  organizationRelativePathIssue,
+  organizationRepositoryPathCasingIssue,
+} from "./discovery-lib.mjs";
 
 const tempRoots = [];
 
@@ -1237,6 +1241,140 @@ test("Organization path gate rejects POSIX, drive, UNC and mixed-separator escap
   }
   expect(organizationRelativePathIssue({ organizationRoot, path: "workspace/future-module" })).toBeNull();
   expect(organizationRelativePathIssue({ organizationRoot, path: "workspace\\future-mixed" })).toBeNull();
+});
+
+test("Organization path gate compares the exact declared and observed repository casing", () => {
+  expect(organizationRepositoryPathCasingIssue({
+    declaredPath: "productionspace/Buddy_GEN2",
+    observedPath: "productionspace/Buddy_GEN2",
+  })).toBeNull();
+  expect(organizationRepositoryPathCasingIssue({
+    declaredPath: "productionspace/buddy_gen2",
+    observedPath: "productionspace/Buddy_GEN2",
+  })).toContain("přesnému psaní");
+});
+
+test("Organization path gate finds a differently-cased existing checkout on case-sensitive filesystems", async () => {
+  const root = await createCompaniesWorkspaceFixture({});
+  const organizationRoot = join(root, "organizations", "TestCompany");
+  await mkdir(join(organizationRoot, "productionspace", "Buddy_GEN2"), { recursive: true });
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    company: "test-company",
+    github_org: "TestCompany",
+    module_slots: [{
+      slug: "buddy-gen2",
+      path: "productionspace/buddy_gen2",
+      git: { url: "git@github.com:TestCompany/Buddy_GEN2.git", branch: "main" },
+    }],
+  });
+
+  const result = await discoverLaunchpadApps(root);
+
+  expect(result.apps).toEqual([]);
+  expect(result.failures.join("\n")).toContain(
+    '"productionspace/buddy_gen2" neodpovídá přesnému psaní existující cesty "productionspace/Buddy_GEN2"',
+  );
+});
+
+test("Organization path gate rejects a differently-cased existing prefix for a planned checkout", async () => {
+  const root = await createCompaniesWorkspaceFixture({});
+  const organizationRoot = join(root, "organizations", "TestCompany");
+  await mkdir(join(organizationRoot, "Workspace"), { recursive: true });
+
+  expect(organizationRelativePathIssue({
+    organizationRoot,
+    path: "workspace/future",
+  })).toContain(
+    '"workspace/future" neodpovídá přesnému psaní existující cesty "Workspace/future"',
+  );
+});
+
+test("Organization path gate rejects two case-folded siblings on case-sensitive hosts", async () => {
+  const root = await createCompaniesWorkspaceFixture({});
+  const organizationRoot = join(root, "organizations", "TestCompany");
+  const productionRoot = join(organizationRoot, "productionspace");
+  await mkdir(join(productionRoot, "Buddy_GEN2"), { recursive: true });
+  await mkdir(join(productionRoot, "buddy_gen2"), { recursive: true });
+  const siblings = await readdir(productionRoot);
+  if (siblings.filter((entry) => entry.toLowerCase() === "buddy_gen2").length < 2) return;
+
+  expect(organizationRelativePathIssue({
+    organizationRoot,
+    path: "productionspace/Buddy_GEN2",
+  })).toContain("více case-insensitive protějšků");
+});
+
+test("invalid case-preserving mount ID blocks package discovery for the whole Organization", async () => {
+  const root = await createCompaniesWorkspaceFixture({});
+  const organizationRoot = join(root, "organizations", "TestCompany");
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    company: "test-company",
+    github_org: "TestCompany",
+    module_slots: [
+      { path: "productionspace/Buddy_GEN2", git: { url: "git@github.com:TestCompany/Buddy_GEN2.git" } },
+    ],
+  });
+
+  const result = await discoverLaunchpadApps(root);
+
+  expect(result.apps).toEqual([]);
+  expect(result.failures.join("\n")).toContain("explicitní stabilní lowercase slug");
+});
+
+test("repository mount basename must match the declared GitHub repository", async () => {
+  const root = await createCompaniesWorkspaceFixture({});
+  const organizationRoot = join(root, "organizations", "TestCompany");
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    company: "test-company",
+    github_org: "TestCompany",
+    module_slots: [
+      { slug: "buddy-gen2", path: "productionspace/Buddy_GEN2", git: { url: "git@github.com:TestCompany/Other.git" } },
+    ],
+  });
+
+  const result = await discoverLaunchpadApps(root);
+
+  expect(result.apps).toEqual([]);
+  expect(result.failures.join("\n")).toContain(
+    'repository mount basename "Buddy_GEN2" neodpovídá přesnému názvu GitHub repozitáře "Other"',
+  );
+});
+
+test("raw non-canonical repository path blocks package discovery before separator cleanup", async () => {
+  const root = await createCompaniesWorkspaceFixture({});
+  const organizationRoot = join(root, "organizations", "TestCompany");
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    company: "test-company",
+    github_org: "TestCompany",
+    module_slots: [
+      { slug: "demo", path: "modules\\demo", git: { url: "git@github.com:TestCompany/demo.git" } },
+    ],
+  });
+
+  const result = await discoverLaunchpadApps(root);
+
+  expect(result.apps).toEqual([]);
+  expect(result.failures.join("\n")).toContain("není kanonická podporovaná");
+});
+
+test("cross-file logical ID mismatch blocks package discovery", async () => {
+  const root = await createCompaniesWorkspaceFixture({});
+  const organizationRoot = join(root, "organizations", "TestCompany");
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    company: "test-company",
+    github_org: "TestCompany",
+    module_slots: [
+      { slug: "demo", path: "modules/demo", git: { url: "git@github.com:TestCompany/demo.git" } },
+    ],
+  });
+  const companyConfig = await Bun.file(join(organizationRoot, "company.gen3.json")).json();
+  companyConfig.modules = [{ slug: "demo", path: "workspace/DemoV2" }];
+  await writeJson(join(organizationRoot, "company.gen3.json"), companyConfig);
+
+  const result = await discoverLaunchpadApps(root);
+
+  expect(result.apps).toEqual([]);
+  expect(result.failures.join("\n")).toContain('repository slug "demo"');
 });
 
 test("Organization module paths fail closed on traversal and canonical symlink escapes", async () => {

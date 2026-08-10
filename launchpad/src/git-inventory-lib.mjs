@@ -3,10 +3,14 @@ import { readFile, readdir } from "fs/promises";
 import { basename, dirname, join } from "path";
 import { organizationMountStructureIssues, organizationRelativePathIssue } from "./discovery-lib.mjs";
 import {
+  githubRepositoryCoordinate,
   isCanonicalOrganizationRepositorySlotPath,
   isOrganizationRootSlotDescendantPath,
   isOrganizationSlotContainerPath,
   normalizeOrganizationSlotPath,
+  organizationRepositorySlotCollectionIssues,
+  organizationSlotRepositoryId,
+  organizationSlotRepositoryMountIssue,
   organizationSlotScope,
   organizationSlotWorkspace,
 } from "./organization-slot-scope-lib.mjs";
@@ -83,7 +87,32 @@ export async function buildGitInventory({ companiesRoot, organizations = null } 
       warnings.push(`${normalized.path}: modules.manifest.json chybí nebo nejde přečíst`);
       continue;
     }
-    for (const rawSlot of Array.isArray(manifest.module_slots) ? manifest.module_slots : []) {
+    const manifestSlots = Array.isArray(manifest.module_slots) ? manifest.module_slots : [];
+    let companyConfig;
+    try {
+      companyConfig = await readJson(join(organizationRoot, "company.gen3.json"));
+    } catch (error) {
+      warnings.push(`${normalized.path}: company.gen3.json nejde přečíst; module sloty vynechány z git/worktree inventáře — ${error.message}`);
+      continue;
+    }
+    const companyModules = Array.isArray(companyConfig?.modules) ? companyConfig.modules : [];
+    const collectionIssues = [
+      ...organizationRepositorySlotCollectionIssues(manifestSlots),
+      ...organizationRepositorySlotCollectionIssues(companyModules),
+      ...organizationRepositorySlotCollectionIssues(
+        [...manifestSlots, ...companyModules],
+        { allowEquivalentDuplicates: true },
+      ),
+    ];
+    if (collectionIssues.length > 0) {
+      warnings.push(
+        ...collectionIssues.map(
+          (issue) => `${normalized.path}: module sloty vynechány z git/worktree inventáře — ${issue}`,
+        ),
+      );
+      continue;
+    }
+    for (const rawSlot of manifestSlots) {
       const containmentIssue = organizationRelativePathIssue({
         organizationRoot,
         path: rawSlot?.path,
@@ -312,7 +341,8 @@ function normalizeModuleSlot(slot, organization) {
   if (!slot || typeof slot !== "object" || typeof slot.path !== "string" || slot.path.trim() === "") return null;
   const path = normalizeOrganizationSlotPath(slot.path);
   if (!path) return null;
-  const module = basename(path);
+  const module = organizationSlotRepositoryId(slot, path);
+  if (module === null) return null;
   const space = organizationSlotScope(slot, path);
   const rootRepo =
     typeof slot.git?.url === "string" && slot.git.url.trim() !== ""
@@ -355,6 +385,11 @@ function slotPathBoundaryInventoryIssue(slot) {
   if (!isCanonicalOrganizationRepositorySlotPath(slot.path)) {
     return "cesta není kanonická podporovaná Organization-relative repo boundary";
   }
+  if (organizationSlotRepositoryId(slot, normalizedPath) === null) {
+    return "repository mount potřebuje explicitní stabilní lowercase slug";
+  }
+  const repositoryMountIssue = organizationSlotRepositoryMountIssue(slot, normalizedPath);
+  if (repositoryMountIssue) return repositoryMountIssue;
   return null;
 }
 
@@ -398,10 +433,8 @@ function repoKindForSlot(slot) {
 
 function sanitizeRemote(remote) {
   if (!remote || typeof remote !== "string") return null;
-  const github = remote.match(/github\.com[:/]([^/]+\/[^/.]+)(?:\.git)?$/);
-  if (github) return { url_kind: "github", owner_repo: github[1] };
-  const ownerRepo = remote.match(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/);
-  if (ownerRepo) return { url_kind: "github", owner_repo: remote };
+  const github = githubRepositoryCoordinate(remote);
+  if (github) return { url_kind: "github", owner_repo: github.ownerRepo };
   return { url_kind: "other" };
 }
 

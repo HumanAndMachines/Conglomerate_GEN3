@@ -355,6 +355,141 @@ test("apps response exposes manifest-only workspace modules and productionspace 
   expect(declarationCheck?.details.some((detail) => detail.includes("decision 0041"))).toBe(true);
 });
 
+test("case-preserving productionspace mount uses explicit lowercase ID and fails closed without it", async () => {
+  const root = await createCompaniesWorkspaceFixture();
+  const companyRoot = join(root, "organizations", "HumanAndMachine-ai_GEN3");
+  await mkdir(join(companyRoot, "manual"), { recursive: true });
+  await mkdir(join(companyRoot, "company", "colleagues"), { recursive: true });
+  await writeJson(join(companyRoot, "company.gen3.json"), {
+    organization_generation: "gen3",
+    company: {
+      slug: "HumanAndMachine-ai",
+      display_name: "Human and Machine",
+      github_org: "HumanAndMachine-ai",
+    },
+    productionspace: { status: "active" },
+  });
+  const manifestPath = join(companyRoot, "modules.manifest.json");
+  const manifest = {
+    company: "HumanAndMachine-ai",
+    github_org: "HumanAndMachine-ai",
+    module_slots: [{
+      slug: "buddy-gen2",
+      name: "Buddy runtime",
+      path: "productionspace/Buddy_GEN2",
+      space: "productionspace",
+      git: { url: "git@github.com:HumanAndMachine-ai/Buddy_GEN2.git", branch: "main" },
+    }],
+  };
+  await writeJson(manifestPath, manifest);
+
+  const valid = await buildLaunchpadAppsResponse({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+  });
+  expect(valid.organizations[0]?.productionspace?.systems[0]).toMatchObject({
+    slug: "buddy-gen2",
+    name: "Buddy runtime",
+    path: "productionspace/Buddy_GEN2",
+  });
+
+  delete manifest.module_slots[0].slug;
+  await writeJson(manifestPath, manifest);
+  const invalidCompanyConfig = await Bun.file(join(companyRoot, "company.gen3.json")).json();
+  invalidCompanyConfig.modules = [{
+    slug: "buddy-gen2",
+    path: "productionspace/Buddy_GEN2",
+    space: "productionspace",
+  }];
+  await writeJson(join(companyRoot, "company.gen3.json"), invalidCompanyConfig);
+  const invalid = await buildLaunchpadAppsResponse({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+  });
+  expect(invalid.organizations[0]?.productionspace?.systems ?? []).toEqual([]);
+  expect(invalid.failures.join("\n")).toContain("explicitní stabilní lowercase slug");
+});
+
+test("apps read model omits only cross-file ambiguous repository identities", async () => {
+  const root = await createCompaniesWorkspaceFixture();
+  const companyRoot = join(root, "organizations", "ProjectionCo_GEN3");
+  await mkdir(join(companyRoot, "manual"), { recursive: true });
+  await mkdir(join(companyRoot, "company", "colleagues"), { recursive: true });
+  await writeJson(join(companyRoot, "company.gen3.json"), {
+    organization_generation: "gen3",
+    company: { slug: "ProjectionCo", display_name: "Projection Co", github_org: "ProjectionCo" },
+    teams: [{ slug: "workspace", display_name: "Workspace", default: true }],
+    modules: [
+      { slug: "shared", path: "workspace/bar", teams: ["workspace"] },
+      { slug: "healthy-config", path: "workspace/healthy-config", teams: ["workspace"] },
+    ],
+  });
+  await writeJson(join(companyRoot, "modules.manifest.json"), {
+    company: "ProjectionCo",
+    github_org: "ProjectionCo",
+    module_slots: [
+      { slug: "shared", path: "workspace/foo", teams: ["workspace"] },
+      { slug: "healthy-manifest", path: "workspace/healthy-manifest", teams: ["workspace"] },
+    ],
+  });
+
+  const response = await buildLaunchpadAppsResponse({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+  });
+  const modules = response.organizations[0]?.teams[0]?.modules ?? [];
+
+  expect(modules.map((module) => module.slug).sort()).toEqual([
+    "healthy-config",
+    "healthy-manifest",
+  ]);
+  expect(response.failures.join("\n")).toContain('repository slug "shared"');
+});
+
+test("apps read model rejects live casing drift and treats productionspace candidates as ordering only", async () => {
+  const root = await createCompaniesWorkspaceFixture();
+  const companyRoot = join(root, "organizations", "CandidateCo_GEN3");
+  await mkdir(join(companyRoot, "manual"), { recursive: true });
+  await mkdir(join(companyRoot, "company", "colleagues"), { recursive: true });
+  await mkdir(join(companyRoot, "workspace", "Dashboard"), { recursive: true });
+  await writeJson(join(companyRoot, "company.gen3.json"), {
+    organization_generation: "gen3",
+    company: { slug: "CandidateCo", display_name: "Candidate Co", github_org: "CandidateCo" },
+    teams: [{ slug: "workspace", display_name: "Workspace", default: true }],
+    productionspace: {
+      status: "active",
+      candidate_modules: ["productionspace/dashboard", "productionspace/Buddy_GEN2"],
+    },
+  });
+  await writeJson(join(companyRoot, "modules.manifest.json"), {
+    company: "CandidateCo",
+    github_org: "CandidateCo",
+    module_slots: [
+      { slug: "dashboard-workspace", path: "workspace/dashboard", teams: ["workspace"] },
+      { slug: "dashboard", path: "productionspace/Dashboard", space: "productionspace" },
+    ],
+  });
+
+  const response = await buildLaunchpadAppsResponse({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+  });
+  const organization = response.organizations[0];
+
+  expect(organization?.teams[0]?.modules ?? []).toEqual([]);
+  expect(organization?.productionspace?.systems.map((system) => system.slug)).toEqual(["dashboard"]);
+  expect(organization?.workspace_conformance_issues.join("\n")).toContain(
+    'productionspace candidate "productionspace/dashboard" neodpovídá přesnému psaní',
+  );
+  expect(organization?.workspace_conformance_issues.join("\n")).toContain(
+    'productionspace candidate "productionspace/Buddy_GEN2" nemá odpovídající deklarovaný',
+  );
+});
+
 test("Doctor blokuje konfliktní space, ale productionspace zůstane read-only", async () => {
   const root = await createCompaniesWorkspaceFixture();
   const companyRoot = join(root, "organizations", "OmegaCo_GEN3");
