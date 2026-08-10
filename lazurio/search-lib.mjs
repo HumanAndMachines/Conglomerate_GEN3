@@ -20,6 +20,7 @@ export const LAZURIO_SEARCH_STATUS_SCHEMA_VERSION = "lazurio.search.status.v1";
 export const LAZURIO_SEARCH_SCOPES_SCHEMA_VERSION = "lazurio.search.scopes.v1";
 export const QMD_CONTRACT_VERSION = "lazurio.qmd.adapter.v1";
 export const QMD_MIN_VERSION = "2.5.3";
+const QMD_SOURCE_FINGERPRINT_ALGORITHM = "sha256-path-content-v1";
 
 const searchScopesUrl = new URL("./search-scopes.v1.json", import.meta.url);
 const githubUsernamePattern = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/;
@@ -317,9 +318,11 @@ export async function buildLazurioSearchStatus({
       ? { status: "not_evaluated", reason: snapshot.reason }
     : !state
       ? { status: "not_evaluated", reason: "lazurio_update_state_absent" }
-      : state.source_fingerprint === snapshot.fingerprint
-        ? { status: "fresh", reason: "source_snapshot_matches_last_update" }
-        : { status: "stale", reason: "source_snapshot_changed_since_update" };
+      : state.source_fingerprint_algorithm !== QMD_SOURCE_FINGERPRINT_ALGORITHM
+        ? { status: "stale", reason: "source_fingerprint_algorithm_unsupported" }
+        : state.source_fingerprint === snapshot.fingerprint
+          ? { status: "fresh", reason: "source_snapshot_matches_last_update" }
+          : { status: "stale", reason: "source_snapshot_changed_since_update" };
 
   return {
     schema_version: LAZURIO_SEARCH_STATUS_SCHEMA_VERSION,
@@ -396,7 +399,7 @@ export async function updateLazurioQmdIndex({
     scope_id: scope.id,
     organization_slug: scope.organization.slug,
     principal_github_username: scope.principal.github_username,
-    source_fingerprint_algorithm: "sha256-path-content-v1",
+    source_fingerprint_algorithm: QMD_SOURCE_FINGERPRINT_ALGORITHM,
     source_fingerprint: afterSnapshot.fingerprint,
     updated_at: new Date().toISOString(),
     embedded_at: embeddedAt,
@@ -446,9 +449,11 @@ export async function searchLazurioQmd({
     schema_version: LAZURIO_SEARCH_RESULT_SCHEMA_VERSION,
     mode,
     query: normalizedQuery,
-    freshness: state
-      ? { status: "last_updated", reason: "qmd_local_state", updated_at: state.updated_at }
-      : { status: "not_evaluated", reason: "lazurio_update_state_absent" },
+    freshness: !state
+      ? { status: "not_evaluated", reason: "lazurio_update_state_absent" }
+      : state.source_fingerprint_algorithm !== QMD_SOURCE_FINGERPRINT_ALGORITHM
+        ? { status: "not_evaluated", reason: "source_fingerprint_algorithm_unsupported" }
+        : { status: "last_updated", reason: "qmd_local_state", updated_at: state.updated_at },
     scope: publicScope(scope),
     result_count: normalizedResults.length,
     truncated: normalizedResults.length >= normalizedLimit,
