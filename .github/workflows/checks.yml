@@ -47,7 +47,21 @@ jobs:
           sudo apt-get install --no-install-recommends --yes ripgrep
       - name: Instalace deklarované Lazurio exact-search závislosti (Windows)
         if: runner.os == 'Windows'
-        run: choco install ripgrep --yes --no-progress
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($attempt in 1..3) {
+            choco install ripgrep --yes --no-progress
+            if (Get-Command rg -ErrorAction SilentlyContinue) {
+              rg --version
+              exit 0
+            }
+            if ($attempt -lt 3) {
+              Write-Warning "Chocolatey nepublikoval rg (pokus $attempt/3); opakuji standardní instalaci."
+              Start-Sleep -Seconds (5 * $attempt)
+            }
+          }
+          throw 'Chocolatey po třech pokusech nezpřístupnil příkaz rg.'
       - name: Launchpad discovery check + testy
         run: bun run check
 
