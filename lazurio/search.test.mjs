@@ -1,7 +1,7 @@
 import { afterAll, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, statSync, utimesSync, writeFileSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { link, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -599,6 +599,67 @@ test("QMD adapter nepublikuje stale hity mimo aktuální source boundary", async
     text: "Lazurio znalosti",
   })]);
   expect(JSON.stringify(result)).not.toContain("STALE_INDEX_");
+});
+
+test("hard link z Personalspace se nečte ani neindexuje v exact nebo QMD lane", async () => {
+  const fixture = await searchFixture();
+  const canary = "PERSONALSPACE_HARD_LINK_CANARY";
+  const personalFile = join(fixture.personalspace, "hard-link-source.md");
+  const linkedFile = join(fixture.knowledge, "hardlink.md");
+  await writeFile(personalFile, `${canary}\n`, "utf8");
+  await link(personalFile, linkedFile);
+  const metadata = statSync(linkedFile);
+  expect(metadata.nlink).toBeGreaterThan(1);
+
+  let exactSpawned = false;
+  await expect(searchLazurioExact({
+    root: fixture.root,
+    principalId: "immakermatty",
+    query: canary,
+    spawn: (...args) => {
+      exactSpawned = true;
+      return realSpawn(...args);
+    },
+  })).rejects.toMatchObject({ code: "search_source_hard_link", lazurioExitCode: 3 });
+  expect(exactSpawned).toBe(false);
+
+  const scope = await discoverLazurioSearchScope({
+    root: fixture.root,
+    principalId: "immakermatty",
+  });
+  const layout = qmdStorageLayout(scope);
+  await expect(materializeQmdConfig(scope, layout)).rejects.toMatchObject({
+    code: "qmd_source_hard_link",
+    lazurioExitCode: 3,
+  });
+  const calls = [];
+  await expect(updateLazurioQmdIndex({
+    root: fixture.root,
+    principalId: "immakermatty",
+    spawn: qmdStub({ version: QMD_MIN_VERSION, calls }),
+  })).rejects.toMatchObject({ code: "qmd_source_hard_link", lazurioExitCode: 3 });
+  expect(calls.some(({ args }) => args.includes("update"))).toBe(false);
+  expect(existsSync(layout.config_path)).toBe(false);
+  expect(existsSync(layout.state_path)).toBe(false);
+
+  await mkdir(dirname(layout.database_path), { recursive: true });
+  await writeFile(layout.database_path, "fixture", "utf8");
+  const qmd = await searchLazurioQmd({
+    root: fixture.root,
+    principalId: "immakermatty",
+    query: "hard link boundary",
+    mode: "lexical",
+    spawn: qmdStub({
+      version: QMD_MIN_VERSION,
+      queryOutput: JSON.stringify([{
+        file: "qmd://knowledge/hardlink.md?index=lazurio-humanandmachine-ai-immakermatty",
+        line: 1,
+        snippet: canary,
+      }]),
+    }),
+  });
+  expect(qmd.results).toEqual([]);
+  expect(JSON.stringify(qmd)).not.toContain(canary);
 });
 
 test("CLI exact search vrací strojově čitelný scoped výsledek", async () => {

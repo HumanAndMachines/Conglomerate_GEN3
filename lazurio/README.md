@@ -69,6 +69,9 @@ Bezpečný interní symlink přeskočí, takže nevytvoří duplicitu kanonické
 Každý QMD hit se před publikací znovu ověří proti aktuální source boundary:
 excluded, chybějící, binární a symlinkované cesty se zahodí i tehdy, když je
 stale lokální index ještě obsahuje.
+Textové soubory s více filesystem linky (`nlink !== 1`) se odmítnou před exact
+scanem i QMD indexací a znovu při publikaci hitu, takže hard link z cizího
+scope nemůže přenést jeho bytes pod povolenou cestu.
 
 `provider_access_status: not_evaluated` je záměrně pravdivý: lokální manifest a
 mount nejsou živý GitHub provider readback. Pilot tedy prokazuje lokální scope,
