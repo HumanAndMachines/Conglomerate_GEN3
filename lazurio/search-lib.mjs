@@ -396,6 +396,7 @@ export async function updateLazurioQmdIndex({
     scope_id: scope.id,
     organization_slug: scope.organization.slug,
     principal_github_username: scope.principal.github_username,
+    source_fingerprint_algorithm: "sha256-path-content-v1",
     source_fingerprint: afterSnapshot.fingerprint,
     updated_at: new Date().toISOString(),
     embedded_at: embeddedAt,
@@ -718,7 +719,10 @@ async function buildSourceSnapshot(scope, { spawn }) {
       if (!isPathInside(source.absolute_path, filePath)) continue;
       const metadata = await stat(filePath);
       if (!metadata.isFile()) continue;
-      rows.push(`${source.id}\0${file}\0${metadata.size}\0${Math.trunc(metadata.mtimeMs)}`);
+      const contentFingerprint = createHash("sha256")
+        .update(await readFile(filePath))
+        .digest("hex");
+      rows.push(`${source.id}\0${file}\0${contentFingerprint}`);
     }
   }
   return {

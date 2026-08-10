@@ -1,6 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -424,6 +424,50 @@ test("QMD update nezapíše fresh state, když se source změní během indexace
     status: "stale",
     reason: "source_snapshot_changed_since_update",
   });
+});
+
+test("QMD freshness zachytí stejně dlouhý přepis se zachovaným mtime", async () => {
+  const fixture = await searchFixture();
+  const sourcePath = join(fixture.knowledge, "same-metadata.md");
+  await writeFile(sourcePath, "AAAAA\n", "utf8");
+  const originalMetadata = statSync(sourcePath);
+  const scope = await discoverLazurioSearchScope({
+    root: fixture.root,
+    principalId: "immakermatty",
+  });
+  const layout = qmdStorageLayout(scope);
+  await mkdir(dirname(layout.database_path), { recursive: true });
+  await writeFile(layout.database_path, "fixture index", "utf8");
+  const baseSpawn = qmdStub({ version: QMD_MIN_VERSION });
+  await updateLazurioQmdIndex({
+    root: fixture.root,
+    principalId: "immakermatty",
+    spawn: baseSpawn,
+  });
+  const previousState = await readFile(layout.state_path, "utf8");
+  let rewrittenMetadata;
+  const spawn = (command, args, options) => {
+    const result = baseSpawn(command, args, options);
+    if (command === "qmd" && args.includes("update") && !rewrittenMetadata) {
+      writeFileSync(sourcePath, "BBBBB\n", "utf8");
+      utimesSync(sourcePath, originalMetadata.atime, originalMetadata.mtime);
+      rewrittenMetadata = statSync(sourcePath);
+    }
+    return result;
+  };
+
+  await expect(updateLazurioQmdIndex({
+    root: fixture.root,
+    principalId: "immakermatty",
+    spawn,
+  })).rejects.toMatchObject({
+    code: "source_changed_during_qmd_update",
+    lazurioExitCode: 3,
+  });
+  expect(rewrittenMetadata.size).toBe(originalMetadata.size);
+  expect(Math.trunc(rewrittenMetadata.mtimeMs)).toBe(Math.trunc(originalMetadata.mtimeMs));
+  expect(await readFile(sourcePath, "utf8")).toBe("BBBBB\n");
+  expect(await readFile(layout.state_path, "utf8")).toBe(previousState);
 });
 
 test("QMD lexical adapter normalizuje výsledek do stejné scoped provenance", async () => {
