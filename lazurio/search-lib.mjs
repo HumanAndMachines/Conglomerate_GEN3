@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { spawnSync as nodeSpawnSync } from "node:child_process";
-import { existsSync, lstatSync, realpathSync } from "node:fs";
+import { closeSync, existsSync, lstatSync, openSync, readSync, realpathSync } from "node:fs";
 import { mkdir, open, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
@@ -871,18 +871,57 @@ function normalizeQmdResult(entry, scope) {
     return null;
   }
   const relativePath = normalizeRgPath(decodedPath);
+  const absolutePath = resolveCurrentQmdResultFile(source, relativePath);
+  if (!absolutePath) return null;
   return {
     path: joinPosix(source.path, relativePath),
-    repository_relative_path: joinPosix(
-      relative(source.repository_absolute_path, source.absolute_path),
-      relativePath,
-    ),
+    repository_relative_path: joinPosix(relative(source.repository_absolute_path, absolutePath)),
     line: Number.isInteger(entry.line) ? entry.line : 1,
     column: 1,
     score: typeof entry.score === "number" ? entry.score : null,
     text: typeof entry.snippet === "string" ? entry.snippet : typeof entry.text === "string" ? entry.text : "",
     provenance: resultProvenance(scope, source),
   };
+}
+
+function resolveCurrentQmdResultFile(source, relativePath) {
+  const pathParts = relativePath.split("/");
+  const basename = pathParts.at(-1);
+  if (
+    pathParts.some((part) => excludedDirectoryNames.has(part))
+    || basename === ".env"
+    || basename.startsWith(".env.")
+    || !textExtensionSet.has(extname(basename).slice(1).toLowerCase())
+  ) {
+    return null;
+  }
+
+  let candidate = source.absolute_path;
+  try {
+    for (const [index, part] of pathParts.entries()) {
+      candidate = join(candidate, part);
+      const metadata = lstatSync(candidate);
+      if (metadata.isSymbolicLink()) return null;
+      if (index < pathParts.length - 1 && !metadata.isDirectory()) return null;
+      if (index === pathParts.length - 1 && !metadata.isFile()) return null;
+    }
+    const canonicalSourceRoot = realpathSync(source.absolute_path);
+    const canonicalCandidate = realpathSync(candidate);
+    if (!isPathInside(canonicalSourceRoot, canonicalCandidate)) return null;
+
+    const sample = Buffer.alloc(8192);
+    let descriptor;
+    try {
+      descriptor = openSync(candidate, "r");
+      const bytesRead = readSync(descriptor, sample, 0, sample.length, 0);
+      if (sample.subarray(0, bytesRead).includes(0)) return null;
+    } finally {
+      if (descriptor !== undefined) closeSync(descriptor);
+    }
+    return candidate;
+  } catch {
+    return null;
+  }
 }
 
 function resultProvenance(scope, source) {
