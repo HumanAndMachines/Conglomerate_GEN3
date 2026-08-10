@@ -336,6 +336,27 @@ test("CLI exact search vrací strojově čitelný scoped výsledek", async () =>
   expect(stdout).not.toContain(fixture.root);
 });
 
+test("CLI hledá jednoslovné exact dotazy status a update místo spuštění akcí", async () => {
+  const fixture = await searchFixture();
+  await writeFile(join(fixture.knowledge, "action-words.md"), "status update\n", "utf8");
+
+  for (const query of ["status", "update"]) {
+    const result = Bun.spawnSync([
+      process.execPath,
+      cliPath,
+      "search",
+      query,
+      "--json",
+      "--root",
+      fixture.root,
+    ], { stdout: "pipe", stderr: "pipe" });
+    const parsed = JSON.parse(new TextDecoder().decode(result.stdout));
+
+    expect(result.exitCode).toBe(0);
+    expect(parsed).toMatchObject({ mode: "exact", query, result_count: 1 });
+  }
+});
+
 test("CLI fail-closed odmítne search-only flag u contextu i query-only flag u statusu", async () => {
   const fixture = await searchFixture();
   const context = Bun.spawnSync([
@@ -352,7 +373,7 @@ test("CLI fail-closed odmítne search-only flag u contextu i query-only flag u s
     process.execPath,
     cliPath,
     "search",
-    "status",
+    "--status",
     "--limit",
     "5",
     "--root",

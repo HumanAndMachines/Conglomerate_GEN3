@@ -13,12 +13,12 @@ bun run lazurio -- search "český dotaz"
 bun run lazurio -- search "český dotaz" --json --limit 20
 
 # diagnostika exact lane, QMD runtime a čerstvosti indexu
-bun run lazurio -- search status
-bun run lazurio -- search status --json
+bun run lazurio -- search --status
+bun run lazurio -- search --status --json
 
 # lokální QMD index; --embed doplní vektory pro semantic/hybrid
-bun run lazurio -- search update
-bun run lazurio -- search update --embed
+bun run lazurio -- search --update
+bun run lazurio -- search --update --embed
 bun run lazurio -- search "záměr produktu" --mode lexical
 bun run lazurio -- search "záměr produktu" --mode semantic
 bun run lazurio -- search "záměr produktu" --mode hybrid
@@ -29,6 +29,11 @@ Strojové výsledky mají schema marker `lazurio.search.results.v1`, diagnostika
 obsahuje relativní cestu a provenance: Organization, Principála, Team, scope,
 source, repository a stav provider access. Absolutní lokální cesty se ve
 výstupu nepublikují.
+
+Akce jsou záměrně flagy `--status` a `--update`, ne rezervovaná slova v pozici
+dotazu. `lazurio search status` i `lazurio search update` proto vždy provedou
+živé exact hledání těchto slov; diagnostiku nebo lokální index mutation nelze
+spustit nechtěnou kolizí s běžným dotazem.
 
 Exact lane spouští `rg` samostatně v každém povoleném source. Používá
 `--no-ignore-parent`, aby parent `.gitignore` Launchpad rootu neschoval
@@ -73,8 +78,8 @@ config, SQLite index a Lazurio freshness state pod gitignored
 Podporovaný kontrakt je QMD `>=2.5.3` a `<3.0.0`. Ověřuje se `qmd --version` a
 `qmd status`; chybějící CLI, nepodporovaná verze, runtime chyba i známý Node
 native ABI mismatch mají strukturovaný stav. Exact lane zůstává dostupná.
-`search update` zapisuje fingerprint povolených textových souborů, podle nějž
-`search status` rozliší `fresh`, `stale`, `absent` a `not_evaluated`.
+`search --update` zapisuje fingerprint povolených textových souborů, podle nějž
+`search --status` rozliší `fresh`, `stale`, `absent` a `not_evaluated`.
 
 Kontrakt byl 2026-08-10 porovnán s oficiální dokumentací QMD pro pojmenované
 indexy, `QMD_CONFIG_DIR`, `XDG_CACHE_HOME`, config collections/ignore a příkazy

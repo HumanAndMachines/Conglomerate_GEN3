@@ -98,6 +98,8 @@ function parseArgs(argv) {
     mode: "exact",
     limit: 50,
     embed: false,
+    status: false,
+    update: false,
     operands: [],
     searchFlags: new Set(),
   };
@@ -122,6 +124,11 @@ function parseArgs(argv) {
     if (arg === "--embed") {
       parsed.embed = true;
       parsed.searchFlags.add("--embed");
+      continue;
+    }
+    if (arg === "--status" || arg === "--update") {
+      parsed[arg.slice(2)] = true;
+      parsed.searchFlags.add(arg);
       continue;
     }
     if (arg === "--scope" || arg === "--mode" || arg === "--limit") {
@@ -165,19 +172,22 @@ function parseArgs(argv) {
     throw new Error(`Neznámý argument '${arg}'.`);
   }
   if (parsed.command === "search") {
-    const reservedAction = parsed.operands.length === 1 && ["status", "update"].includes(parsed.operands[0])
-      ? parsed.operands[0]
-      : null;
-    parsed.searchAction = reservedAction ?? "query";
-    parsed.query = reservedAction ? null : parsed.operands.join(" ");
+    if (parsed.status && parsed.update) {
+      throw new Error("--status a --update se vzájemně vylučují.");
+    }
+    parsed.searchAction = parsed.status ? "status" : parsed.update ? "update" : "query";
+    parsed.query = parsed.searchAction === "query" ? parsed.operands.join(" ") : null;
     if (!new Set(["exact", "lexical", "semantic", "hybrid"]).has(parsed.mode)) {
       throw new Error(`--mode musí být exact, lexical, semantic nebo hybrid.`);
     }
     if (parsed.searchAction === "query" && !parsed.query) {
-      throw new Error("search vyžaduje dotaz, `status` nebo `update`.");
+      throw new Error("search vyžaduje dotaz, --status nebo --update.");
+    }
+    if (parsed.searchAction !== "query" && parsed.operands.length > 0) {
+      throw new Error("--status a --update nepřijímají search dotaz.");
     }
     if (parsed.embed && parsed.searchAction !== "update") {
-      throw new Error("--embed lze použít pouze s `lazurio search update`.");
+      throw new Error("--embed lze použít pouze s `lazurio search --update`.");
     }
     if (parsed.searchAction !== "query" && ["--mode", "--limit"].some((flag) => parsed.searchFlags.has(flag))) {
       throw new Error("--mode a --limit lze použít pouze se search dotazem.");
@@ -202,8 +212,8 @@ function usage() {
     "  lazurio context --json [--root <cesta>]",
     "  lazurio doctor [--json] [--root <cesta>]",
     "  lazurio search <dotaz> [--mode exact|lexical|semantic|hybrid] [--scope lazurio] [--limit N] [--json] [--root <cesta>]",
-    "  lazurio search status [--scope lazurio] [--json] [--root <cesta>]",
-    "  lazurio search update [--embed] [--scope lazurio] [--json] [--root <cesta>]",
+    "  lazurio search --status [--scope lazurio] [--json] [--root <cesta>]",
+    "  lazurio search --update [--embed] [--scope lazurio] [--json] [--root <cesta>]",
   ].join("\n");
 }
 

@@ -25,7 +25,7 @@ Ve vývojovém checkoutu se CLI spouští přes Bun:
 bun run lazurio -- context --json
 bun run lazurio -- doctor
 bun run lazurio -- search "český dotaz"
-bun run lazurio -- search status
+bun run lazurio -- search --status
 ```
 
 Oba příkazy přijímají `--root <cesta>`. Root může být buď tento Launchpad root
@@ -41,7 +41,7 @@ jeho Organization mount ignoruje parent root Git. Nespouští však plošné
 `rg --no-ignore` nad Konglomerátem: povolené zdroje skládá z Launchpad discovery,
 Organization manifestu a verzovaného pilotního registru. QMD lane je volitelný
 lokální index pro `lexical`, `semantic` a `hybrid`; jeho stav a čerstvost ukáže
-`search status` a rozbitý QMD neblokuje exact lane. Úplný kontrakt, bezpečnostní
+`search --status` a rozbitý QMD neblokuje exact lane. Úplný kontrakt, bezpečnostní
 hranice a příkazy drží [lazurio/README.md](lazurio/README.md).
 
 ## Začíná se v chatu
