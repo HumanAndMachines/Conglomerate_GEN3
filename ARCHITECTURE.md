@@ -134,9 +134,10 @@ Mašině. Kvůli tomu nevzniká druhý chat vydávající Agenta za Residenta.
 
 ### Lazurio CLI v0 je podklad Agenta, ne třetí identita
 
-První Lazurio CLI řeší pouze dvě read-only potřeby Agenta: bezpečný strojový
-`context` a přístup ke stávajícímu Doctoru. Je to projekce nad kanonickými
-manifesty a runtime fakty, nikoli nový store, IAM nebo veřejné Core API.
+První Lazurio CLI řeší tři read-only potřeby Agenta: bezpečný strojový
+`context`, přístup ke stávajícímu Doctoru a úzký manifest-scoped search pilot
+pro první jmenovaný consumer. Je to projekce nad kanonickými manifesty a
+runtime fakty, nikoli nový store, IAM nebo veřejné Core API.
 
 - `context` vrací pouze výslovně povolená metadata Principála, Mašiny a
   Personalspace. Residentovu osobnost, paměť, chat, sessions, secrets ani
@@ -147,8 +148,14 @@ manifesty a runtime fakty, nikoli nový store, IAM nebo veřejné Core API.
 - `doctor` nevytváří další diagnostický model. V Launchpad rootu používá stejné
   strukturované jádro jako dnešní Doctor a na rootless Buddy VPS spouští doctor
   deklarovaný samotným Personalspace manifestem.
-- Organization context, MCP, writes, distribuce a stabilní API vzniknou až z
-  ověřeného navazujícího consumeru; nejsou skrytou součástí v0.
+- Search nevytváří vlastní engine ani prohledávání celého rootu. Exact lane je
+  živý adapter nad `rg`; lexical/semantic/hybrid lane je adapter nad lokálním
+  QMD indexem. Scope vzniká průnikem Launchpad discovery, Organization manifestu
+  a explicitního pilotního registru, indexy jsou oddělené per Organization a
+  Principál a nefunkční QMD neblokuje exact lane.
+- Obecný Organization context/effective workspace, MCP, writes, distribuce a
+  stabilní API vzniknou až z dalších ověřených consumerů; nejsou skrytou
+  součástí v0.
 
 Zulip proto zůstává chat s Residentem, T3 Code nebo CLI chat s Agenty a Lazurio
 CLI jejich strojový podklad. Čistá Agent session se spuštěním CLI nestává

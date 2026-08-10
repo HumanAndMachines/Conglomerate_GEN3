@@ -1,0 +1,38 @@
+{
+  "schema_version": "lazurio.search.scopes.v1",
+  "scopes": [
+    {
+      "id": "lazurio",
+      "display_name": "Lazurio",
+      "organization_slug": "HumanAndMachine-ai",
+      "pilot_principals": [
+        "immakermatty"
+      ],
+      "required_team": "lazurio",
+      "access": {
+        "status": "not_evaluated",
+        "reason": "provider_authority_not_checked"
+      },
+      "sources": [
+        {
+          "id": "website",
+          "repository_path": "workspace/website-lazurio",
+          "path": "workspace/website-lazurio",
+          "context": "Veřejný staging web produktu Lazurio."
+        },
+        {
+          "id": "design-system",
+          "repository_path": "workspace/design-system-lazurio",
+          "path": "workspace/design-system-lazurio",
+          "context": "Vizuální identita, tokeny a podklady produktu Lazurio."
+        },
+        {
+          "id": "knowledge",
+          "repository_path": "workspace/knowledgebase",
+          "path": "workspace/knowledgebase/data/v2/lazurio-ai",
+          "context": "Explicitně vymezená znalostní větev produktu Lazurio."
+        }
+      ]
+    }
+  ]
+}
