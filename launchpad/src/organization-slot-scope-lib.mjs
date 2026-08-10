@@ -7,13 +7,17 @@ const organizationRootSlotPaths = new Set([
   "mission-control",
   "mission-control/db",
 ]);
+const organizationRootSlotPattern = /^[a-z0-9][a-z0-9-]*$/;
 const organizationDiagnosticsOnlySlotPaths = new Set([
   "mission-control/db",
 ]);
 
-export function isOrganizationRootSlotPath(path) {
+export function isOrganizationRootSlotPath(path, slot = null) {
   const normalizedPath = normalizeOrganizationSlotPath(path);
-  return normalizedPath !== null && organizationRootSlotPaths.has(normalizedPath);
+  return normalizedPath !== null && (
+    organizationRootSlotPaths.has(normalizedPath)
+    || (slot?.space === "root" && organizationRootSlotPattern.test(normalizedPath))
+  );
 }
 
 export function isOrganizationRootSlotDescendantPath(path) {
@@ -33,7 +37,7 @@ export function isOrganizationSlotContainerPath(path) {
   );
 }
 
-export function isCanonicalOrganizationRepositorySlotPath(path) {
+export function isCanonicalOrganizationRepositorySlotPath(path, slot = null) {
   if (
     typeof path !== "string"
     || path.includes("\\")
@@ -44,15 +48,15 @@ export function isCanonicalOrganizationRepositorySlotPath(path) {
   const normalizedPath = normalizeOrganizationSlotPath(path);
   if (normalizedPath === null || path !== normalizedPath) return false;
   return (
-    organizationRootSlotPaths.has(normalizedPath)
+    isOrganizationRootSlotPath(normalizedPath, slot)
     || /^(workspace|modules|productionspace)\/[a-z0-9][a-z0-9-]*$/.test(normalizedPath)
   );
 }
 
-export function organizationSlotPathScope(path) {
+export function organizationSlotPathScope(path, slot = null) {
   const normalizedPath = normalizeOrganizationSlotPath(path);
   if (
-    isOrganizationRootSlotPath(normalizedPath)
+    isOrganizationRootSlotPath(normalizedPath, slot)
     || isOrganizationRootSlotDescendantPath(normalizedPath)
   ) {
     return "root";
@@ -78,7 +82,7 @@ export function organizationSlotScope(slot, normalizedPath = null) {
   // Fyzická path boundary má přednost před konfliktním deklarovaným `space`.
   // Doctor konflikt současně hlásí jako blokátor, ale read model nesmí ani
   // mezitím zpřístupnit productionspace/root repo jako akční Team modul.
-  const pathScope = organizationSlotPathScope(path);
+  const pathScope = organizationSlotPathScope(path, slot);
   if (pathScope) return pathScope;
   if (organizationSlotScopes.has(slot?.space)) return slot.space;
   return "workspace";

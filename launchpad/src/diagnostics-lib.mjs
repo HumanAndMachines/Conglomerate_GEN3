@@ -785,9 +785,11 @@ async function readCompaniesConfig(companiesRoot) {
 
 // Reads an organization's company.gen3.json to expose the three physical
 // boundaries: Organization root, flat Workspace, and Productionspace. Workspace
-// modules are additionally projected into N:M Teams. GitHub is the access
-// authority; until a live membership adapter exists, the API says explicitly
-// that Builder Team membership was not evaluated.
+// modules are additionally projected into N:M Teams for navigation. For every
+// boundary, the manifest is inventory, GitHub Team/repo grants authorize clone,
+// and the local checkout is Launchpad's evidence that a module is available.
+// Until a live membership adapter exists, the API says explicitly that Team
+// membership was not evaluated instead of inventing a second ACL.
 async function readOrganizationSpaces(companiesRoot, organization, localConfig = null) {
   const empty = {
     organization_modules: [],
@@ -912,7 +914,7 @@ function unevaluatedTeamAccess() {
     status: "not_evaluated",
     memberships: [],
     reason: "github_team_membership_adapter_not_connected",
-    message: "Členství Buildera v Teamech zatím Launchpad živě neověřuje. Manifest určuje přiřazení modulů; skutečný přístup vždy určuje GitHub.",
+    message: "Manifest inventarizuje moduly Organizace, Workspace a Productionspace. GitHub Teamy a repo granty rozhodují, které repozitáře lze naklonovat; lokální checkout je důkaz dostupnosti pro Launchpad.",
   };
 }
 
@@ -992,14 +994,14 @@ function slotScopeContractIssues(manifest, config) {
       );
       continue;
     }
-    if (!isCanonicalOrganizationRepositorySlotPath(slot.path)) {
+    if (!isCanonicalOrganizationRepositorySlotPath(slot.path, slot)) {
       issues.push(
         `${source}: slot path ${JSON.stringify(slot.path)} není kanonická podporovaná Organization-relative repo boundary`,
       );
       continue;
     }
     if (slot.space === undefined) continue;
-    const pathScope = organizationSlotPathScope(path);
+    const pathScope = organizationSlotPathScope(path, slot);
     if (!pathScope || pathScope === "root" || slot.space === pathScope) continue;
     issues.push(
       `${source}: slot ${path} musí podle path boundary deklarovat space: "${pathScope}", ne "${slot.space}"`,
@@ -1022,7 +1024,7 @@ function rootSlotContractIssues(manifest, config, organizationRoot) {
       rawPath: slot.path.replace(/\\/g, "/"),
       path: normalizeOrganizationSlotPath(slot.path),
     }))
-    .filter(({ path }) => isOrganizationRootSlotPath(path));
+    .filter(({ slot, path }) => isOrganizationRootSlotPath(path, slot));
   const declaredPaths = new Set(rootSlots.map(({ path }) => path));
 
   for (const { slot, rawPath, path } of rootSlots) {
@@ -1097,7 +1099,7 @@ function rootSlotContractIssues(manifest, config, organizationRoot) {
   for (const slot of Array.isArray(config?.modules) ? config.modules : []) {
     if (!slot || typeof slot.path !== "string") continue;
     const path = normalizeOrganizationSlotPath(slot.path);
-    if (!isOrganizationRootSlotPath(path)) continue;
+    if (!isOrganizationRootSlotPath(path, slot)) continue;
     issues.push(
       `company.gen3.json: root slot ${path} nesmí být v modules[]; deklaruj ho v modules.manifest.json/module_slots[]`,
     );
@@ -1173,7 +1175,7 @@ function classifyModuleSlotReadiness(slot, status, principalRoles = null) {
       return {
         severity: "neutral",
         reason: "role_not_entitled",
-        message: "Checkout podle lokálně deklarovaných rolí tohoto Principála není očekávaný.",
+        message: "Lokální checkout není očekávaný pro tento účet. Přístup k repozitáři zůstává autoritou GitHub Teamů a repo grantů.",
       };
     }
     return {
@@ -1182,8 +1184,8 @@ function classifyModuleSlotReadiness(slot, status, principalRoles = null) {
         ? "access_entitlement_unknown"
         : "unexpected_missing_access",
       message: slot.default_access === "expected"
-        ? "Modul má být dostupný každému kolegovi, ale checkout chybí."
-        : "Checkout chybí a access kontrola nedoložila očekávané omezení role nebo ACL.",
+        ? "Repozitář modulu má být běžně dostupný, ale lokální checkout chybí. Ověř GitHub Team/repo grant a spusť Synchronizovat nebo Pullnout vše."
+        : "Lokální checkout chybí. Než stav označíš za chybu, ověř na GitHubu, zda má tento účet přes Team nebo repo grant přístup; Launchpad sám přístup neuděluje.",
     };
   }
   return { severity: "blocking", reason: "unknown_status", message: `Neznámý stav slotu: ${status}.` };
@@ -1251,7 +1253,7 @@ function normalizeModuleSlot(slot) {
   if (!slot || typeof slot !== "object" || typeof slot.path !== "string" || slot.path.trim() === "") {
     return null;
   }
-  if (!isCanonicalOrganizationRepositorySlotPath(slot.path)) return null;
+  if (!isCanonicalOrganizationRepositorySlotPath(slot.path, slot)) return null;
   const path = normalizeOrganizationSlotPath(slot.path);
   if (
     !path
@@ -1844,12 +1846,14 @@ function portOverlapCheck(appsResponse) {
   };
 }
 
-// Doctor kontrola manifest-declared Workspace groupingu (decision 0041): hlásí
-// konflikty deklarace vs. realita a shrnuje readiness stavy module slotů
-// (available / missing_access / planned_slot, decision 0042).
+// Doctor kontrola tří module boundaries: manifest je inventář, GitHub Team/repo
+// granty autorizují clone a lokální checkout dokládá dostupnost. Současně hlásí
+// konflikty Workspace groupingu a shrnuje available / missing_access /
+// planned_slot stavy (decisions 0041/0042).
 function workspaceDeclarationCheck(appsResponse) {
   const details = [];
   const statusCounts = { available: 0, missing_access: 0, planned_slot: 0 };
+  const spaceCounts = { root: 0, workspace: 0, productionspace: 0 };
   let conformanceIssueCount = 0;
   let blockingSlotCount = 0;
   for (const organization of appsResponse.organizations ?? []) {
@@ -1873,6 +1877,7 @@ function workspaceDeclarationCheck(appsResponse) {
         ];
     for (const slot of slots) {
       if (slot.status && statusCounts[slot.status] !== undefined) statusCounts[slot.status] += 1;
+      if (slot.space && spaceCounts[slot.space] !== undefined) spaceCounts[slot.space] += 1;
       if (slot.ui_exposure === "diagnostics-only") {
         details.push(
           `${organization.path}/${slot.path}: diagnostics-only data repo (${slot.status ?? "unknown"})`,
@@ -1885,19 +1890,21 @@ function workspaceDeclarationCheck(appsResponse) {
     }
   }
   details.push(
+    "availability contract: manifest inventarizuje repo; GitHub Team/repo grant povoluje clone; lokální checkout znamená available",
+    `module spaces: organization ${spaceCounts.root}, workspace ${spaceCounts.workspace}, productionspace ${spaceCounts.productionspace}`,
     `module slots: available ${statusCounts.available}, missing_access ${statusCounts.missing_access}, planned_slot ${statusCounts.planned_slot}`,
   );
   return {
     id: "launchpad.workspace_declarations",
     status: blockingSlotCount > 0 ? "fail" : conformanceIssueCount > 0 ? "warn" : "ok",
     severity: "required",
-    title: "Workspace deklarace",
+    title: "Moduly Organizace, Workspace a Productionspace",
     message:
       blockingSlotCount > 0
-        ? `Manifestované sloty mají ${formatCount(blockingSlotCount, "blokátor", "blokátory", "blokátorů")}.`
+        ? `Manifestované moduly mají ${formatCount(blockingSlotCount, "blokátor", "blokátory", "blokátorů")}; missing_access sám neznamená, že modul byl z Organizace odstraněn.`
         : conformanceIssueCount > 0
         ? `Manifest deklarace mají ${formatCount(conformanceIssueCount, "konflikt", "konflikty", "konfliktů")} s decision 0041.`
-        : "Fyzické sekce odpovídají cestám; Workspace Team grouping jede z manifest deklarací (decision 0041).",
+        : "Manifesty, GitHub access a lokální checkouty dávají konzistentní dostupnost napříč všemi třemi module boundaries.",
     paths: ["organizations"],
     links: [],
     details,

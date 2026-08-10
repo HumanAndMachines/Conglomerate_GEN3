@@ -346,6 +346,7 @@ test("mutating APIs reject cross-origin and DNS-rebinding requests before routin
     "/api/apps/deals-v1/open",
     "/api/apps/deals-v1/stop",
     "/api/apps/deals-v1/restart",
+    "/api/modules/open-folder",
     "/api/sync",
   ];
 

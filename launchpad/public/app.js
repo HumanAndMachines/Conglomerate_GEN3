@@ -2361,12 +2361,17 @@ function organizationSectionNode({ organization, families, modules }) {
   const grid = familyGridNode(families);
   grid.append(...modules.map((module) => workspaceModuleCard(module, organization.slug, {
     kind: "organization-module",
-    scope: "organization",
+    scope: "root",
   })));
   const node = document.createElement("section");
   node.className = "app-section app-section-organization";
+  const note = document.createElement("p");
+  note.className = "app-section-note";
+  note.textContent = "Společné moduly celé Organizace. Dostupné jsou tehdy, když je jejich repozitář na tomto počítači naklonovaný; přístup určuje GitHub.";
   node.append(
-    appSectionHead("Organizace", `${moduleCount} ${pluralModule(moduleCount)}`),
+    appSectionHead("Moduly Organizace", `${moduleCount} ${pluralModule(moduleCount)}`),
+    moduleAccessSummaryNode(organization),
+    note,
     grid,
   );
   return node;
@@ -2380,10 +2385,7 @@ function workspaceSectionNode({ organization, teamSections }) {
   }
   const node = document.createElement("section");
   node.className = "app-section app-section-workspace";
-  node.append(
-    appSectionHead("Workspace", `${uniqueModules.size} ${pluralModule(uniqueModules.size)}`),
-    teamAccessSummaryNode(organization),
-  );
+  node.append(appSectionHead("Workspace", `${uniqueModules.size} ${pluralModule(uniqueModules.size)}`));
   const teams = document.createElement("div");
   teams.className = "workspace-team-list";
   teams.append(...teamSections.map((section) => teamSectionNode(section, organization)));
@@ -2409,13 +2411,13 @@ function teamSectionNode(section, organization) {
   return node;
 }
 
-function teamAccessSummaryNode(organization) {
+function moduleAccessSummaryNode(organization) {
   const access = organization?.team_access ?? { status: "not_evaluated", memberships: [] };
   const node = document.createElement("details");
   node.className = `team-access-summary is-${access.status === "verified" ? "verified" : "unverified"}`;
   const summary = document.createElement("summary");
   const title = document.createElement("strong");
-  title.textContent = "Přístup k Teamům";
+  title.textContent = "Jak funguje přístup k modulům";
   const help = document.createElement("span");
   help.className = "team-access-help";
   help.setAttribute("aria-hidden", "true");
@@ -2432,11 +2434,12 @@ function teamAccessSummaryNode(organization) {
       "chip-ok",
     )));
   } else {
-    memberships.append(chip("Členství zatím neověřeno", "chip-muted"));
+    memberships.append(chip("Přístup řídí GitHub", "chip-muted"));
   }
   const copy = document.createElement("p");
-  copy.textContent = access.message
-    ?? "Skutečný přístup určuje GitHub; Launchpad ho zatím živě neověřuje.";
+  copy.textContent = access.status === "verified"
+    ? access.message ?? "GitHub ověřil členství v Teamech pro tuto Organizaci."
+    : "Manifest říká, ze kterých repozitářů se Organizace skládá. GitHub Teamy a repo granty rozhodují, co lze naklonovat; Launchpad označí jako dostupné jen moduly s lokálním checkoutem.";
   content.append(memberships, copy);
   node.append(summary, content);
   return node;
@@ -2528,25 +2531,31 @@ function readonlyDetailKey(kind, company, scope, key) {
 }
 
 function workspaceModuleDetail(module, companySlug, { kind = "workspace-module", scope = null } = {}) {
-  const workspaceSlug = scope ?? module.teams?.[0] ?? module.workspace ?? "workspace";
+  const space = kind === "organization-module" ? "root" : "workspace";
+  const workspaceSlug = space === "root" ? null : scope ?? module.teams?.[0] ?? module.workspace ?? "workspace";
+  const detailScope = space === "root" ? "organization" : workspaceSlug;
   const organization = state.companies.find((company) => company.slug === companySlug);
-  const dependencyState = module.status ?? "invalid_manifest";
+  const dependencyState = module.status === "available" ? "ready" : module.status ?? "invalid_manifest";
   return {
-    id: readonlyDetailKey(kind, companySlug, workspaceSlug, module.slug ?? module.path ?? module.name),
+    id: readonlyDetailKey(kind, companySlug, detailScope, module.slug ?? module.path ?? module.name),
     kind,
     title: module.name ?? module.slug ?? module.path ?? (kind === "organization-module" ? "Modul Organizace" : "Workspace modul"),
     company: companySlug,
     company_display_name: organization?.display_name ?? companySlug,
     module: module.slug ?? module.path ?? "workspace-module",
-    surface: "internal",
+    surface: space === "root" ? "organization" : "internal",
+    space,
+    workspace: workspaceSlug,
     icon: null,
     tags: module.category ? [module.category] : [],
     runtime_status: "unknown",
     dependencies: {
       state: dependencyState,
-      message: module.status
-        ? "Modul je deklarovaný v organization manifestu, ale zatím nemá spustitelný app manifest."
-        : "Chybí app manifest pro lifecycle akce v Launchpadu.",
+      message: module.status === "available"
+        ? "Repozitář modulu je na tomto počítači dostupný."
+        : module.status === "missing_access"
+          ? "Repozitář není na tomto počítači dostupný. Přístup a clone určuje GitHub."
+          : "Modul je deklarovaný v manifestu, ale zatím nemá lokální repozitář.",
       can_start: false,
     },
     package_path: module.path ?? "-",
@@ -2554,8 +2563,8 @@ function workspaceModuleDetail(module, companySlug, { kind = "workspace-module",
     can_open_folder: module.status === "available",
     is_readonly_system: true,
     readonly_reason: module.status === "available"
-      ? "Modul nemá vlastní aplikaci, ale jeho lokální složku můžeš otevřít a pracovat s ní."
-      : "Modul nemá vlastní aplikaci a jeho lokální složka zatím není dostupná.",
+      ? "Lokální složku modulu můžeš otevřít. Launchpad tím nemění Git stav ani přístupová práva."
+      : "Lokální složka modulu není dostupná; Launchpad ji bez GitHub přístupu nevytváří.",
   };
 }
 
@@ -2597,33 +2606,33 @@ function workspaceModuleCard(module, companySlug, options = {}) {
   card.append(head);
   card.addEventListener("click", (event) => {
     if (!shouldOpenFromCardSurface(event.target)) return;
-    if (openable) void openWorkspaceModuleFolder(detail);
+    if (openable) void openModuleFolder(detail);
     else selectReadonlyDetail(detail);
   });
   card.addEventListener("keydown", (event) => {
     if (event.target !== card) return;
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
-    if (openable) void openWorkspaceModuleFolder(detail);
+    if (openable) void openModuleFolder(detail);
     else selectReadonlyDetail(detail);
   });
   return card;
 }
 
-// Productionspace systems are read-only references to externally-developed repos
-// with their own rules — never lifecycle apps.
+// Productionspace moduly mají vlastní pravidla. Launchpad smí otevřít jejich
+// dostupný lokální checkout, ale nenabízí jim runtime ani release lifecycle.
 function productionspaceSectionNode(entry) {
   const node = document.createElement("section");
   node.className = "app-section app-section-productionspace";
   node.append(
     appSectionHead(
       entry.productionspace.display_name ?? "Productionspace",
-      `${entry.productionspace.systems.length} ${pluralSystem(entry.productionspace.systems.length)} · externě spravované`,
+      `${entry.productionspace.systems.length} ${pluralModule(entry.productionspace.systems.length)}`,
     ),
   );
   const note = document.createElement("p");
   note.className = "app-section-note";
-  note.textContent = "Release a runtime systémy s vlastními pravidly. V Launchpadu jen pro čtení, nespouští se odsud.";
+  note.textContent = "Produktové a provozní repozitáře s vlastními pravidly. Launchpad může otevřít dostupnou lokální složku, ale odsud je nespouští ani nereleasuje.";
   node.append(note);
   const grid = document.createElement("div");
   grid.className = "apps-grid";
@@ -2635,13 +2644,14 @@ function productionspaceSectionNode(entry) {
 function productionspaceCard(system, entry) {
   const detail = productionspaceDetail(system, entry);
   const selected = state.selectedReadonlyDetail?.id === detail.id;
+  const openable = detail.can_open_folder;
   const card = document.createElement("article");
-  card.className = `app-card system-card is-readonly ${selected ? "selected" : ""}`.trim();
+  card.className = `app-card system-card ${openable ? "is-openable" : "is-readonly is-unavailable"} ${selected ? "selected" : ""}`.trim();
   card.style.setProperty("--app-accent", appIconAccent("system"));
   card.style.setProperty("--app-focus-accent", appIconFocusAccent("system"));
   card.dataset.readonlyDetailId = detail.id;
   card.tabIndex = 0;
-  card.setAttribute("aria-label", `${detail.title} — detail`);
+  card.setAttribute("aria-label", openable ? `Otevřít složku ${detail.title}` : `${detail.title} — detail`);
 
   const head = document.createElement("div");
   head.className = "app-card-head";
@@ -2677,20 +2687,24 @@ function productionspaceCard(system, entry) {
 
   const actions = document.createElement("div");
   actions.className = "app-card-actions";
-  const readonly = cardActionButton("Jen pro čtení", null, true);
-  readonly.classList.add("primary-action", "btn", "btn-ghost");
-  actions.append(readonly);
+  const primaryAction = openable
+    ? cardActionButton("Otevřít složku", () => openModuleFolder(detail), false)
+    : cardActionButton(system.status === "planned_slot" ? "Plánováno" : "Není dostupné", null, true);
+  primaryAction.classList.add("primary-action", "btn", openable ? "btn-primary" : "btn-ghost");
+  actions.append(primaryAction);
 
   card.append(head, badges, path, actions);
   card.addEventListener("click", (event) => {
     if (!shouldOpenFromCardSurface(event.target)) return;
-    selectReadonlyDetail(detail);
+    if (openable) void openModuleFolder(detail);
+    else selectReadonlyDetail(detail);
   });
   card.addEventListener("keydown", (event) => {
     if (event.target !== card) return;
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
-    selectReadonlyDetail(detail);
+    if (openable) void openModuleFolder(detail);
+    else selectReadonlyDetail(detail);
   });
   return card;
 }
@@ -2704,9 +2718,11 @@ function slotAccessChip(slot) {
 }
 
 function productionspaceDetail(system, entry) {
-  const dependencyState = system.status === "missing_access" || system.status === "planned_slot"
-    ? system.status
-    : "restricted";
+  const dependencyState = system.status === "available"
+    ? "ready"
+    : system.status === "missing_access" || system.status === "planned_slot"
+      ? system.status
+      : "restricted";
   return {
     id: readonlyDetailKey("productionspace", entry.company, "productionspace", system.slug ?? system.path ?? system.name),
     kind: "productionspace",
@@ -2715,6 +2731,7 @@ function productionspaceDetail(system, entry) {
     company_display_name: entry.companyName,
     module: system.slug ?? system.path ?? "productionspace",
     surface: "productionspace",
+    space: "productionspace",
     icon: "system",
     runtime_status: "unknown",
     dependencies: {
@@ -2724,9 +2741,12 @@ function productionspaceDetail(system, entry) {
     },
     package_path: system.path ?? "-",
     cwd: system.path ?? "-",
+    can_open_folder: system.status === "available",
     is_productionspace: true,
     is_readonly_system: true,
-    readonly_reason: "Productionspace systémy jsou v Launchpadu jen pro čtení. Nespouštějí se ani nereleasují z rootu bez explicitní policy.",
+    readonly_reason: system.status === "available"
+      ? "Lokální složku můžeš otevřít. Launchpad Productionspace modul odsud nespouští ani nereleasuje."
+      : "Lokální checkout není dostupný; přístup a clone určuje GitHub.",
   };
 }
 
@@ -3369,7 +3389,7 @@ async function openAppChain(app, { feedback } = {}) {
   }
 }
 
-async function openWorkspaceModuleFolder(module) {
+async function openModuleFolder(module) {
   if (!module?.company || !module?.cwd || !module.can_open_folder) return;
   const pendingKey = `${module.id}:open-folder`;
   if (state.pendingAction === pendingKey) return;
@@ -3382,6 +3402,7 @@ async function openWorkspaceModuleFolder(module) {
       body: JSON.stringify({
         organization: module.company,
         module_path: module.cwd,
+        space: module.space,
       }),
     });
     toast(`${module.title}: složka otevřená.`, "success");
@@ -3742,7 +3763,7 @@ function primaryActionNode(app, nextAction) {
   } else if (nextAction.type === "folder") {
     node = cardActionButton(
       nextAction.label,
-      () => openWorkspaceModuleFolder(app),
+      () => openModuleFolder(app),
       state.pendingAction === `${app.id}:open-folder`,
     );
   } else if (nextAction.type === "open" && app.url) {
@@ -5223,6 +5244,7 @@ function surfaceLabel(surface) {
   return (
     {
       internal: "Workspace",
+      organization: "Organizace",
       manual: "Manuál",
       admin: "Admin",
       productionspace: "Productionspace",
@@ -5246,10 +5268,6 @@ function pluralWarning() {
 
 function pluralModule(count) {
   return count === 1 ? "modul" : count >= 2 && count <= 4 ? "moduly" : "modulů";
-}
-
-function pluralSystem(count) {
-  return count === 1 ? "systém" : count >= 2 && count <= 4 ? "systémy" : "systémů";
 }
 
 // Má modul lidský popis z manifestu?

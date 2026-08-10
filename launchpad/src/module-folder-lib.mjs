@@ -11,6 +11,8 @@ export class ModuleFolderActionError extends Error {
   }
 }
 
+const supportedModuleSpaces = new Set(["root", "workspace", "productionspace"]);
+
 /**
  * Action contract:
  * - intent: otevřít lokálně dostupný checkout modulu v systémovém správci souborů;
@@ -30,32 +32,47 @@ export function createModuleFolderOpener({
   accessExecutable = verifyExecutable,
 }) {
   return {
-    async open({ organization: organizationSlug, modulePath }) {
+    async open({ organization: organizationSlug, modulePath, space = null }) {
       if (typeof organizationSlug !== "string" || !organizationSlug.trim()) {
         throw new ModuleFolderActionError(400, "organization_required", "Chybí Organizace modulu.");
       }
       if (typeof modulePath !== "string" || !modulePath.trim()) {
         throw new ModuleFolderActionError(400, "module_path_required", "Chybí cesta modulu.");
       }
+      if (space !== null && !supportedModuleSpaces.has(space)) {
+        throw new ModuleFolderActionError(400, "module_space_invalid", "Neplatný typ modulu.");
+      }
 
       const response = await getAppsResponse();
       const organizations = response.organizations ?? response.companies ?? [];
       const organization = organizations.find((item) => item.slug === organizationSlug);
       if (!organization?.path) {
-        throw new ModuleFolderActionError(404, "organization_not_found", "Organizace už není v Launchpadu dostupná.");
+        throw new ModuleFolderActionError(
+          404,
+          "organization_not_found",
+          "Tento pracovní prostor už není dostupný. Obnovte Launchpad a zkuste to znovu.",
+        );
       }
-      const modules = (organization.workspaces ?? []).flatMap((workspace) => workspace.modules ?? []);
-      const module = modules.find((item) => item.path === modulePath);
-      if (!module) {
-        throw new ModuleFolderActionError(404, "module_not_found", "Modul už není v Organizaci deklarovaný.");
+      const declaredModule = declaredModules(organization).find(
+        (item) => item.module.path === modulePath && (space === null || item.space === space),
+      );
+      if (!declaredModule) {
+        throw new ModuleFolderActionError(
+          404,
+          "module_not_found",
+          "Tento modul už v aktuálním přehledu není. Obnovte Launchpad a zkuste to znovu.",
+        );
       }
+      const { module, space: moduleSpace } = declaredModule;
       if (module.status !== "available") {
         throw new ModuleFolderActionError(
           409,
           "module_folder_unavailable",
           module.status === "missing_access"
-            ? "Složku modulu nelze otevřít, protože checkout není na tomto počítači dostupný."
-            : "Složku modulu zatím nelze otevřít.",
+            ? "Repozitář tohoto modulu není na tomto počítači dostupný. Přístup určuje GitHub."
+            : module.status === "planned_slot"
+              ? "Tento modul je zatím naplánovaný a nemá lokální složku."
+              : "Lokální složka tohoto modulu zatím není dostupná.",
         );
       }
 
@@ -103,9 +120,30 @@ export function createModuleFolderOpener({
         organization: organization.slug,
         module: module.slug,
         module_path: module.path,
+        space: moduleSpace,
       };
     },
   };
+}
+
+function declaredModules(organization) {
+  const workspaceGroups = Array.isArray(organization.teams) && organization.teams.length > 0
+    ? organization.teams
+    : Array.isArray(organization.workspaces)
+      ? organization.workspaces
+      : [];
+  const entries = [
+    ...(organization.organization_modules ?? []).map((module) => ({ module, space: "root" })),
+    ...workspaceGroups.flatMap((workspace) =>
+      (workspace.modules ?? []).map((module) => ({ module, space: "workspace" }))),
+    ...(organization.productionspace?.systems ?? []).map((module) => ({ module, space: "productionspace" })),
+  ];
+  const unique = new Map();
+  for (const entry of entries) {
+    if (!entry.module?.path) continue;
+    unique.set(`${entry.space}:${entry.module.path}`, entry);
+  }
+  return [...unique.values()];
 }
 
 export function folderOpenCommand(platform, path, env = process.env) {

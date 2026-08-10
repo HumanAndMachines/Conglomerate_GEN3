@@ -110,7 +110,7 @@ test("Organizace, Workspace a Productionspace používají nadpis jako modrou z�
   expect(styles).toMatch(/\.app-section-productionspace > \.app-section-head:first-child\s*{[\s\S]*?position: static;[\s\S]*?transform: none/);
   expect(styles).toMatch(/\.app-section-productionspace > \.app-section-head:first-child \.app-section-title[\s\S]*?background: var\(--lz-blue-500\)[\s\S]*?color: var\(--lz-white\)/);
   expect(styles).toContain("font-variant-numeric: tabular-nums");
-  expect(app).toContain('appSectionHead("Organizace"');
+  expect(app).toContain('appSectionHead("Moduly Organizace"');
   expect(app).toContain('appSectionHead("Workspace"');
   expect(app).toContain('entry.productionspace.display_name ?? "Productionspace"');
   expect(app).not.toContain("app-section-eyebrow");

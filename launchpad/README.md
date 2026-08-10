@@ -392,6 +392,20 @@ Web shell v1 je pracovní dashboard nad discovery a runtime daty. Poskytuje:
 - `/api/apps/:id/stop` pro zastavení procesu na app-owned portu
 - `/api/apps/:id/restart` pro bezpečný restart procesu na app-owned portu
 - `/api/apps/:id/logs` pro log tail z lokálních runtime logů
+- `POST /api/modules/open-folder` pro bezpečné otevření dostupného lokálního
+  checkoutu modulu Organizace, Workspace nebo Productionspace; endpoint znovu
+  ověří manifestovaný prostor, stav `available` a containment cesty uvnitř
+  Organizace, ale nemění Git stav ani přístupová práva
+
+Manifest Organizace je inventář repozitářů ve třech samostatných vrstvách:
+moduly Organizace, Workspace a Productionspace. Ve všech třech vrstvách jsou
+GitHub Teamy a repo granty jedinou autoritou přístupu. Když přihlášený účet
+repozitář naklonovat nemůže, lokální složka nevznikne a Launchpad modul
+nenabídne jako dostupný. `missing_access` proto neznamená, že modul přestal být
+součástí Organizace; znamená pouze, že jeho deklarovaný checkout na této mašině
+není k dispozici. Rozdíl vrstev určuje umístění v UI a povolené akce:
+Productionspace zůstává bez start/release lifecycle, dostupnou lokální složku
+ale lze bezpečně otevřít stejně jako u ostatních modulů.
 
 Při adopci procesu, který už poslouchá na app-owned portu, Launchpad vyžaduje
 pozitivní důkaz, že jeho pracovní adresář odpovídá manifestovanému `cwd`.

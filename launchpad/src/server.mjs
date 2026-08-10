@@ -475,6 +475,7 @@ async function handleModuleFolderRoute(request) {
     return jsonResponse(await moduleFolderOpener.open({
       organization: payload?.organization,
       modulePath: payload?.module_path,
+      space: payload?.space ?? null,
     }));
   } catch (error) {
     if (error instanceof ModuleFolderActionError) {

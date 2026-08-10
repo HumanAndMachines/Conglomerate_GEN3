@@ -504,6 +504,11 @@ test("Doctor drží missing_access bez autoritativního ACL důkazu fail-closed"
   const declarationCheck = report.checks.find((check) => check.id === "launchpad.workspace_declarations");
   expect(declarationCheck?.status).toBe("fail");
   expect(declarationCheck?.message).toContain("3 blokátory");
+  expect(declarationCheck?.message).toContain("missing_access sám neznamená");
+  expect(declarationCheck?.title).toBe("Moduly Organizace, Workspace a Productionspace");
+  expect(declarationCheck?.details).toContain(
+    "availability contract: manifest inventarizuje repo; GitHub Team/repo grant povoluje clone; lokální checkout znamená available",
+  );
   expect(declarationCheck?.details.join("\n")).toContain("workspace/required");
   expect(declarationCheck?.details.join("\n")).toContain("workspace/unknown");
   expect(declarationCheck?.details.join("\n")).toContain("workspace/restricted");
@@ -877,6 +882,47 @@ test("root Design System zůstává mimo výchozí Team a Doctor hlídá jeho ch
   expect(details).toContain(
     "slot design-system/theme je uvnitř rezervované Organization root boundary",
   );
+});
+
+test("další explicitní root slot se objeví jako budoucí modul Organizace bez hardcodovaného názvu", async () => {
+  const root = await createCompaniesWorkspaceFixture();
+  const companyRoot = join(root, "organizations", "FutureCo_GEN3");
+  await mkdir(join(companyRoot, "manual"), { recursive: true });
+  await mkdir(join(companyRoot, "company", "colleagues"), { recursive: true });
+  await writeJson(join(root, "launchpad.gen3.json"), {
+    launchpad_root: { slug: "test-companies", display_name: "Test Companies", root_role: "companies-root" },
+  });
+  await writeJson(join(companyRoot, "company.gen3.json"), {
+    organization_generation: "gen3",
+    company: { slug: "FutureCo", display_name: "Future Co" },
+  });
+  await writeJson(join(companyRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    module_slots: [{
+      path: "compliance",
+      space: "root",
+      category: "governance",
+      default_access: "restricted",
+      status: "planned_slot",
+    }],
+  });
+  await writeJson(join(companyRoot, "TODO.tasks.json"), {});
+  await writeJson(join(companyRoot, "DONE.tasks.json"), {});
+  await writeJson(join(companyRoot, "ISSUES.open.json"), {});
+
+  const response = await buildLaunchpadAppsResponse({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+  });
+  const organization = response.organizations.find((item) => item.slug === "FutureCo");
+
+  expect(organization?.organization_modules).toContainEqual(expect.objectContaining({
+    path: "compliance",
+    space: "root",
+    status: "planned_slot",
+  }));
+  expect((organization?.workspaces ?? []).flatMap((workspace) => workspace.modules)).toEqual([]);
 });
 
 test("Doctor vynucuje root slot contract a Mission Control app/data pár", async () => {

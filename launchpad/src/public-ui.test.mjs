@@ -368,7 +368,7 @@ test("Launchpad quiet refresh is lightweight and non-overlapping", async () => {
   expect(loadDataBlock).toContain("if (!isCurrent()) return;");
   expect(js).toContain("loadData({ quiet: true, fresh: true })");
   for (const [name, nextName] of [
-    ["openAppChain", "openWorkspaceModuleFolder"],
+    ["openAppChain", "openModuleFolder"],
     ["pullGitRepository", "abortGitRebase"],
     ["abortGitRebase", "loadUpdateStatus"],
     ["runRootUpdate", "pullAllRepositories"],
@@ -867,12 +867,15 @@ test("UI separates physical Organization/Workspace/Productionspace and prepares 
   expect(js).toContain("function organizationSectionNode");
   expect(js).toContain("function workspaceSectionNode");
   expect(js).toContain("function teamSectionNode");
-  const teamSection = js.slice(js.indexOf("function teamSectionNode"), js.indexOf("function teamAccessSummaryNode"));
+  const teamSection = js.slice(js.indexOf("function teamSectionNode"), js.indexOf("function moduleAccessSummaryNode"));
   expect(teamSection).not.toContain("team.description");
   expect(teamSection).not.toContain('description.className = "app-section-note"');
-  expect(js).toContain("function teamAccessSummaryNode");
-  expect(js).toContain("Přístup k Teamům");
-  expect(js).toContain("Členství zatím neověřeno");
+  expect(js).toContain("function moduleAccessSummaryNode");
+  expect(js).toContain("Jak funguje přístup k modulům");
+  expect(js).toContain("Přístup řídí GitHub");
+  expect(js).toContain("Manifest říká, ze kterých repozitářů se Organizace skládá");
+  expect(js).toContain("Launchpad označí jako dostupné jen moduly s lokálním checkoutem");
+  expect(js).toContain("Společné moduly celé Organizace");
   expect(js).toContain("titleRow.append(summaryNode)");
   const titleRowCss = css.slice(
     css.indexOf(".app-section-title-row {"),
@@ -888,11 +891,11 @@ test("UI separates physical Organization/Workspace/Productionspace and prepares 
   expect(js).toContain("function workspaceModuleCard");
   expect(js).toContain("function workspaceModulesInView");
   expect(js).toContain("Otevřít složku");
-  expect(js).toContain("function openWorkspaceModuleFolder");
+  expect(js).toContain("function openModuleFolder");
   expect(js).toContain('fetchJson("/api/modules/open-folder"');
   expect(js).toContain("function productionspaceSectionNode");
   expect(js).toContain("function productionspaceCard");
-  expect(js).toContain("Jen pro čtení");
+  expect(js).toContain("Není dostupné");
   expect(css).toContain(".app-section-productionspace");
   expect(css).toContain(".app-section-organization");
   expect(css).toContain(".team-access-summary");
@@ -909,6 +912,8 @@ test("UI separates physical Organization/Workspace/Productionspace and prepares 
   expect(diag).toContain("readOrganizationModuleManifest");
   expect(diag).toContain("appPlacementResolverForOrganization");
   expect(diag).toContain('status: "not_evaluated"');
+  expect(diag).toContain("GitHub Team/repo grants authorize clone");
+  expect(diag).toContain("availability contract: manifest inventarizuje repo");
   expect(diag).not.toContain("deriveWorkspaceSlug");
   expect(diag).toContain('space: "root"');
 });
@@ -921,7 +926,7 @@ test("manifest-only module cards keep semantic icon precedence over a broad cate
   );
   const cardBlock = js.slice(
     js.indexOf("function workspaceModuleCard"),
-    js.indexOf("// Productionspace systems"),
+    js.indexOf("// Productionspace moduly"),
   );
 
   expect(detailBlock).toContain("icon: null");
@@ -957,13 +962,14 @@ test("read-only app and system detail selection opens the right drawer", async (
   // Manifest-only workspace modules and productionspace systems are not normal
   // app records, so they use a synthetic read-only detail model and still open
   // the drawer from the card surface.
-  const workspaceModuleCard = js.slice(js.indexOf("function workspaceModuleCard"), js.indexOf("// Productionspace systems"));
+  const workspaceModuleCard = js.slice(js.indexOf("function workspaceModuleCard"), js.indexOf("// Productionspace moduly"));
   expect(workspaceModuleCard).toContain("workspaceModuleDetail");
   expect(workspaceModuleCard).toContain("selectReadonlyDetail(detail)");
-  expect(workspaceModuleCard).toContain("openWorkspaceModuleFolder(detail)");
+  expect(workspaceModuleCard).toContain("openModuleFolder(detail)");
   const productionspaceCard = js.slice(js.indexOf("function productionspaceCard"), js.indexOf("function productionspaceDetail"));
   expect(productionspaceCard).toContain("productionspaceDetail");
   expect(productionspaceCard).toContain("selectReadonlyDetail(detail)");
+  expect(productionspaceCard).toContain("openModuleFolder(detail)");
 
   const detailRender = js.slice(js.indexOf("function renderDetail("), js.indexOf("function renderDetailTech"));
   expect(detailRender).toContain("state.selectedReadonlyDetail ??");

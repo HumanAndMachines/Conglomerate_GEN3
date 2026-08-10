@@ -352,7 +352,7 @@ function slotPathBoundaryInventoryIssue(slot) {
   if (isOrganizationRootSlotDescendantPath(normalizedPath)) {
     return "cesta je uvnitř rezervované Organization root boundary a není samostatný root slot";
   }
-  if (!isCanonicalOrganizationRepositorySlotPath(slot.path)) {
+  if (!isCanonicalOrganizationRepositorySlotPath(slot.path, slot)) {
     return "cesta není kanonická podporovaná Organization-relative repo boundary";
   }
   return null;
