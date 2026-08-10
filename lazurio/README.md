@@ -61,8 +61,9 @@ Launchpad containment kontrolami. Samotný název adresáře nic neautorizuje.
 Personalspace, jiné Organizace, Organization templates, worktrees, `.git`,
 `node_modules`, build/output/cache adresáře, `private/`, `secrets`, `.env`,
 binární typy a symlinkované stromy se do pilotu nedostanou. Exact `rg` symlinky
-nenásleduje; QMD konfigurace navíc před indexací fail-closed odmítne jakýkoli
-symlink v neignorované části povoleného source.
+nenásleduje. QMD standardně skenuje s `followSymbolicLinks: false`; adapter
+navíc fail-closed odmítne rozbitý symlink nebo target mimo deklarovaný source.
+Bezpečný interní symlink přeskočí, takže nevytvoří duplicitu kanonického obsahu.
 
 `provider_access_status: not_evaluated` je záměrně pravdivý: lokální manifest a
 mount nejsou živý GitHub provider readback. Pilot tedy prokazuje lokální scope,
@@ -85,9 +86,19 @@ Kontrakt byl 2026-08-10 porovnán s oficiální dokumentací QMD pro pojmenovan�
 indexy, `QMD_CONFIG_DIR`, `XDG_CACHE_HOME`, config collections/ignore a příkazy
 `search`, `vsearch`, `query`, `status`, `update`, `embed` a `doctor`:
 [README](https://github.com/tobi/qmd/blob/main/README.md),
-[CHANGELOG](https://github.com/tobi/qmd/blob/main/CHANGELOG.md). Aktuální
-upstream byl 2.6.3; lokálně nalezená 2.1.0 byla nepodporovaná a padala na Node
-ABI. Tento slice proto globální instalaci automaticky neopravuje ani nemění.
+[CHANGELOG](https://github.com/tobi/qmd/blob/main/CHANGELOG.md). npm dist-tag
+`latest` byl 2.5.3. Standardní macOS oprava nepodporované nebo ABI-rozbité
+globální instalace je:
+
+```sh
+brew install sqlite
+npm install -g @tobilu/qmd@latest
+qmd --version
+qmd doctor
+```
+
+QMD vyžaduje Node.js 22 nebo novější. Lazurio adapter globální instalaci sám
+nemění; pouze ji diagnostikuje a exact režim nechává dostupný.
 
 Launchpad pole „Hledat aplikaci“ zůstává filtrem karet. Search UI ani obecný
 cross-Organization search nejsou součástí tohoto slice.
