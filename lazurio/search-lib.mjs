@@ -313,6 +313,8 @@ export async function buildLazurioSearchStatus({
   const state = await readLocalIndexState(layout.state_path);
   const freshness = qmd.index.state !== "present"
     ? { status: "absent", reason: "qmd_index_absent" }
+    : snapshot.status !== "available" || !snapshot.fingerprint
+      ? { status: "not_evaluated", reason: snapshot.reason }
     : !state
       ? { status: "not_evaluated", reason: "lazurio_update_state_absent" }
       : state.source_fingerprint === snapshot.fingerprint
@@ -370,6 +372,12 @@ export async function updateLazurioQmdIndex({
     embeddedAt = new Date().toISOString();
   }
   const snapshot = await buildSourceSnapshot(scope, { spawn });
+  if (snapshot.status !== "available" || !snapshot.fingerprint) {
+    throw new LazurioSearchError(
+      `QMD index se aktualizoval, ale source freshness nelze bezpečně uložit (${snapshot.reason}).`,
+      { code: "source_snapshot_unavailable", exitCode: 3 },
+    );
+  }
   const state = {
     schema_version: "lazurio.qmd.local-state.v1",
     scope_id: scope.id,
