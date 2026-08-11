@@ -2,8 +2,32 @@
 
 Interní CLI je read-only adapter nad kanonickým Launchpad rootem. Nevytváří
 další identity, IAM ani vlastní search engine. `context` bezpečně promítá
-Principála/Mašinu/Personalspace, `doctor` znovu používá existující Doctor core a
-`search` přidává první explicitně omezený Organization pilot.
+Principála/Mašinu/Personalspace a na explicitní selektor jednu lokálně objevenou
+Organizaci, `doctor` znovu používá existující Doctor core a `search` přidává
+první explicitně omezený Organization pilot.
+
+## Context kontrakt
+
+```sh
+# stručný lidský výstup; bez selektoru nečte Organization data
+bun run lazurio -- context
+
+# explicitně vybraná Organization; selektor je case-insensitive
+bun run lazurio -- context --organization HumanAndMachine-ai
+bun run lazurio -- context --organization humanandmachine-ai --json
+```
+
+Výstup vybrané Organizace vzniká z existujícího scan-first Launchpad read
+modelu, lokálního Git inventáře a worktree indexu. Obsahuje Teamy, moduly,
+objevené aplikace a vstupní body `AGENTS.md`, Mission Control a Knowledgebase.
+Nevytváří nový registry ani druhý access model. Přítomnost checkoutu je pouze
+lokální pozorování; Organization, Team, modul i aplikace proto vždy nesou
+`access.status: not_evaluated`, dokud neproběhne živý provider readback.
+
+Selektor vrací právě jednu Organization v jejím objeveném casingu. Neznámý,
+neplatný nebo nejednoznačný slug skončí chybou; Personalspace root Organization
+selektor nepřijímá. Všechny publikované cesty mají jedinou bázi — Launchpad
+root. JSON ani lidský výstup neobsahují absolutní lokální cesty.
 
 ## Search kontrakt
 

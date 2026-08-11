@@ -14,9 +14,17 @@ const invalidWorktreeLocations = [
   ".worktrees/root-repos",
 ];
 
-export async function buildWorktreeIndex({ companiesRoot, organization = null, module = null } = {}) {
+export async function buildWorktreeIndex({
+  companiesRoot,
+  organization = null,
+  inventoryOrganizations = null,
+  module = null,
+} = {}) {
   if (!companiesRoot) throw new Error("buildWorktreeIndex requires companiesRoot");
-  const inventory = await buildGitInventory({ companiesRoot });
+  const inventory = await buildGitInventory({
+    companiesRoot,
+    organizations: inventoryOrganizations,
+  });
   const organizations = uniqueOrganizations(inventory.repos).filter((org) => !organization || org.slug === organization);
   const worktrees = [];
   const invalid_locations = [];

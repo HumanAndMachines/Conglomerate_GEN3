@@ -70,8 +70,12 @@ export async function buildLaunchpadAppsResponse({
   gitStatusService = null,
   allowMissingOrganizations = false,
   includeGit = true,
+  organization = null,
 } = {}) {
-  const discovery = await discoverLaunchpadApps(companiesRoot, { allowMissingOrganizations });
+  const discovery = await discoverLaunchpadApps(companiesRoot, {
+    allowMissingOrganizations,
+    organization,
+  });
   const companiesConfig = await readCompaniesConfig(companiesRoot);
   const organizationSpaces = Array.isArray(discovery.organizations)
     ? await Promise.all(
@@ -90,6 +94,7 @@ export async function buildLaunchpadAppsResponse({
       path: organization.path,
       repository: organization.repository ?? null,
       git_url: organization.git_url ?? null,
+      default_branch: organization.default_branch ?? "main",
       generation: organization.generation ?? null,
       migration_marker: organization.migration_marker ?? null,
       materialization: organization.materialization ?? null,

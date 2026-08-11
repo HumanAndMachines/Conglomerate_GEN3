@@ -47,12 +47,12 @@ Conglomerate/
   Machine, Resident, Agent, společný runtime Buddyho a AI Kolegy a suverenita
   vůči Lazuriu
 - `lazurio/` — interní a nestabilní Lazurio CLI v0: bezpečný read-only context
-  Principála/Mašiny/Personalspace, tenký adapter nad existujícími Doctory a
-  první explicitně omezený Organization search pilot CAC-0093. Exact lane
+  Principála/Mašiny/Personalspace a jedné explicitně vybrané lokální
+  Organization, tenký adapter nad existujícími Doctory a první explicitně
+  omezený Organization search pilot CAC-0093. Exact lane
   používá živé `rg`; lexical/semantic/hybrid lane používají fyzicky izolovaný
-  lokální QMD index. Obecný Organization context/effective workspace zůstává
-  navazující prací; CLI není MCP, write surface, distribuční package ani
-  veřejné Core API.
+  lokální QMD index. Efektivní provider-scoped workspace zůstává navazující
+  prací; CLI není MCP, write surface, distribuční package ani veřejné Core API.
 - `launchpad.gen3.json` — root metadata a `planned` sloty Konglomerátu (rootu, šablon a lokálních povrchů), ne allowlist Organizací; dostupné Organizace se auto-discoverují z `organizations/*/company.gen3.json` (decision 0042 v manual/decision-register.md)
 - `launchpad/` — sdílený builder-first Launchpad GEN3 (decision 0047 v manual/decision-register.md, reviduje CEO-first 0024): surface pro Buildery Organizace (Organization Builder) — spouštění aplikací z `main` i z worktrees podle Mission Control plánů (decision 0049) a read-only přehled productionspace; dynamicky načítá Organizace/Teamy/moduly a ukazuje stavy `available` / `missing_access` / `planned_slot`; Admin Organizace (Organization Admin), vstup Uživatelů Organizace (Organization User) do produkčních workspace aplikací a deploy/server konfigurace patří do Conglomerate Dashboardu GEN3
 - `guide/` — sdílený netechnický onboarding kurz (26 lekcí) do práce s digitální kanceláří a AI kolegy; technická cesta „mapa systému“ (Launchpad root, Organizace, workspace, productionspace, personalspace) je plánovaná budoucí část, do té doby tato témata drží MAP.md a `manual/`
