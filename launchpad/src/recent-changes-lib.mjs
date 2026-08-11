@@ -12,7 +12,7 @@ import {
   resolveGitExecutable,
   runGit,
   safeGitRemoteEnv,
-} from "./git-lib.mjs";
+} from "../../lazurio/core/git-lib.mjs";
 
 const DEFAULT_MODULE_LIMIT = 8;
 const DEFAULT_COMMIT_LIMIT = 15;

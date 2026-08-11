@@ -4,7 +4,7 @@ import {
   GIT_LOCAL_TIMEOUT_MS,
   runGit,
   safeGitRemoteEnv,
-} from "../launchpad/src/git-lib.mjs";
+} from "../lazurio/core/git-lib.mjs";
 
 export async function runPrPreflight({
   repoRoot = process.cwd(),

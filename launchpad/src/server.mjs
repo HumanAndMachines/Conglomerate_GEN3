@@ -23,8 +23,8 @@ import {
   buildWorktreesResponse,
 } from "./git-api-lib.mjs";
 import { RuntimeActionError, createRuntimeManager } from "./runtime-lib.mjs";
-import { createGitStatusService } from "./git-status-lib.mjs";
-import { performRootUpdate, readRootUpdateStatus } from "./update-lib.mjs";
+import { createGitStatusService } from "../../lazurio/core/git-status-lib.mjs";
+import { performRootUpdate, readRootUpdateStatus } from "../../lazurio/core/update-lib.mjs";
 import { WorktreeActionError, createWorktreeFromPlan, publishWorktreeDraft } from "./worktree-actions-lib.mjs";
 import { buildRecentModuleChanges } from "./recent-changes-lib.mjs";
 import { buildNotifications } from "./notifications-lib.mjs";
@@ -43,7 +43,7 @@ import {
   GIT_LOCAL_TIMEOUT_MS,
   resolveGitExecutableSync,
   safeGitCommandEnv,
-} from "./git-lib.mjs";
+} from "../../lazurio/core/git-lib.mjs";
 
 const defaultHost = "127.0.0.1";
 const defaultPort = 4174;

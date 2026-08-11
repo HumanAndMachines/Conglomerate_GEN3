@@ -2,9 +2,9 @@ import { existsSync } from "fs";
 import { readFile, readdir } from "fs/promises";
 import { basename, join, relative } from "path";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
-import { readGitRepoStatus } from "./git-status-lib.mjs";
+import { readGitRepoStatus } from "../../lazurio/core/git-status-lib.mjs";
 import { readMissionControlPlanAt } from "./mission-control-plan-lib.mjs";
-import { inspectCanonicalPathBoundary } from "./path-boundary-lib.mjs";
+import { inspectCanonicalPathBoundary } from "../../lazurio/core/path-boundary-lib.mjs";
 
 const invalidWorktreeLocations = [
   ".claude/worktrees",

@@ -1,6 +1,6 @@
 import { buildGitInventory } from "./git-inventory-lib.mjs";
-import { materializeRepoCheckout } from "./git-materialization-lib.mjs";
-import { mapWithConcurrency } from "./git-lib.mjs";
+import { materializeRepoCheckout } from "../../lazurio/core/git-materialization-lib.mjs";
+import { mapWithConcurrency } from "../../lazurio/core/git-lib.mjs";
 import { buildMissionControlPlanIndex } from "./mission-control-plan-lib.mjs";
 import {
   GIT_REMOTE_REFRESH_CONCURRENCY,
@@ -10,7 +10,7 @@ import {
   readGitRepoStatus,
   readGitRepoStatuses,
   readRepoChanges,
-} from "./git-status-lib.mjs";
+} from "../../lazurio/core/git-status-lib.mjs";
 import { buildWorktreeIndex } from "./worktree-lib.mjs";
 
 export class GitApiError extends Error {

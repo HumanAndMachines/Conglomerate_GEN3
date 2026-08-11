@@ -1,4 +1,4 @@
-import { safeGitCommandEnv } from "../launchpad/src/git-lib.mjs";
+import { safeGitCommandEnv } from "../lazurio/core/git-lib.mjs";
 
 export const CHECKOUT_TRANSPORT_OVERRIDE_PATTERN = "^(url\\..*\\.insteadof|http(\\..*)?\\.proxy|credential(\\..*)?\\.helper|remote\\.origin\\.proxy|core\\.(gitproxy|sshcommand))$";
 

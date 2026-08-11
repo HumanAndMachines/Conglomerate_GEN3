@@ -9,7 +9,7 @@ import {
   GIT_LOCAL_TIMEOUT_MS,
   resolveGitExecutableSync,
   safeGitCommandEnv,
-} from '../launchpad/src/git-lib.mjs';
+} from '../lazurio/core/git-lib.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 

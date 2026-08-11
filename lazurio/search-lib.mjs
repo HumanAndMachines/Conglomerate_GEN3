@@ -12,7 +12,7 @@ import {
 import {
   normalizeOrganizationSlotPath,
   organizationSlotTeams,
-} from "../launchpad/src/organization-slot-scope-lib.mjs";
+} from "./core/organization-slot-scope-lib.mjs";
 import { detectLazurioRoot } from "./lib.mjs";
 
 export const LAZURIO_SEARCH_RESULT_SCHEMA_VERSION = "lazurio.search.results.v1";

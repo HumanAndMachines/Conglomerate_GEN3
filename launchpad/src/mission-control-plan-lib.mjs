@@ -5,7 +5,7 @@ import { buildGitInventory } from "./git-inventory-lib.mjs";
 import {
   inspectCanonicalPathBoundary,
   isPathDescendant,
-} from "./path-boundary-lib.mjs";
+} from "../../lazurio/core/path-boundary-lib.mjs";
 
 // Mission Control v3 keeps its canonical filesystem database in a nested
 // organization-local data checkout. The legacy root remains readable during

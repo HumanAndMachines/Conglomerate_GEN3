@@ -12,7 +12,7 @@ import {
   readUpdateChannelConfig,
   restoreCreatedStash,
   selectHighestStableTag,
-} from "./update-lib.mjs";
+} from "../../lazurio/core/update-lib.mjs";
 
 const tempRoots = [];
 

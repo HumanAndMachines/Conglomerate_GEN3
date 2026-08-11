@@ -13,7 +13,7 @@ import {
   runGit,
   safeGitCommandEnv,
   safeGitRemoteEnv,
-} from "./git-lib.mjs";
+} from "../../lazurio/core/git-lib.mjs";
 import { initGitRepo } from "./git-fixture-helpers.test.mjs";
 
 test("mapWithConcurrency never runs more than the requested number of workers", async () => {

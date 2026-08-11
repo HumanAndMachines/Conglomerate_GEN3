@@ -2,8 +2,8 @@ import { afterAll, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { runGit } from "./git-lib.mjs";
-import { materializeRepoCheckout } from "./git-materialization-lib.mjs";
+import { runGit } from "../../lazurio/core/git-lib.mjs";
+import { materializeRepoCheckout } from "../../lazurio/core/git-materialization-lib.mjs";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
 import {
   createLaunchpadGitFixture,

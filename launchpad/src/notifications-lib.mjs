@@ -17,7 +17,7 @@ import {
   resolveGitExecutable,
   runGit,
   safeGitRemoteEnv,
-} from "./git-lib.mjs";
+} from "../../lazurio/core/git-lib.mjs";
 import { moduleReposFromApps } from "./recent-changes-lib.mjs";
 
 const DEFAULT_COMMIT_LIMIT = 10;

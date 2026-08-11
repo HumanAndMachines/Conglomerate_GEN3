@@ -8,7 +8,7 @@ import {
   pullRepoFastForward,
   pullRepoWithAutostash,
   readGitRepoStatus,
-} from "./git-status-lib.mjs";
+} from "../../lazurio/core/git-status-lib.mjs";
 import {
   initGitRepo,
   normalizeLineEndings,

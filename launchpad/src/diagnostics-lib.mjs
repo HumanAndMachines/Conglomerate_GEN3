@@ -6,7 +6,7 @@ import {
   organizationRelativePathIssue,
   readJson,
 } from "./discovery-lib.mjs";
-import { UPDATE_CHANNELS, selectHighestStableTag } from "./update-lib.mjs";
+import { UPDATE_CHANNELS, selectHighestStableTag } from "../../lazurio/core/update-lib.mjs";
 import { buildGitApiResponse, compactGitSummaryForApp } from "./git-api-lib.mjs";
 import { createRuntimeManager, resolveBunExecutable } from "./runtime-lib.mjs";
 import { buildWorktreeIndex } from "./worktree-lib.mjs";
@@ -14,7 +14,7 @@ import {
   GIT_LOCAL_TIMEOUT_MS,
   resolveGitExecutableSync,
   safeGitCommandEnv,
-} from "./git-lib.mjs";
+} from "../../lazurio/core/git-lib.mjs";
 import { agentSkillsEntrypointsDoctorCheck } from "./agent-skills-entrypoint-lib.mjs";
 import { runChildDoctorLane } from "./doctor-children-lib.mjs";
 import {
@@ -38,7 +38,7 @@ import {
   organizationSlotTeams,
   organizationSlotUiExposure,
   organizationSlotWorkspace,
-} from "./organization-slot-scope-lib.mjs";
+} from "../../lazurio/core/organization-slot-scope-lib.mjs";
 
 const supportedPlatforms = {
   darwin: "macOS",

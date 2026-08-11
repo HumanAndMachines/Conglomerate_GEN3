@@ -1,15 +1,15 @@
 import { basename } from "path";
 import { builderPullScopeAllowed } from "./git-api-lib.mjs";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
-import { materializeRepoCheckout } from "./git-materialization-lib.mjs";
+import { materializeRepoCheckout } from "../../lazurio/core/git-materialization-lib.mjs";
 import {
   pullRepoFastForward,
   pullRepoWithAutostash,
   readGitRepoStatus,
-} from "./git-status-lib.mjs";
-import { performRootUpdate, readRootUpdateStatus } from "./update-lib.mjs";
-import { GIT_REMOTE_REFRESH_CONCURRENCY } from "./git-status-lib.mjs";
-import { mapWithConcurrency } from "./git-lib.mjs";
+} from "../../lazurio/core/git-status-lib.mjs";
+import { performRootUpdate, readRootUpdateStatus } from "../../lazurio/core/update-lib.mjs";
+import { GIT_REMOTE_REFRESH_CONCURRENCY } from "../../lazurio/core/git-status-lib.mjs";
+import { mapWithConcurrency } from "../../lazurio/core/git-lib.mjs";
 
 // Guarded headless update lane (CAC-0083). Doctor zůstává read-only
 // diagnostika (decisions 0018/0059); tahle lane je oddělená mutační akce se

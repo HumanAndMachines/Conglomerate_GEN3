@@ -5,7 +5,7 @@ import {
   GIT_LOCAL_TIMEOUT_MS,
   runGit,
   safeGitRemoteEnv,
-} from "./git-lib.mjs";
+} from "../../lazurio/core/git-lib.mjs";
 
 const BASE = {
   id: "git.task_preflight",

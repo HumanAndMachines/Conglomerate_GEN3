@@ -8,13 +8,13 @@ import {
   loadRootDoctorSchema,
 } from "../launchpad/src/diagnostics-lib.mjs";
 import { buildGitInventory } from "../launchpad/src/git-inventory-lib.mjs";
-import { readGitRepoStatuses } from "../launchpad/src/git-status-lib.mjs";
+import { readGitRepoStatuses } from "./core/git-status-lib.mjs";
 import {
   GIT_LOCAL_TIMEOUT_MS,
   mapWithConcurrency,
   runGit,
-} from "../launchpad/src/git-lib.mjs";
-import { githubRepositoryCoordinate } from "../launchpad/src/organization-slot-scope-lib.mjs";
+} from "./core/git-lib.mjs";
+import { githubRepositoryCoordinate } from "./core/organization-slot-scope-lib.mjs";
 import { buildWorktreeIndex } from "../launchpad/src/worktree-lib.mjs";
 import {
   declarationIssues,
