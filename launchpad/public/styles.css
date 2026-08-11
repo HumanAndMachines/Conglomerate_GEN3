@@ -1025,8 +1025,13 @@ input:focus-visible,
   margin-bottom: var(--lz-space-16);
 }
 
-.global-update-slot .update-banner {
+.global-update-slot .update-banner-group {
   margin: 0;
+}
+
+.update-banner-group {
+  display: grid;
+  gap: 0.75rem;
 }
 
 .recent-changes-sidebar {
@@ -1046,7 +1051,7 @@ input:focus-visible,
 /* Stav aktualizací je globální provozní informace stejně jako Stav prostoru.
    V pravém sloupci proto tvoří první kompaktní kartu místo širokého banneru,
    který odváděl pozornost od vyhledávání a aplikací. */
-.recent-changes-sidebar > .update-banner {
+.recent-changes-sidebar > .update-banner-group .update-banner {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
@@ -1057,72 +1062,15 @@ input:focus-visible,
   padding: var(--lz-space-16);
 }
 
-.recent-changes-sidebar > .update-banner .update-banner-text {
+.recent-changes-sidebar > .update-banner-group .update-banner-text {
   font-size: var(--lz-size-body);
   line-height: var(--lz-leading-body);
 }
 
-.recent-changes-sidebar > .update-banner .update-banner-action {
+.recent-changes-sidebar > .update-banner-group .update-banner-action {
   grid-column: 1 / -1;
   width: 100%;
   margin-left: 0;
-}
-
-.organization-git-head {
-  gap: 0.5rem;
-}
-
-.organization-git-head .btn {
-  white-space: nowrap;
-}
-
-.organization-git-status,
-.organization-git-card {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.organization-git-card {
-  padding: 0.65rem;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--bg-muted);
-}
-
-.organization-git-card > strong {
-  font-size: 14px;
-}
-
-.organization-git-card p,
-.organization-git-card small,
-.bulk-pull-summary p {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 14px;
-  line-height: 1.4;
-}
-
-.organization-git-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-
-.bulk-pull-summary {
-  padding-top: 0.55rem;
-  border-top: 1px solid var(--line);
-  font-size: 14px;
-}
-
-.bulk-pull-summary summary {
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.bulk-pull-summary ul {
-  margin: 0.5rem 0 0;
-  padding-left: 1rem;
-  color: var(--text-muted);
 }
 
 .recent-changes-sidebar .rail-eyebrow {
@@ -5645,7 +5593,6 @@ body {
 
 .btn.btn-secondary,
 .side-panel,
-.organization-git-status,
 .team-access-content {
   border-width: 1.5px;
 }
@@ -5661,10 +5608,6 @@ body {
 
 .side-panel {
   background: var(--lz-white);
-}
-
-.organization-git-status {
-  background: var(--lz-paper);
 }
 
 /* Další možnosti jsou inline disclosure, ne plovoucí karta. Panel rozšíří
@@ -5915,7 +5858,7 @@ body {
 /* Pravý sloupec používá jeden panelový jazyk: bílý papír, stejnou hranu,
    stejné odsazení a sekundární tlačítko. Stavová barva zůstává na ikoně a
    hraně, ne v plošném gradientu. */
-.recent-changes-sidebar > .update-banner {
+.recent-changes-sidebar > .update-banner-group .update-banner {
   gap: var(--lz-space-12);
   padding: 0.9rem;
   background: var(--lz-white);
@@ -5924,24 +5867,24 @@ body {
   border-radius: 0;
 }
 
-.recent-changes-sidebar > .update-banner.is-current {
+.recent-changes-sidebar > .update-banner-group .update-banner.is-current {
   background: var(--lz-white);
   border-color: var(--c-success-line);
 }
 
-.recent-changes-sidebar > .update-banner .update-banner-icon,
-.recent-changes-sidebar > .update-banner .update-banner-success {
+.recent-changes-sidebar > .update-banner-group .update-banner-icon,
+.recent-changes-sidebar > .update-banner-group .update-banner-success {
   width: 20px;
   height: 20px;
 }
 
-.recent-changes-sidebar > .update-banner .update-banner-text {
+.recent-changes-sidebar > .update-banner-group .update-banner-text {
   font-size: 14px;
   font-weight: 600;
   line-height: 1.35;
 }
 
-.recent-changes-sidebar > .update-banner .update-banner-action {
+.recent-changes-sidebar > .update-banner-group .update-banner-action {
   min-height: 38px;
   padding: 8px 14px;
   border: 1.5px solid var(--lz-line);
@@ -5952,8 +5895,8 @@ body {
   font-weight: 600;
 }
 
-.recent-changes-sidebar > .update-banner .update-banner-action:hover:not(:disabled),
-.recent-changes-sidebar > .update-banner .update-banner-action:focus-visible:not(:disabled) {
+.recent-changes-sidebar > .update-banner-group .update-banner-action:hover:not(:disabled),
+.recent-changes-sidebar > .update-banner-group .update-banner-action:focus-visible:not(:disabled) {
   background: var(--lz-gray-50);
   filter: none;
 }

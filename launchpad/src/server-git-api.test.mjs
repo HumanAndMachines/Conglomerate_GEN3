@@ -58,6 +58,7 @@ test("Launchpad server exposes read-only git and Mission Control routes", async 
   const blockedAutostashPull = await postJson(port, "/api/git/repos/BetaCo%3A%3Adeals/pull-autostash", {}, 409);
   const blockedProductionPull = await postJson(port, "/api/git/repos/OmegaCo%3A%3Afirmware/pull", {}, 403);
   const pullAll = await postJson(port, "/api/git/pull-all", {});
+  const scopedPull = await postJson(port, "/api/git/pull-all?company=BetaCo", {});
   const worktrees = await getJson(port, "/api/git/worktrees?organization=BetaCo&module=deals");
   const plans = await getJson(port, "/api/mission-control/plans?organization=BetaCo&module=deals");
   const moduleFolderGet = await fetch(`http://127.0.0.1:${port}/api/modules/open-folder`);
@@ -74,6 +75,8 @@ test("Launchpad server exposes read-only git and Mission Control routes", async 
   expect(blockedProductionPull.message).toContain("productionspace");
   expect(pullAll.schema_version).toBe("companiesascode.launchpad.git_pull_all.v1");
   expect(pullAll.results.some((result) => result.repo_key === "OmegaCo::firmware" && result.outcome === "policy_skipped")).toBe(true);
+  expect(scopedPull.organization).toBe("BetaCo");
+  expect(scopedPull.results.every((result) => result.organization === "BetaCo")).toBe(true);
   expect(worktrees.schema_version).toBe("companiesascode.launchpad.worktrees.v1");
   expect(plans.schema_version).toBe("companiesascode.launchpad.mission_control_plans.v1");
   expect(moduleFolderGet.status).toBe(405);

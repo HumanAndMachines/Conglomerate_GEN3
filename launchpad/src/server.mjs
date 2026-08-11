@@ -646,7 +646,11 @@ async function handleGitApiRoute(request, url, route) {
       if (request.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
       return jsonResponse(await appsResponseCache.runMutation(() =>
         gitStatusService.withRemoteRefreshPaused(() =>
-          buildPullAllResponse({ companiesRoot, statusService: gitStatusService }))));
+          buildPullAllResponse({
+            companiesRoot,
+            organization: url.searchParams.get("company"),
+            statusService: gitStatusService,
+          }))));
     }
     if (request.method !== "GET") return jsonResponse({ error: "method_not_allowed" }, 405);
     if (route.kind === "repos") {

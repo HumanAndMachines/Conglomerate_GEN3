@@ -733,10 +733,11 @@ vždy `false`, takže se stávající chování nemění. Rozšíření `isAtten
 o git stavy je připravené a aktivuje se automaticky, jakmile endpoint začne
 vracet data — viz handoff CAC-0044.
 
-Organization root repo je first-class položka Organization UI, ne skrytý API
-detail: panel **Git Organizace** ukazuje jeho status, incoming počet a freshness.
-Ve stejném panelu je jediná globální akce **Pullnout vše**, která projde všechny
-namountované Organizace včetně jejich root repozitářů a Workspace modulů.
+Organization Git stav je first-class položka UI, ale denní povrch ho shrnuje
+bez samostatného technického panelu. Pod stavem Conglomerate je druhý stejně
+jednoduchý řádek: bez změn říká, že jsou moduly aktuální; při změnách ukáže
+počet dotčených modulů a jediné tlačítko **Stáhnout změny**. Akce projde právě
+otevřenou Organizaci včetně jejího root repozitáře a Workspace modulů.
 Bezpečné čisté checkouty fast-forwardne; draft s incoming a bez outgoing commitů
 projde explicitním autostash flow. Productionspace a rizikové stavy přeskočí,
 jeden konflikt nezastaví ostatní repozitáře a výsledný souhrn musí pojmenovat

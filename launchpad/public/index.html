@@ -176,22 +176,40 @@
 
         </section>
 
-        <aside id="recentChangesSidebar" class="recent-changes-sidebar hidden" aria-label="Poslední změny">
-          <div id="updateBanner" class="update-banner" role="status">
-            <svg class="update-banner-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M12 3v12" />
-              <path d="m7 10 5 5 5-5" />
-              <path d="M4 21h16" />
-            </svg>
-            <svg class="update-banner-success" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="9" />
-              <path d="m8 12 2.5 2.5L16 9" />
-            </svg>
-            <svg class="update-banner-spinner" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
-              <path d="M12 3a9 9 0 1 1-6.4 2.6" />
-            </svg>
-            <span id="updateBannerText" class="update-banner-text">Kontroluji dostupné změny…</span>
-            <button id="updateBannerAction" type="button" class="update-banner-action" hidden></button>
+        <aside id="recentChangesSidebar" class="recent-changes-sidebar hidden" aria-label="Stav pracovního prostoru">
+          <div id="updateBannerGroup" class="update-banner-group">
+            <div id="updateBanner" class="update-banner" role="status">
+              <svg class="update-banner-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 3v12" />
+                <path d="m7 10 5 5 5-5" />
+                <path d="M4 21h16" />
+              </svg>
+              <svg class="update-banner-success" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="m8 12 2.5 2.5L16 9" />
+              </svg>
+              <svg class="update-banner-spinner" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+                <path d="M12 3a9 9 0 1 1-6.4 2.6" />
+              </svg>
+              <span id="updateBannerText" class="update-banner-text">Kontroluji dostupné změny…</span>
+              <button id="updateBannerAction" type="button" class="update-banner-action" hidden></button>
+            </div>
+            <div id="moduleUpdateBanner" class="update-banner module-update-banner" role="status">
+              <svg class="update-banner-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 3v12" />
+                <path d="m7 10 5 5 5-5" />
+                <path d="M4 21h16" />
+              </svg>
+              <svg class="update-banner-success" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="m8 12 2.5 2.5L16 9" />
+              </svg>
+              <svg class="update-banner-spinner" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+                <path d="M12 3a9 9 0 1 1-6.4 2.6" />
+              </svg>
+              <span id="moduleUpdateBannerText" class="update-banner-text">Kontroluji změny v modulech…</span>
+              <button id="moduleUpdateBannerAction" type="button" class="update-banner-action" hidden>Stáhnout změny</button>
+            </div>
           </div>
           <section id="hero" class="hero side-panel hero-loading" aria-live="polite" aria-label="Stav prostoru">
             <div class="hero-head">
@@ -204,13 +222,6 @@
             <div class="hero-panel">
               <button id="heroCta" type="button" class="btn btn-secondary btn-sm">Zkontrolovat stav</button>
             </div>
-          </section>
-          <section id="organizationGitPanel" class="side-panel organization-git-panel" aria-label="Git Organizace">
-            <div class="side-panel-head organization-git-head">
-              <span class="rail-eyebrow">Git Organizace</span>
-              <button id="pullAllButton" type="button" class="btn btn-secondary btn-sm">Pullnout vše</button>
-            </div>
-            <div id="organizationGitStatus" class="organization-git-status"></div>
           </section>
         </aside>
 
