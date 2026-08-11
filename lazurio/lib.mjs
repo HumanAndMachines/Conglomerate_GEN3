@@ -3,9 +3,19 @@ import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import {
+  buildLaunchpadAppsResponse,
   buildLaunchpadDoctorReport,
   loadRootDoctorSchema,
 } from "../launchpad/src/diagnostics-lib.mjs";
+import { buildGitInventory } from "../launchpad/src/git-inventory-lib.mjs";
+import { readGitRepoStatuses } from "../launchpad/src/git-status-lib.mjs";
+import {
+  GIT_LOCAL_TIMEOUT_MS,
+  mapWithConcurrency,
+  runGit,
+} from "../launchpad/src/git-lib.mjs";
+import { githubRepositoryCoordinate } from "../launchpad/src/organization-slot-scope-lib.mjs";
+import { buildWorktreeIndex } from "../launchpad/src/worktree-lib.mjs";
 import {
   declarationIssues,
   runBoundChildDoctor,
@@ -59,11 +69,22 @@ export function detectLazurioRoot(root = process.cwd()) {
 
 export async function buildLazurioContext({
   root = process.cwd(),
+  organization = null,
 } = {}) {
   const detected = detectLazurioRoot(root);
-  const projection = detected.kind === "personalspace"
+  if (organization !== null && detected.kind !== "launchpad_root") {
+    throw new Error("--organization lze použít pouze nad Launchpad rootem.");
+  }
+  const baseProjection = detected.kind === "personalspace"
     ? await personalspaceRootContext(detected)
     : await launchpadRootContext(detected);
+  const projection = organization === null
+    ? baseProjection
+    : await withSelectedOrganizationContext({
+        detected,
+        projection: baseProjection,
+        selector: organization,
+      });
   const failures = await validateLazurioContext(projection);
   if (failures.length > 0) {
     throw new Error(`Lazurio context neprošel vlastním schématem: ${failures.join("; ")}`);
@@ -238,7 +259,7 @@ async function launchpadRootContext(detected) {
         readiness: state("not_evaluated", reason),
         access: state("not_evaluated", "provider_authority_not_checked"),
       },
-      organizationsState: state("not_evaluated", "organization_context_deferred_cac_0093"),
+      organizationsState: state("not_evaluated", "organization_selector_not_provided"),
       sources: [],
     });
   }
@@ -280,7 +301,7 @@ async function launchpadRootContext(detected) {
         readiness: state("not_evaluated", reason),
         access: state("not_evaluated", "provider_authority_not_checked"),
       },
-      organizationsState: state("not_evaluated", "organization_context_deferred_cac_0093"),
+      organizationsState: state("not_evaluated", "organization_selector_not_provided"),
       sources,
     });
   }
@@ -302,7 +323,7 @@ async function launchpadRootContext(detected) {
         readiness: state("not_evaluated", reason),
         access: state("not_evaluated", "provider_authority_not_checked"),
       },
-      organizationsState: state("not_evaluated", "organization_context_deferred_cac_0093"),
+      organizationsState: state("not_evaluated", "organization_selector_not_provided"),
       sources,
     });
   }
@@ -322,7 +343,7 @@ async function launchpadRootContext(detected) {
         readiness: state("not_evaluated", "configured_mount_ambiguous"),
         access: state("not_evaluated", "provider_authority_not_checked"),
       },
-      organizationsState: state("not_evaluated", "organization_context_deferred_cac_0093"),
+      organizationsState: state("not_evaluated", "organization_selector_not_provided"),
       sources,
     });
   }
@@ -340,7 +361,7 @@ async function launchpadRootContext(detected) {
         readiness: state("not_evaluated", reason),
         access: state("not_evaluated", "provider_authority_not_checked"),
       },
-      organizationsState: state("not_evaluated", "organization_context_deferred_cac_0093"),
+      organizationsState: state("not_evaluated", "organization_selector_not_provided"),
       sources,
     });
   }
@@ -365,7 +386,7 @@ async function launchpadRootContext(detected) {
         readiness: state("not_evaluated", reason),
         access: state("not_evaluated", "provider_authority_not_checked"),
       },
-      organizationsState: state("not_evaluated", "organization_context_deferred_cac_0093"),
+      organizationsState: state("not_evaluated", "organization_selector_not_provided"),
       sources,
     });
   }
@@ -387,7 +408,7 @@ async function launchpadRootContext(detected) {
           readiness: state("not_evaluated", reason),
           access: state("not_evaluated", "provider_authority_not_checked"),
         },
-        organizationsState: state("not_evaluated", "organization_context_deferred_cac_0093"),
+        organizationsState: state("not_evaluated", "organization_selector_not_provided"),
         sources,
       });
     }
@@ -402,7 +423,7 @@ async function launchpadRootContext(detected) {
           readiness: state("not_evaluated", reason),
           access: state("not_evaluated", "provider_authority_not_checked"),
         },
-        organizationsState: state("not_evaluated", "organization_context_deferred_cac_0093"),
+        organizationsState: state("not_evaluated", "organization_selector_not_provided"),
         sources,
       });
     }
@@ -418,7 +439,7 @@ async function launchpadRootContext(detected) {
           readiness: state("not_evaluated", reason),
           access: state("not_evaluated", "provider_authority_not_checked"),
         },
-        organizationsState: state("not_evaluated", "organization_context_deferred_cac_0093"),
+        organizationsState: state("not_evaluated", "organization_selector_not_provided"),
         sources,
       });
     }
@@ -442,7 +463,7 @@ async function launchpadRootContext(detected) {
           readiness: state("not_evaluated", reason),
           access: state("not_evaluated", "provider_authority_not_checked"),
         },
-        organizationsState: state("not_evaluated", "organization_context_deferred_cac_0093"),
+        organizationsState: state("not_evaluated", "organization_selector_not_provided"),
         sources,
       });
     }
@@ -463,7 +484,7 @@ async function launchpadRootContext(detected) {
           readiness: state("not_evaluated", reason),
           access: state("not_evaluated", "provider_authority_not_checked"),
         },
-        organizationsState: state("not_evaluated", "organization_context_deferred_cac_0093"),
+        organizationsState: state("not_evaluated", "organization_selector_not_provided"),
         sources,
       });
     }
@@ -491,9 +512,347 @@ async function launchpadRootContext(detected) {
         : state("absent", "personalspace_manifest_absent"),
       access: state("not_evaluated", "provider_authority_not_checked"),
     },
-    organizationsState: state("not_evaluated", "organization_context_deferred_cac_0093"),
+    organizationsState: state("not_evaluated", "organization_selector_not_provided"),
     sources,
   });
+}
+
+async function withSelectedOrganizationContext({ detected, projection, selector }) {
+  const normalizedSelector = normalizedOrganizationSelector(selector);
+  if (!normalizedSelector) {
+    throw new Error("--organization vyžaduje platný Organization slug.");
+  }
+
+  const appsResponse = await buildLaunchpadAppsResponse({
+    companiesRoot: detected.absolutePath,
+    organization: normalizedSelector,
+    includeGit: false,
+    runtimeManager: {
+      appsWithRuntime: async (apps) => apps,
+    },
+  });
+  const matches = (appsResponse.organizations ?? []).filter(
+    (organization) =>
+      organization.status !== "planned"
+      && typeof organization.path === "string"
+      && organization.slug.toLowerCase() === normalizedSelector.toLowerCase(),
+  );
+  if (matches.length === 0) {
+    throw new Error(
+      `Organization '${selector}' nebyla mezi lokálně objevenými Organizacemi.`,
+    );
+  }
+  if (matches.length > 1) {
+    throw new Error(`Organization selector '${selector}' je nejednoznačný.`);
+  }
+
+  const [selected] = matches;
+  const discoveryFailures = (appsResponse.failures ?? []).filter(
+    (failure) =>
+      failure.startsWith(`${selected.path}:`)
+      || failure.startsWith(`${selected.path}/`),
+  );
+  if (discoveryFailures.length > 0) {
+    throw new Error(
+      `Organization '${selected.slug}' neprošla lokálním discovery: ${discoveryFailures.join("; ")}`,
+    );
+  }
+  const inventory = await buildGitInventory({
+    companiesRoot: detected.absolutePath,
+    organizations: [selected],
+  });
+  const statuses = await readGitRepoStatuses(inventory.repos);
+  const statusByKey = new Map(statuses.map((status) => [status.key, status]));
+  const originByKey = await observeGitOrigins(inventory.repos, statusByKey);
+  const worktreeIndex = await buildWorktreeIndex({
+    companiesRoot: detected.absolutePath,
+    organization: selected.slug,
+    inventoryOrganizations: [selected],
+  });
+  const organization = selectedOrganizationProjection({
+    companiesRoot: detected.absolutePath,
+    selected,
+    apps: appsResponse.apps ?? [],
+    inventory,
+    statusByKey,
+    originByKey,
+    worktreeIndex,
+  });
+  const contextSources = [
+    ...projection.provenance.context_sources,
+    ...organization.provenance.manifest_paths,
+    ...organization.apps.map((app) => app.package_path),
+    ...worktreeIndex.worktrees
+      .filter((worktree) => worktree.metadata)
+      .map((worktree) => worktree.sidecar_path),
+  ];
+
+  return {
+    ...projection,
+    organizations: [organization],
+    organizations_scope: "selected",
+    organization_selector: selected.slug,
+    organizations_state: state("present", "selected_organization_observed"),
+    provenance: {
+      ...projection.provenance,
+      context_sources: [...new Set(contextSources)].sort((left, right) => left.localeCompare(right)),
+    },
+  };
+}
+
+function selectedOrganizationProjection({
+  companiesRoot,
+  selected,
+  apps,
+  inventory,
+  statusByKey,
+  originByKey,
+  worktreeIndex,
+}) {
+  const repositoryByPath = new Map([
+    ...inventory.repos
+      .filter((repo) => repo.slot_path)
+      .map((repo) => [repo.slot_path, repo]),
+    ...inventory.planned
+      .filter((repo) => repo.slot_path)
+      .map((repo) => [repo.slot_path, repo]),
+  ]);
+  const declarations = Array.isArray(selected.module_declarations)
+    ? selected.module_declarations
+    : [];
+  const modules = declarations
+    .map((declaration) => {
+      const repo = repositoryByPath.get(declaration.path) ?? null;
+      const repository = repositoryName(declaration.repo);
+      return {
+        slug: declaration.slug,
+        name: declaration.name,
+        path: `${selected.path}/${declaration.path}`,
+        space: declaration.space,
+        teams: [...(declaration.teams ?? [])].sort((left, right) => left.localeCompare(right)),
+        ...(repository ? { repository } : {}),
+        ...(declaration.branch ? { declared_branch: declaration.branch } : {}),
+        materialization: moduleMaterialization(declaration),
+        access: providerAccessNotEvaluated(),
+        git: gitProjection({
+          repo,
+          status: repo ? statusByKey.get(repo.key) : null,
+          observedOrigin: repo ? originByKey.get(repo.key) : null,
+          materialization: declaration.status,
+          repositoryDeclared: repository !== null,
+        }),
+      };
+    })
+    .sort((left, right) => left.path.localeCompare(right.path));
+  const moduleBySlug = new Map(modules.map((module) => [module.slug, module]));
+  const rootRepo = inventory.repos.find((repo) => repo.repo_kind === "organization_root") ?? null;
+  const organizationRepository = repositoryName(selected.repository);
+  const manifestPaths = observedOrganizationManifestPaths({
+    companiesRoot,
+    organizationPath: selected.path,
+  });
+  const organizationApps = apps
+    .filter(
+      (app) =>
+        app.manifest_state !== "invalid_manifest"
+        && app.company.toLowerCase() === selected.slug.toLowerCase(),
+    )
+    .map((app) => ({
+      id: app.id,
+      title: app.title,
+      ...(typeof app.module === "string" ? { module: app.module } : {}),
+      path: app.cwd,
+      space: app.space,
+      teams: [...(app.teams ?? [])].sort((left, right) => left.localeCompare(right)),
+      package_path: app.package_path,
+      access: providerAccessNotEvaluated(),
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+
+  return {
+    slug: selected.slug,
+    display_name: selected.display_name,
+    path: selected.path,
+    ...(organizationRepository ? { repository: organizationRepository } : {}),
+    access: providerAccessNotEvaluated(),
+    git: gitProjection({
+      repo: rootRepo,
+      status: rootRepo ? statusByKey.get(rootRepo.key) : null,
+      observedOrigin: rootRepo ? originByKey.get(rootRepo.key) : null,
+      materialization: "available",
+      repositoryDeclared: organizationRepository !== null,
+    }),
+    teams: (selected.teams ?? [])
+      .map((team) => ({
+        slug: team.slug,
+        display_name: team.display_name,
+        default: team.default === true,
+        modules: [...new Set((team.modules ?? []).map((module) => module.slug))]
+          .sort((left, right) => left.localeCompare(right)),
+        access: providerAccessNotEvaluated(),
+      }))
+      .sort((left, right) => left.slug.localeCompare(right.slug)),
+    modules,
+    apps: organizationApps,
+    worktrees: (worktreeIndex.worktrees ?? [])
+      .map((worktree) => compactWorktree(worktree))
+      .sort((left, right) => left.path.localeCompare(right.path)),
+    entrypoints: {
+      agents: pathStateFromObservation({
+        absolutePath: join(companiesRoot, selected.path, "AGENTS.md"),
+        relativePath: `${selected.path}/AGENTS.md`,
+      }),
+      mission_control: moduleEntrypointState(moduleBySlug.get("mission-control")),
+      knowledgebase: moduleEntrypointState(moduleBySlug.get("knowledgebase")),
+    },
+    provenance: {
+      manifest_paths: manifestPaths,
+      discovery: "launchpad_scan_first",
+      git: "local_only",
+      access: "not_evaluated",
+    },
+  };
+}
+
+function observedOrganizationManifestPaths({ companiesRoot, organizationPath }) {
+  const paths = [`${organizationPath}/company.gen3.json`];
+  for (const candidate of [
+    "modules.manifest.json",
+    "company/scripts/modules.manifest.json",
+  ]) {
+    if (inspectRootManifest(join(companiesRoot, organizationPath, candidate)) !== "present") {
+      continue;
+    }
+    paths.push(`${organizationPath}/${candidate}`);
+    break;
+  }
+  return paths;
+}
+
+async function observeGitOrigins(repos, statusByKey) {
+  const pairs = await mapWithConcurrency(repos, 4, async (repo) => {
+    const status = statusByKey.get(repo.key);
+    if (!status || status.status === "repo_missing") return [repo.key, null];
+    const result = await runGit(["remote", "get-url", "origin"], {
+      cwd: repo.absolute_path,
+      timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+    });
+    return [repo.key, result.ok ? repositoryName(result.stdout) : null];
+  });
+  return new Map(pairs);
+}
+
+function gitProjection({
+  repo,
+  status,
+  observedOrigin,
+  materialization,
+  repositoryDeclared,
+}) {
+  if (materialization === "planned_slot") {
+    return {
+      status: "absent",
+      reason: "repository_not_declared",
+      origin: state("absent", "repository_not_declared"),
+    };
+  }
+  if (!repo) {
+    return repositoryDeclared
+      ? {
+          status: "not_evaluated",
+          reason: "git_inventory_excluded",
+          origin: state("not_evaluated", "git_inventory_excluded"),
+        }
+      : {
+          status: "absent",
+          reason: "repository_not_declared",
+          origin: state("absent", "repository_not_declared"),
+        };
+  }
+  if (!status || status.status === "repo_missing") {
+    return {
+      status: "absent",
+      reason: "checkout_absent",
+      origin: state("absent", "checkout_absent"),
+    };
+  }
+  if (["git_unavailable", "check_failed"].includes(status.status)) {
+    return {
+      status: "not_evaluated",
+      reason: "local_git_probe_failed",
+      origin: state("not_evaluated", "local_git_probe_failed"),
+    };
+  }
+  return {
+    status: "present",
+    reason: "local_git_observed",
+    ...(status.branch ? { branch: status.branch } : {}),
+    ...(status.expected_branch ? { expected_branch: status.expected_branch } : {}),
+    ...(status.head?.sha ? { head: status.head.sha } : {}),
+    state: status.status,
+    changed_files: status.counts?.changed_files ?? 0,
+    untracked_files: status.counts?.untracked_files ?? 0,
+    origin: observedOrigin
+      ? state("present", "local_origin_observed", { repository: observedOrigin })
+      : state("not_evaluated", "origin_not_observed"),
+  };
+}
+
+function moduleMaterialization(declaration) {
+  if (declaration.status === "available") {
+    return state("present", "checkout_present");
+  }
+  if (declaration.status === "planned_slot") {
+    return state("absent", "repository_not_declared");
+  }
+  return state("absent", "checkout_absent");
+}
+
+function moduleEntrypointState(module) {
+  if (!module) return state("absent", "entrypoint_not_declared");
+  return {
+    ...module.materialization,
+    path: module.path,
+  };
+}
+
+function pathStateFromObservation({ absolutePath, relativePath }) {
+  const observation = inspectRootManifest(absolutePath);
+  if (observation === "present") {
+    return state("present", "entrypoint_present", { path: relativePath });
+  }
+  if (observation === "absent") {
+    return state("absent", "entrypoint_absent", { path: relativePath });
+  }
+  return state("not_evaluated", "entrypoint_unreadable", { path: relativePath });
+}
+
+function compactWorktree(worktree) {
+  return {
+    slug: worktree.slug,
+    path: worktree.path,
+    workspace: worktree.workspace,
+    module: worktree.module,
+    ...(worktree.branch ? { branch: worktree.branch } : {}),
+    ...(worktree.plan_code ? { plan_code: worktree.plan_code } : {}),
+    ownership_status: worktree.ownership_status,
+    status: worktree.status,
+  };
+}
+
+function providerAccessNotEvaluated() {
+  return state("not_evaluated", "provider_authority_not_checked");
+}
+
+function repositoryName(remote) {
+  return githubRepositoryCoordinate(remote)?.ownerRepo ?? null;
+}
+
+function normalizedOrganizationSelector(value) {
+  const normalized = normalizedText(value);
+  return normalized && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(normalized)
+    ? normalized
+    : null;
 }
 
 function contextDocument({
@@ -502,6 +861,9 @@ function contextDocument({
   personalspace,
   organizationsState,
   sources,
+  organizations = [],
+  organizationsScope = "none",
+  organizationSelector = null,
 }) {
   return {
     schema_version: LAZURIO_CONTEXT_SCHEMA_VERSION,
@@ -515,7 +877,9 @@ function contextDocument({
       architecture: process.arch,
     },
     personalspace,
-    organizations: [],
+    organizations,
+    organizations_scope: organizationsScope,
+    organization_selector: organizationSelector,
     organizations_state: organizationsState,
     provenance: {
       context_sources: sources,

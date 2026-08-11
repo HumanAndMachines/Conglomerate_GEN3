@@ -711,6 +711,7 @@ function autoOrganizationFromCompanyJson({ companyJson, path, directoryName }) {
     repository: company.repository ?? null,
     git_url: company.git_url ?? null,
     github_org: company.github_org ?? null,
+    default_branch: company.default_branch ?? companyJson.default_branch ?? "main",
     generation: companyJson.organization_generation ?? "gen3",
     migration_marker: directoryName.endsWith("_GEN3") ? "_GEN3" : null,
     materialization: "local-auto",
@@ -1176,12 +1177,14 @@ export async function discoverLaunchpadApps(
   const pluginSchema = await readJson(pluginSchemaPath);
   const packageEntries = [];
   const templatePackageEntries = [];
-  const { organizations, templateMounts } = await discoverOrganizations({
+  const discovered = await discoverOrganizations({
     companiesRoot,
     companiesConfig,
     failures,
     warnings,
   });
+  let organizations = discovered.organizations;
+  let templateMounts = discovered.templateMounts;
   // Planned sloty jsou per-machine záležitost (gitignored launchpad.gen3.local.json):
   // sdílený tracked config nesmí nést něčí plánované Organizace — na cizí mašině se
   // ukazovaly jako chybějící přístup (decision 0042, founder 2026-07-12). Planned
@@ -1189,7 +1192,18 @@ export async function discoverLaunchpadApps(
   // se stejným slugem vyhrává.
   const localConfig = await readLocalOverrideConfig(companiesRoot, warnings);
   appendPlannedOrganizations({ localConfig, organizations, templateMounts, warnings });
-  const moduleTemplates = await discoverModuleTemplates({ companiesRoot });
+  const organizationSelector = typeof options.organization === "string"
+    ? options.organization.trim().toLowerCase()
+    : null;
+  if (organizationSelector) {
+    organizations = organizations.filter(
+      (organization) => organization.slug.toLowerCase() === organizationSelector,
+    );
+    templateMounts = [];
+  }
+  const moduleTemplates = organizationSelector
+    ? []
+    : await discoverModuleTemplates({ companiesRoot });
   await walkMountPackages({
     mounts: organizations,
     companiesRoot,
@@ -1200,22 +1214,26 @@ export async function discoverLaunchpadApps(
   // Template mounty se validují se stejnými strukturálními gates (required paths),
   // ale jejich balíčky jdou do oddělené kolekce — nikdy se nestanou spustitelnými
   // aplikacemi (runtime/business/counts exclusion, founder 2026-07-12).
-  await walkMountPackages({
-    mounts: templateMounts,
-    companiesRoot,
-    packageEntries: templatePackageEntries,
-    failures,
-    warnings,
-  });
+  if (!organizationSelector) {
+    await walkMountPackages({
+      mounts: templateMounts,
+      companiesRoot,
+      packageEntries: templatePackageEntries,
+      failures,
+      warnings,
+    });
+  }
 
-  await discoverLocalSurfacePackages({
-    companiesRoot,
-    companiesConfig,
-    localConfig,
-    packageEntries,
-    failures,
-    warnings,
-  });
+  if (!organizationSelector) {
+    await discoverLocalSurfacePackages({
+      companiesRoot,
+      companiesConfig,
+      localConfig,
+      packageEntries,
+      failures,
+      warnings,
+    });
+  }
 
   const sortedPackageEntries = packageEntries.sort((a, b) => a.packagePath.localeCompare(b.packagePath));
   const apps = [];

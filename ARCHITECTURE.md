@@ -140,8 +140,10 @@ pro první jmenovaný consumer. Je to projekce nad kanonickými manifesty a
 runtime fakty, nikoli nový store, IAM nebo veřejné Core API.
 
 - `context` vrací pouze výslovně povolená metadata Principála, Mašiny a
-  Personalspace. Residentovu osobnost, paměť, chat, sessions, secrets ani
-  mandáty nenačítá.
+  Personalspace. S explicitním `--organization <slug>` přidá právě jednu
+  lokálně objevenou Organization projekci: Teamy, moduly, aplikace, worktrees a
+  základní vstupní body. Residentovu osobnost, paměť, chat, sessions, secrets
+  ani mandáty nenačítá.
 - Pozorování filesystemu a provider authority jsou dvě různé věci. Chybějící
   mount je `absent`; GitHub nebo aplikační access zůstává `not_evaluated` bez
   živého provider readbacku.
@@ -153,9 +155,9 @@ runtime fakty, nikoli nový store, IAM nebo veřejné Core API.
   QMD indexem. Scope vzniká průnikem Launchpad discovery, Organization manifestu
   a explicitního pilotního registru, indexy jsou oddělené per Organization a
   Principál a nefunkční QMD neblokuje exact lane.
-- Obecný Organization context/effective workspace, MCP, writes, distribuce a
-  stabilní API vzniknou až z dalších ověřených consumerů; nejsou skrytou
-  součástí v0.
+- Efektivní provider-scoped workspace, členství, MCP, writes, distribuce a
+  stabilní API vzniknou až z dalších ověřených consumerů; vybraná lokální
+  Organization projekce je za ně nevydává a access drží `not_evaluated`.
 
 Zulip proto zůstává chat s Residentem, T3 Code nebo CLI chat s Agenty a Lazurio
 CLI jejich strojový podklad. Čistá Agent session se spuštěním CLI nestává

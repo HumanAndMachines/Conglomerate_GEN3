@@ -66,6 +66,8 @@ test("rootless context je deterministický allowlist bez Residentova obsahu", as
       access: { status: "not_evaluated", reason: "provider_authority_not_checked" },
     },
     organizations: [],
+    organizations_scope: "none",
+    organization_selector: null,
     organizations_state: { status: "absent", reason: "rootless_mode" },
     provenance: {
       context_sources: ["personal.gen3.json"],
@@ -149,9 +151,205 @@ test("chybějící mount je absent, ale provider access zůstává not_evaluated
   expect(context.organizations).toEqual([]);
   expect(context.organizations_state).toEqual({
     status: "not_evaluated",
-    reason: "organization_context_deferred_cac_0093",
+    reason: "organization_selector_not_provided",
   });
 });
+
+test("Organization selector vrátí deterministickou lokální projekci bez předstírání GitHub access", async () => {
+  const root = await organizationContextFixture();
+
+  const first = await buildLazurioContext({
+    root,
+    organization: "humanandmachine-ai",
+  });
+  const second = await buildLazurioContext({
+    root,
+    organization: "HumanAndMachine-ai",
+  });
+
+  expect(first).toEqual(second);
+  expect(first.organizations_scope).toBe("selected");
+  expect(first.organization_selector).toBe("HumanAndMachine-ai");
+  expect(first.organizations_state).toEqual({
+    status: "present",
+    reason: "selected_organization_observed",
+  });
+  expect(first.organizations).toHaveLength(1);
+
+  const [organization] = first.organizations;
+  expect(organization).toMatchObject({
+    slug: "HumanAndMachine-ai",
+    repository: "HumanAndMachine-ai/HumanAndMachine-ai_GEN3",
+    access: {
+      status: "not_evaluated",
+      reason: "provider_authority_not_checked",
+    },
+    git: {
+      status: "present",
+      expected_branch: "trunk",
+      origin: {
+        status: "present",
+        repository: "HumanAndMachine-ai/HumanAndMachine-ai_GEN3",
+      },
+    },
+  });
+  expect(organization.teams.map((team) => team.slug)).toEqual(["lazurio", "rozjedeme-ai"]);
+  expect(organization.teams.every((team) => team.access.status === "not_evaluated")).toBe(true);
+
+  const modules = new Map(organization.modules.map((module) => [module.slug, module]));
+  expect(modules.get("website-lazurio")).toMatchObject({
+    path: "organizations/HumanAndMachine-ai_GEN3/workspace/website-lazurio",
+    materialization: { status: "present", reason: "checkout_present" },
+    access: { status: "not_evaluated", reason: "provider_authority_not_checked" },
+    git: {
+      status: "present",
+      origin: {
+        status: "present",
+        repository: "HumanAndMachine-ai/website-lazurio",
+      },
+    },
+  });
+  expect(modules.get("design-system-lazurio")).toMatchObject({
+    materialization: { status: "absent", reason: "checkout_absent" },
+    access: { status: "not_evaluated", reason: "provider_authority_not_checked" },
+    git: {
+      status: "absent",
+      reason: "checkout_absent",
+    },
+  });
+  expect(organization.apps).toHaveLength(2);
+  const websiteApp = organization.apps.find(
+    (app) => app.id === "humanandmachine-ai-lazurio-website",
+  );
+  const rootApp = organization.apps.find((app) => app.id === "humanandmachine-ai-root-tool");
+  expect(websiteApp).toMatchObject({
+    id: "humanandmachine-ai-lazurio-website",
+    module: "website-lazurio",
+    access: { status: "not_evaluated", reason: "provider_authority_not_checked" },
+  });
+  expect(rootApp).toBeDefined();
+  expect(rootApp.module).toBeUndefined();
+  expect(organization.entrypoints).toMatchObject({
+    agents: { status: "present", path: "organizations/HumanAndMachine-ai_GEN3/AGENTS.md" },
+    mission_control: {
+      status: "present",
+      path: "organizations/HumanAndMachine-ai_GEN3/mission-control",
+    },
+    knowledgebase: {
+      status: "present",
+      path: "organizations/HumanAndMachine-ai_GEN3/workspace/knowledgebase",
+    },
+  });
+  expect(organization.provenance.manifest_paths).toEqual([
+    "organizations/HumanAndMachine-ai_GEN3/company.gen3.json",
+    "organizations/HumanAndMachine-ai_GEN3/modules.manifest.json",
+  ]);
+  expect(organization.worktrees).toEqual([
+    expect.objectContaining({
+      slug: "OPS-12-context",
+      workspace: "root",
+      module: "root",
+      branch: "main",
+      plan_code: "OPS-12",
+      ownership_status: "orphan_missing_file",
+    }),
+  ]);
+
+  const serialized = JSON.stringify(first);
+  expect(serialized).not.toContain(root);
+  expect(serialized).not.toContain("missing_access");
+  expect(serialized).not.toContain("OtherOrg secret");
+  expect(serialized).not.toContain("OTHER_ORGANIZATION_PACKAGE_MUST_NOT_BE_READ");
+  expect(serialized).not.toContain("Invalid app manifest");
+  expect(serialized).not.toContain("invalid prefix-sibling manifest");
+  expect(await validateLazurioContext(first)).toEqual([]);
+
+  const projectedWorktree = structuredClone(first);
+  projectedWorktree.organizations[0].worktrees.push({
+    slug: "ops-review",
+    path: "organizations/HumanAndMachine-ai_GEN3/.worktrees/root/ops-review",
+    workspace: "root",
+    module: "root",
+    plan_code: "OPS-12",
+    ownership_status: "resolved",
+    status: "needs human review",
+  });
+  expect(await validateLazurioContext(projectedWorktree)).toEqual([]);
+
+  const invalidNoneScope = structuredClone(first);
+  invalidNoneScope.organizations_scope = "none";
+  invalidNoneScope.organization_selector = null;
+  expect((await validateLazurioContext(invalidNoneScope)).join("\n")).toContain("maximum 0");
+
+  const sha256Context = structuredClone(first);
+  sha256Context.organizations[0].git.head = "a".repeat(64);
+  expect(await validateLazurioContext(sha256Context)).toEqual([]);
+}, platformTestTimeout(15_000));
+
+test("Organization selector fail-closed odmítne neznámý slug a Personalspace root", async () => {
+  const root = await organizationContextFixture();
+  const personalspaceRoot = await tempRoot("lazurio-context-selector-rootless-");
+  await writeJson(
+    join(personalspaceRoot, "personal.gen3.json"),
+    personalConfig("owner-login"),
+  );
+
+  await expect(
+    buildLazurioContext({ root, organization: "missing-org" }),
+  ).rejects.toThrow("nebyla mezi lokálně objevenými Organizacemi");
+  await expect(
+    buildLazurioContext({ root, organization: "PlannedOrg" }),
+  ).rejects.toThrow("nebyla mezi lokálně objevenými Organizacemi");
+  await expect(
+    buildLazurioContext({ root: personalspaceRoot, organization: "HumanAndMachine-ai" }),
+  ).rejects.toThrow("použít pouze nad Launchpad rootem");
+});
+
+test("CLI Organization context má lidský i JSON výstup ze stejné projekce", async () => {
+  const root = await organizationContextFixture();
+  const human = run([
+    process.execPath,
+    "run",
+    cliPath,
+    "context",
+    "--organization",
+    "humanandmachine-ai",
+    "--root",
+    root,
+  ], root);
+  const json = run([
+    process.execPath,
+    "run",
+    cliPath,
+    "context",
+    "--organization=HumanAndMachine-ai",
+    "--json",
+    "--root",
+    root,
+  ], root);
+  const missing = run([
+    process.execPath,
+    "run",
+    cliPath,
+    "context",
+    "--organization",
+    "missing-org",
+    "--json",
+    "--root",
+    root,
+  ], root);
+
+  expect(human.exitCode).toBe(0);
+  expect(human.stderr).toBe("");
+  expect(human.stdout).toContain("Organization: Human and Machine (HumanAndMachine-ai)");
+  expect(human.stdout).toContain("access not_evaluated (provider_authority_not_checked)");
+  expect(human.stdout).toContain("design-system-lazurio");
+  expect(human.stdout).not.toContain(root);
+  expect(JSON.parse(json.stdout).organizations[0].slug).toBe("HumanAndMachine-ai");
+  expect(missing.exitCode).toBe(2);
+  expect(missing.stdout).toBe("");
+  expect(missing.stderr).toContain("nebyla mezi lokálně objevenými Organizacemi");
+}, platformTestTimeout(15_000));
 
 test("přítomný mount se hledá case-insensitive a manifest potvrzuje ownera", async () => {
   const root = await tempRoot("lazurio-launchpad-present-personalspace-");
@@ -775,6 +973,286 @@ async function launchpadFixture() {
     "fixture",
   ], root);
   return root;
+}
+
+async function organizationContextFixture() {
+  const root = await tempRoot("lazurio-organization-context-");
+  for (const directory of ["launchpad", "guide", "manual", "organizations"]) {
+    await mkdir(join(root, directory), { recursive: true });
+  }
+  await writeJson(join(root, "launchpad.gen3.json"), {
+    launchpad_root: {
+      slug: "fixture-root",
+      display_name: "Fixture root",
+      root_role: "companies-root",
+    },
+  });
+  await writeJson(join(root, "launchpad.gen3.local.json"), {
+    planned_organizations: [
+      {
+        slug: "PlannedOrg",
+        display_name: "Planned Organization",
+        repository: "PlannedOrg/PlannedOrg_GEN3",
+      },
+    ],
+  });
+  await createContextOrganization({
+    root,
+    directory: "HumanAndMachine-ai_GEN3",
+    slug: "HumanAndMachine-ai",
+    displayName: "Human and Machine",
+    repository: "git@github.com:HumanAndMachine-ai/HumanAndMachine-ai_GEN3.git",
+    defaultBranch: "trunk",
+    moduleSlots: [
+      {
+        path: "mission-control",
+        slug: "mission-control",
+        space: "root",
+        git: {
+          url: "git@github.com:HumanAndMachine-ai/mission-control.git",
+          branch: "main",
+        },
+      },
+      {
+        path: "workspace/knowledgebase",
+        slug: "knowledgebase",
+        teams: ["rozjedeme-ai", "lazurio"],
+        git: {
+          url: "git@github.com:HumanAndMachine-ai/knowledgebase.git",
+          branch: "main",
+        },
+      },
+      {
+        path: "workspace/website-lazurio",
+        slug: "website-lazurio",
+        teams: ["lazurio"],
+        git: {
+          url: "git@github.com:HumanAndMachine-ai/website-lazurio.git",
+          branch: "main",
+        },
+      },
+      {
+        path: "workspace/design-system-lazurio",
+        slug: "design-system-lazurio",
+        teams: ["lazurio"],
+        git: {
+          url: "git@github.com:HumanAndMachine-ai/design-system-lazurio.git",
+          branch: "main",
+        },
+      },
+    ],
+    teams: [
+      { slug: "rozjedeme-ai", display_name: "Rozjedeme.ai", default: true },
+      { slug: "lazurio", display_name: "Lazurio", default: false },
+    ],
+  });
+  await createContextOrganization({
+    root,
+    directory: "OtherOrg_GEN3",
+    slug: "OtherOrg",
+    displayName: "OtherOrg secret",
+    repository: "git@github.com:OtherOrg/OtherOrg_GEN3.git",
+    defaultBranch: "main",
+    moduleSlots: [],
+    teams: [],
+  });
+  const otherPrivatePackage = join(
+    root,
+    "organizations",
+    "OtherOrg_GEN3",
+    "workspace",
+    "private-canary",
+  );
+  await mkdir(otherPrivatePackage, { recursive: true });
+  await writeFile(
+    join(otherPrivatePackage, "package.json"),
+    "{ OTHER_ORGANIZATION_PACKAGE_MUST_NOT_BE_READ",
+    "utf8",
+  );
+  const prefixCollisionRoot = join(
+    root,
+    "organizations",
+    "HumanAndMachine-ai_GEN3-copy",
+  );
+  await mkdir(join(prefixCollisionRoot, "manual"), { recursive: true });
+  await mkdir(join(prefixCollisionRoot, "company", "colleagues"), { recursive: true });
+  await writeFile(
+    join(prefixCollisionRoot, "company.gen3.json"),
+    "{ invalid prefix-sibling manifest",
+    "utf8",
+  );
+
+  const organizationRoot = join(root, "organizations", "HumanAndMachine-ai_GEN3");
+  const websiteRoot = join(organizationRoot, "workspace", "website-lazurio");
+  await mkdir(join(websiteRoot, "app"), { recursive: true });
+  await writeJson(join(websiteRoot, "app", "package.json"), {
+    name: "humanandmachine-ai-lazurio-website",
+    private: true,
+    type: "module",
+    scripts: { dev: "bun server.mjs" },
+    companyascode: {
+      app: {
+        schema_version: "companyascode.launchpad_app.v1",
+        id: "humanandmachine-ai-lazurio-website",
+        title: "Lazurio website",
+        company: "HumanAndMachine-ai",
+        module: "website-lazurio",
+        surface: "internal",
+        port: 4310,
+        host: "127.0.0.1",
+        health_path: "/health",
+        dev_script: "dev",
+        tags: ["lazurio"],
+      },
+    },
+  });
+  const modulelessApp = join(websiteRoot, "moduleless-app");
+  await mkdir(modulelessApp, { recursive: true });
+  await writeJson(join(modulelessApp, "package.json"), {
+    name: "humanandmachine-ai-root-tool",
+    private: true,
+    type: "module",
+    scripts: { dev: "bun server.mjs" },
+    companyascode: {
+      app: {
+        schema_version: "companyascode.launchpad_app.v1",
+        id: "humanandmachine-ai-root-tool",
+        title: "Organization root tool",
+        company: "HumanAndMachine-ai",
+        surface: "internal",
+        port: 4311,
+        host: "127.0.0.1",
+        health_path: "/health",
+        dev_script: "dev",
+        tags: [],
+      },
+    },
+  });
+  const knowledgebaseRoot = join(organizationRoot, "workspace", "knowledgebase");
+  await mkdir(join(knowledgebaseRoot, "invalid-app"), { recursive: true });
+  await writeJson(join(knowledgebaseRoot, "invalid-app", "package.json"), {
+    name: "invalid-app",
+    private: true,
+    type: "module",
+    scripts: { dev: "bun server.mjs" },
+    companyascode: {
+      app: {
+        schema_version: "companyascode.launchpad_app.v1",
+        id: "INVALID APP",
+        title: "Invalid app manifest",
+        company: "HumanAndMachine-ai",
+        surface: "internal",
+        port: 4312,
+        host: "127.0.0.1",
+        health_path: "/health",
+        dev_script: "dev",
+        tags: [],
+      },
+    },
+  });
+  await initContextGitRepo(
+    websiteRoot,
+    "git@github.com:HumanAndMachine-ai/website-lazurio.git",
+  );
+  await initContextGitRepo(
+    knowledgebaseRoot,
+    "git@github.com:HumanAndMachine-ai/knowledgebase.git",
+  );
+  await initContextGitRepo(
+    join(organizationRoot, "mission-control"),
+    "git@github.com:HumanAndMachine-ai/mission-control.git",
+  );
+  const worktreeRelativePath =
+    "organizations/HumanAndMachine-ai_GEN3/.worktrees/root/OPS-12-context";
+  const worktreeRoot = join(root, worktreeRelativePath);
+  await initContextGitRepo(
+    worktreeRoot,
+    "git@github.com:HumanAndMachine-ai/HumanAndMachine-ai_GEN3.git",
+  );
+  await writeJson(
+    join(
+      organizationRoot,
+      ".worktrees",
+      "root",
+      "OPS-12-context.worktree.json",
+    ),
+    {
+      schema_version: "companiesascode.worktree.v1",
+      organization: "HumanAndMachine-ai",
+      organization_path: "organizations/HumanAndMachine-ai_GEN3",
+      workspace: "root",
+      module: "root",
+      module_path: "organizations/HumanAndMachine-ai_GEN3",
+      repo_kind: "organization_root",
+      base_branch: "main",
+      branch: "main",
+      mission_control_plan_code: "OPS-12",
+      mission_control_plan_path:
+        "mission-control/db/data/mission-control/plans/2026/08/OPS-12-context.yaml",
+      worktree_path: worktreeRelativePath,
+      created_at: "2026-08-11T00:00:00.000Z",
+      created_by: "fixture",
+      status: "active",
+    },
+  );
+  return root;
+}
+
+async function createContextOrganization({
+  root,
+  directory,
+  slug,
+  displayName,
+  repository,
+  defaultBranch,
+  moduleSlots,
+  teams,
+}) {
+  const organizationRoot = join(root, "organizations", directory);
+  await mkdir(join(organizationRoot, "manual"), { recursive: true });
+  await mkdir(join(organizationRoot, "company", "colleagues"), { recursive: true });
+  await writeFile(join(organizationRoot, "AGENTS.md"), `# ${displayName}\n`, "utf8");
+  await writeJson(join(organizationRoot, "company.gen3.json"), {
+    organization_generation: "gen3",
+    company: {
+      slug,
+      display_name: displayName,
+      github_org: slug,
+      repository,
+      default_branch: defaultBranch,
+    },
+    teams,
+  });
+  await writeJson(join(organizationRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: slug,
+    github_org: slug,
+    module_slots: moduleSlots,
+  });
+  await initContextGitRepo(organizationRoot, repository, [
+    "AGENTS.md",
+    "company.gen3.json",
+    "modules.manifest.json",
+  ]);
+}
+
+async function initContextGitRepo(path, remote, trackedFiles = ["."]) {
+  await mkdir(path, { recursive: true });
+  if (!existsSync(join(path, "README.md"))) {
+    await writeFile(join(path, "README.md"), "# Fixture\n", "utf8");
+  }
+  const init = run(["git", "init", "-b", "main"], path);
+  if (init.exitCode !== 0) throw new Error(init.stderr);
+  for (const args of [
+    ["config", "user.name", "Fixture"],
+    ["config", "user.email", "fixture@example.com"],
+    ["remote", "add", "origin", remote],
+    ["add", ...trackedFiles, "README.md"],
+    ["commit", "-m", "fixture"],
+  ]) {
+    const result = run(["git", ...args], path);
+    if (result.exitCode !== 0) throw new Error(result.stderr);
+  }
 }
 
 async function tempRoot(prefix) {

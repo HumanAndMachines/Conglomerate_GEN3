@@ -14,8 +14,9 @@ od cíle mohou lišit do dokončení migrace `CAC-0092`.
 
 První interní řez Lazurio CLI je záměrně read-only a nestabilní. Agentovi
 zpřístupňuje bezpečnou projekci identity Principála, aktuální Mašiny a stavu
-Personalspace a úzký manifest-scoped search pilot pro Lazurio; nečte SOUL,
-obsah GBrainu, chat, sessions, secrets ani mandáty.
+Personalspace, na explicitní selektor jednu lokálně objevenou Organization a
+úzký manifest-scoped search pilot pro Lazurio; nečte SOUL, obsah GBrainu, chat,
+sessions, secrets ani mandáty.
 Chybějící lokální mount není tvrzení o GitHub přístupu — provider authority
 zůstává `not_evaluated`, dokud ji neověří živý provider readback.
 
@@ -23,17 +24,21 @@ Ve vývojovém checkoutu se CLI spouští přes Bun:
 
 ```sh
 bun run lazurio -- context --json
+bun run lazurio -- context --organization HumanAndMachine-ai
 bun run lazurio -- doctor
 bun run lazurio -- search "český dotaz"
 bun run lazurio -- search --status
 ```
 
-Oba příkazy přijímají `--root <cesta>`. Root může být buď tento Launchpad root
+Všechny příkazy přijímají `--root <cesta>`. Root může být buď tento Launchpad root
 s `launchpad.gen3.json`, nebo samostatný Personalspace root na Buddy VPS s
 `personal.gen3.json`. `lazurio doctor` nevlastní diagnostická pravidla: v
 Launchpad rootu používá existující strukturované Doctor jádro, v Personalspace
 rootu spouští přesně doctor command deklarovaný jeho manifestem. CLI v0 není
 distribuční package, veřejné Core API, MCP server ani write surface.
+Organization selektor nepředstírá membership ani effective permissions:
+Organization, Team, modul i aplikace ve výstupu drží provider access
+`not_evaluated` a oddělují jej od lokální přítomnosti checkoutu.
 
 Search ve výchozím `exact` režimu čte aktuální filesystem přes `rg`, takže vidí
 i novou neindexovanou změnu v explicitně deklarovaném nested repu, přestože

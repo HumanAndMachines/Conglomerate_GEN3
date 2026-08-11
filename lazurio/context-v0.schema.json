@@ -11,6 +11,8 @@
     "machine",
     "personalspace",
     "organizations",
+    "organizations_scope",
+    "organization_selector",
     "organizations_state",
     "provenance"
   ],
@@ -41,8 +43,7 @@
           "enum": ["present", "not_evaluated"]
         },
         "reason": {
-          "type": "string",
-          "pattern": "^[a-z0-9]+([_-][a-z0-9]+)*$"
+          "$ref": "#/definitions/reason"
         },
         "github_username": {
           "type": "string",
@@ -95,12 +96,22 @@
         "mount": { "$ref": "#/definitions/path_state" },
         "manifest": { "$ref": "#/definitions/path_state" },
         "readiness": { "$ref": "#/definitions/state" },
-        "access": { "$ref": "#/definitions/state" }
+        "access": { "$ref": "#/definitions/access_state" }
       }
     },
     "organizations": {
       "type": "array",
-      "maxItems": 0
+      "maxItems": 1,
+      "items": { "$ref": "#/definitions/organization" }
+    },
+    "organizations_scope": {
+      "enum": ["none", "selected"]
+    },
+    "organization_selector": {
+      "anyOf": [
+        { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
+        { "enum": [null] }
+      ]
     },
     "organizations_state": {
       "$ref": "#/definitions/state"
@@ -114,8 +125,7 @@
           "type": "array",
           "uniqueItems": true,
           "items": {
-            "type": "string",
-            "pattern": "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$"
+            "$ref": "#/definitions/relative_path"
           }
         },
         "machine_sources": {
@@ -130,7 +140,53 @@
       }
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "organizations_scope": { "const": "none" }
+        }
+      },
+      "then": {
+        "properties": {
+          "organizations": { "type": "array", "maxItems": 0 },
+          "organization_selector": { "const": null }
+        }
+      },
+      "else": {
+        "properties": {
+          "organizations": { "type": "array", "minItems": 1, "maxItems": 1 },
+          "organization_selector": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "organizations_state": {
+            "properties": {
+              "status": { "const": "present" },
+              "reason": { "const": "selected_organization_observed" }
+            }
+          }
+        }
+      }
+    }
+  ],
   "definitions": {
+    "reason": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+([_-][a-z0-9]+)*$"
+    },
+    "relative_path": {
+      "type": "string",
+      "pattern": "^(\\.|[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*)$"
+    },
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+([_-][a-z0-9]+)*$"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+    },
     "state": {
       "type": "object",
       "required": ["status", "reason"],
@@ -140,8 +196,7 @@
           "enum": ["present", "absent", "not_evaluated"]
         },
         "reason": {
-          "type": "string",
-          "pattern": "^[a-z0-9]+([_-][a-z0-9]+)*$"
+          "$ref": "#/definitions/reason"
         }
       }
     },
@@ -154,12 +209,231 @@
           "enum": ["present", "absent", "not_evaluated"]
         },
         "reason": {
-          "type": "string",
-          "pattern": "^[a-z0-9]+([_-][a-z0-9]+)*$"
+          "$ref": "#/definitions/reason"
         },
         "path": {
+          "$ref": "#/definitions/relative_path"
+        }
+      }
+    },
+    "access_state": {
+      "type": "object",
+      "required": ["status", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "status": { "enum": ["not_evaluated"] },
+        "reason": { "const": "provider_authority_not_checked" }
+      }
+    },
+    "git_origin_state": {
+      "type": "object",
+      "required": ["status", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": ["present", "absent", "not_evaluated"]
+        },
+        "reason": {
+          "$ref": "#/definitions/reason"
+        },
+        "repository": {
+          "$ref": "#/definitions/repository"
+        }
+      }
+    },
+    "git": {
+      "type": "object",
+      "required": ["status", "reason", "origin"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": ["present", "absent", "not_evaluated"]
+        },
+        "reason": {
+          "$ref": "#/definitions/reason"
+        },
+        "branch": {
           "type": "string",
-          "pattern": "^(\\.|[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*)$"
+          "minLength": 1
+        },
+        "expected_branch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "head": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+        },
+        "state": {
+          "$ref": "#/definitions/reason"
+        },
+        "changed_files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "untracked_files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "origin": {
+          "$ref": "#/definitions/git_origin_state"
+        }
+      }
+    },
+    "team": {
+      "type": "object",
+      "required": ["slug", "display_name", "default", "modules", "access"],
+      "additionalProperties": false,
+      "properties": {
+        "slug": { "$ref": "#/definitions/slug" },
+        "display_name": { "type": "string", "minLength": 1 },
+        "default": { "type": "boolean" },
+        "modules": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/definitions/slug" }
+        },
+        "access": { "$ref": "#/definitions/access_state" }
+      }
+    },
+    "module": {
+      "type": "object",
+      "required": [
+        "slug",
+        "name",
+        "path",
+        "space",
+        "teams",
+        "materialization",
+        "access",
+        "git"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "slug": { "$ref": "#/definitions/slug" },
+        "name": { "type": "string", "minLength": 1 },
+        "path": { "$ref": "#/definitions/relative_path" },
+        "space": { "enum": ["root", "workspace", "productionspace"] },
+        "teams": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/definitions/slug" }
+        },
+        "repository": { "$ref": "#/definitions/repository" },
+        "declared_branch": { "type": "string", "minLength": 1 },
+        "materialization": { "$ref": "#/definitions/state" },
+        "access": { "$ref": "#/definitions/access_state" },
+        "git": { "$ref": "#/definitions/git" }
+      }
+    },
+    "app": {
+      "type": "object",
+      "required": ["id", "title", "path", "space", "teams", "package_path", "access"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/slug" },
+        "title": { "type": "string", "minLength": 1 },
+        "module": { "$ref": "#/definitions/slug" },
+        "path": { "$ref": "#/definitions/relative_path" },
+        "space": { "enum": ["root", "workspace", "productionspace"] },
+        "teams": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/definitions/slug" }
+        },
+        "package_path": { "$ref": "#/definitions/relative_path" },
+        "access": { "$ref": "#/definitions/access_state" }
+      }
+    },
+    "worktree": {
+      "type": "object",
+      "required": ["slug", "path", "workspace", "module", "ownership_status", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "slug": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "path": { "$ref": "#/definitions/relative_path" },
+        "workspace": { "enum": ["root", "workspace", "productionspace"] },
+        "module": { "type": "string", "minLength": 1 },
+        "branch": { "type": "string", "minLength": 1 },
+        "plan_code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownership_status": { "$ref": "#/definitions/reason" },
+        "status": { "type": "string", "minLength": 1 }
+      }
+    },
+    "organization": {
+      "type": "object",
+      "required": [
+        "slug",
+        "display_name",
+        "path",
+        "access",
+        "git",
+        "teams",
+        "modules",
+        "apps",
+        "worktrees",
+        "entrypoints",
+        "provenance"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "slug": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "display_name": { "type": "string", "minLength": 1 },
+        "path": { "$ref": "#/definitions/relative_path" },
+        "repository": { "$ref": "#/definitions/repository" },
+        "access": { "$ref": "#/definitions/access_state" },
+        "git": { "$ref": "#/definitions/git" },
+        "teams": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/team" }
+        },
+        "modules": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/module" }
+        },
+        "apps": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/app" }
+        },
+        "worktrees": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/worktree" }
+        },
+        "entrypoints": {
+          "type": "object",
+          "required": ["agents", "mission_control", "knowledgebase"],
+          "additionalProperties": false,
+          "properties": {
+            "agents": { "$ref": "#/definitions/path_state" },
+            "mission_control": { "$ref": "#/definitions/path_state" },
+            "knowledgebase": { "$ref": "#/definitions/path_state" }
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "required": ["manifest_paths", "discovery", "git", "access"],
+          "additionalProperties": false,
+          "properties": {
+            "manifest_paths": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 2,
+              "uniqueItems": true,
+              "items": { "$ref": "#/definitions/relative_path" }
+            },
+            "discovery": { "const": "launchpad_scan_first" },
+            "git": { "const": "local_only" },
+            "access": { "const": "not_evaluated" }
+          }
         }
       }
     }

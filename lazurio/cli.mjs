@@ -29,9 +29,11 @@ async function run(argv) {
   }
 
   if (options.command === "context") {
-    if (!options.json) throw new Error("context v0 podporuje pouze výstup --json.");
-    const context = await buildLazurioContext({ root: options.root });
-    console.log(JSON.stringify(context, null, 2));
+    const context = await buildLazurioContext({
+      root: options.root,
+      organization: options.organization,
+    });
+    console.log(options.json ? JSON.stringify(context, null, 2) : renderHumanContext(context));
     return 0;
   }
 
@@ -92,6 +94,7 @@ function parseArgs(argv) {
   const parsed = {
     command: null,
     root: process.cwd(),
+    organization: null,
     json: false,
     help: false,
     scope: "lazurio",
@@ -169,6 +172,17 @@ function parseArgs(argv) {
       parsed.root = resolve(value);
       continue;
     }
+    if (arg === "--organization") {
+      const value = argv[index + 1];
+      if (!value || value.startsWith("-")) throw new Error("--organization vyžaduje slug.");
+      parsed.organization = value;
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--organization=")) {
+      parsed.organization = requiredInlineValue(arg, "--organization");
+      continue;
+    }
     throw new Error(`Neznámý argument '${arg}'.`);
   }
   if (parsed.command === "search") {
@@ -195,6 +209,9 @@ function parseArgs(argv) {
   } else if (parsed.searchFlags.size > 0) {
     throw new Error(`${[...parsed.searchFlags].join(", ")} lze použít pouze s příkazem search.`);
   }
+  if (parsed.organization !== null && parsed.command !== "context") {
+    throw new Error("--organization lze použít pouze s příkazem context.");
+  }
   return parsed;
 }
 
@@ -209,12 +226,70 @@ function usage() {
     "Lazurio CLI v0 (unstable, read-only)",
     "",
     "Použití:",
-    "  lazurio context --json [--root <cesta>]",
+    "  lazurio context [--organization <slug>] [--json] [--root <cesta>]",
     "  lazurio doctor [--json] [--root <cesta>]",
     "  lazurio search <dotaz> [--mode exact|lexical|semantic|hybrid] [--scope lazurio] [--limit N] [--json] [--root <cesta>]",
     "  lazurio search --status [--scope lazurio] [--json] [--root <cesta>]",
     "  lazurio search --update [--embed] [--scope lazurio] [--json] [--root <cesta>]",
   ].join("\n");
+}
+
+function renderHumanContext(context) {
+  const lines = [
+    "Lazurio context v0 · unstable · read-only",
+    `Root: ${context.root.kind}`,
+    `Principál: ${context.principal.github_username ?? "nezjištěn"} · ${stateText(context.principal)}`,
+    `Mašina: ${context.machine.platform}/${context.machine.architecture}`,
+    `Personalspace: mount ${stateText(context.personalspace.mount)} · access ${stateText(context.personalspace.access)}`,
+  ];
+
+  if (context.organizations_scope === "none") {
+    lines.push(`Organization: nevybrána · ${stateText(context.organizations_state)}`);
+    return lines.join("\n");
+  }
+
+  const [organization] = context.organizations;
+  lines.push(
+    `Organization: ${organization.display_name} (${organization.slug}) · access ${stateText(organization.access)}`,
+    `  Git: ${gitText(organization.git)}`,
+    "  Teamy:",
+  );
+  for (const team of organization.teams) {
+    lines.push(
+      `    - ${team.display_name} (${team.slug}) · ${team.modules.length} modulů · access ${stateText(team.access)}`,
+    );
+  }
+  lines.push("  Moduly:");
+  for (const module of organization.modules) {
+    lines.push(
+      `    - ${module.slug} · ${module.path} · ${stateText(module.materialization)} · access ${stateText(module.access)} · git ${gitText(module.git)}`,
+    );
+  }
+  lines.push("  Aplikace:");
+  if (organization.apps.length === 0) lines.push("    - žádné objevené aplikace");
+  for (const app of organization.apps) {
+    lines.push(`    - ${app.title} (${app.id}) · ${app.path} · access ${stateText(app.access)}`);
+  }
+  lines.push(
+    "  Vstupní body:",
+    `    - AGENTS.md: ${stateText(organization.entrypoints.agents)}${pathSuffix(organization.entrypoints.agents)}`,
+    `    - Mission Control: ${stateText(organization.entrypoints.mission_control)}${pathSuffix(organization.entrypoints.mission_control)}`,
+    `    - Knowledgebase: ${stateText(organization.entrypoints.knowledgebase)}${pathSuffix(organization.entrypoints.knowledgebase)}`,
+  );
+  return lines.join("\n");
+}
+
+function stateText(value) {
+  return `${value.status} (${value.reason})`;
+}
+
+function gitText(git) {
+  const branch = git.branch ? ` · branch ${git.branch}` : "";
+  return `${stateText(git)}${branch} · origin ${stateText(git.origin)}`;
+}
+
+function pathSuffix(value) {
+  return value.path ? ` · ${value.path}` : "";
 }
 
 function renderSearchResults(result) {
