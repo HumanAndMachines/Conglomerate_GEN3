@@ -4813,6 +4813,12 @@ function renderModuleUpdateBanner() {
     return;
   }
 
+  if (checkFailed) {
+    text.textContent = "Stav modulů se nepodařilo ověřit.";
+    banner.classList.add("is-blocked");
+    return;
+  }
+
   if (moduleUpdates.length > 0) {
     text.textContent = `Změny jsou připravené ${moduleUpdateLocation(moduleUpdates.length)}.`;
     action.hidden = false;
@@ -4824,12 +4830,6 @@ function renderModuleUpdateBanner() {
     text.textContent = "Je připravená změna Organizace.";
     action.hidden = false;
     action.disabled = false;
-    return;
-  }
-
-  if (checkFailed) {
-    text.textContent = "Stav modulů se nepodařilo ověřit.";
-    banner.classList.add("is-blocked");
     return;
   }
 

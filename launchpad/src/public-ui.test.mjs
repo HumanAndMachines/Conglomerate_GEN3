@@ -765,6 +765,10 @@ test("Launchpad ukazuje jednoduchý stav modulů s počtem a jedním stažením 
   expect(js).toContain("function pullOrganizationRepositories");
   expect(js).toContain('`/api/git/pull-all?company=${encodeURIComponent(organization)}`');
   expect(js).not.toContain("Načíst nejnovější změny ve všech organizacích?");
+  const moduleBannerBlock = js.slice(js.indexOf("function renderModuleUpdateBanner"), js.indexOf("function renderUpdatePill"));
+  expect(moduleBannerBlock.indexOf("if (checkFailed)")).toBeLessThan(
+    moduleBannerBlock.indexOf("if (moduleUpdates.length > 0)"),
+  );
   expect(js).toContain("summary.materialized_count");
   expect(js).toContain("summary.missing_access_count");
   expect(css).toContain(".update-banner-group");
