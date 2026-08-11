@@ -440,9 +440,9 @@ test("problémový panel používá stejné tři blokátory jako aktivní prosto
   expect(model.blockers).toBe(health.blockers);
   expect(model.warnings).toBe(0);
   expect(model.issues.map((issue) => issue.title)).toEqual([
-    "Guide běží z jiného pracovního umístění",
-    "Mission Control běží z jiného pracovního umístění",
-    "Invoices běží z jiného pracovního umístění",
+    "Guide už běží z jiné kopie",
+    "Mission Control už běží z jiné kopie",
+    "Invoices už běží z jiné kopie",
   ]);
   expect(model.issues.every((issue) => issue.nextStep.includes("obnovte stav"))).toBe(true);
 });

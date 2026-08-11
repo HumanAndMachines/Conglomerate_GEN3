@@ -76,6 +76,7 @@ const state = {
   gitReposByModule: new Map(),
   gitChangesByRepo: new Map(),
   gitRecoveryByRepo: new Map(),
+  runtimeActionErrors: new Map(),
   bulkPullResult: null,
   runtimeSourcesByApp: new Map(),
   openingApps: new Set(),
@@ -162,6 +163,31 @@ const APP_ICON_FAMILY = {
   "profitability": "obchod",
   "marketing": "kampan"
 };
+
+// Pixelová sada je výchozí vizuální jazyk modulů. Resolver zůstává sdílený:
+// vybírá podle obecného významu `icon`, nikdy podle názvu Organizace nebo
+// konkrétního modulu. Některé významy záměrně sdílejí stejnou kresbu.
+const PIXEL_APP_ICON_FILES = Object.freeze({
+  control: "mission-control-24.png",
+  dashboard: "presentation-24.png",
+  system: "settings-24.png",
+  app: "clients-24.png",
+  database: "knowledgebase-24.png",
+  examples: "presentation-24.png",
+  book: "guide-24.png",
+  pen: "content-24.png",
+  palette: "lazurio-design-system-24.png",
+  datasheet: "presentation-24.png",
+  website: "website-lazurio-24.png",
+  warehouse: "clients-24.png",
+  product: "brainstorm-24.png",
+  installation: "settings-24.png",
+  deal: "deals-24.png",
+  pricebook: "pricebook-24.png",
+  invoice: "invoices-24.png",
+  profitability: "pricebook-24.png",
+  marketing: "content-24.png",
+});
 
 const APP_ICON_STYLES = {
   stavba: { color: "var(--lz-blue-500)", background: "transparent", border: "transparent" },
@@ -285,8 +311,12 @@ const elements = {
   pullAllButton: document.querySelector("#pullAllButton"),
   hero: document.querySelector("#hero"),
   heroTitle: document.querySelector("#heroTitle"),
+  heroSummary: document.querySelector("#heroSummary"),
+  heroIssues: document.querySelector("#heroIssues"),
   heroCta: document.querySelector("#heroCta"),
   appsToolbar: document.querySelector("#appsToolbar"),
+  appsFilterControls: document.querySelector("#appsFilterControls"),
+  appsFilterFallback: document.querySelector("#appsFilterFallback"),
   workspaceWelcome: document.querySelector("#workspaceWelcome"),
   workspaceWelcomeTitle: document.querySelector("#workspaceWelcomeTitle"),
   appsSearch: document.querySelector("#appsSearch"),
@@ -304,6 +334,7 @@ const elements = {
   drawerBackdrop: document.querySelector("#drawerBackdrop"),
   drawerBody: document.querySelector(".drawer-body"),
   layout: document.querySelector(".layout"),
+  globalUpdateSlot: document.querySelector("#globalUpdateSlot"),
   recentChangesSidebar: document.querySelector("#recentChangesSidebar"),
   toastRoot: document.querySelector("#toastRoot"),
   mostUsedPanel: document.querySelector("#mostUsedPanel"),
@@ -336,7 +367,7 @@ elements.reloadButton.addEventListener("click", () => {
   loadData();
 });
 elements.pullAllButton?.addEventListener("click", () => pullAllRepositories());
-elements.updateBannerAction?.addEventListener("click", () => runRootUpdate());
+elements.updateBannerAction?.addEventListener("click", () => runUnifiedUpdateAction());
 elements.heroCta.addEventListener("click", () => runHeroAction());
 elements.doctorStatus.addEventListener("click", () => {
   closeMobileOverflow();
@@ -406,6 +437,7 @@ function initResponsiveChrome() {
     } else if (!useSheet && elements.recentChangesSidebar?.parentElement === elements.drawerBody) {
       elements.layout?.insertBefore(elements.recentChangesSidebar, elements.drawerBackdrop);
     }
+    mountUpdateBanner();
     elements.detailDrawer?.classList.toggle("is-bottom-sheet", useSheet);
     applyDrawerState();
     if (useSheet && state.drawerOpen) focusMobileDrawer();
@@ -1006,10 +1038,12 @@ function render() {
   const heroApps = activeSpaceApps();
   const spaceHealth = heroDiagnostics(heroApps);
   renderHero(heroApps, spaceHealth);
+  renderUpdateBanner();
   renderDoctorStatus(spaceHealth);
   renderProblems(spaceHealth);
   renderActionMessage();
   renderAppsGrid(filteredApps);
+  mountAppFilters();
   // Technický tabulkový renderer zůstává dočasně použitelný pro vývojové
   // harnessy, ale běžný Launchpad jeho mount už uživatelům neposílá.
   if (elements.appsTable) renderApps(filteredApps);
@@ -1037,7 +1071,11 @@ function renderHero(apps, diagnostics) {
   if (!state.loaded) {
     hero.classList.add("hero-loading");
     elements.heroTitle.textContent = "Načítám stav…";
+    elements.heroSummary.textContent = "Ověřuji pracovní prostor.";
+    elements.heroIssues.hidden = true;
+    elements.heroIssues.replaceChildren();
     elements.heroCta.textContent = "Zkontrolovat stav";
+    elements.heroCta.hidden = false;
     heroAction = "reload";
     renderSpaceHealthBadge();
     return;
@@ -1046,9 +1084,75 @@ function renderHero(apps, diagnostics) {
   const verdict = computeHeroState(apps, diagnostics);
   hero.classList.add(`hero-${verdict.tone}`);
   elements.heroTitle.textContent = verdict.title;
-  elements.heroCta.textContent = verdict.cta;
+  renderHeroIssues(verdict, diagnostics);
   heroAction = verdict.action;
   renderSpaceHealthBadge(verdict, diagnostics);
+}
+
+function renderHeroIssues(verdict, diagnostics) {
+  const model = buildSpaceProblemModel(diagnostics);
+  const relevantIssues = verdict.tone === "danger"
+    ? model.issues.filter((issue) => issue.severity === "danger")
+    : verdict.tone === "warn"
+      ? model.issues.filter((issue) => issue.severity === "warning")
+      : [];
+
+  if (verdict.tone === "ok") {
+    elements.heroSummary.textContent = "Všechny důležité části prostoru jsou připravené.";
+    elements.heroIssues.hidden = true;
+    elements.heroIssues.replaceChildren();
+    elements.heroCta.textContent = "Obnovit stav";
+    elements.heroCta.hidden = false;
+    return;
+  }
+
+  const issueCount = relevantIssues.length;
+  elements.heroSummary.textContent = verdict.tone === "danger"
+    ? `${issueCount} ${issueCount === 1 ? "věc brání" : "věci brání"} spolehlivému používání prostoru. Vyberte, co chcete vyřešit.`
+    : `${issueCount} ${issueCount === 1 ? "věc potřebuje" : "věci potřebují"} kontrolu. Vyberte doporučený další krok.`;
+
+  // Stav prostoru žije na jednom místě v pravém panelu. Zobrazení stejného
+  // seznamu také uprostřed stránky působilo jako druhá, konkurenční chyba.
+  const visibleIssues = relevantIssues;
+  elements.heroIssues.replaceChildren(...visibleIssues.map(heroIssueNode));
+  elements.heroIssues.hidden = visibleIssues.length === 0;
+  elements.heroCta.hidden = true;
+}
+
+function heroIssueNode(issue) {
+  const node = document.createElement("button");
+  node.type = "button";
+  node.className = `hero-issue is-${issue.severity}`;
+  if (issue.appId) node.dataset.appId = issue.appId;
+
+  const marker = document.createElement("span");
+  marker.className = "hero-issue-marker";
+  marker.textContent = "!";
+  marker.setAttribute("aria-hidden", "true");
+
+  const copy = document.createElement("span");
+  copy.className = "hero-issue-copy";
+  const title = document.createElement("strong");
+  title.textContent = issue.title;
+  const step = document.createElement("span");
+  step.textContent = issue.nextStep;
+  copy.append(title, step);
+
+  const cue = document.createElement("span");
+  cue.className = "hero-issue-cue";
+  cue.textContent = "→";
+  cue.setAttribute("aria-hidden", "true");
+  node.append(marker, copy, cue);
+
+  node.addEventListener("click", () => {
+    const app = issue.appId ? state.apps.find((item) => item.id === issue.appId) : null;
+    if (app) {
+      revealAppDetail(app);
+      return;
+    }
+    revealProblems();
+  });
+  return node;
 }
 
 function renderSpaceHealthBadge(verdict, diagnostics) {
@@ -1681,6 +1785,7 @@ function applySpaceMenuState() {
 
 function renderScopeControls() {
   const personal = state.filters.scope === "personal";
+  mountUpdateBanner();
   elements.hero.classList.toggle("hidden", personal);
   elements.personalPrivacyBadge?.toggleAttribute("hidden", !personal);
   elements.appsToolbar.classList.toggle("hidden", personal);
@@ -1693,6 +1798,19 @@ function renderScopeControls() {
   elements.notificationsToggle?.classList.toggle("hidden", personal);
   if (personal && state.notificationsOpen) setNotificationsOpen(false);
   if (personal && state.drawerOpen) setDrawer(false);
+}
+
+// Na desktopu je update první kartou pravého sloupce. Na mobilu se pravý
+// sloupec přesouvá do zavřeného draweru a v Personalspace se skrývá úplně;
+// provozní informace proto v těchto stavech přejde do globálního slotu nad
+// layoutem. Po návratu na desktop Organization scope se vrátí do sidebaru.
+function mountUpdateBanner() {
+  const banner = elements.updateBanner;
+  const global = mobilePanelQuery.matches || state.filters.scope === "personal";
+  const target = global ? elements.globalUpdateSlot : elements.recentChangesSidebar;
+  if (!banner || !target || banner.parentElement === target) return;
+  if (global) target.append(banner);
+  else target.prepend(banner);
 }
 
 function renderWorkspaceWelcome() {
@@ -2372,6 +2490,12 @@ function organizationSectionNode({ organization, families, modules }) {
   return node;
 }
 
+function mountAppFilters() {
+  if (!elements.appsFilterControls || !elements.appsFilterFallback) return;
+  elements.appsFilterFallback.append(elements.appsFilterControls);
+  elements.appsFilterFallback.classList.add("is-active");
+}
+
 function workspaceSectionNode({ organization, teamSections }) {
   const uniqueModules = new Set();
   for (const section of teamSections) {
@@ -2380,10 +2504,13 @@ function workspaceSectionNode({ organization, teamSections }) {
   }
   const node = document.createElement("section");
   node.className = "app-section app-section-workspace";
-  node.append(
-    appSectionHead("Workspace", `${uniqueModules.size} ${pluralModule(uniqueModules.size)}`),
-    teamAccessSummaryNode(organization),
-  );
+  const teamAccess = teamAccessSummaryNode(organization);
+  teamAccess.classList.add("is-in-section-head");
+  node.append(appSectionHead(
+    "Workspace",
+    `${uniqueModules.size} ${pluralModule(uniqueModules.size)}`,
+    teamAccess,
+  ));
   const teams = document.createElement("div");
   teams.className = "workspace-team-list";
   teams.append(...teamSections.map((section) => teamSectionNode(section, organization)));
@@ -2733,7 +2860,7 @@ function productionspaceDetail(system, entry) {
 // Lazurio section header: the semantic title can become the structural tab on
 // the top-level Organization/Workspace edge. It stays an h2 in sentence case;
 // this is not a duplicated eyebrow label.
-function appSectionHead(title, summary) {
+function appSectionHead(title, summary, action = null) {
   const head = document.createElement("header");
   head.className = "app-section-head";
   const titleRow = document.createElement("div");
@@ -2748,6 +2875,7 @@ function appSectionHead(title, summary) {
     summaryNode.textContent = summary;
     titleRow.append(summaryNode);
   }
+  if (action) titleRow.append(action);
   head.append(titleRow);
   return head;
 }
@@ -2829,20 +2957,30 @@ function appCard(app, family = { key: app.id, members: [app], primary: app }) {
   desc.className = "app-card-desc";
   desc.textContent = appDescription(app);
 
-  titleBody.append(titleRow, desc);
+  // Nadpis a popis zůstávají v jednom přirozeném textovém toku. Při hoveru
+  // se popis rozbalí uvnitř dlaždice a vytlačí nadpis vzhůru podle své délky.
+  const copyBlock = document.createElement("div");
+  copyBlock.className = "app-card-copy";
+  copyBlock.append(titleRow, desc);
+  titleBody.append(copyBlock);
   titleBlock.append(titleBody);
   head.append(titleBlock);
 
-  // ⋯ menu drží „další možnosti" (varianty, zastavit, restart, detail/logy).
-  // Zobrazí se, jen když je co nabídnout — čistá dlaždice zůstane bez ⋯.
+  // Horní akce drží vedle sebe kontextový problém a ⋯ menu. Cizí checkout
+  // není hlavní akce modulu, proto už nezabírá celý spodní řádek karty.
   let inlineMenuPanel = null;
-  if (cardHasMenu(app, others)) {
+  const topWarning = warning?.placement === "top-action" || warning?.kind === "fact" ? warning : null;
+  const hasMenu = cardHasMenu(app, others);
+  if (topWarning || hasMenu) {
     const topActions = document.createElement("div");
     topActions.className = "app-card-top-actions";
-    const menu = versionMenuNode(app, others, family.key, moduleName);
-    topActions.append(menu.trigger);
-    inlineMenuPanel = menu.panel;
-    if (inlineMenuPanel) card.classList.add("has-open-menu");
+    if (topWarning) topActions.append(cardWarningActionIcon(topWarning));
+    if (hasMenu) {
+      const menu = versionMenuNode(app, others, family.key, moduleName);
+      topActions.append(menu.trigger);
+      inlineMenuPanel = menu.panel;
+      if (inlineMenuPanel) card.classList.add("has-open-menu");
+    }
     head.append(topActions);
   }
 
@@ -2855,7 +2993,9 @@ function appCard(app, family = { key: app.id, members: [app], primary: app }) {
   // Sofistikovaný warning panel jen když je co řešit: stáhnout novější verzi,
   // nainstalovat/opravit balíčky, nebo vysvětlit blokující/failed stav. Žádná
   // velká trvalá tlačítka — hlavní akce (otevřít) je klik na celou dlaždici.
-  if (warning) card.append(cardWarningNode(warning));
+  if (warning && warning.kind !== "fact" && warning.placement !== "top-action") {
+    card.append(cardWarningNode(warning));
+  }
   // Runtime stages (founder 2026-07-15/16): kompaktní řádek „Kde spustit" pod
   // kartou — čtyři runy jednoho modulu (PROD / MAIN / DEV remote / DEV local).
   // Launchpad nabízí všechny čtyři; Dashboard by otevřel jen PROD. DEV local
@@ -3069,6 +3209,7 @@ function cardWarningModel(app, gitRepo) {
       title: app.runtime?.owner === "foreign-port" ? "Cizí checkout na portu" : "Checkout procesu nelze ověřit",
       actionLabel: isCodexPortConflict(app) ? "Vyřešit s Codexem" : "Zobrazit detail",
       run: () => revealAppDetail(app),
+      placement: "top-action",
     };
   }
 
@@ -3104,28 +3245,13 @@ function cardWarningModel(app, gitRepo) {
     };
   }
 
-  if (builderPullScopeAllowedForRepo(gitRepo) && canAutostashPull(gitRepo)) {
-    const incoming = Number(gitRepo.counts?.incoming) || 0;
-    return {
-      tone: "warn",
-      title: `Nová verze - ${incoming} změn`,
-      actionLabel: "Stáhnout",
-      run: () => pullLatestRepoVersion(app, gitRepo, { autostash: true }),
-      pending: `${app.id}:git-pull`,
-    };
-  }
-
-  // Novější verze na mainu: bezpečný fast-forward pull (guarded na serveru).
-  if (gitRepo && builderPullScopeAllowedForRepo(gitRepo) && gitRepo.status === "pull_available") {
-    const incoming = Number(gitRepo.counts?.incoming) || 0;
-    return {
-      tone: "warn",
-      title: `Nová verze - ${incoming} změn`,
-      actionLabel: "Stáhnout",
-      run: () => pullLatestRepoVersion(app, gitRepo),
-      pending: `${app.id}:git-pull`,
-    };
-  }
+  // Nové vzdálené změny patří do jediného souhrnného hlášení pod hlavičkou.
+  // Dlaždice zůstává rozcestník; aktualizace se nestahuje po modulech.
+  if (
+    gitRepo
+    && builderPullScopeAllowedForRepo(gitRepo)
+    && (canAutostashPull(gitRepo) || gitRepo.status === "pull_available")
+  ) return null;
 
   if (gitRepo?.status === "push_required") {
     return {
@@ -3228,6 +3354,33 @@ function cardWarningNode(warning) {
   }
 
   return node;
+}
+
+// Kompaktní problémová akce vedle ⋯. Text zůstává plně dostupný přes
+// aria-label a tooltip; viditelnou stopu nese Iconoir stavová ikona.
+function cardWarningActionIcon(warning) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `app-card-alert-button is-${warning.tone}${warning.kind === "fact" ? " is-fact" : ""}`;
+  button.setAttribute("aria-label", `${warning.actionLabel}: ${warning.title}`);
+  button.title = warning.title;
+  button.disabled = warning.pending ? state.pendingAction === warning.pending : false;
+  if (warning.kind === "fact") {
+    const icon = document.createElement("span");
+    icon.className = "app-card-fact-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.innerHTML = appIconSvg("pen");
+    button.append(icon);
+  } else {
+    const toneClass = warning.tone === "danger" ? "chip-danger" : "chip-warn";
+    button.append(statusChipIcon(toneClass));
+  }
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    warning.run();
+  });
+  return button;
 }
 
 function warningGlyph(tone) {
@@ -3646,10 +3799,26 @@ function variantOptionDescription(app) {
 function appIconNode(app) {
   const span = document.createElement("span");
   span.className = "app-card-icon";
-  const style = appIconStyle(appIconKey(app));
+  const key = appIconKey(app);
+  const pixelArtIcon = pixelAppIcon(key);
+  if (pixelArtIcon) {
+    span.classList.add("is-pixel-art");
+    const image = document.createElement("img");
+    image.src = pixelArtIcon;
+    image.alt = "";
+    image.setAttribute("aria-hidden", "true");
+    span.append(image);
+    return span;
+  }
+  const style = appIconStyle(key);
   span.style.cssText = style;
-  span.innerHTML = appIconSvg(appIconKey(app));
+  span.innerHTML = appIconSvg(key);
   return span;
+}
+
+function pixelAppIcon(key) {
+  const file = PIXEL_APP_ICON_FILES[key];
+  return file ? `/app-icons/pixel/${file}` : "";
 }
 
 function appCardTone(app, warning) {
@@ -4081,6 +4250,7 @@ function renderDetail(apps) {
 function renderDetailSummary(app) {
   const git = gitDetailForApp(app);
   const model = detailSummaryModel(app, git);
+  const loadedChanges = git?.key ? state.gitChangesByRepo.get(git.key) : null;
   const section = document.createElement("section");
   section.className = `detail-section detail-summary is-${model.tone}`;
   const title = document.createElement("h3");
@@ -4102,6 +4272,7 @@ function renderDetailSummary(app) {
     actions.append(model.action);
     section.append(actions);
   }
+  if (loadedChanges) section.append(gitChangeListNode(loadedChanges));
   return section;
 }
 
@@ -4111,12 +4282,35 @@ function detailSummaryModel(app, git) {
   const changedFiles = Number(git?.counts?.changed_files) || 0;
   const nextAction = primaryNextAction(app);
   const dependencyState = app.dependencies?.state;
+  const runtimeActionError = state.runtimeActionErrors.get(app.id);
+
+  if (runtimeActionError) {
+    return {
+      tone: "warn",
+      title: runtimeActionError.title,
+      message: runtimeActionError.message,
+      action: summaryButton(
+        "Obnovit stav",
+        () => refreshRuntimeActionState(app.id),
+        `${app.id}:refresh-runtime-state`,
+      ),
+    };
+  }
 
   if (nextAction.type === "disabled") {
     return {
       tone: "danger",
       title: "Aplikaci teď nejde otevřít",
       message: nextActionReason(app, nextAction),
+      action: primaryActionNode(app, nextAction),
+    };
+  }
+
+  if (app.runtime?.failure_kind === "port_owner_cwd_mismatch") {
+    return {
+      tone: "warn",
+      title: "Aplikace už běží z jiné kopie",
+      message: "Můžete ji bezpečně otevřít. Launchpad ji ale nebude spouštět ani zastavovat, aby nepoškodil práci otevřenou jinde.",
       action: primaryActionNode(app, nextAction),
     };
   }
@@ -4175,11 +4369,12 @@ function detailSummaryModel(app, git) {
   }
 
   if (git?.status === "draft_changes") {
+    const changesLoaded = Boolean(git.key && state.gitChangesByRepo.has(git.key));
     return {
       tone: "warn",
       title: "Rozpracované změny",
       message: `${newCommitCountLabel(changedFiles)} je zatím jen na tomto počítači.`,
-      action: summaryButton("Zobrazit změny", () => showRepoChanges(app, git), `${app.id}:git-changes`),
+      action: summaryButton(changesLoaded ? "Obnovit seznam" : "Zobrazit změny", () => showRepoChanges(app, git), `${app.id}:git-changes`),
     };
   }
 
@@ -4462,16 +4657,16 @@ function renderGitBuilderActions(app) {
   }
 
   section.append(actions);
-  const cached = state.gitChangesByRepo.get(git.key);
-  if (cached) section.append(gitChangeListNode(cached));
   return section;
 }
 
 function gitChangeListNode(payload) {
   const wrapper = document.createElement("div");
   wrapper.className = "git-change-list";
+  wrapper.setAttribute("aria-live", "polite");
   const title = document.createElement("strong");
-  title.textContent = payload.changes?.length ? "Změněné soubory" : "Žádné lokální změny";
+  const count = payload.changes?.length ?? 0;
+  title.textContent = count ? `Rozpracované soubory (${count})` : "Žádné lokální změny";
   wrapper.append(title);
   if (payload.changes?.length) {
     const list = document.createElement("ul");
@@ -4480,7 +4675,7 @@ function gitChangeListNode(payload) {
       const code = document.createElement("code");
       code.textContent = change.path;
       const meta = document.createElement("span");
-      meta.textContent = change.porcelain ?? change.change ?? "změna";
+      meta.textContent = gitChangeStatusLabel(change.porcelain ?? change.change);
       item.append(code, meta);
       list.append(item);
     }
@@ -4489,13 +4684,22 @@ function gitChangeListNode(payload) {
   return wrapper;
 }
 
+function gitChangeStatusLabel(status) {
+  const normalized = String(status ?? "").trim();
+  if (normalized === "??" || normalized.includes("A")) return "nový soubor";
+  if (normalized.includes("D")) return "smazaný";
+  if (normalized.includes("R")) return "přejmenovaný";
+  if (normalized.includes("U")) return "konflikt";
+  if (normalized.includes("M")) return "upravený";
+  return "změněný";
+}
+
 async function showRepoChanges(app, git) {
   state.pendingAction = `${app.id}:git-changes`;
   render();
   try {
     const payload = await fetchJson(`/api/git/repos/${encodeURIComponent(git.key)}/changes`);
     state.gitChangesByRepo.set(git.key, payload);
-    toast(`${appBaseTitle(app)}: změny načtené.`, "success");
   } catch (error) {
     toast(`${appBaseTitle(app)}: ${error.message}`, "error", 7000);
   } finally {
@@ -4569,7 +4773,12 @@ async function abortGitRebase({ git, label, pendingKey = `git-rebase-abort:${git
 async function loadUpdateStatus() {
   lastUpdateStatusAt = Date.now();
   const payload = await fetchJsonSafe("/api/update/status");
-  state.updateStatus = payload && !payload.error ? payload : null;
+  state.updateStatus = payload && !payload.error
+    ? payload
+    : {
+        state: "check_failed",
+        message: payload?.message ?? "Stav aktualizace se nepodařilo ověřit.",
+      };
   renderUpdatePill();
 }
 
@@ -4586,27 +4795,70 @@ function renderUpdateBanner() {
   const banner = elements.updateBanner;
   if (!banner) return;
   const status = state.updateStatus;
+  const moduleUpdates = activeSpaceApps().filter((app) => {
+    const git = gitRepoForApp(app);
+    return git
+      && builderPullScopeAllowedForRepo(git)
+      && (canAutostashPull(git) || git.status === "pull_available");
+  });
+  const moduleUpdateCount = moduleUpdates.length;
   const behind = status?.counts?.behind ?? 0;
   const actionable = status && (
     status.state === "update_available"
     || (status.state === "dirty_worktree" && status.can_update_with_autostash)
   );
-  if (!status || status.state === "up_to_date") {
-    banner.hidden = true;
+
+  if (!status) {
+    delete banner.dataset.action;
+    elements.updateBannerText.textContent = "Kontroluji dostupné změny…";
+    elements.updateBannerAction.hidden = true;
+    elements.updateBannerAction.disabled = true;
+    banner.classList.remove("is-blocked", "is-updating", "is-current");
+    banner.hidden = false;
     return;
   }
-  if (!actionable) {
+
+  // Blokovaný root má přednost před modulovým souhrnem: skrýt jeho důvod by
+  // znamenalo, že kolega vidí pouze bezpečnou dílčí akci a přehlédne problém
+  // sdíleného Launchpadu.
+  if (status && status.state !== "up_to_date" && !actionable) {
+    banner.dataset.action = "root";
     elements.updateBannerText.textContent = status.message ?? "Stav aktualizace se nepodařilo ověřit.";
     elements.updateBannerAction.hidden = true;
     elements.updateBannerAction.disabled = true;
-    banner.classList.remove("is-updating");
+    banner.classList.remove("is-updating", "is-current");
     banner.classList.add("is-blocked");
     banner.hidden = false;
     return;
   }
+
+  if (moduleUpdateCount > 0 && !actionable) {
+    banner.dataset.action = "modules";
+    banner.classList.remove("is-blocked", "is-updating", "is-current");
+    elements.updateBannerText.textContent = `Nové změny jsou připravené pro ${moduleUpdateCount} ${moduleUpdateCount === 1 ? "aplikaci" : "aplikace"}.`;
+    elements.updateBannerAction.textContent = "Stáhnout vše";
+    elements.updateBannerAction.hidden = false;
+    elements.updateBannerAction.disabled = false;
+    banner.hidden = false;
+    return;
+  }
+
+  if (status.state === "up_to_date") {
+    delete banner.dataset.action;
+    banner.classList.remove("is-blocked", "is-updating");
+    banner.classList.add("is-current");
+    // Modulový git model se načítá odděleně a best-effort. Dokud nevrátí
+    // vlastní data, nesmíme z ověřeného root statusu odvozovat stav aplikací.
+    elements.updateBannerText.textContent = "Conglomerate je aktuální.";
+    elements.updateBannerAction.hidden = true;
+    elements.updateBannerAction.disabled = true;
+    banner.hidden = false;
+    return;
+  }
   const preserve = status.state === "dirty_worktree";
+  banner.dataset.action = "root";
   elements.updateBannerAction.hidden = false;
-  banner.classList.remove("is-blocked");
+  banner.classList.remove("is-blocked", "is-current");
   elements.updateBannerText.textContent = state.updatePending
     ? "Stahuju novou verzi… Stránka se po dokončení sama znovu načte."
     : preserve
@@ -4622,6 +4874,14 @@ function renderUpdateBanner() {
 
 function renderUpdatePill() {
   renderUpdateBanner();
+}
+
+function runUnifiedUpdateAction() {
+  if (elements.updateBanner?.dataset.action === "modules") {
+    void pullAllRepositories();
+    return;
+  }
+  void runRootUpdate();
 }
 
 async function runRootUpdate() {
@@ -5327,6 +5587,7 @@ function appIconSvg(key) {
 async function runRuntimeAction(app, action) {
   state.pendingAction = `${app.id}:${action}`;
   state.actionMessage = null;
+  state.runtimeActionErrors.delete(app.id);
   render();
   try {
     const response = await fetch(`/api/apps/${encodeURIComponent(app.id)}/${action}`, {
@@ -5337,8 +5598,12 @@ async function runRuntimeAction(app, action) {
     });
     const payload = await response.json();
     if (!response.ok) {
-      throw new Error(payload.message ?? `${action} selhal`);
+      const runtimeError = new Error(payload.message ?? `${action} selhal`);
+      runtimeError.code = payload.error ?? "runtime_action_failed";
+      runtimeError.details = payload.details ?? [];
+      throw runtimeError;
     }
+    state.runtimeActionErrors.delete(app.id);
     const completedAction = completedRuntimeActionLabel(action);
     state.actionMessage = {
       type: "ok",
@@ -5346,14 +5611,41 @@ async function runRuntimeAction(app, action) {
     };
     toast(`${app.title}: ${completedAction}.`, "ok");
   } catch (error) {
-    state.actionMessage = {
-      type: "fail",
-      message: `${app.title}: ${error.message}`,
-    };
-    toast(`${app.title}: ${error.message}`, "fail", 6000);
-    render();
+    state.actionMessage = null;
+    state.runtimeActionErrors.set(app.id, humanRuntimeActionError(error));
+    state.selectedReadonlyDetail = null;
+    state.selectedAppId = app.id;
+    state.drawerView = "detail";
+    setDrawer(true, { restoreFocus: false });
   } finally {
     await loadData({ quiet: true, fresh: true });
+    state.pendingAction = null;
+    render();
+  }
+}
+
+function humanRuntimeActionError(error) {
+  if (error?.code === "invalid_discovery" || String(error?.message).includes("validní Launchpad discovery")) {
+    return {
+      title: "Nejdřív je potřeba obnovit stav",
+      message: "Launchpad teď nemá spolehlivý přehled aplikací, proto změnu bezpečně neprovedl.",
+      technical: error?.message ?? null,
+    };
+  }
+  return {
+    title: "Akci se nepodařilo dokončit",
+    message: "Stav aplikace se mohl změnit. Obnovte přehled a potom akci zkuste znovu.",
+    technical: error?.message ?? null,
+  };
+}
+
+async function refreshRuntimeActionState(appId) {
+  state.pendingAction = `${appId}:refresh-runtime-state`;
+  state.runtimeActionErrors.delete(appId);
+  render();
+  try {
+    await loadData({ quiet: true, fresh: true });
+  } finally {
     state.pendingAction = null;
     render();
   }

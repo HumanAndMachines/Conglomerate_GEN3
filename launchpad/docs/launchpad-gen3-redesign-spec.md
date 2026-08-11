@@ -624,12 +624,29 @@ ať UI nemusí řešit prázdné hodnoty.
 
 ### 13.2 Karty a ⋯ menu
 
+Shell používá tmavou inkoustovou hlavičku s bílými ikonami; dropdowny, panely
+a pracovní plocha pod ní zůstávají na světlém dokumentovém povrchu. Hlavička
+je kanonická součást UI, ne URL experiment ani skin konkrétní Organizace.
+Karta aktualizací je na desktopu první v pravém sloupci; na mobilu a v
+Personalspace se stejný prvek přesune nad hlavní layout, aby root update ani
+blokující zpráva nezmizely ve skrytém draweru. Blokovaný root stav má v tomto
+prvku přednost před souhrnem dostupných modulových aktualizací.
+
 Celá karta je klikatelná a spouští **one-click open** (install → start → otevřít
 URL) s guardem na vnitřní ovládací prvky (`shouldOpenFromCardSurface`). Ikona,
 popis a git chip jdou z modelu, ne z hardcode copy. ⋯ menu nese vysvětlující
 note (co spouští hlavní akce) a položky variant „Otevřít &lt;varianta&gt; — port ·
 popis · stav"; každá varianta se otevře stejným jedním klikem. Productionspace
 a blokující dependency stavy zůstávají read-only (jen selekce do detailu).
+
+Modulové karty tvoří souvislou hranatou mřížku bez mezer a bez border radiusu.
+V klidu mají čistý bílý povrch; na přesném ukazateli hover pouze odkryje popis
+a jemnou barevnou vrstvu uvnitř karty, bez posunu dlaždice nebo okolní mřížky.
+Na dotykovém zařízení je popis viditelný trvale a `prefers-reduced-motion`
+vypíná přechody. Výchozí modulové ikony jsou 24px pixelové PNG vykreslené ve
+48 px s nearest-neighbour. Soubor se vybírá přes stejný obecný sémantický
+`icon` klíč jako SVG fallback; shared kód nesmí mapovat konkrétní Organizace
+ani názvy jejich modulů.
 
 ### 13.3 One-click open chain (idempotentní, bez tichého fallbacku)
 

@@ -257,9 +257,9 @@ function appBlockerModel(app) {
   if (app.runtime?.failure_kind === "port_owner_cwd_mismatch") {
     return {
       severity: "danger",
-      title: `${title} běží z jiného pracovního umístění`,
-      impact: "Launchpad tuto běžící kopii nepřevzal, aby nezasáhl do jiné rozdělané práce.",
-      nextStep: "Zavřete druhou kopii aplikace a potom obnovte stav.",
+      title: `${title} už běží z jiné kopie`,
+      impact: "Launchpad ji nechává beze změny, aby nepoškodil práci otevřenou jinde.",
+      nextStep: "Otevřete běžící aplikaci, nebo ji ukončete v původním okně a potom obnovte stav.",
       appId: app.id,
       technical,
     };

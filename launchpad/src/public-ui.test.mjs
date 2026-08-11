@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { readFile as readRawFile } from "fs/promises";
+import { readFile as readRawFile, readdir } from "fs/promises";
 import { join } from "path";
 
 const publicRoot = join(import.meta.dirname, "..", "public");
@@ -40,6 +40,36 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
 
   // Přepínač v headeru drží právě jeden scope: Osobní nebo jednu Organizaci.
   expect(js).toContain("function renderSpaceSwitcher");
+  expect(js).not.toContain("launchpadPreviewParams");
+  expect(js).not.toContain("tileExperiment");
+  expect(js).not.toContain("guideIconExperiment");
+  expect(css).not.toContain("data-tile-experiment");
+  expect(css).not.toContain("data-guide-icon-experiment");
+  expect(css).not.toContain("data-header-experiment");
+  expect(js).toContain("const PIXEL_APP_ICON_FILES = Object.freeze({");
+  expect(js).toContain("const key = appIconKey(app);");
+  expect(js).toContain("const pixelArtIcon = pixelAppIcon(key);");
+  expect(js).toContain('return file ? `/app-icons/pixel/${file}` : "";');
+  const pixelResolverBlock = js.slice(js.indexOf("function pixelAppIcon"), js.indexOf("function appCardTone"));
+  expect(pixelResolverBlock).not.toContain("app.module");
+  expect(pixelResolverBlock).not.toContain("app.company");
+  expect(css).toContain("@media (hover: hover) and (pointer: fine)");
+  expect(css).toContain("linear-gradient(");
+  expect(css).not.toContain("translateY(-3px)");
+  expect(css).toContain(":hover .app-card-desc");
+  expect(css).toContain("max-height: 4.8em");
+  expect(css).toContain("opacity 460ms var(--tile-reveal-ease)");
+  expect(css).toContain("max-height 420ms var(--tile-reveal-ease)");
+  expect(css).toContain("@media (hover: none), (pointer: coarse)");
+  expect(css).not.toContain("0 18px 36px color-mix(in srgb, var(--lz-ink) 9%, transparent)");
+  expect(css).not.toContain("0 2px 10px color-mix(in srgb, var(--lz-ink) 6%, transparent)");
+  expect(css).toContain("/* CAC-0095 — kanonická materiálová dlaždice. */");
+  expect(css).toContain("column-gap: 0");
+  expect(css).toContain("row-gap: 0");
+  expect(css).toContain("border-radius: 0");
+  expect(css).toContain("background: transparent");
+  expect(css).toContain(".app-card-icon.is-pixel-art img");
+  expect(css).toContain("image-rendering: pixelated");
   expect(js).toContain("function spaceProfileCard");
   expect(js).toContain("function profileSettingsItem");
   expect(js).toContain("elements.spaceSwitcherButton.focus()");
@@ -165,6 +195,20 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(css).not.toContain(".organization-rail");
   expect(css).toContain(".apps-grid");
   expect(css).toContain(".app-card");
+});
+
+test("každá kanonická pixelová ikona odkazovaná UI existuje", async () => {
+  const js = await readFile(join(publicRoot, "app.js"), "utf8");
+  const iconDirectory = join(publicRoot, "app-icons", "pixel");
+  const files = new Set(await readdir(iconDirectory));
+  const iconMapBlock = js.slice(
+    js.indexOf("const PIXEL_APP_ICON_FILES"),
+    js.indexOf("const APP_ICON_STYLES"),
+  );
+  const referencedFiles = [...iconMapBlock.matchAll(/"([a-z0-9-]+\.png)"/g)].map((match) => match[1]);
+
+  expect(referencedFiles.length).toBeGreaterThan(0);
+  for (const file of referencedFiles) expect(files.has(file)).toBe(true);
 });
 
 test("Launchpad drží kanonické Lazurio a nepřebírá skin Organizace", async () => {
@@ -375,7 +419,7 @@ test("Launchpad quiet refresh is lightweight and non-overlapping", async () => {
     ["pullAllRepositories", "selectedRuntimeSourceForApp"],
     ["createWorktreeForPlan", "publishSelectedWorktreeDraft"],
     ["publishSelectedWorktreeDraft", "firstPlanPathForGit"],
-    ["runRuntimeAction", "switchRuntimeApp"],
+    ["runRuntimeAction", "humanRuntimeActionError"],
     ["switchRuntimeApp", "loadLogs"],
   ]) {
     const actionBlock = js.slice(
@@ -675,8 +719,8 @@ test("CAC-0044: step-005 aktivuje Ukázat změny a guarded Stáhnout novější 
   expect(js).toContain("function pullLatestRepoVersion");
   expect(js).toContain("/changes");
   expect(js).toContain("/pull");
-  expect(js).toContain("`Nová verze - ${incoming} změn`");
-  expect(js).toContain('actionLabel: "Stáhnout"');
+  expect(js).toContain("`Nová verze - ${newCommitCountLabel(incoming)}`");
+  expect(js).toContain('summaryButton("Stáhnout", () => pullLatestRepoVersion(app, git)');
   expect(js).toContain('title: "Změny k odeslání"');
   expect(js).toContain('button.className = "btn btn-sm btn-secondary card-warning-action"');
   expect(js).not.toContain("warning.actionStyle");
@@ -709,7 +753,7 @@ test("Launchpad nabízí Organization root stav, autostash pull a jeden globáln
   expect(js).toContain('state.gitReposByModule.get(`${organization}::root`)');
   expect(js).toContain("function canAutostashPull");
   expect(js).toContain("Stáhnout a zachovat změny");
-  expect(js).toContain("`Nová verze - ${incoming} změn`");
+  expect(js).toContain("`Nová verze - ${newCommitCountLabel(incoming)}`");
   expect(js).toContain('autostash ? "pull-autostash" : "pull"');
   expect(js).toContain("function pullAllRepositories");
   expect(js).toContain("Načíst nejnovější změny ve všech organizacích?");
@@ -874,6 +918,9 @@ test("UI separates physical Organization/Workspace/Productionspace and prepares 
   expect(js).toContain("Přístup k Teamům");
   expect(js).toContain("Členství zatím neověřeno");
   expect(js).toContain("titleRow.append(summaryNode)");
+  expect(js).toContain('teamAccess.classList.add("is-in-section-head")');
+  expect(js).toContain("if (action) titleRow.append(action)");
+  expect(css).toContain(".team-access-summary.is-in-section-head");
   const titleRowCss = css.slice(
     css.indexOf(".app-section-title-row {"),
     css.indexOf("}", css.indexOf(".app-section-title-row {")) + 1,
@@ -1060,11 +1107,17 @@ test("Owner 2026-07-05: karta modulu je GEN2-minimal dlaždice bez velkých tla�
   // Sofistikovaný warning panel se ukáže, jen když je co řešit (null jinak).
   expect(js).toContain("function cardWarningModel");
   expect(js).toContain("function cardWarningNode");
-  expect(js).toContain("if (warning) card.append(cardWarningNode(warning))");
+  expect(js).toContain('warning.kind !== "fact" && warning.placement !== "top-action"');
+  expect(js).toContain('topActions.className = "app-card-top-actions"');
+  expect(js).toContain('if (topWarning) topActions.append(cardWarningActionIcon(topWarning))');
+  expect(js).toContain('placement: "top-action"');
+  expect(js).toContain("function cardWarningActionIcon");
   expect(js).toContain("appCardTone(app, warning)");
-  // Dvě přímé akce warning panelu: nainstalovat/opravit balíčky a stáhnout novější verzi.
+  // Příprava balíčků zůstává kontextovou akcí karty; stažení nové verze je
+  // sjednocené v souhrnu a detailu, aby se neopakovalo na každé dlaždici.
   expect(js).toContain("runRuntimeAction(app, installAction(app))");
-  expect(js).toContain("pullLatestRepoVersion(app, gitRepo)");
+  expect(js).toContain("pullLatestRepoVersion(app, git)");
+  expect(js).toContain("Nové vzdálené změny patří do jediného souhrnného hlášení");
   expect(js).toContain("pull_available");
 
   // „Další možnosti" (varianty + zastavit/restart + detail/logy) žijí pod ⋯,
@@ -1090,6 +1143,7 @@ test("Owner 2026-07-05: karta modulu je GEN2-minimal dlaždice bez velkých tla�
   expect(css).toContain(".card-warning.is-warn");
   expect(css).toContain(".card-warning.is-danger");
   expect(css).toContain(".card-warning-action");
+  expect(css).toContain(".app-card-alert-button");
   expect(css).toContain('"icon body"');
   expect(css).toContain('". action"');
   expect(css).toContain("text-overflow: ellipsis");
@@ -1162,26 +1216,42 @@ test("CAC-0083: dostupný root update je nepřehlédnutelný — banner ve všec
     readFile(join(publicRoot, "styles.css"), "utf8"),
   ]);
 
-  // Banner je první samostatný blok hlavního obsahu pod sticky hlavičkou.
-  // Neprodlužuje navigační header, ale zůstává vidět v každém scope.
+  // Banner je první blok trvalého pravého sloupce pod sticky hlavičkou.
+  // Neprodlužuje navigační header a sdílí jeden panelový jazyk se stavem.
   expect(html).toContain('id="updateBanner"');
+  expect(html).toContain('id="globalUpdateSlot"');
+  expect(html.indexOf('id="globalUpdateSlot"')).toBeLessThan(html.indexOf('<div class="layout">'));
   expect(html.indexOf("</header>")).toBeLessThan(html.indexOf('id="updateBanner"'));
   expect(html.indexOf('<main class="page">')).toBeLessThan(html.indexOf('id="updateBanner"'));
-  expect(html.indexOf('id="updateBanner"')).toBeLessThan(html.indexOf('<div class="layout">'));
+  expect(html.indexOf('id="recentChangesSidebar"')).toBeLessThan(html.indexOf('id="updateBanner"'));
+  expect(html.indexOf('id="updateBanner"')).toBeLessThan(html.indexOf('id="hero"'));
   expect(html).toContain('id="updateBannerText"');
   expect(html).toContain('id="updateBannerAction"');
 
   // Aktuální stav je tichý. Akční stav nese počet commitů a vede na guarded
   // update; blokovaný stav zůstane vysvětlený bez falešného tlačítka.
   expect(js).toContain("function renderUpdateBanner");
+  expect(js).toContain("function mountUpdateBanner");
+  expect(js).toContain('mobilePanelQuery.matches || state.filters.scope === "personal"');
+  expect(js).toContain("if (global) target.append(banner)");
+  expect(js).toContain("else target.prepend(banner)");
   expect(js).toContain('status.state === "update_available"');
   expect(js).toContain('(status.state === "dirty_worktree" && status.can_update_with_autostash)');
   expect(js).toContain("function formatCommitCountCz");
   expect(js).toContain("formatCommitCountCz(behind)");
   expect(js).toContain('status.state === "up_to_date"');
+  expect(js).toContain('elements.updateBannerText.textContent = "Conglomerate je aktuální."');
+  expect(js).not.toContain("Všechny aplikace jsou aktuální");
+  expect(js).toContain('state: "check_failed"');
+  expect(js).toContain('elements.updateBannerText.textContent = "Kontroluji dostupné změny…"');
+  expect(js).not.toContain('!status || status.state === "up_to_date"');
   expect(js).toContain('elements.updateBannerAction.hidden = true');
   expect(js).toContain('banner.classList.add("is-blocked")');
-  expect(js).toContain('elements.updateBannerAction?.addEventListener("click", () => runRootUpdate())');
+  expect(js).toContain('elements.updateBannerAction?.addEventListener("click", () => runUnifiedUpdateAction())');
+  const updateBannerBlock = js.slice(js.indexOf("function renderUpdateBanner"), js.indexOf("function renderUpdatePill"));
+  expect(updateBannerBlock.indexOf('status.state !== "up_to_date" && !actionable')).toBeLessThan(
+    updateBannerBlock.indexOf("moduleUpdateCount > 0 && !actionable"),
+  );
 
   // Update status se neobnovuje jen jednou při startu: quiet poll ho drží
   // čerstvý nejvýš UPDATE_STATUS_REFRESH_INTERVAL_MS starý.
@@ -1194,6 +1264,7 @@ test("CAC-0083: dostupný root update je nepřehlédnutelný — banner ve všec
 
   expect(css).toContain(".update-banner");
   expect(css).toContain(".update-banner-action");
+  expect(css).toContain(".global-update-slot:empty");
 });
 
 test("CAC-0083: update je hladký — spinner během stahování a automatický reload po dokončení", async () => {
@@ -1228,8 +1299,7 @@ test("CAC-0083: UI nenabízí Stáhnout mimo builder pull scope a zrcadlí serve
   expect(js).toContain('(git?.repo_kind === "module" && git?.workspace !== "productionspace")');
 
   // Každá nabídka Stáhnout na kartě i v builder detailu jde přes kind guard.
-  expect(js).toContain('if (builderPullScopeAllowedForRepo(gitRepo) && canAutostashPull(gitRepo))');
-  expect(js).toContain('if (gitRepo && builderPullScopeAllowedForRepo(gitRepo) && gitRepo.status === "pull_available")');
+  expect(js).toContain('gitRepo\n    && builderPullScopeAllowedForRepo(gitRepo)');
   expect(js).toContain('if (git?.status === "pull_available" && builderPullScopeAllowedForRepo(git))');
   expect(js).toContain('if (builderPullScopeAllowedForRepo(git) && canAutostashPull(git))');
   expect(js).toContain('if (git.status === "pull_available" && builderPullScopeAllowedForRepo(git))');
