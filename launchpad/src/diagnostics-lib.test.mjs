@@ -4,7 +4,7 @@ import { join } from "path";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "fs/promises";
 import { buildDoctorReportFromAppsResponse, buildEnvironmentChecks, buildLaunchpadAppsResponse, buildLaunchpadDoctorReport, runtimeAppStatus, updateChannelCheck } from "./diagnostics-lib.mjs";
 import { createLaunchpadGitFixture, initGitRepo, runGit } from "./git-fixture-helpers.test.mjs";
-import { buildGitInventory } from "./git-inventory-lib.mjs";
+import { buildGitInventory } from "../../lazurio/core/git-inventory-lib.mjs";
 
 const tempRoots = [];
 

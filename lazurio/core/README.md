@@ -8,10 +8,10 @@ Core smí importovat Node/Bun standardní knihovny a jiné Core moduly. Nesmí
 importovat Lazurio CLI, search adapter, Launchpad server, UI ani runtime
 composition. Směr závislosti je vždy opačný: surfaces importují Core.
 
-První uzavřená vrstva vlastní bezpečné Git procesy, lokální Git stav,
-materializaci checkoutů, root update a společná pravidla cest a Organization
-repo slotů. Discovery, context a Doctor adapter se sem přesunují v dalších
-mechanických řezech stejného plánu až nad zelenou parity baseline.
+Core vlastní bezpečné Git procesy, lokální Git stav, materializaci checkoutů,
+root update, Organization/app discovery, Git inventory a společná pravidla
+cest a Organization repo slotů. Context a Doctor adapter se sem přesunují
+v dalších mechanických řezech stejného plánu až nad zelenou parity baseline.
 
 Search zůstává CLI-owned. QMD, `rg`, search cache, MCP, auth, Dashboard login,
 nové příkazy a veřejné schema do Core v tomto refaktoru nepatří.

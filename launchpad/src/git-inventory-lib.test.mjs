@@ -1,7 +1,7 @@
 import { afterAll, expect, test } from "bun:test";
 import { mkdir, readFile, rename, rm, symlink, writeFile } from "fs/promises";
 import { join } from "path";
-import { buildGitInventory } from "./git-inventory-lib.mjs";
+import { buildGitInventory } from "../../lazurio/core/git-inventory-lib.mjs";
 import { createLaunchpadGitFixture } from "./git-fixture-helpers.test.mjs";
 
 const tempRoots = [];

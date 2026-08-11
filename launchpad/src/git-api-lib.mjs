@@ -1,4 +1,4 @@
-import { buildGitInventory } from "./git-inventory-lib.mjs";
+import { buildGitInventory } from "../../lazurio/core/git-inventory-lib.mjs";
 import { materializeRepoCheckout } from "../../lazurio/core/git-materialization-lib.mjs";
 import { mapWithConcurrency } from "../../lazurio/core/git-lib.mjs";
 import { buildMissionControlPlanIndex } from "./mission-control-plan-lib.mjs";

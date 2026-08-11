@@ -91,9 +91,12 @@ async function createFixture({ withGbrain = true, sharedSpace = false } = {}) {
   const root = await mkdtemp(join(tmpdir(), "ps-runtime-"));
   tempRoots.push(root);
   await mkdir(join(root, "launchpad", "schemas"), { recursive: true });
-  const realSchemas = join(import.meta.dirname, "..", "schemas");
-  for (const name of ["personal.gen3.schema.json", "launchpad-app.schema.json"]) {
-    await writeFile(join(root, "launchpad", "schemas", name), await Bun.file(join(realSchemas, name)).text(), "utf8");
+  const schemaSources = {
+    "personal.gen3.schema.json": join(import.meta.dirname, "..", "schemas", "personal.gen3.schema.json"),
+    "launchpad-app.schema.json": join(import.meta.dirname, "..", "..", "lazurio", "core", "schemas", "launchpad-app.schema.json"),
+  };
+  for (const [name, source] of Object.entries(schemaSources)) {
+    await writeFile(join(root, "launchpad", "schemas", name), await Bun.file(source).text(), "utf8");
   }
   await writeJson(join(root, "launchpad.gen3.json"), {
     workspace_generation: "gen3",
@@ -174,9 +177,12 @@ test("personalspaceDoctorCheck = not_applicable, když není žádný osobní pr
   tempRoots.push(root);
   await writeJson(join(root, "launchpad.gen3.json"), { workspace_generation: "gen3", personalspace_mountpoint: "personalspace" });
   await mkdir(join(root, "launchpad", "schemas"), { recursive: true });
-  const realSchemas = join(import.meta.dirname, "..", "schemas");
-  for (const name of ["personal.gen3.schema.json", "launchpad-app.schema.json"]) {
-    await writeFile(join(root, "launchpad", "schemas", name), await Bun.file(join(realSchemas, name)).text(), "utf8");
+  const schemaSources = {
+    "personal.gen3.schema.json": join(import.meta.dirname, "..", "schemas", "personal.gen3.schema.json"),
+    "launchpad-app.schema.json": join(import.meta.dirname, "..", "..", "lazurio", "core", "schemas", "launchpad-app.schema.json"),
+  };
+  for (const [name, source] of Object.entries(schemaSources)) {
+    await writeFile(join(root, "launchpad", "schemas", name), await Bun.file(source).text(), "utf8");
   }
   const response = await buildPersonalspaceResponse({
     companiesRoot: root,

@@ -1,6 +1,6 @@
 import { basename } from "path";
 import { builderPullScopeAllowed } from "./git-api-lib.mjs";
-import { buildGitInventory } from "./git-inventory-lib.mjs";
+import { buildGitInventory } from "../../lazurio/core/git-inventory-lib.mjs";
 import { materializeRepoCheckout } from "../../lazurio/core/git-materialization-lib.mjs";
 import {
   pullRepoFastForward,

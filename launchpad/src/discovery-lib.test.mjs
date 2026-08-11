@@ -6,7 +6,7 @@ import {
   discoverLaunchpadApps,
   organizationRelativePathIssue,
   organizationRepositoryPathCasingIssue,
-} from "./discovery-lib.mjs";
+} from "../../lazurio/core/discovery-lib.mjs";
 
 const tempRoots = [];
 

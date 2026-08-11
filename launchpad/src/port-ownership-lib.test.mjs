@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import {
   buildPortOwnershipIndex,
   findPortOverlaps,
-} from "./port-ownership-lib.mjs";
+} from "../../lazurio/core/port-ownership-lib.mjs";
 
 function owner(packagePath, port, overrides = {}) {
   return {

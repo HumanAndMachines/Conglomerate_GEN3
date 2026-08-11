@@ -13,11 +13,11 @@ import {
   organizationSlotRepositoryMountIssue,
   organizationSlotScope,
   organizationSlotWorkspace,
-} from "../../lazurio/core/organization-slot-scope-lib.mjs";
+} from "./organization-slot-scope-lib.mjs";
 import {
   inspectCanonicalPathBoundary,
   isSamePath,
-} from "../../lazurio/core/path-boundary-lib.mjs";
+} from "./path-boundary-lib.mjs";
 
 export async function buildGitInventory({ companiesRoot, organizations = null } = {}) {
   if (!companiesRoot) throw new Error("buildGitInventory requires companiesRoot");

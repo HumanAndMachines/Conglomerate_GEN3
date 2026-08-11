@@ -38,7 +38,7 @@ import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
-import { readJson } from "./discovery-lib.mjs";
+import { readJson } from "../../lazurio/core/discovery-lib.mjs";
 import {
   DOCTOR_DECLARATION_SCHEMA_VERSION,
   DOCTOR_REPORT_SCHEMA_VERSION_V3,

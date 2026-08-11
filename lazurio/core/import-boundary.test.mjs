@@ -13,11 +13,14 @@ const standardLibrarySpecifiers = new Set([
   "bun:test",
 ]);
 const movedModules = [
+  "discovery-lib.mjs",
+  "git-inventory-lib.mjs",
   "git-lib.mjs",
   "git-materialization-lib.mjs",
   "git-status-lib.mjs",
   "organization-slot-scope-lib.mjs",
   "path-boundary-lib.mjs",
+  "port-ownership-lib.mjs",
   "update-lib.mjs",
 ];
 

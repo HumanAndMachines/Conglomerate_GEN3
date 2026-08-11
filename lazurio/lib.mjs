@@ -7,7 +7,7 @@ import {
   buildLaunchpadDoctorReport,
   loadRootDoctorSchema,
 } from "../launchpad/src/diagnostics-lib.mjs";
-import { buildGitInventory } from "../launchpad/src/git-inventory-lib.mjs";
+import { buildGitInventory } from "./core/git-inventory-lib.mjs";
 import { readGitRepoStatuses } from "./core/git-status-lib.mjs";
 import {
   GIT_LOCAL_TIMEOUT_MS,

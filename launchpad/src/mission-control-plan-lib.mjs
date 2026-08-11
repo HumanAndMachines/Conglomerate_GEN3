@@ -1,7 +1,7 @@
 import { existsSync } from "fs";
 import { readFile, readdir, realpath } from "fs/promises";
 import { basename, join, posix, relative, resolve } from "path";
-import { buildGitInventory } from "./git-inventory-lib.mjs";
+import { buildGitInventory } from "../../lazurio/core/git-inventory-lib.mjs";
 import {
   inspectCanonicalPathBoundary,
   isPathDescendant,

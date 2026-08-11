@@ -21,10 +21,10 @@
 import { existsSync } from "fs";
 import { readdir } from "fs/promises";
 import { dirname, join, relative, resolve, sep } from "path";
-import { readJson, readLocalOverrideConfig, validateAppManifest } from "./discovery-lib.mjs";
+import { readJson, readLocalOverrideConfig, validateAppManifest } from "../../lazurio/core/discovery-lib.mjs";
 
 const launchpadRoot = join(import.meta.dirname, "..");
-const appSchemaPath = join(launchpadRoot, "schemas", "launchpad-app.schema.json");
+const appSchemaPath = join(import.meta.dirname, "..", "..", "lazurio", "core", "schemas", "launchpad-app.schema.json");
 const personalSchemaPath = join(launchpadRoot, "schemas", "personal.gen3.schema.json");
 const buddyPresentationSchemaPath = join(launchpadRoot, "schemas", "personal-buddy-presentation.draft.schema.json");
 const defaultPersonalspaceMountpoint = "personalspace";

@@ -5,7 +5,7 @@ import {
   discoverLaunchpadApps,
   organizationRelativePathIssue,
   readJson,
-} from "./discovery-lib.mjs";
+} from "../../lazurio/core/discovery-lib.mjs";
 import { UPDATE_CHANNELS, selectHighestStableTag } from "../../lazurio/core/update-lib.mjs";
 import { buildGitApiResponse, compactGitSummaryForApp } from "./git-api-lib.mjs";
 import { createRuntimeManager, resolveBunExecutable } from "./runtime-lib.mjs";
@@ -274,8 +274,8 @@ export async function buildLaunchpadDoctorReport(options = {}) {
 
 /**
  * Schéma surfacu je KONTRAKT DODANÝ S KÓDEM, ne per-root konfigurace: čte se ze
- * zdrojového `launchpad/schemas/`, stejně jako `launchpad-app.schema.json` v
- * `discovery-lib.mjs` — nikdy z diagnostikovaného rootu, protože ten může být
+ * zdrojového `launchpad/schemas/`; app discovery analogicky používá Core schema
+ * vedle `lazurio/core/discovery-lib.mjs` — nikdy z diagnostikovaného rootu, protože ten může být
  * fixture nebo cizí checkout, a schéma přinesené kontrolovaným stromem by
  * znamenalo, že se subjekt kontroly měří vlastním metrem. Když chybí, root nemá
  * čím validovat ani vlastní report, ani reporty dětí, a to je vada instalace.

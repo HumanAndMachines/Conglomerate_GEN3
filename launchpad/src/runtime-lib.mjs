@@ -3,7 +3,7 @@ import { appendFile, mkdir, readFile, realpath, stat, utimes, writeFile } from "
 import { randomUUID } from "crypto";
 import { createServer } from "net";
 import { basename, dirname, isAbsolute, join, relative, resolve, win32 } from "path";
-import { discoverLaunchpadApps } from "./discovery-lib.mjs";
+import { discoverLaunchpadApps } from "../../lazurio/core/discovery-lib.mjs";
 import { recordAppOpen } from "./usage-lib.mjs";
 import { buildWorktreeIndex } from "./worktree-lib.mjs";
 

@@ -63,7 +63,7 @@ Company-level plugin directory je připravený pro další generaci.
 }
 ```
 
-Kanonické schéma je v `launchpad/schemas/launchpad-plugin.schema.json`.
+Kanonické schéma je v `lazurio/core/schemas/launchpad-plugin.schema.json`.
 Doctor a `bun run check` validují, že plugin je JSON manifest v1, ne
 spustitelný soubor.
 

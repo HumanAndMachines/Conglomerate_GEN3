@@ -20,11 +20,11 @@ import { expect, test } from "bun:test";
 import { readFile, readdir, stat } from "fs/promises";
 import { dirname, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
-import { organizationAppIdPrefix, validateAppManifest } from "./discovery-lib.mjs";
+import { organizationAppIdPrefix, validateAppManifest } from "../../lazurio/core/discovery-lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..");
-const appSchemaPath = join(repoRoot, "launchpad", "schemas", "launchpad-app.schema.json");
+const appSchemaPath = join(repoRoot, "lazurio", "core", "schemas", "launchpad-app.schema.json");
 const doctorSchemaPath = join(repoRoot, "launchpad", "schemas", "doctor-report.schema.json");
 
 // Surface doctor reportu (decision 0118). Drží se tu jako literál, protože

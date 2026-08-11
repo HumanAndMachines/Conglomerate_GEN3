@@ -289,7 +289,7 @@ ever public.
 (`public/app-state.js`) returns the four ordered runs; the card renders them via
 `renderRuntimeStages` (`public/app.js`) as a stage row under the tile. PROD is a
 real new-tab link when the module declares `production_url` (optional,
-warning-first manifest field, `schemas/launchpad-app.schema.json`), otherwise an
+warning-first manifest field, `lazurio/core/schemas/launchpad-app.schema.json`), otherwise an
 honest disabled stub. MAIN and DEV remote are honest **"via tailnet — not wired
 yet"** affordances (transport is [OPEN]); disabled runs always state **why** in
 plain language. DEV local **reuses** the existing one-click open
@@ -617,8 +617,8 @@ sdíleném Launchpadu.
 
 Validace je **warning-first**: vadná hodnota volitelného pole appku
 nezneplatní — jen se zaloguje varování (`… (builder metadata)`) a karta spadne
-na fallback. Schema: `schemas/launchpad-app.schema.json`; validace +
-normalizace: `src/discovery-lib.mjs` (`validateBuilderMetadata`,
+na fallback. Schema: `lazurio/core/schemas/launchpad-app.schema.json`; validace +
+normalizace: `lazurio/core/discovery-lib.mjs` (`validateBuilderMetadata`,
 `builderMetadataString`). Pole se propisují na app objekt jako `string|null`,
 ať UI nemusí řešit prázdné hodnoty.
 

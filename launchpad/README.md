@@ -325,7 +325,7 @@ server se nepřevezme.
 `discover` vypíše nalezené aplikace. Discovery nejdřív načte registry metadata
 z `launchpad.gen3.json`, potom automaticky proskenuje lokální
 `organizations/*/company.gen3.json`. `check` validuje `companyascode.app`
-podle `launchpad/schemas/launchpad-app.schema.json`. Nevalidní app manifest
+podle `lazurio/core/schemas/launchpad-app.schema.json`. Nevalidní app manifest
 uvnitř konkrétní Organization se přeskočí a reportuje jako warning, aby jeden
 stale modul neshodil celý Launchpad. `check` dál selže, pokud chybí Launchpad
 GEN3 root struktura, registry Organization mountpoint, povinné Organization

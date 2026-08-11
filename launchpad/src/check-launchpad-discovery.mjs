@@ -1,4 +1,4 @@
-import { discoverLaunchpadApps } from "./discovery-lib.mjs";
+import { discoverLaunchpadApps } from "../../lazurio/core/discovery-lib.mjs";
 
 const allowMissingOrganizations = Bun.argv.includes("--allow-missing-organizations");
 const rootArg = Bun.argv.slice(2).find((arg) => !arg.startsWith("--"));

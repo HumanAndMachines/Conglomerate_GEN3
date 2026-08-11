@@ -161,7 +161,7 @@
       "links": [
         {
           "label": "Launchpad nested-repo discovery gate",
-          "path": "launchpad/src/discovery-lib.mjs"
+          "path": "lazurio/core/discovery-lib.mjs"
         },
         {
           "label": "Launchpad discovery contract",

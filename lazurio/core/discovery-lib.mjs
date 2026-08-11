@@ -8,7 +8,7 @@ import {
   organizationRepositorySlotCollectionIssues,
   organizationSlotRepositoryId,
   organizationSlotRepositoryMountIssue,
-} from "../../lazurio/core/organization-slot-scope-lib.mjs";
+} from "./organization-slot-scope-lib.mjs";
 
 const ignoredDirs = new Set([
   ".git",
@@ -22,9 +22,8 @@ const ignoredDirs = new Set([
   // It must not acquire Launchpad lifecycle actions merely by containing a package manifest.
   "productionspace",
 ]);
-const launchpadRoot = join(import.meta.dirname, "..");
-const appSchemaPath = join(launchpadRoot, "schemas", "launchpad-app.schema.json");
-const pluginSchemaPath = join(launchpadRoot, "schemas", "launchpad-plugin.schema.json");
+const appSchemaPath = join(import.meta.dirname, "schemas", "launchpad-app.schema.json");
+const pluginSchemaPath = join(import.meta.dirname, "schemas", "launchpad-plugin.schema.json");
 const defaultOrganizationMountpoint = "organizations";
 const defaultModuleTemplateMountpoint = "templates";
 const requiredLaunchpadRootPaths = ["launchpad.gen3.json", "launchpad", "guide", "organizations", "manual"];
