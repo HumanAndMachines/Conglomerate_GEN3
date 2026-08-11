@@ -64,7 +64,8 @@ Organization rootu. Každý aktivní modul pak deklaruje vlastní `git.url`,
 `git.branch` a cílovou `path` v `modules.manifest.json#module_slots[]`.
 
 `Synchronizovat` je read-only rediscovery už existujících lokálních mountů.
-Mutační `Pullnout vše` (Launchpad) a `bun run update --org <slug>` (CLI)
+Mutační **Stáhnout změny** u aktivní Organizace v Launchpadu a
+`bun run update --org <slug>` (CLI)
 provádějí manifest-driven materializaci ve dvou fázích: nejdřív bezpečně
 fast-forwardnou Organization root, potom z nového manifestu sestaví čerstvý
 inventář a chybějící aktivní Workspace/root sloty naklonují na přesně
@@ -504,9 +505,10 @@ jasný mechanismus:
   provede fast-forward, obnoví i staged stav a stash smaže až po úspěšném
   obnovení. Při konfliktu je nová verze stažená, konflikt zůstane viditelný a
   bezpečnostní stash se nesmaže.
-- `Pullnout vše` je jedna potvrzená builder akce přes všechny namountované
-  Organizace. V první fázi stáhne Organization root repa; ve druhé znovu načte
-  jejich manifesty, aktualizuje existující Workspace/root sloty a chybějící
+- `Stáhnout změny` je jedna přímá builder akce pro právě otevřenou Organizaci.
+  Samostatný řádek pod stavem Conglomerate ukazuje, v kolika modulech jsou nové
+  změny. V první fázi stáhne Organization root repo; ve druhé znovu načte jeho
+  manifest, aktualizuje existující Workspace/root sloty a chybějící
   aktivní sloty bezpečně naklonuje. GitHub credentials kolegy zůstávají access
   autoritou; nedostupný checkout se ohlásí jako `missing_access`, `planned_slot`
   se nematerializuje. Pro bezpečně autostashovatelné drafty použije stejné
@@ -515,10 +517,10 @@ jasný mechanismus:
   vypíše je v souhrnu. Klonování nespouští package skripty; app-scoped
   dependencies instaluje až explicitní `Install`/`Otevřít` runtime flow.
 
-Organization root repo není jen součást technického API: aktivní Organization
-pohled ukazuje jeho Git stav, incoming počet, freshness a vhodnou pull/autostash
-akci v panelu **Git Organizace**. Globální `Pullnout vše` je ve stejném panelu;
-uživatel nemusí otevírat jednotlivé moduly.
+Aktivní Organization pohled shrnuje Git aktualizace do jednoduchého stavového
+řádku přímo pod stavem Conglomerate. Při dostupných změnách ukáže počet modulů
+a jediné tlačítko **Stáhnout změny**; technické stavy jednotlivých modulů dál
+zůstávají na jejich kartách a v detailu.
 
 Když se stažení nepovede, modulová karta drží chybu jako trvalý recovery
 warning a instruuje uživatele, aby její screenshot vložil agentovi do Codexu.

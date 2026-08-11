@@ -182,7 +182,7 @@ test("materiálový průchod používá výraznější hrany a odstupňované La
   expect(material).toMatch(/\.app-card\s*{[\s\S]*?border-width: 1\.5px;[\s\S]*?border-color: var\(--lz-line\);[\s\S]*?background: var\(--lz-white\)/);
   expect(styles).toMatch(/\.app-card > \.card-warning\.is-fact,[\s\S]*?\.app-card > \.card-warning\.is-jen-akce\s*{[\s\S]*?display: flex;[\s\S]*?min-height: 52px;[\s\S]*?margin-top: auto;[\s\S]*?border-top: 1px solid var\(--lz-line-faint\)/);
   expect(styles).toContain(".app-card > .card-warning:not(.is-jen-akce):not(.is-fact)");
-  expect(material).toMatch(/\.organization-git-status\s*{[\s\S]*?background: var\(--lz-paper\)/);
+  expect(material).toMatch(/\.recent-changes-sidebar > \.update-banner-group \.update-banner\s*{[\s\S]*?background: var\(--lz-white\)/);
 });
 
 test("uvítání pracovního prostoru používá display hierarchii Lazuria", async () => {

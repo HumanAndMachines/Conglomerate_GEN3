@@ -324,6 +324,18 @@ test("pull all updates Organization roots and workspace modules, using autostash
   expect(normalizeLineEndings(await readFile(join(dealsRepo, "remote-deals.md"), "utf8"))).toBe("remote change\n");
 }, 60_000);
 
+test("pull all can stay inside the Organization selected in Launchpad", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+
+  const response = await buildPullAllResponse({ companiesRoot: root, organization: "BetaCo" });
+
+  expect(response.organization).toBe("BetaCo");
+  expect(response.results.length).toBeGreaterThan(0);
+  expect(response.results.every((result) => result.organization === "BetaCo")).toBe(true);
+  expect(response.results.some((result) => result.organization === "OmegaCo")).toBe(false);
+});
+
 test("pull all reloads a freshly pulled Organization manifest and materializes its new module in one action", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);

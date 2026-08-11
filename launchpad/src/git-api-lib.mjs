@@ -219,19 +219,22 @@ function pullRecoveryMetadata(repoKey, result) {
   };
 }
 
-export async function buildPullAllResponse({ companiesRoot, statusService = null } = {}) {
+export async function buildPullAllResponse({ companiesRoot, organization = null, statusService = null } = {}) {
   // Dvě fáze jsou podstata manifest-driven syncu: nejdřív stáhneme root
   // Organizace, potom inventář sestavíme znovu z právě aktualizovaného
   // modules.manifest.json. Jinak by nově přidaný modul vyžadoval druhé kliknutí.
+  // Launchpad může akci omezit na právě otevřenou Organizaci; CLI bez filtru
+  // dál zachovává globální synchronizační kontrakt.
+  const inScope = (repo) => !organization || repo.organization === organization;
   const initialInventory = await buildGitInventory({ companiesRoot });
   const rootResults = await mapWithConcurrency(
-    initialInventory.repos.filter((repo) => repo.repo_kind === "organization_root"),
+    initialInventory.repos.filter((repo) => repo.repo_kind === "organization_root" && inScope(repo)),
     GIT_REMOTE_REFRESH_CONCURRENCY,
     (repo) => pullAllRepo({ companiesRoot, repo, statusService }),
   );
   const refreshedInventory = await buildGitInventory({ companiesRoot });
   const nestedResults = await mapWithConcurrency(
-    refreshedInventory.repos.filter((repo) => repo.repo_kind !== "organization_root"),
+    refreshedInventory.repos.filter((repo) => repo.repo_kind !== "organization_root" && inScope(repo)),
     GIT_REMOTE_REFRESH_CONCURRENCY,
     (repo) => pullAllRepo({ companiesRoot, repo, statusService }),
   );
@@ -241,6 +244,7 @@ export async function buildPullAllResponse({ companiesRoot, statusService = null
   return {
     schema_version: "companiesascode.launchpad.git_pull_all.v1",
     generated_at: new Date().toISOString(),
+    organization,
     summary: {
       repo_count: results.length,
       updated_count: count("pulled") + count("autostash_pulled"),

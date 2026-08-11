@@ -74,10 +74,11 @@ const state = {
   // Git read model (CAC-0042): mapa repo_key → repo. Prázdné = graceful
   // absence, git chip se nevykreslí.
   gitReposByModule: new Map(),
+  gitStatusLoaded: false,
+  gitStatusError: false,
   gitChangesByRepo: new Map(),
   gitRecoveryByRepo: new Map(),
   runtimeActionErrors: new Map(),
-  bulkPullResult: null,
   runtimeSourcesByApp: new Map(),
   openingApps: new Set(),
   // Diagnostický detail není součást denního surface. Uživatel si jej odhalí
@@ -89,8 +90,9 @@ const state = {
   loaded: false,
   spaceMenuOpen: false,
   suppressNextDrawerOpen: false,
-  // Poslední změny žijí v trvalém pravém panelu Organization scope. Nejčastější
-  // a detail zůstávají ve skládacím draweru, který detail appky otevře automaticky.
+  // Stav prostoru a aktualizací žije v trvalém pravém panelu Organization
+  // scope. Nejčastější a detail zůstávají ve skládacím draweru, který detail
+  // appky otevře automaticky.
   drawerOpen: false,
   drawerView: "overview",
   filters: {
@@ -305,10 +307,13 @@ const elements = {
   personalPrivacyBadge: document.querySelector("#personalPrivacyBadge"),
   doctorStatus: document.querySelector("#doctorStatus"),
   updateBanner: document.querySelector("#updateBanner"),
+  updateBannerGroup: document.querySelector("#updateBannerGroup"),
   updateBannerText: document.querySelector("#updateBannerText"),
   updateBannerAction: document.querySelector("#updateBannerAction"),
+  moduleUpdateBanner: document.querySelector("#moduleUpdateBanner"),
+  moduleUpdateBannerText: document.querySelector("#moduleUpdateBannerText"),
+  moduleUpdateBannerAction: document.querySelector("#moduleUpdateBannerAction"),
   reloadButton: document.querySelector("#reloadButton"),
-  pullAllButton: document.querySelector("#pullAllButton"),
   hero: document.querySelector("#hero"),
   heroTitle: document.querySelector("#heroTitle"),
   heroSummary: document.querySelector("#heroSummary"),
@@ -338,7 +343,6 @@ const elements = {
   recentChangesSidebar: document.querySelector("#recentChangesSidebar"),
   toastRoot: document.querySelector("#toastRoot"),
   mostUsedPanel: document.querySelector("#mostUsedPanel"),
-  organizationGitStatus: document.querySelector("#organizationGitStatus"),
   mostUsed: document.querySelector("#mostUsed"),
   notificationsToggle: document.querySelector("#notificationsToggle"),
   notificationsPanel: document.querySelector("#notificationsPanel"),
@@ -366,8 +370,8 @@ elements.reloadButton.addEventListener("click", () => {
   closeMobileOverflow();
   loadData();
 });
-elements.pullAllButton?.addEventListener("click", () => pullAllRepositories());
-elements.updateBannerAction?.addEventListener("click", () => runUnifiedUpdateAction());
+elements.updateBannerAction?.addEventListener("click", () => runRootUpdate());
+elements.moduleUpdateBannerAction?.addEventListener("click", () => pullOrganizationRepositories());
 elements.heroCta.addEventListener("click", () => runHeroAction());
 elements.doctorStatus.addEventListener("click", () => {
   closeMobileOverflow();
@@ -437,7 +441,7 @@ function initResponsiveChrome() {
     } else if (!useSheet && elements.recentChangesSidebar?.parentElement === elements.drawerBody) {
       elements.layout?.insertBefore(elements.recentChangesSidebar, elements.drawerBackdrop);
     }
-    mountUpdateBanner();
+    mountUpdateBannerGroup();
     elements.detailDrawer?.classList.toggle("is-bottom-sheet", useSheet);
     applyDrawerState();
     if (useSheet && state.drawerOpen) focusMobileDrawer();
@@ -881,6 +885,9 @@ async function loadSidePanels() {
     state.notifications = [];
     state.mostUsed = [];
     state.coldStartUsage = true;
+    state.gitReposByModule = new Map();
+    state.gitStatusLoaded = false;
+    state.gitStatusError = false;
     return;
   }
   const companyQuery = `?company=${encodeURIComponent(requestedCompany)}`;
@@ -903,6 +910,8 @@ async function loadSidePanels() {
   state.mostUsed = mostUsed?.most_used ?? [];
   state.coldStartUsage = mostUsed ? mostUsed.cold_start !== false && (mostUsed.most_used ?? []).length === 0 : true;
   state.gitReposByModule = indexGitReposByModule(git?.repos ?? []);
+  state.gitStatusLoaded = Boolean(git);
+  state.gitStatusError = !git;
   // Plný render, ne jen grid: git model právě dorazil, takže annotateGitAttention
   // musí přepočítat git_attention, aby toggle kontroly i hero počet zahrnuly
   // git stavy hned, ne až po dalším aktivním poll ticku.
@@ -1039,6 +1048,7 @@ function render() {
   const spaceHealth = heroDiagnostics(heroApps);
   renderHero(heroApps, spaceHealth);
   renderUpdateBanner();
+  renderModuleUpdateBanner();
   renderDoctorStatus(spaceHealth);
   renderProblems(spaceHealth);
   renderActionMessage();
@@ -1048,7 +1058,6 @@ function render() {
   // harnessy, ale běžný Launchpad jeho mount už uživatelům neposílá.
   if (elements.appsTable) renderApps(filteredApps);
   renderDetail(filteredApps);
-  renderOrganizationGitStatus();
   renderNotifications();
   renderMostUsed();
 }
@@ -1785,7 +1794,8 @@ function applySpaceMenuState() {
 
 function renderScopeControls() {
   const personal = state.filters.scope === "personal";
-  mountUpdateBanner();
+  mountUpdateBannerGroup();
+  elements.moduleUpdateBanner?.toggleAttribute("hidden", personal);
   elements.hero.classList.toggle("hidden", personal);
   elements.personalPrivacyBadge?.toggleAttribute("hidden", !personal);
   elements.appsToolbar.classList.toggle("hidden", personal);
@@ -1804,13 +1814,13 @@ function renderScopeControls() {
 // sloupec přesouvá do zavřeného draweru a v Personalspace se skrývá úplně;
 // provozní informace proto v těchto stavech přejde do globálního slotu nad
 // layoutem. Po návratu na desktop Organization scope se vrátí do sidebaru.
-function mountUpdateBanner() {
-  const banner = elements.updateBanner;
+function mountUpdateBannerGroup() {
+  const group = elements.updateBannerGroup;
   const global = mobilePanelQuery.matches || state.filters.scope === "personal";
   const target = global ? elements.globalUpdateSlot : elements.recentChangesSidebar;
-  if (!banner || !target || banner.parentElement === target) return;
-  if (global) target.append(banner);
-  else target.prepend(banner);
+  if (!group || !target || group.parentElement === target) return;
+  if (global) target.append(group);
+  else target.prepend(group);
 }
 
 function renderWorkspaceWelcome() {
@@ -1826,110 +1836,8 @@ function renderWorkspaceWelcome() {
 }
 
 /* =========================================================
-   Side panels: Poslední změny + Nejčastější (CAC-0044)
+   Side panels: Notifikace + Nejčastější (CAC-0044/CAC-0095)
    ========================================================= */
-
-function renderOrganizationGitStatus() {
-  const mount = elements.organizationGitStatus;
-  if (!mount) return;
-  mount.replaceChildren();
-  const organization = state.filters.scope === "org" ? state.filters.company : null;
-  const rootRepo = organization ? state.gitReposByModule.get(`${organization}::root`) : null;
-  const bulkPending = state.pendingAction === "git:pull-all";
-  if (elements.pullAllButton) {
-    elements.pullAllButton.disabled = bulkPending || !organization;
-    elements.pullAllButton.textContent = bulkPending ? "Pulluju…" : "Pullnout vše";
-  }
-
-  if (!rootRepo) {
-    const empty = document.createElement("p");
-    empty.className = "rail-copy";
-    empty.textContent = "Root repo Organizace zatím nemá dostupný Git stav.";
-    mount.append(empty);
-    return;
-  }
-
-  const card = document.createElement("article");
-  card.className = `organization-git-card is-${rootRepo.severity ?? "ok"}`;
-  const title = document.createElement("strong");
-  title.textContent = "Root repo Organizace";
-  const model = gitChipModel(rootRepo);
-  const badges = document.createElement("div");
-  badges.className = "organization-git-badges";
-  if (model) badges.append(gitChipNode(model));
-  const copy = document.createElement("p");
-  copy.textContent = rootRepoStatusMessage(rootRepo);
-  const freshness = document.createElement("small");
-  freshness.textContent = `Vzdálená verze: ${gitFreshnessLabel(rootRepo.freshness)}`;
-  card.append(title, badges, copy, freshness);
-
-  if (["rebase_in_progress", "git_am_in_progress"].includes(rootRepo.status)) {
-    const recovery = document.createElement("p");
-    recovery.className = "git-recovery-copy";
-    recovery.textContent = rootRepo.operation?.can_abort_rebase
-      ? "Udělejte screenshot této hlášky a vložte ho agentovi do Codexu, nebo rebase bezpečně abortněte."
-      : "Udělejte screenshot této hlášky a vložte ho agentovi do Codexu. Launchpad do této Git operace automaticky nezasahuje.";
-    card.append(recovery);
-    if (rootRepo.operation?.can_abort_rebase) {
-      const action = builderActionButton(
-        "Abortnout rebase",
-        () => abortGitRebase({ git: rootRepo, label: `${organization} root` }),
-      );
-      action.disabled = state.pendingAction === `git-rebase-abort:${rootRepo.key}`;
-      card.append(action);
-    }
-  } else if (rootRepo.status === "pull_available" || canAutostashPull(rootRepo)) {
-    const action = builderActionButton(
-      canAutostashPull(rootRepo) ? "Stáhnout a zachovat změny" : "Stáhnout root",
-      () => pullGitRepository({
-        git: rootRepo,
-        label: `${organization} root`,
-        autostash: canAutostashPull(rootRepo),
-      }),
-    );
-    action.disabled = state.pendingAction === `git-pull:${rootRepo.key}`;
-    card.append(action);
-  }
-  mount.append(card);
-
-  if (state.bulkPullResult) mount.append(bulkPullSummaryNode(state.bulkPullResult));
-}
-
-function rootRepoStatusMessage(repo) {
-  const incoming = Number(repo.counts?.incoming) || 0;
-  if (repo.status === "draft_changes" && incoming > 0) {
-    return `${incoming} ${pluralCommit(incoming)} ke stažení a lokální změny k zachování.`;
-  }
-  return repo.message ?? repo.title ?? "Git stav root repa je dostupný.";
-}
-
-function bulkPullSummaryNode(payload) {
-  const details = document.createElement("details");
-  details.className = "bulk-pull-summary";
-  const summary = document.createElement("summary");
-  const counts = payload.summary ?? {};
-  summary.textContent = `Poslední Pullnout vše: ${counts.updated_count ?? 0} aktualizováno`;
-  details.append(summary);
-  const meta = document.createElement("p");
-  meta.textContent = [
-    `${counts.up_to_date_count ?? 0} aktuálních`,
-    `${counts.skipped_count ?? 0} přeskočených`,
-    `${counts.conflict_count ?? 0} konfliktů`,
-    `${counts.failed_count ?? 0} chyb`,
-  ].join(" · ");
-  details.append(meta);
-  const attention = (payload.results ?? []).filter((result) => ["skipped", "conflict", "failed"].includes(result.outcome));
-  if (attention.length > 0) {
-    const list = document.createElement("ul");
-    for (const result of attention) {
-      const item = document.createElement("li");
-      item.textContent = `${result.repo_key}: ${result.message}`;
-      list.append(item);
-    }
-    details.append(list);
-  }
-  return details;
-}
 
 // Notifikace (CAC-0095): nástupce panelu „Poslední změny". Jednotka není
 // modul, ale jedna změna popsaná trojicí actor / scope / payload — kdo, kde
@@ -4795,13 +4703,6 @@ function renderUpdateBanner() {
   const banner = elements.updateBanner;
   if (!banner) return;
   const status = state.updateStatus;
-  const moduleUpdates = activeSpaceApps().filter((app) => {
-    const git = gitRepoForApp(app);
-    return git
-      && builderPullScopeAllowedForRepo(git)
-      && (canAutostashPull(git) || git.status === "pull_available");
-  });
-  const moduleUpdateCount = moduleUpdates.length;
   const behind = status?.counts?.behind ?? 0;
   const actionable = status && (
     status.state === "update_available"
@@ -4809,7 +4710,6 @@ function renderUpdateBanner() {
   );
 
   if (!status) {
-    delete banner.dataset.action;
     elements.updateBannerText.textContent = "Kontroluji dostupné změny…";
     elements.updateBannerAction.hidden = true;
     elements.updateBannerAction.disabled = true;
@@ -4818,11 +4718,7 @@ function renderUpdateBanner() {
     return;
   }
 
-  // Blokovaný root má přednost před modulovým souhrnem: skrýt jeho důvod by
-  // znamenalo, že kolega vidí pouze bezpečnou dílčí akci a přehlédne problém
-  // sdíleného Launchpadu.
   if (status && status.state !== "up_to_date" && !actionable) {
-    banner.dataset.action = "root";
     elements.updateBannerText.textContent = status.message ?? "Stav aktualizace se nepodařilo ověřit.";
     elements.updateBannerAction.hidden = true;
     elements.updateBannerAction.disabled = true;
@@ -4832,23 +4728,9 @@ function renderUpdateBanner() {
     return;
   }
 
-  if (moduleUpdateCount > 0 && !actionable) {
-    banner.dataset.action = "modules";
-    banner.classList.remove("is-blocked", "is-updating", "is-current");
-    elements.updateBannerText.textContent = `Nové změny jsou připravené pro ${moduleUpdateCount} ${moduleUpdateCount === 1 ? "aplikaci" : "aplikace"}.`;
-    elements.updateBannerAction.textContent = "Stáhnout vše";
-    elements.updateBannerAction.hidden = false;
-    elements.updateBannerAction.disabled = false;
-    banner.hidden = false;
-    return;
-  }
-
   if (status.state === "up_to_date") {
-    delete banner.dataset.action;
     banner.classList.remove("is-blocked", "is-updating");
     banner.classList.add("is-current");
-    // Modulový git model se načítá odděleně a best-effort. Dokud nevrátí
-    // vlastní data, nesmíme z ověřeného root statusu odvozovat stav aplikací.
     elements.updateBannerText.textContent = "Conglomerate je aktuální.";
     elements.updateBannerAction.hidden = true;
     elements.updateBannerAction.disabled = true;
@@ -4856,7 +4738,6 @@ function renderUpdateBanner() {
     return;
   }
   const preserve = status.state === "dirty_worktree";
-  banner.dataset.action = "root";
   elements.updateBannerAction.hidden = false;
   banner.classList.remove("is-blocked", "is-current");
   elements.updateBannerText.textContent = state.updatePending
@@ -4872,16 +4753,98 @@ function renderUpdateBanner() {
   banner.hidden = false;
 }
 
-function renderUpdatePill() {
-  renderUpdateBanner();
+function activeOrganizationGitRepositories() {
+  if (state.filters.scope !== "org" || state.filters.company === "all") return [];
+  const organization = state.filters.company;
+  const repositories = new Map();
+  for (const repo of state.gitReposByModule.values()) {
+    if (!repo || repo.organization !== organization || !builderPullScopeAllowedForRepo(repo)) continue;
+    repositories.set(repo.key ?? `${repo.organization}::${repo.module ?? repo.repo_kind}`, repo);
+  }
+  return [...repositories.values()];
 }
 
-function runUnifiedUpdateAction() {
-  if (elements.updateBanner?.dataset.action === "modules") {
-    void pullAllRepositories();
+function pullableGitUpdate(repo) {
+  return repo?.status === "pull_available" || canAutostashPull(repo);
+}
+
+function moduleUpdateLocation(count) {
+  return count === 1 ? "v 1 modulu" : `ve ${count} modulech`;
+}
+
+// Modulové změny mají vlastní jednoduchý řádek pod stavem Conglomerate.
+// Počet se odvozuje z unikátních repo modulů, ne z počtu jejich app verzí.
+function renderModuleUpdateBanner() {
+  const banner = elements.moduleUpdateBanner;
+  const text = elements.moduleUpdateBannerText;
+  const action = elements.moduleUpdateBannerAction;
+  if (!banner || !text || !action || state.filters.scope === "personal") return;
+
+  const repositories = activeOrganizationGitRepositories();
+  const rootRepo = repositories.find((repo) => repo.repo_kind === "organization_root") ?? null;
+  const modules = repositories.filter((repo) => repo.repo_kind !== "organization_root");
+  const moduleUpdates = modules.filter(pullableGitUpdate);
+  const rootUpdate = pullableGitUpdate(rootRepo);
+  const pending = state.pendingAction === "git:pull-organization";
+  const checkFailed = state.gitStatusError || repositories.some((repo) =>
+    repo.status === "check_failed" || repo.freshness?.remote_refresh_state === "error");
+  const refreshing = repositories.some((repo) => repo.freshness?.remote_refresh_state === "refreshing");
+
+  banner.hidden = false;
+  banner.classList.remove("is-blocked", "is-updating", "is-current");
+  action.hidden = true;
+  action.disabled = true;
+  action.textContent = "Stáhnout změny";
+
+  if (pending) {
+    text.textContent = moduleUpdates.length > 0
+      ? `Stahuji změny ${moduleUpdateLocation(moduleUpdates.length)}…`
+      : "Stahuji změny Organizace…";
+    banner.classList.add("is-updating");
+    action.hidden = false;
     return;
   }
-  void runRootUpdate();
+
+  if (!state.gitStatusLoaded) {
+    text.textContent = state.gitStatusError
+      ? "Stav modulů se nepodařilo ověřit."
+      : "Kontroluji změny v modulech…";
+    if (state.gitStatusError) banner.classList.add("is-blocked");
+    return;
+  }
+
+  if (checkFailed) {
+    text.textContent = "Stav modulů se nepodařilo ověřit.";
+    banner.classList.add("is-blocked");
+    return;
+  }
+
+  if (moduleUpdates.length > 0) {
+    text.textContent = `Změny jsou připravené ${moduleUpdateLocation(moduleUpdates.length)}.`;
+    action.hidden = false;
+    action.disabled = false;
+    return;
+  }
+
+  if (rootUpdate) {
+    text.textContent = "Je připravená změna Organizace.";
+    action.hidden = false;
+    action.disabled = false;
+    return;
+  }
+
+  if (refreshing) {
+    text.textContent = "Kontroluji změny v modulech…";
+    return;
+  }
+
+  text.textContent = "Moduly jsou aktuální.";
+  banner.classList.add("is-current");
+}
+
+function renderUpdatePill() {
+  renderUpdateBanner();
+  renderModuleUpdateBanner();
 }
 
 async function runRootUpdate() {
@@ -4932,16 +4895,13 @@ async function runRootUpdate() {
   }
 }
 
-async function pullAllRepositories() {
-  const confirmed = window.confirm(
-    "Načíst nejnovější změny ve všech organizacích?\n\nLaunchpad aktualizuje dostupné pracovní prostory a doplní nové aplikace. Vaše rozpracované změny zachová. Místa, ke kterým nemáte přístup nebo u kterých by aktualizace mohla způsobit problém, bezpečně přeskočí.\n\nChcete pokračovat?",
-  );
-  if (!confirmed) return;
-  state.pendingAction = "git:pull-all";
+async function pullOrganizationRepositories() {
+  const organization = state.filters.scope === "org" ? state.filters.company : null;
+  if (!organization || organization === "all") return;
+  state.pendingAction = "git:pull-organization";
   render();
   try {
-    const payload = await fetchJson("/api/git/pull-all", { method: "POST" });
-    state.bulkPullResult = payload;
+    const payload = await fetchJson(`/api/git/pull-all?company=${encodeURIComponent(organization)}`, { method: "POST" });
     const summary = payload.summary ?? {};
     const attention = (summary.conflict_count ?? 0) + (summary.failed_count ?? 0);
     const missingAccess = summary.missing_access_count ?? 0;
@@ -4954,9 +4914,9 @@ async function pullAllRepositories() {
       missingAccess > 0 ? `${missingAccess} bez přístupu` : null,
       attention > 0 ? `${attention} vyžaduje pomoc` : null,
     ].filter(Boolean).join(" · ");
-    toast(`Pullnout vše: ${message}.`, attention > 0 ? "error" : "success", 10_000);
+    toast(`Stažení změn: ${message}.`, attention > 0 ? "error" : "success", 10_000);
   } catch (error) {
-    toast(`Pullnout vše: ${error.message}`, "error", 10_000);
+    toast(`Stažení změn: ${error.message}`, "error", 10_000);
   } finally {
     await loadData({ quiet: true, fresh: true });
     state.pendingAction = null;
