@@ -108,9 +108,6 @@ const state = {
   },
 };
 
-// Where the hero CTA should jump. Updated on every renderHero so the single
-// click handler stays in sync with the computed verdict.
-let heroAction = "reload";
 let doctorLoadInFlight = null;
 let doctorReloadRequested = false;
 let sidePanelRequestGeneration = 0;
@@ -118,6 +115,7 @@ const dataLoadCoordinator = createLatestDataLoadCoordinator({ run: runLoadData }
 let quietPollTimer = null;
 let restoreSpaceMenuFocusOnClose = false;
 let drawerReturnFocus = null;
+let problemsReturnFocus = null;
 let organizationThemeRenderKey = null;
 let appliedLaunchpadHash = null;
 let launchpadScopeDataReady = false;
@@ -318,7 +316,6 @@ const elements = {
   heroTitle: document.querySelector("#heroTitle"),
   heroSummary: document.querySelector("#heroSummary"),
   heroIssues: document.querySelector("#heroIssues"),
-  heroCta: document.querySelector("#heroCta"),
   appsToolbar: document.querySelector("#appsToolbar"),
   appsFilterControls: document.querySelector("#appsFilterControls"),
   appsFilterFallback: document.querySelector("#appsFilterFallback"),
@@ -340,6 +337,7 @@ const elements = {
   drawerBody: document.querySelector(".drawer-body"),
   layout: document.querySelector(".layout"),
   globalUpdateSlot: document.querySelector("#globalUpdateSlot"),
+  mobileSpaceStatusSlot: document.querySelector("#mobileSpaceStatusSlot"),
   recentChangesSidebar: document.querySelector("#recentChangesSidebar"),
   toastRoot: document.querySelector("#toastRoot"),
   mostUsedPanel: document.querySelector("#mostUsedPanel"),
@@ -372,7 +370,6 @@ elements.reloadButton.addEventListener("click", () => {
 });
 elements.updateBannerAction?.addEventListener("click", () => runRootUpdate());
 elements.moduleUpdateBannerAction?.addEventListener("click", () => pullOrganizationRepositories());
-elements.heroCta.addEventListener("click", () => runHeroAction());
 elements.doctorStatus.addEventListener("click", () => {
   closeMobileOverflow();
   revealProblems({ includeSystem: true });
@@ -1081,11 +1078,9 @@ function renderHero(apps, diagnostics) {
     hero.classList.add("hero-loading");
     elements.heroTitle.textContent = "Načítám stav…";
     elements.heroSummary.textContent = "Ověřuji pracovní prostor.";
+    elements.heroSummary.hidden = false;
     elements.heroIssues.hidden = true;
     elements.heroIssues.replaceChildren();
-    elements.heroCta.textContent = "Zkontrolovat stav";
-    elements.heroCta.hidden = false;
-    heroAction = "reload";
     renderSpaceHealthBadge();
     return;
   }
@@ -1094,7 +1089,6 @@ function renderHero(apps, diagnostics) {
   hero.classList.add(`hero-${verdict.tone}`);
   elements.heroTitle.textContent = verdict.title;
   renderHeroIssues(verdict, diagnostics);
-  heroAction = verdict.action;
   renderSpaceHealthBadge(verdict, diagnostics);
 }
 
@@ -1107,11 +1101,10 @@ function renderHeroIssues(verdict, diagnostics) {
       : [];
 
   if (verdict.tone === "ok") {
-    elements.heroSummary.textContent = "Všechny důležité části prostoru jsou připravené.";
+    elements.heroSummary.textContent = "";
+    elements.heroSummary.hidden = true;
     elements.heroIssues.hidden = true;
     elements.heroIssues.replaceChildren();
-    elements.heroCta.textContent = "Obnovit stav";
-    elements.heroCta.hidden = false;
     return;
   }
 
@@ -1119,13 +1112,13 @@ function renderHeroIssues(verdict, diagnostics) {
   elements.heroSummary.textContent = verdict.tone === "danger"
     ? `${issueCount} ${issueCount === 1 ? "věc brání" : "věci brání"} spolehlivému používání prostoru. Vyberte, co chcete vyřešit.`
     : `${issueCount} ${issueCount === 1 ? "věc potřebuje" : "věci potřebují"} kontrolu. Vyberte doporučený další krok.`;
+  elements.heroSummary.hidden = false;
 
   // Stav prostoru žije na jednom místě v pravém panelu. Zobrazení stejného
   // seznamu také uprostřed stránky působilo jako druhá, konkurenční chyba.
   const visibleIssues = relevantIssues;
   elements.heroIssues.replaceChildren(...visibleIssues.map(heroIssueNode));
   elements.heroIssues.hidden = visibleIssues.length === 0;
-  elements.heroCta.hidden = true;
 }
 
 function heroIssueNode(issue) {
@@ -1181,30 +1174,10 @@ function renderSpaceHealthBadge(verdict, diagnostics) {
   toggle.title = label;
 }
 
-function runHeroAction() {
-  if (mobilePanelQuery.matches && state.drawerOpen) setDrawer(false);
-  if (heroAction === "reload") {
-    loadData();
-    return;
-  }
-  if (heroAction === "attention") {
-    if (state.filters.scope === "personal") {
-      elements.appsGrid.scrollIntoView({ behavior: "smooth", block: "start" });
-      return;
-    }
-    state.filters.status = "all";
-    state.filters.attentionOnly = true;
-    state.suppressNextDrawerOpen = true;
-    render();
-    if (mobilePanelQuery.matches) setDrawer(false);
-    elements.appsGrid.scrollIntoView({ behavior: "smooth", block: "start" });
-    return;
-  }
-  // problems
-  revealProblems();
-}
-
 function revealProblems({ includeSystem = false } = {}) {
+  if (document.activeElement instanceof HTMLElement && !elements.problemsPanel.contains(document.activeElement)) {
+    problemsReturnFocus = document.activeElement;
+  }
   state.problemsRequested = true;
   state.problemsExpanded = false;
   state.problemsIncludeSystem = includeSystem;
@@ -1319,9 +1292,11 @@ function renderProblems(spaceHealth) {
 }
 
 function hideProblems() {
-  const returnTarget = state.problemsIncludeSystem || state.filters.scope === "personal"
-    ? elements.doctorStatus
-    : elements.heroCta;
+  const fallbackTarget = mobilePanelQuery.matches && state.filters.scope !== "personal"
+    ? elements.drawerToggle
+    : elements.doctorStatus;
+  const returnTarget = problemsReturnFocus?.isConnected ? problemsReturnFocus : fallbackTarget;
+  problemsReturnFocus = null;
   state.problemsRequested = false;
   state.problemsExpanded = false;
   state.problemsIncludeSystem = false;
@@ -1595,14 +1570,18 @@ function renderSpaceSwitcher() {
   spaces.append(...options);
 
   const profile = state.personalspace?.profile;
-  const profileNodes = profile ? [spaceProfileCard(profile), profileSettingsItem()] : [];
-  if (profileNodes.length > 0 && options.length > 0) {
+  const menuNodes = [];
+  if (profile) menuNodes.push(spaceProfileCard(profile));
+  if (profile && options.length > 0) {
     const divider = document.createElement("div");
     divider.className = "space-switcher-divider";
     divider.setAttribute("aria-hidden", "true");
-    profileNodes.push(divider);
+    menuNodes.push(divider);
   }
-  elements.spaceSwitcherMenu.replaceChildren(...profileNodes, spaces);
+  menuNodes.push(spaces);
+  const settings = profile ? profileSettingsItem(profile) : null;
+  if (settings) menuNodes.push(settings);
+  elements.spaceSwitcherMenu.replaceChildren(...menuNodes);
   elements.spaceSwitcherButton.disabled = options.length === 0;
   applySpaceMenuState();
 }
@@ -1628,17 +1607,9 @@ function spaceProfileCard(profile) {
 
   const copy = document.createElement("span");
   copy.className = "space-profile-copy";
-  const name = document.createElement("a");
+  const name = document.createElement("span");
   name.className = "space-profile-name";
-  name.href = profile.settings_url;
-  name.target = "_blank";
-  name.rel = "noopener noreferrer";
   name.textContent = profile.display_name ?? profile.github_username ?? "Uživatel";
-  name.addEventListener("click", () => {
-    restoreSpaceMenuFocusOnClose = true;
-    state.spaceMenuOpen = false;
-    applySpaceMenuState();
-  });
   const email = document.createElement("span");
   email.className = "space-profile-email";
   email.textContent = profile.email ?? "E-mail není nastavený";
@@ -1652,11 +1623,19 @@ function profileInitials(name) {
   return (parts.slice(0, 2).map((part) => part[0]).join("") || "U").toUpperCase();
 }
 
-function profileSettingsItem() {
-  const item = document.createElement("div");
-  item.className = "space-profile-settings is-disabled";
-  item.setAttribute("aria-disabled", "true");
-  item.append(settingsIcon(), document.createTextNode("Nastavení"));
+function profileSettingsItem(profile) {
+  if (!profile.settings_url) return null;
+  const item = document.createElement("a");
+  item.className = "space-profile-settings";
+  item.href = profile.settings_url;
+  item.target = "_blank";
+  item.rel = "noopener noreferrer";
+  item.append(settingsIcon(), document.createTextNode("Nastavení profilu"));
+  item.addEventListener("click", () => {
+    restoreSpaceMenuFocusOnClose = true;
+    state.spaceMenuOpen = false;
+    applySpaceMenuState();
+  });
   return item;
 }
 
@@ -1810,17 +1789,21 @@ function renderScopeControls() {
   if (personal && state.drawerOpen) setDrawer(false);
 }
 
-// Na desktopu je update první kartou pravého sloupce. Na mobilu se pravý
-// sloupec přesouvá do zavřeného draweru a v Personalspace se skrývá úplně;
-// provozní informace proto v těchto stavech přejde do globálního slotu nad
-// layoutem. Po návratu na desktop Organization scope se vrátí do sidebaru.
+// Aktualizace zůstávají na mobilu nad plochou, protože mohou vyžadovat zásah
+// ještě před prací. Souhrnný Stav prostoru se naopak skládá až pod aplikace;
+// na desktopu tvoří třetí řádek stejného přehledu v pravém sloupci.
 function mountUpdateBannerGroup() {
   const group = elements.updateBannerGroup;
   const global = mobilePanelQuery.matches || state.filters.scope === "personal";
   const target = global ? elements.globalUpdateSlot : elements.recentChangesSidebar;
-  if (!group || !target || group.parentElement === target) return;
-  if (global) target.append(group);
-  else target.prepend(group);
+  if (group && target && group.parentElement !== target) {
+    if (global) target.append(group);
+    else target.prepend(group);
+  }
+
+  const mobileOrganization = mobilePanelQuery.matches && state.filters.scope !== "personal";
+  const heroTarget = mobileOrganization ? elements.mobileSpaceStatusSlot : elements.recentChangesSidebar;
+  if (elements.hero && heroTarget && elements.hero.parentElement !== heroTarget) heroTarget.append(elements.hero);
 }
 
 function renderWorkspaceWelcome() {

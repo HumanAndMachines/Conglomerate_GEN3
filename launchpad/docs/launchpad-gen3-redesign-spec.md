@@ -28,15 +28,13 @@ Upřesnění 2026-07-14: dropdown používá kompaktní GEN2 rozměry a lokáln�
 čtvercové assety z `launchpad/app/v1/web/` příslušné Organizace
 (`launchpad-icon.png`, `logo-square.png`, `favicon.svg`/`favicon.png`). Pokud
 Organizace žádný z těchto assetů nemá, zůstává deterministický monogram.
-Upřesnění 2026-07-14: otevřený dropdown začíná profilovým blokem Principála
-(fotografie, jméno a e-mail). Jméno a GitHub username se čtou z primárního
-Personalspace, e-mail z lokální Git identity a avatar z veřejného GitHub
-profilu; osobní údaje se nezapisují do sdíleného root configu. Položka
-**Nastavení** je zatím neaktivní a nemá žádný proklik. GitHub profil se otevírá
-v nové kartě kliknutím na jméno Principála. Intent je správa zdrojového GitHub
-profilu, precondition platný primární Personalspace, side effect v Launchpadu
-není žádný, failure mode je nedostupný externí GitHub a ověření drží URL
-i regresní UI test.
+Upřesnění 2026-08-11: otevřený dropdown je jedna plochá Lazurio nabídka bez
+vnořené profilové karty. Začíná identitou Principála (fotografie, jméno a
+e-mail), pokračuje seznamem prostorů a končí funkčním odkazem **Nastavení
+profilu**. Jméno a GitHub username se čtou z primárního Personalspace, e-mail
+z lokální Git identity a avatar z veřejného GitHub profilu; osobní údaje se
+nezapisují do sdíleného root configu. Aktivní prostor používá neutrální plochu
+a levou hranu, ne druhý barevný akcent ani samostatnou kartu.
 Upřesnění 2026-07-14: vizuální motiv sdíleného Launchpadu se vždy přepne podle
 aktivní Organizace. Organizace dodává pouze sémantické design tokeny (barvy,
 typografii, radiusy a stíny); layout, chování a bezpečnostní pravidla zůstávají
@@ -56,14 +54,13 @@ neaktivují; Launchpad může dál použít legacy fallback. Schválený adapté
 v light i dark variantě dodat také neprůhlednou bezpečnou barvu `--on-accent`;
 primární tlačítko ji používá pro čitelný foreground a dark gradient odvozuje
 oba své konce z dark `--accent`.
-Upřesnění 2026-07-15 (nahrazuje podobu stavového pásu z 2026-07-14): agregovaný
-`Stav prostoru` je první kompaktní karta v pravém sloupci, ne pás přes celý
-viewport. Zachovává titul, počet blokátorů nebo upozornění a CTA, ale používá
-neutrální plochu; stavovou sémantiku nese indikátor, jemný okraj a CTA. Na úzké
-obrazovce se karta přesune se sekundárními panely do spodního sheetu a tlačítko
-panelů nese číselný badge i přístupný text aktuálního prostorového stavu. Akce
-ze stavové karty nejprve sheet zavře a potom odhalí problémy nebo filtrované
-aplikace.
+Upřesnění 2026-08-11 (nahrazuje podobu stavové karty z 2026-07-15): agregovaný
+`Stav prostoru` je třetí řádek stejného provozního přehledu jako stav
+Conglomerate a modulů. Ve zdravém stavu ukazuje pouze sémantickou ikonu a text
+`Prostor je připravený`; neopakuje vysvětlení ani CTA. Při upozornění nebo
+blokátoru se řádek progresivně rozbalí o počet problémů a konkrétní doporučené
+kroky. Stav vždy nese současně barva, ikona a slovo, takže není závislý jen na
+barevném indikátoru. Na úzké obrazovce se přehled skládá pod hlavní plochu.
 Upřesnění 2026-07-14: v Organization scope je panel **Poslední změny** znovu
 trvale viditelný v pravém sloupci po vzoru Launchpadu GEN2. Moduly řadí podle
 času posledního commitu a každou položku lze rozkliknout do detailu commitů.

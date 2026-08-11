@@ -801,13 +801,6 @@ input:focus-visible,
   background: var(--surface);
 }
 
-.hero-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
 .hero.hero-ok {
   border-color: color-mix(in srgb, var(--c-success) 30%, var(--line));
 }
@@ -819,33 +812,6 @@ input:focus-visible,
   --hero-danger-border: var(--lz-red-300);
   --hero-danger-soft: color-mix(in srgb, var(--lz-red-400) 12%, var(--surface));
   border-color: var(--hero-danger-border);
-}
-
-.hero-indicator {
-  width: 0.55rem;
-  height: 0.55rem;
-  flex: 0 0 0.55rem;
-  border-radius: 50%;
-  background: var(--text-subtle);
-}
-
-.hero.hero-ok .hero-indicator {
-  background: var(--c-success);
-}
-.hero.hero-warn .hero-indicator {
-  background: var(--c-warn);
-}
-.hero.hero-danger .hero-indicator {
-  background: var(--hero-danger-accent);
-}
-.hero.hero-loading .hero-indicator {
-  background: var(--accent);
-  animation: hero-pulse 2.4s ease-in-out infinite;
-}
-
-@keyframes hero-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
 }
 
 .hero-title {
@@ -932,48 +898,6 @@ input:focus-visible,
   color: var(--text);
 }
 
-.hero-panel {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  min-width: 0;
-}
-
-.hero .btn-sm {
-  padding: 0.28rem 0.65rem;
-  font-size: 14px;
-}
-
-.hero.hero-ok .btn-secondary {
-  border: 1px solid color-mix(in srgb, var(--c-success) 38%, transparent);
-  background: color-mix(in srgb, var(--c-success) 22%, var(--surface));
-  color: color-mix(in srgb, var(--c-success) 72%, #064e3b);
-}
-
-.hero.hero-ok .btn-secondary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--c-success) 32%, var(--surface));
-}
-
-.hero.hero-warn .btn-secondary {
-  border: 1px solid color-mix(in srgb, var(--c-warn) 38%, transparent);
-  background: color-mix(in srgb, var(--c-warn) 13%, var(--surface));
-  color: color-mix(in srgb, var(--c-warn) 74%, #78350f);
-}
-
-.hero.hero-warn .btn-secondary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--c-warn) 22%, var(--surface));
-}
-
-.hero.hero-danger .btn-secondary {
-  border: 1px solid var(--hero-danger-border);
-  background: var(--hero-danger-soft);
-  color: var(--hero-danger-accent);
-}
-
-.hero.hero-danger .btn-secondary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--lz-red-400) 20%, var(--surface));
-}
-
 .space-health-badge {
   position: absolute;
   top: -0.3rem;
@@ -1021,6 +945,15 @@ input:focus-visible,
   display: none;
 }
 
+.mobile-space-status-slot:empty {
+  display: none;
+}
+
+.mobile-space-status-slot:not(:empty) {
+  display: grid;
+  gap: var(--lz-space-12);
+}
+
 .global-update-slot:not(:empty) {
   margin-bottom: var(--lz-space-16);
 }
@@ -1051,7 +984,8 @@ input:focus-visible,
 /* Stav aktualizací je globální provozní informace stejně jako Stav prostoru.
    V pravém sloupci proto tvoří první kompaktní kartu místo širokého banneru,
    který odváděl pozornost od vyhledávání a aplikací. */
-.recent-changes-sidebar > .update-banner-group .update-banner {
+.update-banner-group > .update-banner,
+.hero.update-banner {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
@@ -5858,7 +5792,8 @@ body {
 /* Pravý sloupec používá jeden panelový jazyk: bílý papír, stejnou hranu,
    stejné odsazení a sekundární tlačítko. Stavová barva zůstává na ikoně a
    hraně, ne v plošném gradientu. */
-.recent-changes-sidebar > .update-banner-group .update-banner {
+.update-banner-group > .update-banner,
+.hero.update-banner {
   gap: var(--lz-space-12);
   padding: 0.9rem;
   background: var(--lz-white);
@@ -5867,24 +5802,25 @@ body {
   border-radius: 0;
 }
 
-.recent-changes-sidebar > .update-banner-group .update-banner.is-current {
+.update-banner-group > .update-banner.is-current {
   background: var(--lz-white);
   border-color: var(--c-success-line);
 }
 
-.recent-changes-sidebar > .update-banner-group .update-banner-icon,
-.recent-changes-sidebar > .update-banner-group .update-banner-success {
+.update-banner-group > .update-banner .update-banner-icon,
+.update-banner-group > .update-banner .update-banner-success {
   width: 20px;
   height: 20px;
 }
 
-.recent-changes-sidebar > .update-banner-group .update-banner-text {
+.update-banner-group > .update-banner .update-banner-text {
+  color: var(--lz-ink);
   font-size: 14px;
   font-weight: 600;
   line-height: 1.35;
 }
 
-.recent-changes-sidebar > .update-banner-group .update-banner-action {
+.update-banner-group > .update-banner .update-banner-action {
   min-height: 38px;
   padding: 8px 14px;
   border: 1.5px solid var(--lz-line);
@@ -5895,8 +5831,196 @@ body {
   font-weight: 600;
 }
 
-.recent-changes-sidebar > .update-banner-group .update-banner-action:hover:not(:disabled),
-.recent-changes-sidebar > .update-banner-group .update-banner-action:focus-visible:not(:disabled) {
+.update-banner-group > .update-banner .update-banner-action:hover:not(:disabled),
+.update-banner-group > .update-banner .update-banner-action:focus-visible:not(:disabled) {
   background: var(--lz-gray-50);
   filter: none;
+}
+
+/* Stav prostoru je třetí řádek stejného provozního přehledu. Ve zdravém
+   stavu zůstává stejně stručný jako oba řádky aktualizací; detail se otevře
+   až ve chvíli, kdy je opravdu co řešit. */
+.hero.update-banner {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+}
+
+.hero.update-banner.hero-ok {
+  border-color: var(--c-success-line);
+}
+
+.hero.update-banner.hero-warn {
+  border-color: color-mix(in srgb, var(--c-warn) 44%, var(--lz-line));
+}
+
+.hero.update-banner.hero-danger {
+  border-color: var(--lz-red-300);
+}
+
+.hero-status-icon {
+  display: none;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+}
+
+.hero.hero-ok .hero-status-ok,
+.hero.hero-warn .hero-status-warn,
+.hero.hero-danger .hero-status-danger,
+.hero.hero-loading .hero-status-loading {
+  display: inline-flex;
+}
+
+.hero-status-ok {
+  color: var(--c-success);
+}
+
+.hero-status-warn {
+  color: var(--c-warn);
+}
+
+.hero-status-danger {
+  color: var(--lz-red-500);
+}
+
+.hero-status-loading {
+  color: var(--lz-blue-600);
+  animation: update-spin 0.9s linear infinite;
+}
+
+.hero-copy {
+  min-width: 0;
+  display: grid;
+  gap: var(--lz-space-4);
+}
+
+.hero-title {
+  color: var(--lz-ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.hero-summary {
+  color: var(--lz-gray-600);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.hero-issues {
+  grid-column: 1 / -1;
+  margin-top: var(--lz-space-4);
+  border-top: 1px solid var(--lz-line);
+  border-bottom: 0;
+}
+
+.hero-issue {
+  padding: var(--lz-space-12) 0;
+}
+
+.update-banner-group > .update-banner::before,
+.hero.update-banner::before {
+  display: none;
+}
+
+/* Přepínač prostorů je jedna plochá nabídka: identita člověka nahoře,
+   prostory uprostřed a skutečně funkční nastavení v patičce. */
+.space-switcher-menu {
+  width: min(256px, calc(100vw - 2rem));
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--lz-line);
+  border-radius: 0;
+  background: var(--lz-white);
+  box-shadow: none;
+}
+
+.space-profile-card {
+  gap: var(--lz-space-12);
+  padding: var(--lz-space-16);
+  border: 0;
+  border-radius: 0;
+  background: var(--lz-white);
+}
+
+.space-profile-photo {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+}
+
+.space-profile-name {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.space-profile-name:hover,
+.space-profile-name:focus-visible {
+  color: inherit;
+  text-decoration: none;
+}
+
+.space-profile-email {
+  color: var(--lz-gray-600);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.space-switcher-divider {
+  margin: 0;
+  background: var(--lz-line);
+}
+
+.space-switcher-options {
+  gap: var(--lz-space-4);
+  padding: var(--lz-space-8);
+}
+
+.space-switcher-option {
+  min-height: 44px;
+  gap: var(--lz-space-8);
+  padding: var(--lz-space-8) var(--lz-space-12);
+  border: 0;
+  border-radius: var(--lz-radius-sm);
+  background: transparent;
+}
+
+.space-switcher-option[aria-selected="true"] {
+  border: 0;
+  background: var(--lz-gray-100);
+  box-shadow: inset 2px 0 0 var(--lz-ink);
+}
+
+.space-switcher-option:hover,
+.space-switcher-option:focus-visible {
+  background: var(--lz-gray-50);
+}
+
+.space-switcher-option[aria-selected="true"]:hover,
+.space-switcher-option[aria-selected="true"]:focus-visible {
+  background: var(--lz-gray-100);
+}
+
+.space-switcher-option:focus-visible {
+  outline: 2px solid var(--lz-blue-600);
+  outline-offset: 0;
+}
+
+.space-profile-settings {
+  min-height: 44px;
+  gap: var(--lz-space-8);
+  padding: var(--lz-space-12) var(--lz-space-16);
+  border-top: 1px solid var(--lz-line);
+  border-radius: 0;
+  background: var(--lz-paper);
+  color: var(--lz-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.space-profile-settings:hover,
+.space-profile-settings:focus-visible {
+  background: var(--lz-gray-100);
 }

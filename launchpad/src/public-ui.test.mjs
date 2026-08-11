@@ -109,13 +109,16 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(js).toContain('if (space.kind === "personal")');
   expect(js).not.toContain("https://github.com/");
   const profileBlock = js.slice(js.indexOf("function spaceProfileCard"), js.indexOf("function profileInitials"));
-  expect(profileBlock).toContain('const name = document.createElement("a")');
-  expect(profileBlock).toContain("name.href = profile.settings_url");
-  expect(profileBlock).toContain('name.target = "_blank"');
+  expect(profileBlock).toContain('const name = document.createElement("span")');
+  expect(profileBlock).not.toContain("name.href");
   const settingsBlock = js.slice(js.indexOf("function profileSettingsItem"), js.indexOf("function settingsIcon"));
-  expect(settingsBlock).toContain('document.createElement("div")');
-  expect(settingsBlock).toContain('item.setAttribute("aria-disabled", "true")');
-  expect(settingsBlock).not.toContain(".href");
+  expect(settingsBlock).toContain('document.createElement("a")');
+  expect(settingsBlock).toContain("item.href = profile.settings_url");
+  expect(settingsBlock).toContain('item.target = "_blank"');
+  expect(settingsBlock).toContain('item.rel = "noopener noreferrer"');
+  expect(settingsBlock).toContain("restoreSpaceMenuFocusOnClose = true");
+  expect(settingsBlock).toContain("state.spaceMenuOpen = false");
+  expect(settingsBlock).toContain("applySpaceMenuState()");
   expect(server).toContain("organizationLogoCandidates");
   expect(server).toContain("launchpad/app/v1/web/launchpad-icon.png");
   expect(server).toContain("launchpad/app/v1/web/logo-square.png");
@@ -227,22 +230,30 @@ test("Launchpad shell ships GEN2-like command center, theme and feedback afforda
     readFile(join(publicRoot, "styles.css"), "utf8"),
   ]);
 
-  // Agregovaný stav prostoru žije v pravém sloupci, ne v celoplošné liště.
+  // Agregovaný stav prostoru je třetí kompaktní provozní řádek v pravém sloupci.
   expect(html).toContain('id="hero"');
   expect(html).toContain('id="heroTitle"');
-  expect(html).toContain('id="heroCta"');
+  expect(html).not.toContain('id="heroCta"');
   expect(html.indexOf('id="hero"')).toBeGreaterThan(html.indexOf('id="recentChangesSidebar"'));
   expect(html.indexOf('id="moduleUpdateBanner"')).toBeLessThan(html.indexOf('id="hero"'));
+  expect(html).toContain('id="mobileSpaceStatusSlot"');
+  expect(html).toContain('id="hero" class="hero update-banner hero-loading"');
+  expect(html).toContain('class="hero-status-icon hero-status-ok"');
   expect(html).not.toContain('id="organizationGitPanel"');
   expect(html).toContain('id="spaceHealthBadge"');
   expect(html).not.toContain('id="heroSubtitle"');
   expect(js).toContain("function renderHero");
   expect(js).toContain("function computeHeroState");
+  expect(js).toContain("let problemsReturnFocus = null");
+  expect(js).toContain("problemsReturnFocus = document.activeElement");
+  expect(js).toContain("problemsReturnFocus?.isConnected ? problemsReturnFocus : fallbackTarget");
   expect(js).toContain("computeSpaceHeroState");
   expect(js).toContain("summarizeOrganizationSpaceHealth");
   expect(js).toContain("const heroApps = activeSpaceApps()");
   expect(js).toContain("renderHero(heroApps, spaceHealth)");
   expect(js).toContain("renderProblems(spaceHealth)");
+  expect(js).toContain("const mobileOrganization = mobilePanelQuery.matches");
+  expect(js).toContain("mobileOrganization ? elements.mobileSpaceStatusSlot : elements.recentChangesSidebar");
   expect(js).toContain("spaceFailures: personalFailures");
   expect(js).toContain("...personalPresentationWarnings");
   expect(js).toContain("...transientPersonalspaceWarnings");
@@ -263,22 +274,19 @@ test("Launchpad shell ships GEN2-like command center, theme and feedback afforda
   expect(js).toContain("Očekávaně omezený přístup");
   expect(js).not.toContain("elements.heroSubtitle");
   expect(css).toContain("padding: 0 clamp(2rem, 3vw, 3.5rem) 3rem");
-  expect(css).toContain(".hero .btn-sm");
   expect(css).toContain(".hero.hero-ok {");
   expect(css).toContain(".hero.hero-warn {");
   expect(css).toContain(".hero.hero-danger {");
   expect(css).toContain("background: var(--surface)");
-  expect(css).toContain(".hero.hero-ok .btn-secondary");
-  expect(css).toContain(".hero.hero-warn .btn-secondary");
-  expect(css).toContain(".hero.hero-danger .btn-secondary");
+  expect(css).toContain(".hero-status-icon");
+  expect(css).not.toContain(".hero .btn-sm");
+  expect(css).not.toContain(".hero.hero-ok .btn-secondary");
   expect(css).toContain('.space-health-badge[data-tone="danger"]');
   expect(css).toContain("#drawerToggle {");
   expect(css).toContain("position: relative");
   expect(js).toContain("function renderSpaceHealthBadge");
   expect(js).toContain('toggle.setAttribute("aria-label", label)');
-  expect(js).toContain("if (mobilePanelQuery.matches && state.drawerOpen) setDrawer(false)");
   expect(js).toContain("state.suppressNextDrawerOpen = true");
-  expect(js).toContain("if (mobilePanelQuery.matches) setDrawer(false)");
 
   // Launchpad je zatím pouze světlý; stará uložená tmavá volba se odstraní.
   expect(html).toContain('data-theme="light"');
@@ -348,7 +356,8 @@ test("Daily surface hides diagnostics until the hero action requests them", asyn
   expect(js).toContain('refresh.textContent = "Obnovit stav"');
   expect(js).toContain('close.setAttribute("aria-label", "Zavřít přehled problémů")');
   expect(js).toContain("function hideProblems()");
-  expect(js).toContain('state.problemsIncludeSystem || state.filters.scope === "personal"');
+  expect(js).toContain("problemsReturnFocus?.isConnected ? problemsReturnFocus : fallbackTarget");
+  expect(js).not.toContain("elements.heroCta");
   expect(js).toContain("state.problemsDismissed = true");
   expect(js).toContain('state.filters.scope === "personal" && !state.problemsDismissed');
   expect(js).toContain('panelDisclosed ? "" : " hidden"');
@@ -854,8 +863,8 @@ test("scroll targets clear the sticky topbar (offset-aware, no under-topbar land
   expect(css).toContain("--scroll-offset");
   expect(css).toContain("scroll-margin-top: var(--scroll-offset)");
 
-  // Every hero-CTA / in-page scroll destination carries the offset. These are
-  // exactly the elements runHeroAction and the panels scroll into view.
+  // Every in-page scroll destination carries the offset, so panels and app
+  // details never land underneath the sticky topbar.
   const scrollRule = css.slice(
     css.indexOf("#appsGrid,"),
     css.indexOf("scroll-margin-top: var(--scroll-offset)") + 40,

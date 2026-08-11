@@ -176,6 +176,8 @@
 
         </section>
 
+        <div id="mobileSpaceStatusSlot" class="mobile-space-status-slot"></div>
+
         <aside id="recentChangesSidebar" class="recent-changes-sidebar hidden" aria-label="Stav pracovního prostoru">
           <div id="updateBannerGroup" class="update-banner-group">
             <div id="updateBanner" class="update-banner" role="status">
@@ -211,17 +213,35 @@
               <button id="moduleUpdateBannerAction" type="button" class="update-banner-action" hidden>Stáhnout změny</button>
             </div>
           </div>
-          <section id="hero" class="hero side-panel hero-loading" aria-live="polite" aria-label="Stav prostoru">
-            <div class="hero-head">
-              <span class="rail-eyebrow">Stav prostoru</span>
-              <span class="hero-indicator" aria-hidden="true"></span>
-            </div>
-            <h2 id="heroTitle" class="hero-title">Načítám stav…</h2>
-            <p id="heroSummary" class="hero-summary">Ověřuji pracovní prostor.</p>
-            <div id="heroIssues" class="hero-issues" aria-label="Doporučené kroky" hidden></div>
-            <div class="hero-panel">
-              <button id="heroCta" type="button" class="btn btn-secondary btn-sm">Zkontrolovat stav</button>
-            </div>
+          <section id="hero" class="hero update-banner hero-loading" aria-live="polite" aria-label="Stav prostoru">
+              <span class="hero-status-icon hero-status-ok" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="m8 12 2.5 2.5L16 9" />
+                </svg>
+              </span>
+              <span class="hero-status-icon hero-status-warn" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10.3 3.8 2.4 17.4A2 2 0 0 0 4.1 20h15.8a2 2 0 0 0 1.7-2.6L13.7 3.8a2 2 0 0 0-3.4 0Z" />
+                  <path d="M12 9v4" /><path d="M12 17h.01" />
+                </svg>
+              </span>
+              <span class="hero-status-icon hero-status-danger" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 7v6" /><path d="M12 17h.01" />
+                </svg>
+              </span>
+              <span class="hero-status-icon hero-status-loading" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                  <path d="M12 3a9 9 0 1 1-6.4 2.6" />
+                </svg>
+              </span>
+              <div class="hero-copy">
+                <h2 id="heroTitle" class="hero-title">Načítám stav…</h2>
+                <p id="heroSummary" class="hero-summary">Ověřuji pracovní prostor.</p>
+              </div>
+              <div id="heroIssues" class="hero-issues" aria-label="Doporučené kroky" hidden></div>
           </section>
         </aside>
 
