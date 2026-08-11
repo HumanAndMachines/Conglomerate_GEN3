@@ -815,7 +815,10 @@ input:focus-visible,
   border-color: color-mix(in srgb, var(--c-warn) 34%, var(--line));
 }
 .hero.hero-danger {
-  border-color: color-mix(in srgb, var(--c-danger) 34%, var(--line));
+  --hero-danger-accent: var(--lz-red-500);
+  --hero-danger-border: var(--lz-red-300);
+  --hero-danger-soft: color-mix(in srgb, var(--lz-red-400) 12%, var(--surface));
+  border-color: var(--hero-danger-border);
 }
 
 .hero-indicator {
@@ -833,7 +836,7 @@ input:focus-visible,
   background: var(--c-warn);
 }
 .hero.hero-danger .hero-indicator {
-  background: var(--c-danger);
+  background: var(--hero-danger-accent);
 }
 .hero.hero-loading .hero-indicator {
   background: var(--accent);
@@ -851,6 +854,82 @@ input:focus-visible,
   font-weight: 600;
   line-height: 1.35;
   letter-spacing: -0.01em;
+}
+
+.hero-summary {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.hero-issues {
+  display: grid;
+  border-block: 1px solid var(--line);
+}
+
+.hero-issue {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.7rem 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.hero-issue:last-child {
+  border-bottom: 0;
+}
+
+.hero-issue:hover,
+.hero-issue:focus-visible {
+  background: color-mix(in srgb, var(--hero-danger-accent, var(--c-warn)) 5%, transparent);
+}
+
+.hero-issue-marker {
+  color: var(--hero-danger-accent, var(--c-warn));
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.hero-issue-copy {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.hero-issue-copy strong {
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.hero-issue-copy span {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.hero-issue-cue {
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.hero-issue:hover .hero-issue-cue,
+.hero-issue:focus-visible .hero-issue-cue {
+  color: var(--text);
 }
 
 .hero-panel {
@@ -886,13 +965,13 @@ input:focus-visible,
 }
 
 .hero.hero-danger .btn-secondary {
-  border: 1px solid color-mix(in srgb, var(--c-danger) 38%, transparent);
-  background: color-mix(in srgb, var(--c-danger) 12%, var(--surface));
-  color: color-mix(in srgb, var(--c-danger) 76%, #7f1d1d);
+  border: 1px solid var(--hero-danger-border);
+  background: var(--hero-danger-soft);
+  color: var(--hero-danger-accent);
 }
 
 .hero.hero-danger .btn-secondary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--c-danger) 21%, var(--surface));
+  background: color-mix(in srgb, var(--lz-red-400) 20%, var(--surface));
 }
 
 .space-health-badge {
@@ -938,6 +1017,18 @@ input:focus-visible,
   grid-template-columns: minmax(0, 1fr);
 }
 
+.global-update-slot:empty {
+  display: none;
+}
+
+.global-update-slot:not(:empty) {
+  margin-bottom: var(--lz-space-16);
+}
+
+.global-update-slot .update-banner {
+  margin: 0;
+}
+
 .recent-changes-sidebar {
   position: sticky;
   top: calc(var(--topbar-h) + 0.75rem);
@@ -950,6 +1041,31 @@ input:focus-visible,
 
 .recent-changes-sidebar .side-panel {
   margin-bottom: 0;
+}
+
+/* Stav aktualizací je globální provozní informace stejně jako Stav prostoru.
+   V pravém sloupci proto tvoří první kompaktní kartu místo širokého banneru,
+   který odváděl pozornost od vyhledávání a aplikací. */
+.recent-changes-sidebar > .update-banner {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  justify-content: stretch;
+  gap: var(--lz-space-12);
+  min-height: 0;
+  margin-top: 0;
+  padding: var(--lz-space-16);
+}
+
+.recent-changes-sidebar > .update-banner .update-banner-text {
+  font-size: var(--lz-size-body);
+  line-height: var(--lz-leading-body);
+}
+
+.recent-changes-sidebar > .update-banner .update-banner-action {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin-left: 0;
 }
 
 .organization-git-head {
@@ -1072,14 +1188,24 @@ input:focus-visible,
 
 /* ---------- Apps toolbar ---------- */
 .apps-toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--lz-space-12);
+}
+
+.apps-filter-fallback {
+  display: none;
+  justify-content: flex-end;
+  margin-top: 0;
+}
+
+.apps-filter-fallback.is-active {
+  display: flex;
 }
 
 .search-field {
   flex: 1 1 220px;
+  width: 100%;
   min-width: min(210px, 100%);
   display: inline-flex;
   align-items: center;
@@ -2585,6 +2711,20 @@ tbody tr.selected {
   background: var(--surface);
 }
 
+.detail-summary > .git-change-list {
+  margin-top: 0.2rem;
+  padding: 0.75rem 0;
+  border-width: 1px 0 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.detail-summary > .git-change-list ul {
+  max-height: min(42vh, 360px);
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
 .git-change-list strong {
   font-size: 14px;
 }
@@ -2616,8 +2756,8 @@ tbody tr.selected {
 .git-change-list span {
   flex: 0 0 auto;
   color: var(--text-subtle);
-  font-family: var(--font-mono);
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: 13px;
 }
 
 .builder-action-card {
@@ -3008,6 +3148,63 @@ tbody tr.selected {
   }
 }
 
+/* Tmavá hlavička ukotvuje shell, zatímco menu a pracovní panely zůstávají na
+   světlém dokumentovém povrchu. */
+.topbar.topbar {
+  border-bottom-color: var(--lz-gray-800);
+  background: var(--lz-gray-950);
+}
+
+.space-switcher-button,
+.topbar .icon-btn,
+.topbar-icon-plain,
+.doctor-status-icon {
+  color: var(--lz-gray-100);
+}
+
+.space-switcher-chevron {
+  color: var(--lz-gray-300);
+}
+
+.space-switcher-button:hover,
+.space-switcher-button:focus-visible,
+.topbar .icon-btn:hover,
+.doctor-status-icon:hover:not(:disabled) {
+  color: var(--lz-white);
+}
+
+.doctor-status-alert {
+  border-color: var(--lz-gray-950);
+}
+
+.notifications-badge,
+.doctor-status-alert {
+  top: -1px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-width: 2px;
+  border-color: var(--lz-gray-950);
+  font-size: 10px;
+  line-height: 1;
+}
+
+/* Kanonické 24px Lazurio ikony se zobrazují ve 2× velikosti. Nearest-neighbour
+   chrání sjednocenou pixelovou kresbu bez rozmazání. */
+.app-card-icon.is-pixel-art {
+  width: 48px;
+  height: 48px;
+}
+
+.app-card-icon.is-pixel-art img {
+  display: block;
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
 /* =========================================================
    CAC-0044 builder UX z GEN2: one-click karty, ⋯ menu varianty,
    git chip, pravé panely Poslední změny + Nejčastější.
@@ -3043,6 +3240,47 @@ tbody tr.selected {
   align-items: center;
   gap: 0.42rem;
   flex: 0 0 auto;
+}
+
+.app-card-alert-button {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--lz-radius-xs);
+  background: transparent;
+  color: var(--lz-danger);
+  transition: color 220ms var(--ease);
+}
+
+.app-card-alert-button:hover,
+.app-card-alert-button:focus-visible {
+  background: transparent;
+  color: var(--lz-red-700);
+}
+
+.app-card-alert-button .chip-status-icon {
+  width: 19px;
+  height: 19px;
+}
+
+.app-card-alert-button.is-fact {
+  color: var(--text-muted);
+}
+
+.app-card-alert-button.is-fact:hover,
+.app-card-alert-button.is-fact:focus-visible {
+  color: var(--app-accent);
+}
+
+.app-card-fact-icon,
+.app-card-fact-icon svg {
+  display: block;
+  width: 20px;
+  height: 20px;
 }
 
 /* Git chip na kartě — lidský text stavu (CAC-0044/CAC-0042). */
@@ -4499,35 +4737,75 @@ button.runtime-stage.is-available:hover {
    nese tečka, ne pás přes celou šířku. */
 .update-banner {
   margin-top: 16px;
-  padding: 12px 16px;
-  background: var(--surface);
-  border: 1px solid var(--line);
+  min-height: 76px;
+  padding: 16px 20px;
+  justify-content: flex-start;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--c-accent-500) 11%, var(--paper)) 0%, var(--paper) 72%);
+  border: 1px solid color-mix(in srgb, var(--c-accent-500) 38%, var(--line));
+  border-left: 5px solid var(--c-accent-500);
   border-radius: var(--r-xs);
-  gap: 10px;
+  gap: 14px;
   align-items: center;
 }
 
-.update-banner > svg {
+.update-banner > .update-banner-icon {
+  display: block;
+  width: 24px;
+  height: 24px;
+  color: var(--c-accent-500);
+}
+
+.update-banner-success {
   display: none;
 }
 
-.update-banner::before {
-  content: "";
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+.update-banner.is-current {
+  background: var(--c-success-bg);
+  border-color: var(--c-success-line);
+  border-left-color: var(--c-success);
+}
+
+.update-banner.is-current .update-banner-icon {
+  display: none;
+}
+
+.update-banner.is-current .update-banner-success {
+  display: block;
   flex: none;
-  background: var(--c-warn-dot);
+  color: var(--c-success);
+}
+
+.update-banner::before {
+  content: none;
 }
 
 .update-banner-text {
-  font-size: 14px;
+  font-size: 17px;
+  line-height: 1.3;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.update-banner-action {
+  margin-left: auto;
+}
+
+@media (max-width: 640px) {
+  .update-banner-action {
+    width: 100%;
+    margin-left: 0;
+  }
+}
+
+/* Starší deklarace barvy zůstává kompatibilní s blokovaným root updatem. */
+.update-banner.is-blocked .update-banner-text {
   color: var(--text-muted);
 }
 
 .update-banner-action {
-  font-size: 14px;
-  padding: 8px 14px;
+  font-size: 15px;
+  font-weight: 700;
+  padding: 11px 18px;
   background: var(--c-neutral-950, #090909);
   border-color: var(--c-neutral-950, #090909);
   color: #fff;
@@ -4872,7 +5150,7 @@ b {
 }
 
 /* Filtr aplikací: dvě samostatné pilulky, ne segment v podbarveném pouzdře. */
-.apps-toolbar .segmented-control {
+#appsFilterControls .segmented-control {
   gap: var(--lz-space-8);
   min-height: auto;
   padding: 0;
@@ -4882,7 +5160,7 @@ b {
   background: transparent;
 }
 
-.apps-toolbar .segment {
+#appsFilterControls .segment {
   min-width: auto;
   min-height: 42px;
   padding: 0 var(--lz-space-16);
@@ -4895,16 +5173,16 @@ b {
   font-weight: 600;
 }
 
-.apps-toolbar .segment[aria-pressed="true"],
-.apps-toolbar .segment.is-active {
+#appsFilterControls .segment[aria-pressed="true"],
+#appsFilterControls .segment.is-active {
   border-color: var(--lz-ink);
   background: var(--lz-ink);
   color: var(--lz-white);
   box-shadow: none;
 }
 
-.apps-toolbar .segment:hover:not(.is-active),
-.apps-toolbar .segment:focus-visible:not(.is-active) {
+#appsFilterControls .segment:hover:not(.is-active),
+#appsFilterControls .segment:focus-visible:not(.is-active) {
   background: var(--lz-gray-50);
   color: var(--lz-ink);
 }
@@ -4954,6 +5232,24 @@ b {
   border-bottom: 1px solid var(--lz-blue-500);
 }
 
+.app-section-filter-slot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1 1 auto;
+  min-width: max-content;
+  padding: 0 0 var(--lz-space-8);
+}
+
+.app-section-filter-slot .filter-controls {
+  justify-content: flex-end;
+}
+
+.app-section-filter-slot .segment {
+  min-height: 36px;
+  padding-inline: var(--lz-space-14);
+}
+
 .app-section-organization:not(.skeleton-section) > .app-section-head:first-child .app-section-title,
 .app-section-workspace > .app-section-head:first-child .app-section-title,
 .app-section-productionspace > .app-section-head:first-child .app-section-title {
@@ -4984,6 +5280,17 @@ b {
   .app-section-workspace > .app-section-head:first-child .app-section-title-row,
   .app-section-productionspace > .app-section-head:first-child .app-section-title-row {
     padding-left: var(--lz-space-12);
+  }
+
+  .app-section-filter-slot {
+    flex-basis: 100%;
+    justify-content: flex-start;
+    padding: var(--lz-space-8) 0;
+  }
+
+  .app-section-filter-slot .filter-controls,
+  .app-section-filter-slot .segmented-control {
+    width: auto;
   }
 }
 
@@ -5019,9 +5326,9 @@ b {
   height: 28px;
 }
 
-/* Experiment dlaždic podle produktové reference (Principál 2026-08-09).
-   Vědomě předbíhá současný kánon Lazuria: plocha má stálou zaoblenou hranu
-   a volnější vertikální rytmus. Barvy a typografie zůstávají tokenové. */
+/* Základ dlaždic podle produktové reference (Principál 2026-08-09).
+   Drží rozměry a volnější vertikální rytmus; kanonická souvislá mřížka níže
+   přebíjí samostatné hrany a mezery. Barvy a typografie zůstávají tokenové. */
 .apps-grid {
   gap: var(--lz-space-16);
   align-items: start;
@@ -5262,7 +5569,33 @@ body {
   line-height: 1.45;
 }
 
+/* Team access patří ke kontextu celé Workspace sekce. V hlavičce je proto
+   na pravé hraně stejného řádku; detail se otevírá směrem doleva do plochy. */
+.team-access-summary.is-in-section-head {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-left: auto;
+  padding: 0 var(--lz-space-12);
+}
+
+.team-access-summary.is-in-section-head > summary {
+  min-height: 30px;
+}
+
+.team-access-summary.is-in-section-head .team-access-content {
+  top: calc(100% + 1px);
+  right: var(--lz-space-12);
+  left: auto;
+}
+
 @media (max-width: 820px) {
+  .team-access-summary.is-in-section-head {
+    flex-basis: 100%;
+    width: 100%;
+    margin-left: 0;
+    padding: var(--lz-space-8) 0;
+  }
+
   .team-access-content {
     position: static;
     width: min(100%, 420px);
@@ -5362,4 +5695,265 @@ body {
 .app-version-menu-panel .app-version-option:focus-visible {
   border-color: transparent;
   background: var(--lz-paper);
+}
+
+/* CAC-0095 — kanonická materiálová dlaždice. */
+.app-card {
+  --tile-reveal-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition:
+    border-color 380ms var(--tile-reveal-ease),
+    background-color 420ms var(--tile-reveal-ease);
+}
+
+/* Produktová reference: karta stojí na místě a ikona zůstává nahoře. Nadpis,
+   stav i popis tvoří jeden textový blok, který při hoveru plynule vyjede
+   vzhůru uvnitř karty bez pohybu mřížky nebo sousedních modulů. */
+.apps-grid > .app-card .app-card-head {
+  flex: 1 1 auto;
+  position: relative;
+}
+
+.apps-grid > .app-card .app-title-block {
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+  flex: 1 1 100%;
+  align-self: stretch;
+  overflow: hidden;
+}
+
+/* Horní ikonové akce už nezužují celý textový sloupec. Jsou ukotvené jen
+   v pravém horním rohu, zatímco popis může využít šířku celé dlaždice. */
+.apps-grid > .app-card .app-card-top-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.apps-grid > .app-card .app-title-body {
+  margin-top: auto;
+  gap: 0;
+}
+
+/* Nadpis a popis tvoří jeden přirozený tok ukotvený ke spodní části karty.
+   Rozbalení popisu zvětší blok směrem vzhůru podle skutečné délky textu;
+   nic se nepozicuje mimo kartu ani nepřetéká do následující sekce. */
+.apps-grid > .app-card .app-card-copy {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+}
+
+.apps-grid > .app-card .app-card-desc {
+  position: static;
+  width: auto;
+  max-height: 0;
+  margin: 0;
+  opacity: 0;
+  overflow: hidden;
+  transform: none;
+  transition:
+    max-height 420ms var(--tile-reveal-ease),
+    margin-top 420ms var(--tile-reveal-ease),
+    opacity 340ms var(--tile-reveal-ease);
+}
+
+/* Souvislá modulová plocha: karty sdílejí jednu tenkou hranu a nemají mezi
+   sebou boční mezery. Hover mění jen vnitřní text a povrch, ne polohu karty. */
+.apps-grid {
+  column-gap: 0;
+  row-gap: 0;
+  margin-inline: 0;
+  padding: 0;
+  border: 1px solid var(--lz-line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.apps-grid > .app-card:not(.selected):not(.has-open-menu),
+.apps-grid > .app-card {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background-color: var(--lz-white);
+  background-image: none;
+  box-shadow:
+    inset -1px 0 0 var(--lz-line),
+    inset 0 -1px 0 var(--lz-line);
+}
+
+/* Barevná vrstva nepatří do klidového povrchu. Plynule se přimíchá až při
+   interakci, takže nehoverovaná mřížka zůstává čistá a klidná. */
+.apps-grid > .app-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(
+      circle at 8% 10%,
+      color-mix(in srgb, var(--app-accent) 14%, var(--lz-white)) 0%,
+      color-mix(in srgb, var(--app-accent) 5%, var(--lz-white)) 34%,
+      transparent 66%
+    ),
+    linear-gradient(
+      145deg,
+      transparent 42%,
+      color-mix(in srgb, var(--app-accent) 4%, var(--lz-paper)) 100%
+    );
+  background-repeat: no-repeat;
+  opacity: 0;
+  transition: opacity 460ms var(--tile-reveal-ease);
+}
+
+.apps-grid > .app-card > * {
+  z-index: 1;
+}
+
+.apps-grid > .app-card.selected {
+  box-shadow:
+    inset 3px 0 0 var(--app-focus-accent, var(--app-accent)),
+    inset -1px 0 0 var(--lz-line),
+    inset 0 -1px 0 var(--lz-line);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .app-card:not(.selected):not(.has-open-menu):hover {
+    transform: none;
+    border-color: color-mix(in srgb, var(--app-accent) 52%, var(--lz-line));
+  }
+
+  .app-card:not(.has-open-menu):hover::after,
+  .app-card:not(.has-open-menu):focus-within::after {
+    opacity: 1;
+  }
+
+  .apps-grid > .app-card:not(.has-open-menu):hover .app-card-desc,
+  .apps-grid > .app-card:not(.has-open-menu):focus-within .app-card-desc {
+    max-height: 4.8em;
+    margin-top: var(--lz-space-12);
+    opacity: 1;
+  }
+
+  /* Tlačítko dalších možností je disclosure uvnitř karty. Jeho hover ani
+     otevřený panel nesmí spouštět druhou, překrývající se vrstvu hloubky. */
+  .app-card:not(.selected):has(.app-more-button:hover),
+  .app-card:not(.selected):has(.app-more-button:focus-visible),
+  .app-card.has-open-menu:not(.selected) {
+    transform: none;
+    border-color: var(--lz-line);
+    background: var(--lz-white);
+    box-shadow:
+      inset -1px 0 0 var(--lz-line),
+      inset 0 -1px 0 var(--lz-line);
+  }
+}
+
+/* Na dotykové obrazovce není spolehlivý hover, proto popis zůstává čitelný. */
+@media (hover: none), (pointer: coarse) {
+  .apps-grid > .app-card .app-card-desc {
+    max-height: 4.8em;
+    margin-top: var(--lz-space-12);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-card {
+    transition: none;
+  }
+
+  .apps-grid > .app-card .app-card-desc,
+  .apps-grid > .app-card::after {
+    transition: none;
+  }
+
+  .app-card:hover {
+    transform: none;
+  }
+}
+
+/* Filtry mohou hlavičku Organizace zvětšit a Přístup k Teamům může na užším
+   viewportu zalomit hlavičku Workspace. Obě hlavičky proto musí zůstat v
+   normálním toku; původní absolutní vytažení počítalo s pevnými 30 px a při
+   vyšším obsahu překrývalo vyhledávání nebo sousední sekci. */
+.app-section-organization:not(.skeleton-section),
+.app-section-workspace {
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.app-section-organization:not(.skeleton-section) > .app-section-head:first-child,
+.app-section-workspace > .app-section-head:first-child {
+  position: static;
+  transform: none;
+}
+
+/* Organizace a Workspace používají shodný třicetipixelový strukturální
+   štítek. Filtry patří k vyhledávání, ne do výšky hlavičky sekce. */
+.apps-toolbar .search-field {
+  flex: 1 1 auto;
+}
+
+.apps-toolbar .apps-filter-fallback {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 760px) {
+  .apps-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .apps-toolbar .apps-filter-fallback {
+    justify-content: flex-start;
+  }
+
+}
+
+/* Pravý sloupec používá jeden panelový jazyk: bílý papír, stejnou hranu,
+   stejné odsazení a sekundární tlačítko. Stavová barva zůstává na ikoně a
+   hraně, ne v plošném gradientu. */
+.recent-changes-sidebar > .update-banner {
+  gap: var(--lz-space-12);
+  padding: 0.9rem;
+  background: var(--lz-white);
+  border: 1.5px solid var(--lz-line);
+  border-left-width: 1.5px;
+  border-radius: 0;
+}
+
+.recent-changes-sidebar > .update-banner.is-current {
+  background: var(--lz-white);
+  border-color: var(--c-success-line);
+}
+
+.recent-changes-sidebar > .update-banner .update-banner-icon,
+.recent-changes-sidebar > .update-banner .update-banner-success {
+  width: 20px;
+  height: 20px;
+}
+
+.recent-changes-sidebar > .update-banner .update-banner-text {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.recent-changes-sidebar > .update-banner .update-banner-action {
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1.5px solid var(--lz-line);
+  border-radius: var(--lz-radius-sm);
+  background: var(--lz-white);
+  color: var(--lz-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.recent-changes-sidebar > .update-banner .update-banner-action:hover:not(:disabled),
+.recent-changes-sidebar > .update-banner .update-banner-action:focus-visible:not(:disabled) {
+  background: var(--lz-gray-50);
+  filter: none;
 }

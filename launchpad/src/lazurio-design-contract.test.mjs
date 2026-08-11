@@ -48,10 +48,18 @@ test("Launchpad nepoužívá neschválenou kapitalizaci ani Lucide ikony", async
   expect(html).not.toContain("lucide/");
 });
 
+test("tmavá hlavička je kanonická bez URL experimentu", async () => {
+  const [styles, app] = await Promise.all([source("styles.css"), source("app.js")]);
+  expect(styles).toMatch(/\/\* Tmavá hlavička ukotvuje shell[\s\S]*?\.topbar\.topbar\s*{[\s\S]*?background: var\(--lz-gray-950\)/);
+  expect(styles).toMatch(/\.topbar \.icon-btn,[\s\S]*?color: var\(--lz-gray-100\)/);
+  expect(styles).not.toContain("data-header-experiment");
+  expect(app).not.toContain("headerExperiment");
+});
+
 test("výběr dlaždice drží důraz hranou a stav není barevný pruh", async () => {
   const [styles, app] = await Promise.all([source("styles.css"), source("app.js")]);
-  const experiment = styles.slice(styles.indexOf("/* Experiment dlaždic podle produktové reference"));
-    expect(experiment).toMatch(/\.app-card\.selected\s*{[\s\S]*?border-color: var\(--app-focus-accent, var\(--app-accent\)\);[\s\S]*?box-shadow: inset 3px 0 0 var\(--app-focus-accent, var\(--app-accent\)\)/);
+  const canonical = styles.slice(styles.indexOf("/* CAC-0095 — kanonická materiálová dlaždice."));
+  expect(canonical).toMatch(/\.apps-grid > \.app-card\.selected\s*{[\s\S]*?box-shadow:[\s\S]*?inset 3px 0 0 var\(--app-focus-accent, var\(--app-accent\)\)/);
   expect(styles).toMatch(/\.app-card\.is-running::before[\s\S]*?display: none/);
   expect(styles).toMatch(/\.app-section-organization,[\s\S]*?\.app-section-workspace[\s\S]*?border-radius: 0/);
   expect(styles).toMatch(/\.skeleton-card[\s\S]*?border-radius: 0/);
@@ -94,39 +102,45 @@ test("Personalspace používá ostré Lazurio plochy a stavové ikony", async ()
 
 test("filtr aplikací používá dvě samostatné Lazurio pilulky", async () => {
   const styles = await source("styles.css");
-  expect(styles).toMatch(/\.apps-toolbar \.segmented-control\s*{[\s\S]*?background: transparent/);
-  expect(styles).toMatch(/\.apps-toolbar \.segment\s*{[\s\S]*?border-radius: var\(--lz-radius-pill\)/);
-  expect(styles).toContain('.apps-toolbar .segment[aria-pressed="true"]');
-  expect(styles).toMatch(/\.apps-toolbar \.segment\[aria-pressed="true"\],[\s\S]*?background: var\(--lz-ink\)[\s\S]*?color: var\(--lz-white\)/);
+  expect(styles).toMatch(/#appsFilterControls \.segmented-control\s*{[\s\S]*?background: transparent/);
+  expect(styles).toMatch(/#appsFilterControls \.segment\s*{[\s\S]*?border-radius: var\(--lz-radius-pill\)/);
+  expect(styles).toContain('#appsFilterControls .segment[aria-pressed="true"]');
+  expect(styles).toMatch(/#appsFilterControls \.segment\[aria-pressed="true"\],[\s\S]*?background: var\(--lz-ink\)[\s\S]*?color: var\(--lz-white\)/);
   expect(styles).toMatch(/\.search-field:focus-within\s*{[\s\S]*?border-color: var\(--lz-gray-700\);[\s\S]*?background: var\(--lz-white\)/);
+  expect(styles).toMatch(/\.search-field:focus-within\s*{[\s\S]*?outline: none;/);
   expect(styles).toMatch(/\.search-field input:focus-visible\s*{[\s\S]*?outline: none;/);
 });
 
-test("Organizace, Workspace a Productionspace používají nadpis jako modrou záložku na hraně", async () => {
+test("Organizace, Workspace a Productionspace používají modrou záložku v bezpečném toku", async () => {
   const [styles, app] = await Promise.all([source("styles.css"), source("app.js")]);
   expect(styles).toMatch(/\.app-section-organization:not\(\.skeleton-section\),[\s\S]*?border-top-color: var\(--lz-blue-500\)/);
-  expect(styles).toMatch(/\.app-section-workspace > \.app-section-head:first-child[\s\S]*?transform: translateY\(-100%\)/);
+  const finalLayout = styles.slice(styles.indexOf("/* Filtry mohou hlavičku Organizace zvětšit"));
+  expect(finalLayout).toMatch(/\.app-section-workspace > \.app-section-head:first-child\s*{[\s\S]*?position: static;[\s\S]*?transform: none/);
   expect(styles).toMatch(/\.app-section-workspace > \.app-section-head:first-child \.app-section-title[\s\S]*?background: var\(--lz-blue-500\)[\s\S]*?color: var\(--lz-white\)/);
   expect(styles).toMatch(/\.app-section-productionspace > \.app-section-head:first-child\s*{[\s\S]*?position: static;[\s\S]*?transform: none/);
   expect(styles).toMatch(/\.app-section-productionspace > \.app-section-head:first-child \.app-section-title[\s\S]*?background: var\(--lz-blue-500\)[\s\S]*?color: var\(--lz-white\)/);
   expect(styles).toContain("font-variant-numeric: tabular-nums");
   expect(app).toContain('appSectionHead("Organizace"');
-  expect(app).toContain('appSectionHead("Workspace"');
+  expect(app).toMatch(/"Workspace",\r?\n\s+`\$\{uniqueModules\.size\}/);
   expect(app).toContain('entry.productionspace.display_name ?? "Productionspace"');
   expect(app).not.toContain("app-section-eyebrow");
 });
 
-test("experimentální modulové dlaždice mají stálou hranu a vzdušný rytmus", async () => {
+test("kanonické modulové dlaždice tvoří souvislou hranatou mřížku", async () => {
   const [styles, app] = await Promise.all([source("styles.css"), source("app.js")]);
-  const experiment = styles.slice(styles.indexOf("/* Experiment dlaždic podle produktové reference"));
-  expect(experiment).toMatch(/\.apps-grid\s*{[\s\S]*?align-items: start/);
-  expect(experiment).toMatch(/\.apps-grid > \.app-card\s*{[\s\S]*?align-self: start/);
-  expect(experiment).toMatch(/\.app-card\s*{[\s\S]*?min-height: 16rem;[\s\S]*?padding: var\(--lz-space-24\);[\s\S]*?border: 1px solid color-mix\(in srgb, var\(--lz-line-faint\) 50%, var\(--lz-line\)\);[\s\S]*?border-radius: 18px/);
-  expect(experiment).toMatch(/\.app-title-block\s*{[\s\S]*?gap: 28px/);
-  expect(experiment).toMatch(/\.app-title-body\s*{[\s\S]*?gap: var\(--lz-space-16\)/);
-  expect(experiment).toMatch(/\.app-card-desc\s*{[\s\S]*?font-size: 15px;[\s\S]*?line-height: 1\.55/);
-  expect(experiment).toMatch(/\.app-card:hover\s*{[\s\S]*?border-color: var\(--app-accent\)/);
-  expect(experiment).toMatch(/\.app-card\.selected\s*{[\s\S]*?border-color: var\(--app-focus-accent, var\(--app-accent\)\)/);
+  const base = styles.slice(styles.indexOf("/* Základ dlaždic podle produktové reference"));
+  const canonical = styles.slice(styles.indexOf("/* CAC-0095 — kanonická materiálová dlaždice."));
+  expect(base).toMatch(/\.app-card\s*{[\s\S]*?min-height: 16rem;[\s\S]*?padding: var\(--lz-space-24\)/);
+  expect(base).toMatch(/\.app-title-block\s*{[\s\S]*?gap: 28px/);
+  expect(base).toMatch(/\.app-card-desc\s*{[\s\S]*?font-size: 15px;[\s\S]*?line-height: 1\.55/);
+  expect(canonical).toMatch(/\.apps-grid\s*{[\s\S]*?column-gap: 0;[\s\S]*?row-gap: 0;[\s\S]*?border-radius: 0/);
+  expect(canonical).toMatch(/\.apps-grid > \.app-card\s*{[\s\S]*?border: 0;[\s\S]*?border-radius: 0/);
+  expect(canonical).toMatch(/\.app-card:not\(\.selected\):not\(\.has-open-menu\):hover\s*{[\s\S]*?transform: none/);
+  expect(canonical).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.apps-grid > \.app-card \.app-card-desc,[\s\S]*?\.apps-grid > \.app-card::after\s*{[\s\S]*?transition: none/);
+  expect(styles).toMatch(/\.app-card-icon\.is-pixel-art img\s*{[\s\S]*?image-rendering: pixelated/);
+  expect(app).toContain("const PIXEL_APP_ICON_FILES = Object.freeze({");
+  expect(app).toContain("const key = appIconKey(app);");
+  expect(app).not.toContain("guideIconExperiment");
   expect(app).toContain('app.module === "mission-control" ? "" : variantTag(app, moduleName)');
   expect(app).toContain('control: "Procesy, automatizace a koordinace práce."');
   expect(app).toContain('book: "Návody, dokumentace a sdílené znalosti."');
