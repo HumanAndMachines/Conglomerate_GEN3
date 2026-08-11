@@ -1,0 +1,56 @@
+{
+  "schema_version": "lazurio.context.v0",
+  "unstable": true,
+  "root": {
+    "kind": "personalspace"
+  },
+  "principal": {
+    "status": "present",
+    "reason": "personalspace_manifest_owner",
+    "github_username": "fixture-owner",
+    "display_name": "Fixture Owner",
+    "type": "human"
+  },
+  "machine": {
+    "status": "present",
+    "reason": "runtime_observed",
+    "platform": "<platform>",
+    "architecture": "<architecture>"
+  },
+  "personalspace": {
+    "mount": {
+      "status": "present",
+      "reason": "personalspace_is_root",
+      "path": "."
+    },
+    "manifest": {
+      "status": "present",
+      "reason": "personalspace_root_manifest",
+      "path": "personal.gen3.json"
+    },
+    "readiness": {
+      "status": "not_evaluated",
+      "reason": "doctor_not_run"
+    },
+    "access": {
+      "status": "not_evaluated",
+      "reason": "provider_authority_not_checked"
+    }
+  },
+  "organizations": [],
+  "organizations_scope": "none",
+  "organization_selector": null,
+  "organizations_state": {
+    "status": "absent",
+    "reason": "rootless_mode"
+  },
+  "provenance": {
+    "context_sources": [
+      "personal.gen3.json"
+    ],
+    "machine_sources": [
+      "process.platform",
+      "process.arch"
+    ]
+  }
+}

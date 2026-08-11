@@ -12,7 +12,7 @@
     "launchpad:serve": "bun run --cwd launchpad serve",
     "launchpad:dev": "bun run --cwd launchpad dev",
     "lazurio": "bun lazurio/cli.mjs",
-    "lazurio:test": "bun test --cwd lazurio --timeout 15000 lazurio.test.mjs search.test.mjs",
+    "lazurio:test": "bun test --cwd lazurio --timeout 15000 lazurio.test.mjs search.test.mjs parity.test.mjs",
     "personalspace:create": "bun scripts/create-personalspace.mjs",
     "personalspace:test": "bun test scripts/create-personalspace.test.mjs",
     "pr:preflight": "bun scripts/pr-preflight.mjs",
