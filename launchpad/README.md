@@ -24,6 +24,26 @@ Není to místo pro business pravdu konkrétní firmy.
 - source of truth pro access policy
 - přímé zápisy do modulových dat bez validovaného writeru
 
+## Hostované odkazy na aplikace
+
+Stejný Launchpad build může za privátním ingress adapterem otevřít modulovou
+aplikaci na operátorem určeném originu. Runtime, health a port ownership dál
+pracují výhradně s lokálním `127.0.0.1:<port>`; přepisuje se pouze URL vrácená
+pro otevření nového tabu.
+
+Deployment může dodat `LAUNCHPAD_HOSTED_APP_URLS_JSON` jako JSON mapu přesných
+`companyascode.app.id` na čisté HTTP(S) originy, například:
+
+```json
+{
+  "exampleorg-knowledgebase-v2": "https://knowledgebase.team.example.com/"
+}
+```
+
+Neznámé app id zůstane lokální. Nevalidní JSON, URL s credentials, query,
+fragmentem nebo cestou způsobí fail-closed start. Mapa je navigační metadata,
+nikoli ACL: síťový ingress a app-owned autorizace musí přístup ověřit samy.
+
 ## Stabilní odkazy na prostor
 
 Launchpad přijímá a při přepnutí prostoru sám udržuje stabilní hash route:

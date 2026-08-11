@@ -40,6 +40,11 @@ import { createGenerationSafeResponseCache } from "./apps-response-cache-lib.mjs
 import { readOrganizationLaunchpadTheme } from "./organization-theme-lib.mjs";
 import { ModuleFolderActionError, createModuleFolderOpener } from "./module-folder-lib.mjs";
 import {
+  parseHostedAppUrlsJson,
+  projectHostedAppUrl,
+  projectHostedRuntimePayload,
+} from "./hosted-app-url-lib.mjs";
+import {
   GIT_LOCAL_TIMEOUT_MS,
   resolveGitExecutableSync,
   safeGitCommandEnv,
@@ -59,6 +64,7 @@ const host = options.host ?? defaultHost;
 const port = Number(options.port ?? process.env.PORT ?? defaultPort);
 const explicitPort = options.port !== undefined;
 const principalEmail = resolvePrincipalEmail();
+const hostedAppUrls = parseHostedAppUrlsJson(process.env.LAUNCHPAD_HOSTED_APP_URLS_JSON);
 const runtimeManager = createRuntimeManager({ companiesRoot, launchpadRoot });
 const moduleFolderOpener = createModuleFolderOpener({ companiesRoot, getAppsResponse: buildAppsResponse });
 const gitStatusService = createGitStatusService();
@@ -135,6 +141,7 @@ async function buildAppsResponseUncached({ includeGit = false } = {}) {
     gitStatusService,
     includeGit,
   });
+  response.apps = response.apps.map((app) => projectHostedAppUrl(app, hostedAppUrls));
   const nextLogoPaths = new Map();
   await Promise.all((response.organizations ?? []).map(async (organization) => {
     const [logoPath, theme] = await Promise.all([
@@ -717,30 +724,58 @@ async function handleRuntimeRoute(request, route) {
   try {
     const runtimeOptions = request.method === "POST" ? await runtimeRequestOptions(request) : {};
     if (route.action === "health" && (request.method === "GET" || request.method === "POST")) {
-      return jsonResponse(await runtimeManager.health(route.appId, runtimeOptions));
+      return jsonResponse(projectHostedRuntimePayload(
+        await runtimeManager.health(route.appId, runtimeOptions),
+        route.appId,
+        hostedAppUrls,
+      ));
     }
     if (route.action === "logs" && request.method === "GET") {
       return jsonResponse(await runtimeManager.logs(route.appId));
     }
     if ((route.action === "install" || route.action === "repair") && request.method === "POST") {
-      return jsonResponse(await appsResponseCache.runMutation(() =>
-        runtimeManager.install(route.appId, { action: route.action, ...runtimeOptions })));
+      return jsonResponse(projectHostedRuntimePayload(
+        await appsResponseCache.runMutation(() =>
+          runtimeManager.install(route.appId, { action: route.action, ...runtimeOptions })),
+        route.appId,
+        hostedAppUrls,
+      ));
     }
     if (route.action === "start" && request.method === "POST") {
-      return jsonResponse(await appsResponseCache.runMutation(() => runtimeManager.start(route.appId, runtimeOptions)));
+      return jsonResponse(projectHostedRuntimePayload(
+        await appsResponseCache.runMutation(() => runtimeManager.start(route.appId, runtimeOptions)),
+        route.appId,
+        hostedAppUrls,
+      ));
     }
     if (route.action === "switch" && request.method === "POST") {
-      return jsonResponse(await appsResponseCache.runMutation(() => runtimeManager.switchApp(route.appId, runtimeOptions)));
+      return jsonResponse(projectHostedRuntimePayload(
+        await appsResponseCache.runMutation(() => runtimeManager.switchApp(route.appId, runtimeOptions)),
+        route.appId,
+        hostedAppUrls,
+      ));
     }
     // One-click builder chain (CAC-0044): ensure install → ensure start → URL.
     if (route.action === "open" && request.method === "POST") {
-      return jsonResponse(await appsResponseCache.runMutation(() => runtimeManager.open(route.appId, runtimeOptions)));
+      return jsonResponse(projectHostedRuntimePayload(
+        await appsResponseCache.runMutation(() => runtimeManager.open(route.appId, runtimeOptions)),
+        route.appId,
+        hostedAppUrls,
+      ));
     }
     if (route.action === "stop" && request.method === "POST") {
-      return jsonResponse(await appsResponseCache.runMutation(() => runtimeManager.stop(route.appId, runtimeOptions)));
+      return jsonResponse(projectHostedRuntimePayload(
+        await appsResponseCache.runMutation(() => runtimeManager.stop(route.appId, runtimeOptions)),
+        route.appId,
+        hostedAppUrls,
+      ));
     }
     if (route.action === "restart" && request.method === "POST") {
-      return jsonResponse(await appsResponseCache.runMutation(() => runtimeManager.restart(route.appId, runtimeOptions)));
+      return jsonResponse(projectHostedRuntimePayload(
+        await appsResponseCache.runMutation(() => runtimeManager.restart(route.appId, runtimeOptions)),
+        route.appId,
+        hostedAppUrls,
+      ));
     }
     return jsonResponse({ error: "method_not_allowed" }, 405);
   } catch (error) {
