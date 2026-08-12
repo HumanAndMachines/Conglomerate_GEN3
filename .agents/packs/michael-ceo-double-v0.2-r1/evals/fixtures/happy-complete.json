@@ -1,0 +1,32 @@
+{
+  "fixture_id": "happy-complete",
+  "synthetic": true,
+  "classification": "ANONYMIZED_TEST",
+  "organization_id": "lumbio",
+  "scope_id": "synthetic-project-a",
+  "cutoff_at": "2026-01-15T12:00:00Z",
+  "sources": [
+    {
+      "source_ref": "fixture://happy-complete/contract",
+      "observed_at": "2026-01-15T11:00:00Z",
+      "contracted_net_revenue": "1500000.00",
+      "currency": "CZK",
+      "tax_mode": "NET"
+    },
+    {
+      "source_ref": "fixture://happy-complete/costs",
+      "observed_at": "2026-01-15T11:01:00Z",
+      "actual_direct_cost": "420000.00",
+      "committed_direct_cost": "310000.00",
+      "etc_direct_cost": "170000.00",
+      "currency": "CZK",
+      "tax_mode": "NET"
+    },
+    {
+      "source_ref": "fixture://happy-complete/milestones",
+      "observed_at": "2026-01-15T11:02:00Z",
+      "due_weight": "10.00",
+      "completed_on_time_with_evidence_weight": "8.00"
+    }
+  ]
+}

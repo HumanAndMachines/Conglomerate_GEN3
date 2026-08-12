@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "michael.ceo_double.decision_card.v1",
+  "type": "object",
+  "required": ["classification", "decision", "owner", "deadline", "impact", "confidence", "source_refs"],
+  "properties": {
+    "classification": {"enum": ["FACT", "ASSUMPTION", "INTERPRETATION", "RECOMMENDATION", "CEO_DECISION_REQUIRED"]},
+    "decision": {"type": "string"},
+    "owner": {"type": "string"},
+    "deadline": {"type": "string"},
+    "impact": {"type": "string"},
+    "confidence": {"enum": ["HIGH", "MEDIUM", "LOW", "UNKNOWN"]},
+    "source_refs": {"type": "array", "items": {"type": "string", "pattern": "^fixture://"}}
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,27 @@
+{
+  "schema_version": "michael.ceo_double.retention.v1",
+  "policy_version": "0.2.0-r1",
+  "status": "approved_design_not_active",
+  "classes": [
+    {
+      "id": "raw_cache",
+      "ttl": "24h",
+      "storage": "boundary-isolated encrypted runtime only",
+      "current_storage": "none"
+    },
+    {
+      "id": "normalized_refs",
+      "ttl": "90d",
+      "content": "source refs, checksums, DQ and lineage; no raw bodies",
+      "current_storage": "none"
+    },
+    {
+      "id": "audit_metadata",
+      "ttl": "24mo",
+      "content": "policy decisions, hashes, terminal states; no raw source content",
+      "current_storage": "none"
+    }
+  ],
+  "deletion": "expiry plus explicit principal deletion request",
+  "gbrain_auto_promotion": false
+}

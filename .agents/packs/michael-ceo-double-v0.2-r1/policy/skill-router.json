@@ -1,0 +1,31 @@
+{
+  "schema_version": "michael.ceo_double.skill_router.v1",
+  "policy_version": "0.2.0-r1",
+  "mode": "deterministic_deny_by_default",
+  "currently_allowed_runtime_skills": [],
+  "build_review_skills": ["agent-builder"],
+  "denied_mutating_gbrain_skills": ["brain-ops", "capture", "enrich", "reports"],
+  "input_fields": [
+    "decision_type",
+    "scope_id",
+    "organization_id",
+    "boundary",
+    "evidence_classes",
+    "risk_class",
+    "pack_version",
+    "available_skill_registry_checksum"
+  ],
+  "output_fields": [
+    "allowed_skills",
+    "denied_skills",
+    "reason",
+    "fallback",
+    "permission_delta"
+  ],
+  "invariants": [
+    "permission_delta must equal NONE",
+    "skill may narrow but never widen access",
+    "missing or checksum-changed skill => safe baseline or BLOCKED",
+    "skill, model, prompt, tool or policy change => full regression"
+  ]
+}

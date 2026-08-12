@@ -1,0 +1,15 @@
+{
+  "fixture_id": "failure-resume-suite",
+  "synthetic": true,
+  "classification": "ANONYMIZED_TEST",
+  "scenarios": [
+    {"source_ref": "fixture://failure-timeout", "failure": "timeout", "retryable": true, "max_retries": 2},
+    {"source_ref": "fixture://failure-rate-limit", "failure": "rate_limit", "retryable": true, "max_retries": 2},
+    {"source_ref": "fixture://failure-auth-expired", "failure": "auth_expired", "retryable": false, "expected": "BLOCKED"},
+    {"source_ref": "fixture://failure-access-denied", "failure": "access_denied", "retryable": false, "expected": "BLOCKED"},
+    {"source_ref": "fixture://failure-schema-drift", "failure": "schema_drift", "retryable": false, "expected": "PARTIAL"},
+    {"source_ref": "fixture://lost-heartbeat", "heartbeat_gap_seconds": 91, "expected": "FAILED_OR_PARTIAL"},
+    {"source_ref": "fixture://budget-exhaustion", "tool_calls": 41, "limit": 40, "expected": "PARTIAL"}
+  ],
+  "resume_states": ["PREFLIGHT", "COLLECTING", "NORMALIZING", "RECONCILING", "ANALYZING", "VALIDATING", "RENDERING"]
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "michael.ceo_double.source_record.v1",
+  "type": "object",
+  "required": ["source_ref", "observed_at", "organization_id", "scope_id", "classification"],
+  "properties": {
+    "source_ref": {"type": "string", "pattern": "^fixture://"},
+    "observed_at": {"type": "string", "format": "date-time"},
+    "organization_id": {"type": "string"},
+    "scope_id": {"type": "string"},
+    "classification": {"type": "string"}
+  },
+  "additionalProperties": true
+}

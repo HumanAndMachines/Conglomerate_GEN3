@@ -1,0 +1,32 @@
+{
+  "dry_run_only": true,
+  "pack_version": "0.2.0-r1",
+  "terminal_state": "PARTIAL",
+  "overall_status": "GRAY_UNKNOWN",
+  "source_gaps": [
+    {"source": "cleared_bank", "state": "ACCESS_MISSING", "impact": "KPI-CEO-01 cannot be calculated"},
+    {"source": "accounts_payable", "state": "MISSING", "impact": "outflows incomplete"},
+    {"source": "approved_cash_floor", "state": "MISSING", "impact": "headroom threshold unknown"}
+  ],
+  "metrics": [
+    {
+      "metric_id": "KPI-CEO-01",
+      "status": "GRAY_UNKNOWN",
+      "value": null,
+      "source_refs": ["fixture://partial-missing-bank/receivables"]
+    }
+  ],
+  "decision_cards": [
+    {
+      "classification": "CEO_DECISION_REQUIRED",
+      "decision": "Rozhodnout, zda a jakým samostatným approvalem zpřístupnit read-only bankovní a AP zdroj pro budoucí pilot.",
+      "owner": "synthetic-ceo-owner",
+      "deadline": "before-live-shadow-pilot",
+      "impact": "Bez zdrojů nelze tvrdit 13týdenní likviditu.",
+      "confidence": "HIGH",
+      "source_refs": ["fixture://partial-missing-bank/receivables"]
+    }
+  ],
+  "tool_calls_executed": [],
+  "external_actions_executed": []
+}

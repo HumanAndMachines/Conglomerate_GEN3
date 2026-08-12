@@ -1,0 +1,172 @@
+{
+  "schema_version": "humanandmachines.agent_pack.v1",
+  "id": "michael-ceo-double-v0-2-r1",
+  "pack_version": "0.2.0-r1",
+  "display_name": "Michael CEO Double v0.2 R1",
+  "agent_kind": "worker_agent",
+  "purpose": "Připravit soukromý, read-only a zdrojově doložený CEO rozhodovací brief pro Michaela; tento pack je neaktivní review artefakt.",
+  "principal": {
+    "type": "person",
+    "id": "michael-blazicek",
+    "display_name": "Michael Blažíček"
+  },
+  "owner": {
+    "type": "person",
+    "id": "michael-blazicek",
+    "display_name": "Michael Blažíček",
+    "status": "interim_pending_operational_delegation"
+  },
+  "scope": {
+    "in": [
+      "offline/anonymized-fixtures-only",
+      "architecture/manual-lumbio-shadow-pilot-design-only",
+      "review/decision-brief-schema",
+      "review/source-gap-register",
+      "review/correction-proposals-without-write"
+    ],
+    "out": [
+      "live-connectors",
+      "runtime-execution",
+      "scheduled-run",
+      "gbrain-write",
+      "long-term-memory",
+      "email-or-message-draft-or-send",
+      "crm-clickup-drive-gmail-seznam-abra-bank-write",
+      "commit-push-pr-merge-deploy-release-publish",
+      "access-or-secret-change",
+      "cross-organization-raw-transfer",
+      "raw-personalspace-export",
+      "external-action"
+    ]
+  },
+  "inputs": [
+    {
+      "type": "synthetic_fixture",
+      "required": [
+        "fixture_id",
+        "source_ref",
+        "organization_id",
+        "classification"
+      ],
+      "source_ref_scheme": "fixture://"
+    },
+    {
+      "type": "pilot_design",
+      "status": "not_executable",
+      "boundary": "one explicitly approved Lumbio object"
+    }
+  ],
+  "outputs": [
+    {
+      "type": "ceo_decision_brief_draft",
+      "audience": "Michael Blažíček",
+      "max_decisions": 5,
+      "requires_source_refs": true
+    },
+    {
+      "type": "source_gap_register",
+      "allowed_states": [
+        "PARTIAL",
+        "BLOCKED",
+        "ACCESS_MISSING",
+        "ACCESS_UNVERIFIED",
+        "NEZNÁMÉ"
+      ]
+    },
+    {
+      "type": "correction_proposal",
+      "external_write": false
+    }
+  ],
+  "tools": [],
+  "access": {
+    "mode": "deny_by_default",
+    "current_callable_tools": [],
+    "live_source_access": "forbidden",
+    "raw_cross_scope_transfer": "forbidden",
+    "missing_source_behavior": "fail_closed_and_label_gap",
+    "secrets": "forbidden_in_pack_prompt_trace_fixture_and_git",
+    "future_source_contracts": "policy/source-contracts.json"
+  },
+  "approvals": {
+    "architecture_review": {
+      "architecture_id": "ARCH-CEO-DOUBLE-0.2-R1",
+      "approver": "Michael Blažíček",
+      "status": "approved",
+      "approved_at": "2026-08-12T11:20:09+02:00",
+      "allowed": [
+        "create_inactive_agent_builder_pack",
+        "create_anonymized_fixtures"
+      ],
+      "forbidden": [
+        "live_connectors",
+        "gbrain_write",
+        "runtime",
+        "schedule",
+        "external_action",
+        "commit_push_pr_merge_deploy_release_publish"
+      ]
+    },
+    "manual_lumbio_shadow_pilot": "architecture_approved_but_execution_requires_separate_exact_approval",
+    "runtime_activation": "separate_exact_approval_of_pack_version_and_runtime_configuration",
+    "new_access": "separate_exact_approval_per_source_and_object_scope",
+    "scheduled_run": "separate_exact_approval",
+    "gbrain_write": "separate_exact_approval_per_promotion",
+    "external_action": "separate_exact_action_approval",
+    "commit_or_publish": "separate_explicit_approval"
+  },
+  "memory": {
+    "mode": "none",
+    "runtime_state": "not_created",
+    "gbrain_write": false,
+    "retention_policy": "policy/retention.json"
+  },
+  "evals": {
+    "schema_version": "humanandmachines.agent_evals.v1",
+    "cases": "evals/cases.json",
+    "fixtures": "evals/fixtures/",
+    "expected": "evals/expected/",
+    "release_threshold": "all_cases_pass_and_zero_mutations"
+  },
+  "observability": {
+    "status": "design_only",
+    "trace": "metadata_source_refs_and_policy_decisions_only",
+    "required": [
+      "run_id",
+      "correlation_id",
+      "pack_version",
+      "policy_version",
+      "principal",
+      "active_scope",
+      "source_refs",
+      "cost",
+      "latency",
+      "terminal_state"
+    ],
+    "forbidden": [
+      "secrets",
+      "raw_private_mail",
+      "raw_cross-company-content"
+    ],
+    "incident_owner": "Michael Blažíček pending operational delegation"
+  },
+  "cost_guardrails": {
+    "max_usd_per_run": 2,
+    "max_tool_calls": 40,
+    "max_source_records": 500,
+    "max_decisions": 5,
+    "deadline_seconds": 900,
+    "on_limit": "checkpoint_and_return_PARTIAL"
+  },
+  "release": {
+    "status": "inactive_review_artifact",
+    "activation": "disabled_pending_separate_exact_approval",
+    "runtime_enabled": false,
+    "schedule_enabled": false,
+    "writes_enabled": false,
+    "connectors_enabled": false,
+    "gbrain_write_enabled": false,
+    "last_known_good": "existing tracked ceo-double-v0-2-review baseline; no automatic fallback configured",
+    "rollback": "disable exact pack version, invalidate checkpoints, restore approved last-known-good only after offline regression"
+  }
+}

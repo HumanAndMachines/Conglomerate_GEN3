@@ -1,0 +1,22 @@
+{
+  "schema_version": "michael.ceo_double.source_contracts.v1",
+  "policy_version": "0.2.0-r1",
+  "default": "deny",
+  "currently_enabled": [],
+  "reviewed_future_sources": [
+    {"id": "conglomerate-metadata", "mode": "read-only", "activation": "separate_exact_approval", "authority": "governance_and_map_only"},
+    {"id": "lumbio-github", "mode": "read-only", "activation": "separate_exact_approval", "authority": "current-main organizational evidence"},
+    {"id": "lumbio-clickup", "mode": "read-only", "activation": "exact_object_ids_required"},
+    {"id": "lumbio-hubspot", "mode": "read-only", "activation": "portal_object_property_allowlist_required"},
+    {"id": "lumbio-gmail", "mode": "metadata-first-read-only", "activation": "exact_mailbox_and_thread_scope_required"},
+    {"id": "lumbio-abra", "mode": "approved-snapshot-read-only", "activation": "snapshot_contract_and_reconciliation_owner_required"},
+    {"id": "bank", "mode": "read-only", "activation": "separate_bank_account_approval_required"},
+    {"id": "gbrain", "mode": "read-only-context", "activation": "separate_approval", "authority": "private_context_not_company_finance_source"}
+  ],
+  "failure_policy": {
+    "auth_or_access_denied": "no_retry_BLOCKED",
+    "transient_read": "max_2_retries",
+    "schema_mismatch": "no_retry_PARTIAL",
+    "missing": "never_coerce_to_zero"
+  }
+}

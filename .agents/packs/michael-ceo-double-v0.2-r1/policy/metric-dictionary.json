@@ -1,0 +1,54 @@
+{
+  "schema_version": "michael.ceo_double.metrics.v1",
+  "definition_version": "0.2.0-r1",
+  "statuses": [
+    "FRESH",
+    "STALE",
+    "MISSING",
+    "CONFLICTED",
+    "RECONCILED",
+    "PARTIAL",
+    "FAILED",
+    "NOT_APPLICABLE",
+    "GREEN",
+    "ORANGE",
+    "RED",
+    "GRAY_UNKNOWN"
+  ],
+  "metrics": [
+    {
+      "metric_id": "KPI-CEO-01",
+      "name": "13týdenní likviditní headroom",
+      "grain": "legal_entity × bank_account × week × scenario × original_currency",
+      "formula": "min_t(opening_cleared_cash + eligible_inflows - eligible_outflows - approved_cash_floor)",
+      "required": ["cleared_bank", "accounts_payable", "accounts_receivable", "cash_event_ledger", "payroll", "taxes", "approved_cash_floor"],
+      "unknown_rule": "missing required source => PARTIAL/GRAY_UNKNOWN",
+      "decision": "inkaso, odklad nákupu, financování, investice, nábor"
+    },
+    {
+      "metric_id": "KPI-CEO-02",
+      "name": "Očekávaná contribution margin aktivního portfolia",
+      "grain": "commercial_object/project × scope × legal_entity × original_currency × snapshot",
+      "formula": "(contracted_net_revenue - actual_direct_cost - committed_direct_cost - ETC_direct_cost) / contracted_net_revenue",
+      "required": ["contracted_net_revenue", "actual_direct_cost", "committed_direct_cost", "ETC_direct_cost"],
+      "unknown_rule": "unknown or zero revenue => UNKNOWN, never 0%; critical ETC missing => not green",
+      "decision": "change order, repricing, redesign, stop/go"
+    },
+    {
+      "metric_id": "KPI-CEO-03",
+      "name": "Spolehlivost realizace",
+      "grain": "milestone × project × scope",
+      "formula": "sum(weight of mandatory milestones completed by approved baseline date with acceptance evidence) / sum(weight of mandatory milestones due in window)",
+      "required": ["approved_baseline", "mandatory_milestones", "acceptance_evidence"],
+      "unknown_rule": "missing acceptance evidence cannot count as completed",
+      "decision": "kapacita, eskalace blockeru, termín/scope"
+    }
+  ],
+  "money_invariants": [
+    "decimal_not_float",
+    "preserve_original_currency",
+    "separate_net_vat_gross",
+    "no_fx_without_approved_source"
+  ],
+  "lineage_invariant": "deal-order-milestone-invoice-payment may represent one economic commitment and must not be double-counted"
+}
