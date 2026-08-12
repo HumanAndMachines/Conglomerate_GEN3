@@ -155,11 +155,12 @@ export function organizationRepositoryPathCasingIssue({ declaredPath, observedPa
   return `"${declaredPath}" neodpovídá přesnému psaní existující cesty "${observedPath}"`;
 }
 
-// Lokální cross-file gate Organization mountu. Schémata žijí v
-// HumanAndMachines core, ale Launchpad/Doctor nesmí pro základní bezpečnostní
-// invarianty záviset na jiném checkoutu nebo runtime importu. Proto zde držíme
-// malou read-only kontrolu identity, kanonických cest, Team referencí a Git
-// materializace. Platí shodně pro běžnou Organizaci i marker template mount.
+// Lokální cross-file gate Organization mountu. Plný manifestový kontrakt žije
+// s vlastníkem Organization/template vrstvy, ale Launchpad/Doctor nesmí pro
+// základní bezpečnostní invarianty záviset na jiném checkoutu nebo runtime
+// importu. Proto zde držíme malou read-only kontrolu identity, kanonických cest,
+// Team referencí a Git materializace. Platí shodně pro běžnou Organizaci i
+// marker template mount.
 async function organizationMountContractIssues({ organizationRoot, label, warnings }) {
   const issues = organizationMountStructureIssues({ organizationRoot, label });
   if (issues.length > 0) return issues;

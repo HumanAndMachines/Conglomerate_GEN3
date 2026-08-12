@@ -1,5 +1,5 @@
 // Root-side lane společného surfacu doctorů (decision 0118 v
-// Rozjedeme-ai/HumanAndMachines).
+// `manual/decision-register.md`).
 //
 // PROČ TENHLE SOUBOR EXISTUJE. Doctor není jeden program. Root doctor v kořeni
 // Conglomerate nese *standardizované* kontroly, které platí pro každý checkout;
@@ -18,13 +18,14 @@
 // nefungovala pro mount, který není Node projekt, a z chybějícího doctora by
 // udělala ticho místo vady — proto discovery jede z deklarace v manifestu.
 //
-// PROČ TU BYDLÍ SVÁZÁNÍ IDENTITY. Vendorovaný surface je bajt na bajt kopie
-// z HumanAndMachines (`schemas/doctor-surface-vendor.json`) a musí vyhovět i
+// PROČ TU BYDLÍ SVÁZÁNÍ IDENTITY. Sdílený surface má vlastní integrity baseline
+// (`schemas/doctor-surface-vendor.json`) a musí vyhovět i
 // doctorovi, který běží SÁM — na Buddy VPS nad personalspace doctorem žádný
 // rodič není, takže po něm nikdo nemůže chtít, aby dokazoval, čí zdraví hlásí.
 // Root ale dítě spustil kvůli konkrétnímu mountu, takže si tu povinnost přidává
 // sám: `runBoundChildDoctor` níž. Je to politika rootu, ne kontrakt všech
-// doctorů; kdyby seděla ve vendorované kopii, byl by z ní fork surfacu.
+// doctorů; kdyby seděla ve sdíleném kontraktu, byl by z něj consumer-specific
+// fork.
 //
 // KONKRÉTNÍ SCÉNÁŘ. Organizace si do `company.gen3.json` napíše vlastní doctor,
 // který hlídá její vlastní datový repozitář. Za měsíc někdo přejmenuje skript a
@@ -65,9 +66,10 @@ const IGNORED_MOUNT_DIRS = new Set([
 export const CHILDREN_CHECK_ID = "doctor.children";
 
 // Shodné s `doctor.timeout_ms.minimum` v `schemas/personal.gen3.schema.json`.
-// `company.gen3.json` se v tomhle repu proti schématu nevaliduje (jeho schéma
-// vlastní HumanAndMachines), takže pro org mounty je tahle mez JEDINÝ vynucený
-// zdroj — proto se kontroluje tady, ne jen v manifestovém schématu.
+// `company.gen3.json` se v tomhle repu proti plnému Organization schématu
+// nevaliduje (vlastní ho Organization/template kontrakt), takže pro org mounty
+// je tahle mez JEDINÝ vynucený zdroj — proto se kontroluje tady, ne jen
+// v manifestovém schématu.
 export const MIN_CHILD_TIMEOUT_MS = 1000;
 
 /**
@@ -209,7 +211,7 @@ function demoteToScopeMismatch(child, failure) {
  * běžícího doctora správně — na Buddy VPS nad ním žádný rodič není a nemá koho
  * přesvědčovat. Root ho ale spustil KVŮLI KONKRÉTNÍMU MOUNTU, takže si tu
  * povinnost přidává sám, a přidává si ji tady: je to jeho politika, ne kontrakt
- * všech doctorů, a ve vendorované kopii surfacu by z ní byl fork.
+ * všech doctorů, a ve sdíleném surfacu by z ní byl consumer-specific fork.
  *
  * Bez téhle vazby stačí vrátit platný v3 report o ČEMKOLI a root pod tímhle
  * mountem ohlásí zdraví cizího checkoutu. Druh scope proto určuje LANE, ve které

@@ -5,7 +5,7 @@ legacy GEN2 workspace shape into a GEN3 Organization checkout. It compares two
 explicit paths supplied by the operator and reports which files need review,
 porting, skipping, or mechanism extraction.
 
-The script is intentionally generic: the shared `HumanAndMachines/Conglomerate_GEN3`
+The script is intentionally generic: the shared `HumanAndMachines/Lazurio`
 root must not embed one Organization's paths, people, ledgers, records, ports, or
 business facts. Any local pair list belongs in an ignored/local file outside the
 shared source-of-truth, or is passed explicitly at runtime.
@@ -119,7 +119,7 @@ legacy Organization proof
 → other Organizations / clients consume the generic mechanism
 ```
 
-Before writing to `HumanAndMachines/Conglomerate_GEN3`, ask:
+Before writing to `HumanAndMachines/Lazurio`, ask:
 
 1. Would this be true for another Organization with different people, domain,
    ports, data and access boundaries?

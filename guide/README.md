@@ -59,6 +59,6 @@ Pokud Guide učí pravidlo, které není v autoritativní vrstvě, nejdřív opr
 
 ## GEN2 → GEN3 pravidlo pro Guide
 
-Při migraci Organization z GEN2 do GEN3 se obecný top-level `guide/` z Organization repozitáře **maže**. Nahrazuje ho sdílený `HumanAndMachines/Conglomerate_GEN3/guide`.
+Při migraci Organization z GEN2 do GEN3 se obecný top-level `guide/` z Organization repozitáře **maže**. Nahrazuje ho sdílený `HumanAndMachines/Lazurio/guide`.
 
 Organization může dál mít vlastní onboarding obsah, ale jen pokud je jasně organization-specific a žije ve správné Organization vrstvě (`manual/`, knowledgebase, role docs apod.).

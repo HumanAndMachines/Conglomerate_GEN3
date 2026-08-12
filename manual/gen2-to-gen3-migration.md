@@ -713,7 +713,7 @@ Kanonický blok „Model spolupráce" v Organization `AGENTS.md` se **seeduje u�
 tady**, ne až post-cutover: vlož ho VERBATIM z template mountu (reference
 checkout, ne wired remote) a ověř md5 bloku (od nadpisu
 `## Model spolupráce: Principál a Agenti` po další `## `) proti template. Blok je
-čistě managed (HTML komentář sám říká, že znění se navrhuje v HumanAndMachines),
+čistě managed (HTML komentář ukazuje na reviewovaný Lazurio source),
 Organizace ho nemá jak legitimně customizovat, takže seed je nedestruktivní a
 odpovídá stavu sourozeneckých Organizací.
 

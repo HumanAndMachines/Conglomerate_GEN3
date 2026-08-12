@@ -67,8 +67,8 @@ test("manifestový pattern pro app.id nepovoluje velká písmena", async () => {
 
 test("doctor surface pattern v repozitáři se shoduje s tím, proti čemu se tady testuje", async () => {
   // Žádná tolerance chybějícího souboru: `doctor-report.schema.json` je
-  // vendorovaná kopie surfacu z HumanAndMachines a v tomhle repu je od merge
-  // PR #63. Kdyby se test uměl kolem chybějícího souboru „prosmýknout",
+  // lokální kanonický surface s hlídanou adoption baseline. Kdyby se test uměl
+  // kolem chybějícího souboru „prosmýknout",
   // vypadalo by jeho přeskočení stejně jako splněná kontrola.
   const doctorSchema = await readJson(doctorSchemaPath);
   const pattern = doctorSchema.properties?.checks?.items?.properties?.id?.pattern

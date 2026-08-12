@@ -2,7 +2,7 @@
 
 Sdílený framework repo pro **HumanAndMachine GEN3** (dříve pracovní název **Conglomerate GEN3**): jedno místo na počítači člověka nebo AI kolegy, odkud se načítá jeho osobní kontext a více GitHub-like Organizací.
 
-Tenhle root není jedna firma ani klientské workspace repo. Je to společný framework, který vyvíjí Rozjedeme.ai a který je na GitHubu hostovaný jako `HumanAndMachines/Conglomerate_GEN3`, protože organizace `HumanAndMachine` byla zabraná. Drží sdílený Launchpad, Guide, šablony, manuály, privátní `personalspace/` mountpoint a lokální mountpointy Organizací; Organizace v něm zůstávají oddělené access hranice a vlastní git repozitáře.
+Tenhle root není jedna firma ani klientské workspace repo. Je to společný framework, který vyvíjí Rozjedeme.ai a který je na GitHubu hostovaný jako `HumanAndMachines/Lazurio`, protože organizace `HumanAndMachine` byla zabraná. Drží sdílený Launchpad, Guide, šablony, manuály, privátní `personalspace/` mountpoint a lokální mountpointy Organizací; Organizace v něm zůstávají oddělené access hranice a vlastní git repozitáře.
 
 Cílové základy budoucího `Lazurio/Lazurio` drží
 [ARCHITECTURE.md](ARCHITECTURE.md): čtyři základní pojmy `Owner`, `Machine`,
@@ -108,7 +108,7 @@ Doctor a onboarding, zatímco konkrétní obsah žije v samostatných privátní
 repozitářích jejich vlastníků. Instance vlastníka může plnohodnotně fungovat bez
 Buddyho; Buddy je volitelná navazující vazba.
 
-`HumanAndMachines/Conglomerate_GEN3` zůstává veřejný direct-pull framework a
+`HumanAndMachines/Lazurio` zůstává veřejný direct-pull framework a
 **není GitHub template**. Pro založení osobního prostoru bude po
 public-readiness gate `CAC-0071` sloužit veřejný GitHub template
 `HumanAndMachines/PersonalspaceTemplate_GEN3`; do té doby zůstává template
@@ -122,7 +122,8 @@ Lokální mount je `personalspace/<github-login>_GEN3/`. Gbrain software se
 instaluje z veřejného `garrytan/gbrain`, ale osobní Markdown paměť patří do
 odděleného privátního data repa vlastníka mountovaného v `gbrain/`. Detailní
 custody a agentní pravidla drží [personalspace/README.md](personalspace/README.md);
-kanonický upstream model drží HumanAndMachines decisions 0079/0080 na `main`.
+kanonický model drží decisions 0079/0080 v
+[lokálním registru](manual/decision-register.md).
 Implementační self-service runbook je
 [manual/create-personalspace.md](manual/create-personalspace.md).
 
@@ -130,7 +131,7 @@ Na jedné mašině se materializuje pouze Personalspace jejího Principála,
 určený v gitignored `launchpad.gen3.local.json`. Cizí Personalspace se
 nemountuje ani nezobrazuje; historický checkout je Doctor failure a musí se
 odmountovat a jeho GitHub collaborator granty odebrat podle runbooku v
-PersonalspaceTemplate_GEN3 (HumanAndMachines decision 0091).
+PersonalspaceTemplate_GEN3 (decision 0091 v `manual/decision-register.md`).
 
 Root příkaz je připravený fail-closed. Dokud upstream public-readiness audit
 drží template jako private, zastaví se ještě v preflightu a nic nevytvoří. Až
@@ -181,7 +182,7 @@ organizations/ClientX_GEN3/
 ```
 
 Tyhle adresáře jsou na konkrétní mašině samostatné git repozitáře Organizací a
-jsou v root repu ignorované. Na GitHubu v `HumanAndMachines/Conglomerate_GEN3`
+jsou v root repu ignorované. Na GitHubu v `HumanAndMachines/Lazurio`
 má být uvnitř `organizations/` trackovaný pouze `README.md`. Modulové template
 a scaffold zdroje patří do `templates/`; pracovní Organization template smí
 být samostatný nested repo checkout pouze uvnitř `productionspace/` spravující

@@ -4,7 +4,7 @@
 
 ## Git pravidlo
 
-V root repozitáři `HumanAndMachines/Conglomerate_GEN3` je uvnitř této složky povolený a trackovaný pouze tento soubor:
+V root repozitáři `HumanAndMachines/Lazurio` je uvnitř této složky povolený a trackovaný pouze tento soubor:
 
 ```text
 organizations/README.md
@@ -33,10 +33,10 @@ organizations/<org>/
 └── productionspace/        # org-level repa mimo workspace moduly
 ```
 
-- Všechny workspace moduly Organizace žijí fyzicky v jedné ploché složce `workspace/`; složky `workspaces/<slug>/` se nezavádějí (decision 0041 v HumanAndMachines/docs/decisions/).
+- Všechny workspace moduly Organizace žijí fyzicky v jedné ploché složce `workspace/`; složky `workspaces/<slug>/` se nezavádějí (decision 0041 v `../manual/decision-register.md`).
 - Pojmenované Workspaces („Oddělení“/„Kanceláře“ — digitální kancelář jednoho týmu NEBO značky/venture) s vlastním doctorem, pravidly a access hranicí jsou logická deklarace v manifestu (`modules[].workspace` / `module_slots[].workspace`), ne adresář; deklarace je autorita a UI grupuje podle ní.
 - Modul patří právě do jednoho Workspace; chybějící deklarace = default Workspace se slugem `workspace`. Hosted vzor `<modul>.<workspace>.<doména>` se generuje z deklarace.
-- `productionspace/` drží org-level repozitáře, které nejsou workspace moduly (např. firmware, connect, monorepo). Každé takové repo si definuje vlastní pravidla (branch model, release proces); doctor u nich vynucuje jen bezpečné minimum, na rozdíl od jednotného kontraktu workspace modulů (decision 0041 body 6–7 v HumanAndMachines/docs/decisions/).
+- `productionspace/` drží org-level repozitáře, které nejsou workspace moduly (např. firmware, connect, monorepo). Každé takové repo si definuje vlastní pravidla (branch model, release proces); doctor u nich vynucuje jen bezpečné minimum, na rozdíl od jednotného kontraktu workspace modulů (decision 0041 body 6–7 v `../manual/decision-register.md`).
 
 `personalspace/` je záměrně vedle `organizations/`, protože patří na osobní GitHub účet člověka nebo AI kolegy, ne do firemní GitHub organizace.
 

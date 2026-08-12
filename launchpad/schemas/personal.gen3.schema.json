@@ -99,7 +99,8 @@
           ],
           "properties": {
             "github_repo": {
-              "const": "HumanAndMachines/Buddy"
+              "const": "HumanAndMachines/Lazurio",
+              "description": "Veřejný runtime source; konkrétní instalace musí být resident artefakt s profilem buddy, ne checkout samostatného Buddy repa."
             },
             "deployment_target": {
               "const": "owner-dedicated-personalspace-vps",

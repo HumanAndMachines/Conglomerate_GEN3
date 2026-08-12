@@ -1,38 +1,37 @@
 {
-  "schema_version": "humanandmachines.vendored-doctor-surface.v1",
-  "what_this_is": "Provenience vendorované kopie společného surfacu doctorů (decision 0118). Conglomerate je samostatné repo bez build-time závislosti na HumanAndMachines, takže surface se sem kopíruje. Tenhle záznam říká ODKUD, v jakém stavu a S JAKOU odchylkou — a `src/doctor-surface-vendor.test.mjs` z něj dělá mechanismus místo prózy: tichá editace vendorovaného souboru shodí test.",
-  "what_this_is_not": "NENÍ to kontrola proti živému upstreamu. Testy nechodí na síť, takže tenhle záznam pozná jen drift PROTI SOBĚ (někdo sáhl na vendorovaný soubor a nepřiznal to). Jestli se mezitím pohnul HumanAndMachines, se odsud zjistit nedá; to hlídá proces, ne test.",
-  "no_local_banner": "Vendorované soubory schválně NENESOU vlastní hlavičku „tohle je kopie\". Jedna vysvětlující věta navíc by z nich udělala soubory, které se od upstreamu liší, a přesně tím by zmizel jediný silný důkaz, který tenhle záznam umí podat: otisk sedí bajt na bajt. Varováním je tenhle záznam a test nad ním, ne komentář v souboru.",
-  "upstream": {
-    "repository": "Rozjedeme-ai/HumanAndMachines",
-    "pull_request": 262,
+  "schema_version": "lazurio.doctor-surface-integrity.v1",
+  "what_this_is": "Integrity a adoption baseline společného surfacu doctorů (decision 0118). Veřejný Lazurio source je současná autorita; historicky pojmenovaný `src/doctor-surface-vendor.test.mjs` hlídá, že tichá editace kanonického souboru bez aktualizace kontraktu shodí test.",
+  "what_this_is_not": "NENÍ to kontrola proti jiné živé autoritě ani síťový test. Pozná drift proti uloženému baseline receipt; kompatibilitu změny drží review a CI stejného Lazurio PR.",
+  "no_local_banner": "Soubory schválně NENESOU vlastní hlavičku o adoption baseline. Varováním a reprodukovatelným otiskem je tento záznam a test nad ním, ne komentář vložený do každého kontraktního souboru.",
+  "baseline": {
+    "repository": "HumanAndMachines/Lazurio",
     "ref": "main",
-    "commit": "c60e26996d94114d3f84836d7ec0f1f348605746",
-    "note": "Surface přišel na main mergem PR #262 (merge commit bbdc0f7bca189012edba8eaf19aa1ba71efa3daf, autorský commit 6870b5d3eb25b3e7d8685bfbcc33b7eed229912c). Zdejší kopie je vzatá z main po mergi PR #261 (c60e2699); ten se surfacu nedotkl, takže bajty jsou tytéž jako v bbdc0f7b."
+    "commit": "737642924304407c2d575a51ba1b7987aeb96dc9",
+    "note": "Authority adoption baseline na veřejném Lazurio main před tímto cutover PR. Starší importní provenienci zachovává Git historie, ale není živou runtime ani dokumentační závislostí."
   },
-  "upstream_reconciliation_required": false,
+  "baseline_reconciliation_required": false,
   "files": [
     {
       "path": "src/doctor-surface-lib.mjs",
-      "upstream_path": "scripts/doctor-surface-lib.mjs",
-      "upstream_sha256": "0e5dd714e7506c28f5f4f62322a18b3ea7771bd41b4e32abbf0d8ce76a5c9b82",
-      "vendored_sha256": "0e5dd714e7506c28f5f4f62322a18b3ea7771bd41b4e32abbf0d8ce76a5c9b82",
-      "local_delta": []
+      "baseline_path": "launchpad/src/doctor-surface-lib.mjs",
+      "baseline_sha256": "0e5dd714e7506c28f5f4f62322a18b3ea7771bd41b4e32abbf0d8ce76a5c9b82",
+      "current_sha256": "0e5dd714e7506c28f5f4f62322a18b3ea7771bd41b4e32abbf0d8ce76a5c9b82",
+      "declared_delta": []
     },
     {
       "path": "src/json-schema-mini.mjs",
-      "upstream_path": "scripts/json-schema-mini.mjs",
-      "upstream_sha256": "c08dc53c7ed945af5621ca2e102160f1c4a29bd8fd8e85c5440d39152e694dd6",
-      "vendored_sha256": "c08dc53c7ed945af5621ca2e102160f1c4a29bd8fd8e85c5440d39152e694dd6",
-      "local_delta": []
+      "baseline_path": "launchpad/src/json-schema-mini.mjs",
+      "baseline_sha256": "c08dc53c7ed945af5621ca2e102160f1c4a29bd8fd8e85c5440d39152e694dd6",
+      "current_sha256": "c08dc53c7ed945af5621ca2e102160f1c4a29bd8fd8e85c5440d39152e694dd6",
+      "declared_delta": []
     },
     {
       "path": "schemas/doctor-report.schema.json",
-      "upstream_path": "schemas/doctor-report.schema.json",
-      "upstream_sha256": "0bdf0184dcb7fb1a95e312c01cec448d0deaaebf0acc7bd09c3afa5ec4380036",
-      "vendored_sha256": "0bdf0184dcb7fb1a95e312c01cec448d0deaaebf0acc7bd09c3afa5ec4380036",
-      "local_delta": []
+      "baseline_path": "launchpad/schemas/doctor-report.schema.json",
+      "baseline_sha256": "0bdf0184dcb7fb1a95e312c01cec448d0deaaebf0acc7bd09c3afa5ec4380036",
+      "current_sha256": "0bdf0184dcb7fb1a95e312c01cec448d0deaaebf0acc7bd09c3afa5ec4380036",
+      "declared_delta": []
     }
   ],
-  "root_side_policy": "Co root potřebuje navíc, NENÍ v těchhle souborech — je to v `src/doctor-children-lib.mjs` (`runBoundChildDoctor`): povinné svázání reportu s mountem, druh scope určený lane, do které mount patří, a přepočet očekávaného exit kódu z celého reportu včetně vnuků. Je to politika rootu, ne kontrakt všech doctorů; kdyby seděla ve vendorované kopii, byl by to fork surfacu v konzumentovi."
+  "root_side_policy": "Co root potřebuje navíc, NENÍ v těchhle souborech — je to v `src/doctor-children-lib.mjs` (`runBoundChildDoctor`): povinné svázání reportu s mountem, druh scope určený lane, do které mount patří, a přepočet očekávaného exit kódu z celého reportu včetně vnuků. Je to politika rootu, ne kontrakt všech doctorů; kdyby seděla ve sdíleném surfacu, byl by to consumer-specific fork."
 }

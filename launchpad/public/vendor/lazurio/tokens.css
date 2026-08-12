@@ -2,8 +2,8 @@
  * Lazurio - design tokeny
  *
  * Tenhle soubor je source of truth barev, typografie a tvaru produktu Lazurio.
- * Rozhodovací historie a sondy, ze kterých hodnoty vzešly, jsou v
- * HumanAndMachines: brand/lazurio/ a docs/decisions/0111.
+ * Rozhodovací historii zvolených hodnot zachovává Git historie tohoto souboru;
+ * aktivní tokenový kontrakt je celý lokálně a nevyžaduje externí knowledgebase.
  *
  * POZOR na scope: úroveň Lazuria (Conglomerate vs produkt Organizace
  * Rozjedeme-ai) není uzavřená a je eskalovaná na foundera. Hodnoty níž platí;

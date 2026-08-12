@@ -5,8 +5,10 @@
 > odpovídá na dvě otázky: *má můj Principál hostovaného Buddyho?* a *co platí,
 > když se práce dotkne jeho VPS?*
 >
-> **Co to není.** Instalační ani provozní manuál Buddyho. Ten žije jinde —
-> viz [Na VPS platí jiná pravidla](#na-vps-platí-jiná-pravidla-než-v-tomhle-rootu).
+> **Co to není.** Instalační ani provozní manuál Buddyho. Veřejný lifecycle
+> drží `manual/lazurio-resident-profiles.md` a `distribution/README.md`; konkrétní
+> host se řídí svou ověřenou instalací a privátním profilem — viz
+> [Na VPS platí jiná pravidla](#na-vps-platí-jiná-pravidla-než-v-tomhle-rootu).
 
 ## Proč o tom root vůbec mluví
 
@@ -86,22 +88,25 @@ reportech ani šablonách — bez ohledu na to, jak užitečný ten obsah pro ak
 ## Na VPS platí jiná pravidla než v tomhle rootu
 
 **Tohle je to hlavní, co si z dokumentu odnes.** Jakmile se práce přesune na
-host Buddyho, pravidla Conglomerate rootu **končí** a platí instrukce
-kohortového repa **`HumanAndMachines/Buddy_GEN2`**. Není to doporučení ani
-paralelní zdroj pravdy: root o vnitřku hostu nic neví a jeho pravidla tam
-nejsou ověřená.
+host Buddyho, pravidla Lazurio source checkoutu **končí**. Nainstalovaný host se
+řídí vygenerovaným `AGENTS.md` svého aktivního, non-Git Buddy resident rootu a
+privátní ústavou, mandáty a konfigurací v Personalspace Principála. Ani jedna
+vrstva nenahrazuje druhou.
 
-V Buddy_GEN2 najdeš `ARCHITECTURE.md` jako dokument č. 1 (co Buddy je a z čeho
-se skládá), instalační manuál a provozní dokumentaci hostu. Repo je privátní —
-pokud k němu přístup nemáš, **nedomýšlej si obsah z tohohle rootu**; řekni
-Principálovi, že na pokračování potřebuješ přístup.
+Nejdřív ověř `active/lazurio.resident.json`, integritu payloadu a profil
+`buddy`. Chybějící manifest neznamená, že se smějí použít source instrukce:
+znamená legacy kohortový host, který ještě neprošel assisted migrací. Takový
+host se nemění ad hoc. Jeho přechod drží verzovaný kontrakt
+`distribution/migrations/buddy-gen2.v1.json`, rollout plán příslušné Organizace
+a zachovaný původní service fallback až do prokázané parity.
 
 Praktický důsledek pro tvoje rozhodování:
 
 - úkol o **lokálním** mountu, manifestu nebo Git konfiguraci → root, tenhle
   dokument a `personalspace/README.md`;
 - úkol o **běhu Buddyho** — instalace, runtime, paměť, bridge, model,
-  zálohy, incidenty → Buddy_GEN2, a čti ho **dřív**, než se hostu dotkneš;
+  zálohy, incidenty → aktivní resident `AGENTS.md`, privátní profil a veřejný
+  lifecycle kontrakt; čti je **dřív**, než se hostu dotkneš;
 - úkol, kde si nejsi jistý, na které straně hranice leží → zeptej se
   Principála. Odhad je tu dražší než dotaz: špatná změna na hostu se
   projeví na tom, jak Buddy jedná jménem svého Principála.
@@ -109,13 +114,11 @@ Praktický důsledek pro tvoje rozhodování:
 ## Vztah k self-service onboardingu
 
 Založení personalspace pokrývá [`create-personalspace.md`](create-personalspace.md).
-**Buddy část toho flow je PENDING `CAC-0072`** — root parser `--with-buddy`
-dnes odmítá jako neznámý argument a hosted handoff nevytváří.
-
-To ale **neznamená, že hostovaní Buddyové neexistují.** GEN2 kohorta běží mimo
-tuhle lane: hosty se instalují ručně podle Buddy_GEN2 a jejich Principálové
-k nim přístup mají. Když tvůj Principál mluví o svém Buddym a self-service lane
-je zavřená, není to rozpor — jen jsi narazil na kohortovou instalaci.
+**Buddy část self-service flow zůstává PENDING `CAC-0072`** — root parser
+`--with-buddy` ji dnes nevytváří. První kohorta se místo toho převádí
+asistovaným resident rolloutem s integrity, health, rollback a service-cutover
+gatem. Když aktivní resident manifest chybí, narazil jsi na dosud
+nemigrovanou kohortovou instalaci, ne na podporovanou druhou architekturu.
 
 ---
 

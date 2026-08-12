@@ -1,11 +1,10 @@
 # Template: update Organizací z Template a update Template z Organizací
 
-Tenhle manuál je operativní runbook pro agenty a Kolegy, kteří pracují
-v Conglomerate rootu nebo v Organizaci a nemají nutně přístup do privátního
-engine repa `Rozjedeme-ai/HumanAndMachines`. Kanonický kontrakt procesu drží
-`HumanAndMachines/docs/template-promotion-workflow.md` (proč a přesné hranice);
-tady je jak. Když si tenhle manuál a kanonický kontrakt protiřečí, platí
-kontrakt a tenhle soubor se má opravit.
+Tenhle manuál je veřejný kanonický kontrakt i operativní runbook pro agenty a
+Kolegy, kteří pracují v Lazurio source rootu nebo v Organizaci. Obsahuje důvod,
+hranice i provedení a nevyžaduje přístup do jiného repozitáře. Když kód, template
+nebo Organization postup odporuje tomuto souboru, oprav se stejným PR také
+kontrakt nebo implementace, aby nevznikly dvě pravdy.
 
 Upstream template: `TemplatesRozjedeme-ai/OrganizationTemplate` (rename na
 `OrganizationTemplate_GEN3` je rozhodnutý — decisions 0044/0045).
@@ -81,8 +80,8 @@ Upstream template: `TemplatesRozjedeme-ai/OrganizationTemplate` (rename na
 
 ## Související
 
-- Kanonický kontrakt: `HumanAndMachines/docs/template-promotion-workflow.md`
-  (vyžaduje přístup do HnM; pro práci v Organizaci stačí tenhle manuál).
+- Kanonický kontrakt: tento manuál; obecná rozhodnutí shrnuje
+  `manual/decision-register.md`.
 - Greenfield vznik nové Organizace z template:
   `manual/first-client-organization-rollout.md`.
 - Konverze existující GEN2 firmy: fork vlastního GEN2 repa (decision 0033),

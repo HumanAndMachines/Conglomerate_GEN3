@@ -72,10 +72,10 @@ sloupec skládá pod hlavní plochu.
 Implementation surface: `Conglomerate/launchpad/`
 Source inputs:
 
-- interní spike/wireframe podklady (přesunuté do privátního
-  `Rozjedeme-ai/HumanAndMachines`)
-- decisions 0047/0048/0049 (+0048 Amendment 2026-07-07), 0059/0060/0061/0062/0063
-  (HumanAndMachines/docs/decisions/), plan CAC-0042
+- applicable spike/wireframe conclusions transcribed into this public spec;
+  historical raw machine snapshots are not a runtime or documentation authority
+- decisions 0047/0048/0049 (+0048 Amendment 2026-07-07),
+  0059/0060/0061/0062/0063 (`manual/decision-register.md`), plan CAC-0042
 - live `GET /api/apps` smoke on local Launchpad port 4174
 
 ## 1. Product intent
@@ -163,7 +163,7 @@ Implementation note: v1 deliberately deviates from the `git pull --rebase
 primitives — **ff-only merge to an explicit verified channel target**, with
 autostash (stash → ff → exact restore) only as an explicit second action, never
 as a silent default. Channels and client checkout policy are held by decision
-draft 0080 (HumanAndMachines); the binary axis waits for the CI build+sign
+0080 (`manual/decision-register.md`); the binary axis waits for the CI build+sign
 pipeline and is reported as `binary: { state: "not_available" }`.
 
 - **Intent:** bring the Conglomerate root to the current target of the
@@ -199,7 +199,7 @@ pipeline and is reported as `binary: { state: "not_available" }`.
 
 ## 1b. Builder Bridge API — versioning, transport adapters, CORS/LNA, pairing token, headless mode [PROPOSAL — pending founder ratification of decision 0077]
 
-**Canonical term (founder 2026-07-12).** The **Builder Bridge** is the **headless daemon + versioned API layer of the Launchpad**. It lives HERE — inside the Launchpad app in the source-available Conglomerate core — not as a separate service. The local HTTP API is no longer an internal same-origin surface: it is the Bridge, one versioned API a browser served from another origin (the hosted Dashboard) can reach directly. The existing **agent-over-SSH remote work (decisions 0059/0060/0061) is ONE TRANSPORT under the Bridge umbrella**: remote builder agents keep using plain SSH into the Workspace Host, and the Launchpad/Bridge manages and exposes that access — it does not replace SSH. Canonical contract: `HumanAndMachines/docs/builder-bridge-contract.md`.
+**Canonical term (founder 2026-07-12).** The **Builder Bridge** is the **headless daemon + versioned API layer of the Launchpad**. It lives HERE — inside the Launchpad app in the source-available Lazurio core — not as a separate service. The local HTTP API is no longer an internal same-origin surface: it is the Bridge, one versioned API a browser served from another origin (the hosted Dashboard) can reach directly. The existing **agent-over-SSH remote work (decisions 0059/0060/0061) is ONE TRANSPORT under the Bridge umbrella**: remote builder agents keep using plain SSH into the Workspace Host, and the Launchpad/Bridge manages and exposes that access — it does not replace SSH. The canonical public contract is this section together with the versioned Bridge routes and their tests in this repo.
 
 - **Foundation is the contract + shared Builder UI + transport/auth adapters — not routes on localhost.** Browser-to-loopback is one transport, not the architecture.
 - **One contract, two deployments, two security profiles.** `/bridge/v1/...` on the builder's `127.0.0.1` daemon (pairing token over CORS + LNA), or on the Workspace Host VPS as **normal HTTPS behind organization login** (same-origin reverse proxy; platform session CAC-0055; real organization authorization and audit on every request). Identical routes/shapes; transport binding, auth adapter and security profile differ. Maps 1:1 to the localhost-vs-Workspace-Host placement in section 1.
@@ -459,8 +459,8 @@ Clicking an Organization filters the main panel to its workspace apps and system
 ## 9. Live data validation snapshot
 
 Historický lokální smoke snapshot (reálné počty organizací/aplikací a
-dependency stavy) byl přesunut do privátního `Rozjedeme-ai/HumanAndMachines`;
-public spec drží jen mechanismus, ne provozní čísla konkrétní mašiny.
+dependency stavy) není součástí veřejného kontraktu; public spec drží jen
+mechanismus, ne provozní čísla konkrétní mašiny.
 
 ## 10. Implementation phases
 
@@ -492,8 +492,9 @@ Personalspace part **implemented by CAC-0048** (decision 0051):
 - [x] Optional `personalspace` mount support via a **separate discovery lane**
       (`launchpad/src/personalspace-lib.mjs`) that scans
       `personalspace/*/personal.gen3.json` and NEVER mixes into `organizations/*`
-      auto-discovery. Own schema copy `launchpad/schemas/personal.gen3.schema.json`
-      (identical to HnM upstream). Identity invariant is fail-closed
+      auto-discovery. Canonical local schema
+      `launchpad/schemas/personal.gen3.schema.json`. Identity invariant is
+      fail-closed
       (`owner.github_username` ↔ mount ↔ repo).
 - [x] Personalspace private-module discovery: Principálovy apps carry
       `personal: true` / `surface_scope: "private"`, prefixed runtime ids
@@ -562,9 +563,9 @@ These layer on Phases A–D and reuse the 'keep the `/api/apps` contract' framin
 ## 12. Worktree runtime (decision 0049, plan CAC-0042)
 
 Builders launch module apps not only from the `main` checkout but also from
-Mission Control plan worktrees. Contract summary (canonical text: decision 0049
-in HumanAndMachines/docs/decisions/; the dated implementation blueprint
-lives in the private `Rozjedeme-ai/HumanAndMachines` repo):
+Mission Control plan worktrees. Contract summary (decision 0049 in
+`manual/decision-register.md`; operational detail in
+`manual/worktree-management.md`):
 
 - Local module tree stays on `main`; every code change happens in a worktree at
   `organizations/<Org>/.worktrees/workspace/<module>/<PLAN-code>-<slug>/` with a

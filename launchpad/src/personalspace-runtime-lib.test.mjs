@@ -42,7 +42,7 @@ function personalConfig(username) {
         mount_strategy: "doctor-managed-nested-repo",
       },
       runtime: {
-        github_repo: "HumanAndMachines/Buddy",
+        github_repo: "HumanAndMachines/Lazurio",
         deployment_target: "owner-dedicated-personalspace-vps",
         local_execution: "forbidden",
       },
