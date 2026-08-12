@@ -90,14 +90,24 @@ function resolveAuthorityRoot(primaryRoot) {
 
 function organizationAuthorityPath(primaryRoot, authorityRoot) {
   if (!existsSync(join(authorityRoot, "repository-db.manifest.json"))) return null;
-  const relativePath = relative(primaryRoot, authorityRoot).split(sep).join("/");
+  // Git may report the long Windows path while realpathSync returns its 8.3
+  // spelling. Canonicalize both ends before deriving the portable sidecar
+  // locator; comparing one spelling with the other makes an in-root authority
+  // look like ../../RUNNER~1/... on GitHub Windows runners.
+  const realPrimary = realpathSync(primaryRoot);
+  const realAuthority = realpathSync(authorityRoot);
+  const realRelative = relative(realPrimary, realAuthority);
+  if (realRelative.startsWith("..") || isAbsolute(realRelative)) {
+    fail("repository-db Mission Control authority přes symlink uniká mimo Lazurio root.");
+  }
+  const relativePath = realRelative.split(sep).join("/");
   if (!/^organizations\/[^/]+\/mission-control\/db$/.test(relativePath)) {
     fail(
       `repository-db Mission Control authority ${authorityRoot} (${relativePath}) musí ležet v `
       + "organizations/<organization>/mission-control/db pod tímto Lazurio rootem.",
     );
   }
-  let cursor = primaryRoot;
+  let cursor = realPrimary;
   for (const segment of relativePath.split("/")) {
     cursor = join(cursor, segment);
     const stat = lstatSync(cursor);
@@ -105,13 +115,7 @@ function organizationAuthorityPath(primaryRoot, authorityRoot) {
       fail("repository-db Mission Control authority obsahuje symlink nebo neadresářovou komponentu.");
     }
   }
-  const realPrimary = realpathSync(primaryRoot);
-  const realAuthority = realpathSync(authorityRoot);
-  const realRelative = relative(realPrimary, realAuthority);
-  if (realRelative.startsWith("..") || isAbsolute(realRelative)) {
-    fail("repository-db Mission Control authority přes symlink uniká mimo Lazurio root.");
-  }
-  const organizationRoot = join(primaryRoot, ...relativePath.split("/").slice(0, 2));
+  const organizationRoot = join(realPrimary, ...relativePath.split("/").slice(0, 2));
   const markerPath = join(organizationRoot, "company.gen3.json");
   const marker = lstatSync(markerPath);
   if (!marker.isFile() || marker.isSymbolicLink()) {
