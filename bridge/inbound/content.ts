@@ -21,7 +21,10 @@ function decodeEntities(value: string): string {
       if (entity[0] === "#") {
         const hex = entity[1]?.toLowerCase() === "x";
         const code = Number.parseInt(entity.slice(hex ? 2 : 1), hex ? 16 : 10);
-        return Number.isFinite(code) ? String.fromCodePoint(code) : whole;
+        const isUnicodeScalar = Number.isInteger(code)
+          && code <= 0x10ffff
+          && !(code >= 0xd800 && code <= 0xdfff);
+        return isUnicodeScalar ? String.fromCodePoint(code) : whole;
       }
       return named[entity.toLowerCase()] ?? whole;
     },
@@ -95,4 +98,3 @@ export function normalizeZulipContent(content: string): NormalizedZulipContent {
 export function isSessionResetCommand(text: string): boolean {
   return /^(?:\/reset|\/new)$/i.test(text.trim());
 }
-

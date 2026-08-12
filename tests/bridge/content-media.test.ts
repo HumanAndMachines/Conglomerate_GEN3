@@ -33,6 +33,13 @@ describe("rendered Zulip content", () => {
       imageUrls: ["/user_uploads/1/a/test.png"],
     });
   });
+
+  test("keeps invalid numeric entities as text instead of wedging the poller", () => {
+    const content = normalizeZulipContent(
+      "before &#x110000; &#55296; after &#x1f642;",
+    );
+    expect(content.text).toBe("before &#x110000; &#55296; after 🙂");
+  });
 });
 
 describe("authenticated Zulip images", () => {
@@ -103,4 +110,3 @@ test("runtime receives actual multimodal content, not a private browser URL", as
     { type: "image_url", image_url: { url: "data:image/png;base64,AQID" } },
   ]);
 });
-
