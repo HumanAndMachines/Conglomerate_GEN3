@@ -411,14 +411,18 @@ async function validateSidecar(
     data.mission_control_plan_path,
     authorityRoot,
   );
-  const acceptedPlanRoots = [
-    join(authorityRoot, "mission-control", "db", "data", "mission-control", "plans"),
-    join(authorityRoot, "mission-control", "plans"),
-  ];
-  if (!acceptedPlanRoots.some((root) => isWithin(root, planPath))) {
+  const acceptedPlanRoot = join(
+    authorityRoot,
+    "mission-control",
+    "db",
+    "data",
+    "mission-control",
+    "plans",
+  );
+  if (!isWithin(acceptedPlanRoot, planPath)) {
     return {
       valid: false,
-      error: "Mission Control plan is outside the HumanAndMachines authority",
+      error: "Mission Control plan is outside the HumanAndMachine-ai authority",
       planPath,
     };
   }
@@ -502,7 +506,7 @@ async function validateSidecar(
     .map((field) => `recommended operational field is missing: ${field}`);
   const authorityAvailable = await pathExists(authorityRoot);
   if (!authorityAvailable) {
-    const error = "HumanAndMachines authority checkout is unavailable; plan ownership was not verified";
+    const error = "HumanAndMachine-ai authority checkout is unavailable; plan ownership was not verified";
     advisories.push(error);
     return { valid: false, error, planPath, advisories };
   }
@@ -539,7 +543,6 @@ async function validateSidecar(
   const schemaValidation = await validateCanonicalMissionControlPlan(
     authorityRoot,
     planPath,
-    planSource,
     plan,
   );
   if (!schemaValidation.valid) {
@@ -666,43 +669,80 @@ async function resolveRepositoryIdentity(primaryRoot) {
 export async function validateCanonicalMissionControlPlan(
   authorityRoot,
   planPath,
-  planSource,
   plan,
 ) {
-  const schemaPath = join(
-    authorityRoot,
-    "schemas",
-    "mission-control-plan.schema.json",
+  const repositoryDbRoot = join(authorityRoot, "mission-control", "db");
+  const repositoryDbPlansRoot = join(
+    repositoryDbRoot,
+    "data",
+    "mission-control",
+    "plans",
   );
-  const validatorPath = join(
-    authorityRoot,
-    "scripts",
-    "json-schema-mini.mjs",
-  );
+  if (!isWithin(repositoryDbPlansRoot, planPath)) {
+    return {
+      valid: false,
+      error: "Mission Control plan is outside the canonical repository-db plan root",
+    };
+  }
+  const validationRoot = repositoryDbRoot;
+  const schemaPath = join(repositoryDbRoot, "schemas", "mission-control-plan.schema.json");
   const semanticValidatorPath = join(
-    authorityRoot,
+    repositoryDbRoot,
     "scripts",
-    "mission-control-lib.mjs",
+    "validate-mission-control-data.mjs",
   );
   try {
     const realAuthorityRoot = await realpath(authorityRoot);
-    for (const path of [planPath, schemaPath, validatorPath, semanticValidatorPath]) {
+    const realRepositoryDbRoot = await realpath(repositoryDbRoot);
+    const realRepositoryDbPlansRoot = await realpath(repositoryDbPlansRoot);
+    const expectedRepositoryDbRoot = join(realAuthorityRoot, "mission-control", "db");
+    const expectedRepositoryDbPlansRoot = join(
+      realRepositoryDbRoot,
+      "data",
+      "mission-control",
+      "plans",
+    );
+    if (
+      realRepositoryDbRoot !== expectedRepositoryDbRoot
+      || realRepositoryDbPlansRoot !== expectedRepositoryDbPlansRoot
+    ) {
+      throw new Error("canonical repository-db plan root resolves through a redirected path");
+    }
+    const expectedRealPaths = new Map([
+      [
+        planPath,
+        resolve(
+          realRepositoryDbPlansRoot,
+          relative(repositoryDbPlansRoot, resolve(planPath)),
+        ),
+      ],
+      [
+        schemaPath,
+        join(realRepositoryDbRoot, "schemas", "mission-control-plan.schema.json"),
+      ],
+      [
+        semanticValidatorPath,
+        join(
+          realRepositoryDbRoot,
+          "scripts",
+          "validate-mission-control-data.mjs",
+        ),
+      ],
+    ]);
+    for (const [path, expectedRealPath] of expectedRealPaths) {
       const stat = await lstat(path);
       const realPath = await realpath(path);
       if (
         !stat.isFile()
         || stat.isSymbolicLink()
         || !isWithin(realAuthorityRoot, realPath)
+        || realPath !== expectedRealPath
       ) {
-        throw new Error("canonical validator path is not a file inside authority root");
+        throw new Error("canonical validator path is redirected or outside authority root");
       }
     }
     const schema = JSON.parse(await readFile(schemaPath, "utf8"));
-    const validator = await import(pathToFileURL(validatorPath).href);
-    if (typeof validator.validateAgainstSchema !== "function") {
-      throw new Error("canonical schema validator export is unavailable");
-    }
-    const failures = validator.validateAgainstSchema(
+    const failures = validateAgainstSchema(
       plan,
       schema,
       "Mission Control plan",
@@ -716,40 +756,31 @@ export async function validateCanonicalMissionControlPlan(
         error: `Mission Control plan schema validation failed: ${failures.slice(0, 3).join("; ")}`,
       };
     }
+    const expectedPlanId = typeof plan.dev_code === "string"
+      ? `mcplan-${plan.dev_code.toLowerCase()}`
+      : null;
+    if (!expectedPlanId || plan.id !== expectedPlanId) {
+      return {
+        valid: false,
+        error: "Mission Control plan id must match dev_code",
+      };
+    }
     const semanticValidator = await import(
       pathToFileURL(semanticValidatorPath).href
     );
-    for (const exportName of [
-      "loadMissionControlConfig",
-      "loadPlanSchema",
-      "validatePlanShape",
-    ]) {
-      if (typeof semanticValidator[exportName] !== "function") {
-        throw new Error(`canonical semantic validator export is unavailable: ${exportName}`);
-      }
+    if (typeof semanticValidator.validateMissionControlData !== "function") {
+      throw new Error(
+        "canonical semantic validator export is unavailable: validateMissionControlData",
+      );
     }
-    const config = semanticValidator.loadMissionControlConfig(authorityRoot);
-    const semanticSchema = semanticValidator.loadPlanSchema(authorityRoot, config);
-    const record = {
-      path: relative(authorityRoot, planPath).split(sep).join("/"),
-      filePath: planPath,
-      plan,
-      source: planSource,
-      parseError: null,
-    };
-    const semanticFailures = semanticValidator.validatePlanShape(
-      record,
-      config,
-      authorityRoot,
-      semanticSchema,
-    );
+    const semanticFailures = semanticValidator.validateMissionControlData(validationRoot);
     if (!Array.isArray(semanticFailures)) {
       throw new Error("canonical semantic validator returned an invalid result");
     }
     if (semanticFailures.length > 0) {
       return {
         valid: false,
-        error: `Mission Control plan semantic validation failed: ${semanticFailures.slice(0, 3).join("; ")}`,
+        error: `Mission Control repository-db semantic validation failed: ${semanticFailures.slice(0, 3).join("; ")}`,
       };
     }
     return { valid: true, error: null };
@@ -1152,18 +1183,164 @@ function isWithin(parent, child) {
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 }
 
-function resolveAuthorityRoot(primaryRoot) {
-  if (basename(primaryRoot) === "HumanAndMachines") return primaryRoot;
-  if (process.env.HUMANANDMACHINES_ROOT) {
-    return resolve(process.env.HUMANANDMACHINES_ROOT);
+function validateAgainstSchema(value, schema, label) {
+  const failures = validateSchemaVocabulary(schema, "schema");
+  if (failures.length > 0) return failures;
+  validateSchemaValue(value, schema, label, failures);
+  return failures;
+}
+
+function validateSchemaVocabulary(node, path) {
+  if (!node || typeof node !== "object" || Array.isArray(node)) {
+    return [`${path}: schema node must be an object`];
   }
-  return join(dirname(primaryRoot), "HumanAndMachines");
+  const supported = new Set([
+    "$id",
+    "$schema",
+    "additionalProperties",
+    "const",
+    "enum",
+    "items",
+    "maxItems",
+    "minItems",
+    "minLength",
+    "minimum",
+    "pattern",
+    "properties",
+    "required",
+    "title",
+    "type",
+    "uniqueItems",
+  ]);
+  const failures = [];
+  for (const key of Object.keys(node)) {
+    if (!supported.has(key)) failures.push(`${path}: unsupported schema keyword '${key}'`);
+  }
+  if (node.properties && typeof node.properties === "object" && !Array.isArray(node.properties)) {
+    for (const [key, child] of Object.entries(node.properties)) {
+      failures.push(...validateSchemaVocabulary(child, `${path}.properties.${key}`));
+    }
+  }
+  if (node.items && typeof node.items === "object") {
+    failures.push(...validateSchemaVocabulary(node.items, `${path}.items`));
+  }
+  if (
+    node.additionalProperties
+    && typeof node.additionalProperties === "object"
+    && !Array.isArray(node.additionalProperties)
+  ) {
+    failures.push(
+      ...validateSchemaVocabulary(node.additionalProperties, `${path}.additionalProperties`),
+    );
+  }
+  return failures;
+}
+
+function validateSchemaValue(value, node, path, failures) {
+  if (Object.hasOwn(node, "const") && stableStringify(value) !== stableStringify(node.const)) {
+    failures.push(`${path}: const mismatch`);
+  }
+  if (
+    Array.isArray(node.enum)
+    && !node.enum.some((candidate) => stableStringify(candidate) === stableStringify(value))
+  ) {
+    failures.push(`${path}: value is outside enum`);
+  }
+  const actualType = Array.isArray(value)
+    ? "array"
+    : value === null
+      ? "null"
+      : Number.isInteger(value)
+        ? "integer"
+        : typeof value;
+  if (node.type && actualType !== node.type) {
+    failures.push(`${path}: expected ${node.type}`);
+    return;
+  }
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    for (const key of node.required ?? []) {
+      if (!Object.hasOwn(value, key)) failures.push(`${path}: missing required field '${key}'`);
+    }
+    const properties = node.properties ?? {};
+    for (const [key, child] of Object.entries(properties)) {
+      if (Object.hasOwn(value, key)) validateSchemaValue(value[key], child, `${path}.${key}`, failures);
+    }
+    for (const key of Object.keys(value)) {
+      if (Object.hasOwn(properties, key)) continue;
+      if (node.additionalProperties === false) failures.push(`${path}: unexpected field '${key}'`);
+      else if (node.additionalProperties && typeof node.additionalProperties === "object") {
+        validateSchemaValue(value[key], node.additionalProperties, `${path}.${key}`, failures);
+      }
+    }
+  }
+  if (Array.isArray(value)) {
+    if (typeof node.minItems === "number" && value.length < node.minItems) {
+      failures.push(`${path}: expected at least ${node.minItems} items`);
+    }
+    if (typeof node.maxItems === "number" && value.length > node.maxItems) {
+      failures.push(`${path}: expected at most ${node.maxItems} items`);
+    }
+    if (node.uniqueItems === true) {
+      const serialized = value.map((item) => stableStringify(item));
+      if (new Set(serialized).size !== serialized.length) failures.push(`${path}: items must be unique`);
+    }
+    if (node.items) {
+      value.forEach((item, index) => validateSchemaValue(item, node.items, `${path}[${index}]`, failures));
+    }
+  }
+  if (typeof value === "string") {
+    if (typeof node.minLength === "number" && value.length < node.minLength) {
+      failures.push(`${path}: expected at least ${node.minLength} characters`);
+    }
+    if (node.pattern && !new RegExp(node.pattern).test(value)) {
+      failures.push(`${path}: pattern mismatch`);
+    }
+  }
+  if (typeof value === "number" && typeof node.minimum === "number" && value < node.minimum) {
+    failures.push(`${path}: value is below minimum ${node.minimum}`);
+  }
+}
+
+function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+export function resolveAuthorityRoot(primaryRoot) {
+  if (basename(primaryRoot) === "HumanAndMachine-ai_GEN3") return primaryRoot;
+  return join(primaryRoot, "organizations", "HumanAndMachine-ai_GEN3");
 }
 
 export function resolveAuthorityPlanPath(primaryRoot, planPath, authorityRoot) {
   const resolvedAuthority = authorityRoot
     ? resolve(authorityRoot)
     : resolveAuthorityRoot(primaryRoot);
+  const normalized = planPath.replaceAll("\\", "/");
+  if (normalized.split("/").some((segment) => segment === "." || segment === "..")) {
+    return join(resolvedAuthority, ".invalid-mission-control-plan-locator");
+  }
+  const legacyPrefixes = [
+    "mission-control/plans/",
+    "data/mission-control/plans/",
+  ];
+  const prefix = legacyPrefixes.find((candidate) => normalized.startsWith(candidate));
+  if (prefix) {
+    return join(
+      resolvedAuthority,
+      "mission-control",
+      "db",
+      "data",
+      "mission-control",
+      "plans",
+      normalized.slice(prefix.length),
+    );
+  }
   return resolve(resolvedAuthority, planPath);
 }
 

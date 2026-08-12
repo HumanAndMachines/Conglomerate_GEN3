@@ -33,6 +33,7 @@ import {
   releaseCreateLock,
 } from "./worktree-create-lock.mjs";
 import {
+  resolveAuthorityRoot,
   validateCanonicalMissionControlPlan,
 } from "../.agents/skills/worktree-development-discipline/scripts/worktree-inventory.mjs";
 
@@ -68,14 +69,6 @@ function git(cwd, args, { allowFail = false, useSafetyConfig = true } = {}) {
     stdout: (result.stdout || "").trim(),
     stderr: (result.stderr || "").trim(),
   };
-}
-
-function resolveAuthorityRoot(primaryRoot) {
-  if (basename(primaryRoot) === "HumanAndMachines") return primaryRoot;
-  if (process.env.HUMANANDMACHINES_ROOT) {
-    return resolve(process.env.HUMANANDMACHINES_ROOT);
-  }
-  return join(dirname(primaryRoot), "HumanAndMachines");
 }
 
 function resolveRepositoryIdentity(primaryRoot) {
@@ -122,7 +115,6 @@ function checkoutTransportOverrideKeys(primaryRoot) {
 async function findPlanFile(authorityRoot, planCode) {
   const planRoots = [
     join(authorityRoot, "mission-control", "db", "data", "mission-control", "plans"),
-    join(authorityRoot, "mission-control", "plans"),
   ];
   const matches = [];
   for (const planRoot of planRoots) {
@@ -187,7 +179,7 @@ async function main() {
   }
   if (!plan) {
     fail(
-      `plán ${planCode} nebyl nalezen v authority checkoutu ${authorityRoot}; `
+      `plán ${planCode} nebyl nalezen v HumanAndMachine-ai authority checkoutu ${authorityRoot}; `
       + "worktree bez vlastnického Mission Control plánu je orphan/invalid (decision 0049).",
     );
   }
@@ -205,7 +197,6 @@ async function main() {
   const planValidation = await validateCanonicalMissionControlPlan(
     authorityRoot,
     plan.path,
-    planSource,
     planData,
   );
   if (!planValidation.valid) {
