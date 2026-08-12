@@ -10,7 +10,7 @@
 
 import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import { mkdir, readFile, readdir } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { hostname, userInfo } from "node:os";
 import { trustedGitExecutable } from "./agent-skills-entrypoint.mjs";
@@ -81,33 +81,36 @@ function resolveAuthorityRoot(primaryRoot) {
   } else {
     candidate = join(dirname(primaryRoot), "HumanAndMachines");
   }
-  if (existsSync(candidate)) candidate = realpathSync(candidate);
   const repositoryDb = join(candidate, "mission-control", "db");
   return existsSync(join(repositoryDb, "repository-db.manifest.json"))
-    ? realpathSync(repositoryDb)
-    : candidate;
+    ? repositoryDb
+    : existsSync(candidate) ? realpathSync(candidate) : candidate;
 }
 
 function organizationAuthorityPath(primaryRoot, authorityRoot) {
   if (!existsSync(join(authorityRoot, "repository-db.manifest.json"))) return null;
-  // Git may report the long Windows path while realpathSync returns its 8.3
-  // spelling. Canonicalize both ends before deriving the portable sidecar
-  // locator; comparing one spelling with the other makes an in-root authority
-  // look like ../../RUNNER~1/... on GitHub Windows runners.
-  const realPrimary = realpathSync(primaryRoot);
-  const realAuthority = realpathSync(authorityRoot);
-  const realRelative = relative(realPrimary, realAuthority);
-  if (realRelative.startsWith("..") || isAbsolute(realRelative)) {
-    fail("repository-db Mission Control authority přes symlink uniká mimo Lazurio root.");
-  }
-  const relativePath = realRelative.split(sep).join("/");
-  if (!/^organizations\/[^/]+\/mission-control\/db$/.test(relativePath)) {
+  const databaseRoot = resolve(authorityRoot);
+  const missionControlRoot = dirname(databaseRoot);
+  const organizationRoot = dirname(missionControlRoot);
+  const organizationsRoot = dirname(organizationRoot);
+  const owningRoot = dirname(organizationsRoot);
+  const organizationName = basename(organizationRoot);
+  if (
+    basename(databaseRoot) !== "db"
+    || basename(missionControlRoot) !== "mission-control"
+    || basename(organizationsRoot) !== "organizations"
+    || !organizationName
+    || organizationName === "."
+    || organizationName === ".."
+    || !sameFilesystemEntry(primaryRoot, owningRoot)
+  ) {
     fail(
-      `repository-db Mission Control authority ${authorityRoot} (${relativePath}) musí ležet v `
+      `repository-db Mission Control authority ${authorityRoot} musí ležet v `
       + "organizations/<organization>/mission-control/db pod tímto Lazurio rootem.",
     );
   }
-  let cursor = realPrimary;
+  const relativePath = `organizations/${organizationName}/mission-control/db`;
+  let cursor = primaryRoot;
   for (const segment of relativePath.split("/")) {
     cursor = join(cursor, segment);
     const stat = lstatSync(cursor);
@@ -115,8 +118,8 @@ function organizationAuthorityPath(primaryRoot, authorityRoot) {
       fail("repository-db Mission Control authority obsahuje symlink nebo neadresářovou komponentu.");
     }
   }
-  const organizationRoot = join(realPrimary, ...relativePath.split("/").slice(0, 2));
-  const markerPath = join(organizationRoot, "company.gen3.json");
+  const canonicalOrganizationRoot = join(primaryRoot, "organizations", organizationName);
+  const markerPath = join(canonicalOrganizationRoot, "company.gen3.json");
   const marker = lstatSync(markerPath);
   if (!marker.isFile() || marker.isSymbolicLink()) {
     fail(`Mission Control authority nemá regulární Organization marker: ${markerPath}`);
@@ -131,6 +134,24 @@ function organizationAuthorityPath(primaryRoot, authorityRoot) {
     fail("Mission Control authority musí vlastnit runtime Organization.");
   }
   return relativePath;
+}
+
+function sameFilesystemEntry(left, right) {
+  try {
+    const leftStat = lstatSync(left);
+    const rightStat = lstatSync(right);
+    if (leftStat.dev === rightStat.dev && leftStat.ino !== 0 && leftStat.ino === rightStat.ino) {
+      return true;
+    }
+    const canonical = realpathSync.native ?? realpathSync;
+    const leftPath = canonical(left);
+    const rightPath = canonical(right);
+    return process.platform === "win32"
+      ? leftPath.toLocaleLowerCase("en-US") === rightPath.toLocaleLowerCase("en-US")
+      : leftPath === rightPath;
+  } catch {
+    return false;
+  }
 }
 
 function resolveRepositoryIdentity(primaryRoot) {
