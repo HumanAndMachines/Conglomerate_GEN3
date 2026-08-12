@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -102,6 +102,13 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
   const doctor = runDoctor(first.artifact_root);
   expect(doctor.status).toBe(0);
   expect(JSON.parse(doctor.stdout)).toMatchObject({ status: "pass", profile: "buddy" });
+
+  const injectedGit = join(first.artifact_root, "launchpad", ".git");
+  await mkdir(injectedGit);
+  const gitPolluted = runDoctor(first.artifact_root);
+  expect(gitPolluted.status).toBe(1);
+  expect(JSON.parse(gitPolluted.stdout)).toMatchObject({ status: "fail" });
+  await rm(injectedGit, { recursive: true });
 
   await writeFile(join(first.artifact_root, "AGENTS.md"), `${rootInstructions}\ntampered\n`);
   const tampered = runDoctor(first.artifact_root);

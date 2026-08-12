@@ -158,8 +158,17 @@ async function listImmutableFiles(directory, mutableMounts, scanFailures, prefix
   entries.sort((left, right) => left.name.localeCompare(right.name));
   for (const entry of entries) {
     const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
-    if (!prefix && mutableMounts.has(entry.name)) continue;
+    if (!prefix && mutableMounts.has(entry.name)) {
+      if (!entry.isDirectory() && !entry.isSymbolicLink()) {
+        scanFailures.push(`${relativePath}: mutable mount must be a directory or link`);
+      }
+      continue;
+    }
     const path = join(directory, entry.name);
+    if (entry.name === ".git") {
+      scanFailures.push(`${relativePath}: Git metadata is forbidden in the immutable root`);
+      continue;
+    }
     if (entry.isSymbolicLink()) {
       scanFailures.push(`${relativePath}: symlink is allowed only for declared mutable mounts`);
       output.push(relativePath);

@@ -512,7 +512,7 @@ export function createDeterministicTar(rootName, entries, mtime) {
     const depth = left.split("/").length - right.split("/").length;
     return depth || left.localeCompare(right);
   })) {
-    blocks.push(tarHeader(`${directory}/`, 0, "0755", mtime, "5"));
+    blocks.push(tarHeader(directory, 0, "0755", mtime, "5"));
   }
   for (const [path, entry] of sortedEntries(entries)) {
     const tarPath = `${rootName}/${path}`;
