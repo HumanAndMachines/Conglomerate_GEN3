@@ -104,6 +104,8 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
     "resident/updater.mjs",
     "resident/buddy-service-lib.mjs",
     "resident/buddy-service.mjs",
+    "resident/buddy-rollout-lib.mjs",
+    "resident/buddy-rollout.mjs",
     "resident/services/buddy-bridge.service.template",
     "resident/services/hermes-lazurio-root.conf.template",
     "bridge/run.ts",
@@ -118,6 +120,7 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
     "resident:status": "bun resident/updater.mjs status",
     "buddy:bridge": "bun bridge/run.ts",
     "buddy:service": "bun resident/buddy-service.mjs",
+    "buddy:rollout": "bun resident/buddy-rollout.mjs",
   });
 
   const doctor = runDoctor(first.artifact_root);

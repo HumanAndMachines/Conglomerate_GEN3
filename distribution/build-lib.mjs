@@ -182,6 +182,18 @@ export async function buildResidentArtifact({
   );
   addGeneratedEntry(
     entries,
+    "resident/buddy-rollout-lib.mjs",
+    readBlob(repositoryRoot, tree, "distribution/runtime/buddy-rollout-lib.mjs"),
+    "0644",
+  );
+  addGeneratedEntry(
+    entries,
+    "resident/buddy-rollout.mjs",
+    readBlob(repositoryRoot, tree, "distribution/runtime/buddy-rollout.mjs"),
+    "0755",
+  );
+  addGeneratedEntry(
+    entries,
     "resident/manifest.schema.json",
     readBlob(repositoryRoot, tree, "distribution/manifest.schema.json"),
     "0644",
@@ -358,6 +370,7 @@ function residentPackageJson(profile) {
       "resident:status": "bun resident/updater.mjs status",
       "buddy:bridge": "bun bridge/run.ts",
       "buddy:service": "bun resident/buddy-service.mjs",
+      "buddy:rollout": "bun resident/buddy-rollout.mjs",
     },
   }, null, 2)}\n`;
 }

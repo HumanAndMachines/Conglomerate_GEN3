@@ -68,6 +68,12 @@ unit a úspěch dokazuje nová registrace polleru, nikoli jen stav procesu.
 Hermes dostává aktivní Lazurio Root jako `TERMINAL_CWD`, aby jeho context-file
 discovery vložilo veřejný profilový `AGENTS.md` i do Zulip session. Ten se
 vrství s privátní ústavou a mandáty; žádná z těchto vrstev nenahrazuje druhou.
+Existující Personalspace se při migraci nekopíruje: updater ho adoptuje jako
+explicitní, root-owned mutable mount kontrakt a service preflight ověří, že
+deklarovaný Buddy profil skutečně leží uvnitř `active/personalspace`.
+Produkční příkaz `buddy-rollout` skládá aktivaci rootu a service cutover do
+jedné kompenzované operace. Selže-li service gate, novou aktivaci odstraní nebo
+vrátí last-known-good a znovu zprovozní předchozí service vstupy.
 
 ## Profil AI Kolega a Steward overlay
 

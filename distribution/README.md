@@ -51,11 +51,22 @@ spouští z exact reviewovaného source/release operator kitu; po instalaci je
 stejný updater součástí immutable rootu pod `resident/`. Buddyho mašina proto
 nepotřebuje Git checkout Lazuria.
 
+Samotný updater řeší atomický root. Produkční Buddy cutover používá vyšší
+`buddy-rollout`, který k němu přidá Hermes a bridge service gates; při jejich
+selhání vrátí aktivaci rootu a pro update znovu nastartuje předchozí služby.
+
 ```sh
 bun distribution/runtime/updater.mjs install \
   --archive /staging/lazurio-resident-buddy-<version>-linux-x64.tar \
   --checksum /staging/lazurio-resident-buddy-<version>-linux-x64.tar.sha256 \
-  --install-root /opt/lazurio --profile buddy --channel candidate
+  --install-root /opt/lazurio --profile buddy --channel candidate \
+  --mount-source personalspace=/srv/conglomerate/personalspace
+
+sudo bun /staging/<artifact-id>/resident/buddy-rollout.mjs install \
+  --archive /staging/lazurio-resident-buddy-<version>-linux-x64.tar \
+  --checksum /staging/lazurio-resident-buddy-<version>-linux-x64.tar.sha256 \
+  --install-root /opt/lazurio --channel candidate \
+  --mount-source personalspace=/srv/conglomerate/personalspace
 
 bun /opt/lazurio/active/resident/updater.mjs status \
   --install-root /opt/lazurio --profile buddy
@@ -72,9 +83,15 @@ Lifecycle layout je záměrně malý:
 ├── versions/<artifact-id>/       # immutable, non-Git Lazurio Root
 └── state/
     ├── lifecycle.v1.json         # content-free active/LKG metadata
+    ├── mounts.v1.json            # root-owned local mount contract
     ├── organizations/            # persistent mutable mount
-    └── personalspace/            # persistent mutable mount
+    └── personalspace/            # directory, or declared link to existing data
 ```
+
+`state/` je root-owned traverse-only (`0711`); lifecycle a mount metadata
+zůstávají `0600`. Runtime tak může projít známou cestou k externímu mountu,
+ale nemůže vylistovat ani číst updater metadata. Obsahová oprávnění dál drží
+původní Personalspace strom.
 
 Updater nejdřív ověří externí SHA-256, bezpečně parsuje pouze regular-file a
 directory USTAR entries, kontroluje manifest, profil, platformu, build a
@@ -83,6 +100,13 @@ staging cesty, dostane odkazy na existující mutable mounty a projde Resident
 Doctorem. Teprve potom atomický relativní symlink přepne `active`. Selže-li
 post-switch gate, původní pointer se obnoví; verzované rooty se automaticky
 nemažou.
+
+První instalace může explicitním `--mount-source NAME=/absolute/path` adoptovat
+existující mutable strom bez kopie nebo přesunu. Updater uloží resolved target
+do mode-0600 `mounts.v1.json`; každý další update, status i rollback ověřuje,
+že lokální link stále míří přesně tam. Jiný target se odmítne a neprázdný
+managed adresář se nikdy neschová pod externím mountem. Pro existující Buddy
+host je deklarace `personalspace` povinnou součástí cohort preflightu.
 
 V1 používá POSIX atomic-symlink adapter pro Linux a macOS. Windows Kolegové
 zůstávají na stávajícím Git checkoutu a Windows resident lifecycle se
@@ -113,11 +137,12 @@ HTTP health.
 ```sh
 sudo bun /opt/lazurio/active/resident/buddy-service.mjs preflight \
   --install-root /opt/lazurio
-sudo bun /opt/lazurio/active/resident/buddy-service.mjs install \
-  --install-root /opt/lazurio
 ```
 
-Fresh Hermes/gbrain materializace zůstávají dalšími explicitními parity gates.
+Ruční `buddy-service install` je servisní/recovery seam; běžný install a update
+volá `buddy-rollout`, aby pointer a obě služby netvořily dvě nezávislé půlky.
+
+Nová Hermes/gbrain materializace zůstává dalším explicitním parity gatem.
 
 ## Stav první fáze
 

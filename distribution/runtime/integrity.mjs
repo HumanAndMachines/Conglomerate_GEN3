@@ -126,6 +126,8 @@ export async function verifyArtifactTree(artifactRoot, {
       "bridge/run.ts",
       "resident/buddy-service-lib.mjs",
       "resident/buddy-service.mjs",
+      "resident/buddy-rollout-lib.mjs",
+      "resident/buddy-rollout.mjs",
       "resident/services/buddy-bridge.service.template",
       "resident/services/hermes-lazurio-root.conf.template",
     ];

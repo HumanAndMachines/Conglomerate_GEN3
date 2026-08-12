@@ -45,16 +45,19 @@ async function fixture({ currentUnit = "# old Buddy unit\n[Service]\nExecStart=/
   const unitDirectory = join(root, "etc", "systemd", "system");
   const environmentFile = join(root, "run", "buddy", "buddy-bridge.env");
   const queueRoot = join(root, "var", "lib", "buddy-bridge");
-  const profileDirectory = join(root, "srv", "personalspace", "owner_GEN3", "buddy");
+  const profileDirectory = join(installRoot, "state", "personalspace", "owner_GEN3", "buddy");
   await Promise.all([
     mkdir(join(artifactRoot, "resident", "services"), { recursive: true }),
     mkdir(join(artifactRoot, "bridge"), { recursive: true }),
     mkdir(unitDirectory, { recursive: true }),
     mkdir(join(environmentFile, ".."), { recursive: true }),
     mkdir(join(queueRoot, "queue", "state"), { recursive: true }),
+    mkdir(join(installRoot, "state", "organizations"), { recursive: true }),
     mkdir(profileDirectory, { recursive: true }),
   ]);
   await symlink(join("versions", "candidate-a"), join(installRoot, "active"));
+  await symlink(join("..", "..", "state", "personalspace"), join(artifactRoot, "personalspace"));
+  await symlink(join("..", "..", "state", "organizations"), join(artifactRoot, "organizations"));
   await writeFile(
     join(artifactRoot, "resident", "services", "buddy-bridge.service.template"),
     [
@@ -206,7 +209,11 @@ test("the preserved unit remains an explicit operator rollback after a successfu
   });
   await restorePreResidentBuddyService({
     unitDirectory: paths.unitDirectory,
+    environmentFile: paths.environmentFile,
+    queueRoot: paths.queueRoot,
     commandRunner: successfulSystemctl(commands),
+    hermesReadinessProbe: async () => ({ hermes_gateway_healthy: true }),
+    bridgeReadinessProbe: async () => ({ bridge_queue_registered: true }),
     requireRootOwnership: false,
     platform: "linux",
   });
@@ -253,6 +260,18 @@ test("profile inspection follows a directory symlink and catches secret-shaped e
   expect(result.ok).toBe(false);
   expect(result.reason).toContain(".env");
   expect(result.reason).not.toContain("PRIVATE=value");
+});
+
+test("Buddy service preflight refuses Organization data on a Personalspace host", async () => {
+  const paths = await fixture();
+  await writeFile(join(paths.installRoot, "state", "organizations", "foreign-org"), "must stay absent\n");
+  await expect(installBuddyBridgeService({
+    ...options(paths),
+    commandRunner: successfulSystemctl([]),
+    preTransitionProbe: async () => ({ bridge_queue_registered: true }),
+    hermesReadinessProbe: async () => ({ hermes_gateway_healthy: true }),
+    readinessProbe: async () => ({ bridge_queue_registered: true }),
+  })).rejects.toThrow("empty organizations mount");
 });
 
 test("unit rendering refuses systemd specifiers and unresolved template markers", () => {

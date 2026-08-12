@@ -32,7 +32,11 @@ try {
   } else if (command === "install") {
     result = await installBuddyBridgeService(shared);
   } else if (command === "restore") {
-    result = await restorePreResidentBuddyService({ unitDirectory: options.unitDirectory });
+    result = await restorePreResidentBuddyService({
+      unitDirectory: options.unitDirectory,
+      environmentFile: options.environmentFile,
+      queueRoot: options.queueRoot,
+    });
   } else {
     throw new Error(`unknown command ${command}`);
   }

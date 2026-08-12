@@ -1,8 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
 import {
   mkdtemp,
+  lstat,
   readFile,
   readlink,
+  realpath,
   rm,
   symlink,
   unlink,
@@ -17,6 +19,7 @@ import {
   installResidentArtifact,
   parseResidentArchive,
   residentStatus,
+  revertResidentActivation,
   rollbackResidentArtifact,
   runResidentDoctor,
 } from "./runtime/updater-lib.mjs";
@@ -160,6 +163,122 @@ test("checksum, interrupted archive, incompatibility and health failures leave a
     .toBe("unchanged\n");
 });
 
+test("first install can adopt an existing Personalspace without copying or retargeting it", async () => {
+  if (process.platform === "win32") return;
+  const fixtureRoot = await temporary("lazurio-updater-adopt-fixtures-");
+  const installRoot = join(await temporary("lazurio-updater-adopt-parent-"), "lazurio");
+  const personalspace = await temporary("lazurio-existing-personalspace-");
+  const otherPersonalspace = await temporary("lazurio-other-personalspace-");
+  await writeFile(join(personalspace, "existing-private-sentinel.txt"), "stays in place\n");
+  const first = await buildFixture(fixtureRoot, "0.3.0-candidate.1");
+  const second = await buildFixture(fixtureRoot, "0.3.0-candidate.2");
+  const resolvedPersonalspace = await realpath(personalspace);
+
+  const installed = await install(first, installRoot, {
+    personalspace,
+  });
+  expect(installed.mutable_mounts).toEqual([
+    { name: "organizations", kind: "managed-directory" },
+    { name: "personalspace", kind: "external-symlink", target: resolvedPersonalspace },
+  ]);
+  expect(await readlink(join(installRoot, "state", "personalspace"))).toBe(resolvedPersonalspace);
+  expect((await lstat(join(installRoot, "state"))).mode & 0o777).toBe(0o711);
+  expect((await lstat(join(installRoot, "state", "organizations"))).mode & 0o777).toBe(0o755);
+  expect(await readFile(
+    join(installRoot, "active", "personalspace", "existing-private-sentinel.txt"),
+    "utf8",
+  )).toBe("stays in place\n");
+  expect((await lstat(join(installRoot, "state", "mounts.v1.json"))).mode & 0o777).toBe(0o600);
+
+  const updated = await install(second, installRoot);
+  expect(updated.status).toBe("updated");
+  expect(await readlink(join(installRoot, "state", "personalspace"))).toBe(resolvedPersonalspace);
+  expect(await readFile(join(personalspace, "existing-private-sentinel.txt"), "utf8"))
+    .toBe("stays in place\n");
+
+  await expect(install(second, installRoot, {
+    personalspace: otherPersonalspace,
+  })).rejects.toThrow("does not match");
+  await expectActive(installRoot, second.artifactId);
+
+  await unlink(join(installRoot, "state", "personalspace"));
+  await symlink(await realpath(otherPersonalspace), join(installRoot, "state", "personalspace"), "dir");
+  const status = await residentStatus({ installRoot, expectedProfile: "buddy" });
+  expect(status.health).toMatchObject({ status: "fail" });
+  expect(status.health.error).toContain("declared target");
+});
+
+test("an explicitly declared source can replace only an empty managed mount", async () => {
+  if (process.platform === "win32") return;
+  const fixtureRoot = await temporary("lazurio-updater-late-adopt-fixtures-");
+  const installRoot = join(await temporary("lazurio-updater-late-adopt-parent-"), "lazurio");
+  const personalspace = await temporary("lazurio-late-personalspace-");
+  const fixture = await buildFixture(fixtureRoot, "0.3.1-candidate.1");
+  await writeFile(join(personalspace, "external-sentinel.txt"), "external stays\n");
+  await install(fixture, installRoot);
+
+  const adopted = await install(fixture, installRoot, { personalspace });
+  expect(adopted.status).toBe("noop");
+  expect(await readFile(
+    join(installRoot, "active", "personalspace", "external-sentinel.txt"),
+    "utf8",
+  )).toBe("external stays\n");
+
+  const secondInstallRoot = join(await temporary("lazurio-updater-nonempty-adopt-parent-"), "lazurio");
+  await install(fixture, secondInstallRoot);
+  await writeFile(join(secondInstallRoot, "state", "personalspace", "local.txt"), "must not hide\n");
+  await expect(install(fixture, secondInstallRoot, { personalspace }))
+    .rejects.toThrow("not empty");
+  expect(await readFile(join(secondInstallRoot, "state", "personalspace", "local.txt"), "utf8"))
+    .toBe("must not hide\n");
+});
+
+test("Buddy profile refuses an external organizations mount", async () => {
+  if (process.platform === "win32") return;
+  const fixtureRoot = await temporary("lazurio-updater-org-boundary-fixtures-");
+  const installRoot = join(await temporary("lazurio-updater-org-boundary-parent-"), "lazurio");
+  const organizations = await temporary("lazurio-external-organizations-");
+  const fixture = await buildFixture(fixtureRoot, "0.3.2-candidate.1");
+  await expect(install(fixture, installRoot, { organizations }))
+    .rejects.toThrow("cannot adopt an organizations mount");
+});
+
+test("rollout compensation can revert an initial or updated activation without deleting versions", async () => {
+  if (process.platform === "win32") return;
+  const fixtureRoot = await temporary("lazurio-updater-compensation-fixtures-");
+  const first = await buildFixture(fixtureRoot, "0.3.3-candidate.1");
+  const second = await buildFixture(fixtureRoot, "0.3.3-candidate.2");
+
+  const initialRoot = join(await temporary("lazurio-updater-initial-revert-parent-"), "lazurio");
+  await install(first, initialRoot);
+  const initialRevert = await revertResidentActivation({
+    installRoot: initialRoot,
+    expectedProfile: "buddy",
+    failedArtifactId: first.artifactId,
+  });
+  expect(initialRevert).toMatchObject({ status: "initial_activation_reverted", active: null });
+  expect(await lstat(join(initialRoot, "active")).catch((error) => error.code)).toBe("ENOENT");
+  const initialStatus = await residentStatus({ installRoot: initialRoot, expectedProfile: "buddy" });
+  expect(initialStatus.active).toBeNull();
+  expect(initialStatus.installed).toEqual([first.artifactId]);
+
+  const updateRoot = join(await temporary("lazurio-updater-update-revert-parent-"), "lazurio");
+  await install(first, updateRoot);
+  await install(second, updateRoot);
+  const updateRevert = await revertResidentActivation({
+    installRoot: updateRoot,
+    expectedProfile: "buddy",
+    failedArtifactId: second.artifactId,
+  });
+  expect(updateRevert).toMatchObject({
+    status: "activation_reverted",
+    active: first.artifactId,
+    previous: second.artifactId,
+    last_known_good: first.artifactId,
+  });
+  await expectActive(updateRoot, first.artifactId);
+});
+
 test("archive parser rejects traversal and non-regular TAR entry types", () => {
   const traversal = createDeterministicTar(
     "resident",
@@ -186,13 +305,14 @@ test("Windows resident lifecycle remains fail-closed until its atomic pointer ad
   await expect(rollbackResidentArtifact({})).rejects.toThrow("POSIX atomic-symlink adapter");
 });
 
-async function install(fixture, installRoot) {
+async function install(fixture, installRoot, mutableMountSources = {}) {
   return installResidentArtifact({
     archivePath: fixture.archivePath,
     checksumPath: fixture.checksumPath,
     installRoot,
     expectedProfile: "buddy",
     expectedChannel: "candidate",
+    mutableMountSources,
   });
 }
 
@@ -228,6 +348,8 @@ async function buildFixture(root, version, target = currentResidentTarget()) {
     }],
     ["resident/buddy-service-lib.mjs", { bytes: Buffer.from("export {};\n"), mode: "0644" }],
     ["resident/buddy-service.mjs", { bytes: Buffer.from("#!/usr/bin/env bun\n"), mode: "0755" }],
+    ["resident/buddy-rollout-lib.mjs", { bytes: Buffer.from("export {};\n"), mode: "0644" }],
+    ["resident/buddy-rollout.mjs", { bytes: Buffer.from("#!/usr/bin/env bun\n"), mode: "0755" }],
     ["bridge/run.ts", { bytes: Buffer.from("export const fixtureBridge = true;\n"), mode: "0644" }],
     ["fixture/version.txt", { bytes: Buffer.from(`${version}\n`), mode: "0644" }],
   ]);

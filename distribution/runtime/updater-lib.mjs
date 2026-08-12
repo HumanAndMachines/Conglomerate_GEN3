@@ -8,13 +8,15 @@ import {
   readFile,
   readdir,
   readlink,
+  realpath,
   rename,
   rm,
+  rmdir,
   symlink,
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { basename, dirname, join, posix, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import {
   RESIDENT_MANIFEST_PATH,
@@ -25,12 +27,15 @@ import {
 
 const LIFECYCLE_SCHEMA = "lazurio.resident.lifecycle.v1";
 const LIFECYCLE_FILE = "lifecycle.v1.json";
+const MOUNT_CONFIG_SCHEMA = "lazurio.resident.mounts.v1";
+const MOUNT_CONFIG_FILE = "mounts.v1.json";
 const SUPPORTED_BUILD_CONTRACTS = new Set([1]);
 const SUPPORTED_ROOT_COMPATIBILITY = new Set([1]);
 const MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024;
 const MAX_ENTRY_BYTES = 256 * 1024 * 1024;
 const MAX_TAR_ENTRIES = 100_000;
 const MUTABLE_MOUNTS = ["organizations", "personalspace"];
+const MANAGED_MOUNT_MODES = { organizations: 0o755, personalspace: 0o700 };
 
 export function currentResidentTarget() {
   return `${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`;
@@ -42,11 +47,16 @@ export async function installResidentArtifact({
   installRoot,
   expectedProfile,
   expectedChannel,
+  mutableMountSources = {},
   healthRunner = runResidentDoctor,
 } = {}) {
   assertPosixUpdater();
   if (!archivePath || !checksumPath || !installRoot || !expectedProfile) {
     throw new Error("install requires archivePath, checksumPath, installRoot and expectedProfile");
+  }
+  if (expectedProfile === "buddy"
+    && Object.hasOwn(mutableMountSources ?? {}, "organizations")) {
+    throw new Error("Buddy Personalspace hosts cannot adopt an organizations mount");
   }
 
   const archive = await readVerifiedArchive(archivePath, checksumPath);
@@ -59,6 +69,7 @@ export async function installResidentArtifact({
 
   const layout = await prepareLayout(installRoot);
   return withUpdateLock(layout, async () => {
+    layout.mountConfig = await configureMutableMounts(layout, mutableMountSources);
     const currentId = await readActiveArtifactId(layout);
     const lifecycle = await readLifecycle(layout);
     assertLifecycleMatchesActive(lifecycle, currentId, expectedProfile);
@@ -219,6 +230,71 @@ export async function rollbackResidentArtifact({
   });
 }
 
+export async function revertResidentActivation({
+  installRoot,
+  expectedProfile,
+  failedArtifactId,
+  healthRunner = runResidentDoctor,
+} = {}) {
+  assertPosixUpdater();
+  if (!installRoot || !expectedProfile || !failedArtifactId) {
+    throw new Error("activation revert requires installRoot, expectedProfile and failedArtifactId");
+  }
+  assertArtifactId(failedArtifactId);
+  const layout = await requireLayout(installRoot);
+  return withUpdateLock(layout, async () => {
+    const currentId = await readActiveArtifactId(layout);
+    const lifecycle = await readLifecycle(layout);
+    assertLifecycleMatchesActive(lifecycle, currentId, expectedProfile);
+    if (!lifecycle || currentId !== failedArtifactId) {
+      throw new Error("activation revert target is not the exact active lifecycle artifact");
+    }
+    const previousId = lifecycle.previous;
+    if (!previousId) {
+      await restoreActive(layout, null);
+      try {
+        await unlink(layout.lifecycle);
+      } catch (error) {
+        await switchActive(layout, currentId);
+        throw new Error(`initial activation state removal failed and ${currentId} was restored: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      return {
+        schema_version: "lazurio.resident.updater-result.v1",
+        status: "initial_activation_reverted",
+        install_root: layout.root,
+        active: null,
+        previous: failedArtifactId,
+        last_known_good: null,
+        profile: expectedProfile,
+        mutable_mounts: summarizeMutableMounts(layout.mountConfig),
+      };
+    }
+
+    await assertHealthy(
+      versionRoot(layout, previousId),
+      expectedProfile,
+      healthRunner,
+      layout,
+    );
+    await switchActive(layout, previousId);
+    const restoredLifecycle = {
+      schema_version: LIFECYCLE_SCHEMA,
+      profile: expectedProfile,
+      active: previousId,
+      previous: failedArtifactId,
+      last_known_good: previousId,
+      updated_at: new Date().toISOString(),
+    };
+    try {
+      await writeLifecycle(layout, restoredLifecycle);
+    } catch (error) {
+      await switchActive(layout, currentId);
+      throw new Error(`activation revert state write failed and ${currentId} was restored: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    return lifecycleResult("activation_reverted", layout, restoredLifecycle);
+  });
+}
+
 export async function residentStatus({
   installRoot,
   expectedProfile,
@@ -261,6 +337,7 @@ export async function residentStatus({
     profile: lifecycle?.profile ?? null,
     installed,
     health,
+    mutable_mounts: summarizeMutableMounts(layout.mountConfig),
   };
 }
 
@@ -506,18 +583,18 @@ async function prepareLayout(installRoot) {
   const versions = join(root, "versions");
   const state = join(root, "state");
   await ensureDirectory(versions, 0o755);
-  await ensureDirectory(state, 0o700);
-  for (const mount of MUTABLE_MOUNTS) {
-    await ensureDirectory(join(state, mount), 0o700);
-  }
-  return {
+  await ensureDirectory(state, 0o711);
+  await chmod(state, 0o711);
+  const layout = {
     root,
     versions,
     state,
     active: join(root, "active"),
     lifecycle: join(state, LIFECYCLE_FILE),
+    mountConfigPath: join(state, MOUNT_CONFIG_FILE),
     lock: join(state, "update.lock"),
   };
+  return layout;
 }
 
 async function requireLayout(installRoot) {
@@ -532,11 +609,202 @@ async function requireLayout(installRoot) {
     state: join(root, "state"),
     active: join(root, "active"),
     lifecycle: join(root, "state", LIFECYCLE_FILE),
+    mountConfigPath: join(root, "state", MOUNT_CONFIG_FILE),
     lock: join(root, "state", "update.lock"),
   };
   await assertVersionDirectory(layout.versions);
   await assertVersionDirectory(layout.state);
+  layout.mountConfig = await readMountConfig(layout, { allowLegacyManaged: true });
   return layout;
+}
+
+async function configureMutableMounts(layout, declaredSources) {
+  const sources = await normalizeMutableMountSources(layout, declaredSources);
+  const existing = await readMountConfig(layout, { allowMissing: true });
+  if (existing) {
+    let changed = false;
+    for (const [mount, target] of Object.entries(sources)) {
+      const configured = existing.mounts[mount];
+      if (configured.kind === "external-symlink" && configured.target === target) continue;
+      if (configured.kind === "managed-directory") {
+        const mountPath = join(layout.state, mount);
+        const current = await lstat(mountPath);
+        if (current.isDirectory() && !current.isSymbolicLink()) {
+          if ((await readdir(mountPath)).length !== 0) {
+            throw new Error(`${mount} managed directory is not empty and cannot adopt an external source`);
+          }
+          await rmdir(mountPath);
+          await symlink(target, mountPath, "dir");
+        } else if (!current.isSymbolicLink() || await readlink(mountPath) !== target) {
+          throw new Error(`${mount} managed state cannot safely adopt the declared external source`);
+        }
+        existing.mounts[mount] = { kind: "external-symlink", target };
+        changed = true;
+        continue;
+      }
+      if (configured.kind !== "external-symlink" || configured.target !== target) {
+        throw new Error(`${mount} source does not match the immutable local mount contract`);
+      }
+    }
+    if (changed) await writeMountConfig(layout, existing);
+    await assertPersistentMounts(layout, existing);
+    return existing;
+  }
+
+  const next = {
+    schema_version: MOUNT_CONFIG_SCHEMA,
+    mounts: {},
+  };
+  for (const mount of MUTABLE_MOUNTS) {
+    const mountPath = join(layout.state, mount);
+    const target = sources[mount];
+    const current = await lstatOrNull(mountPath);
+    if (target) {
+      if (current?.isSymbolicLink()) {
+        if (await readlink(mountPath) !== target) {
+          throw new Error(`${mount} already points at a different external source`);
+        }
+      } else if (current?.isDirectory()) {
+        if ((await readdir(mountPath)).length !== 0) {
+          throw new Error(`${mount} managed directory is not empty and cannot be replaced by an external source`);
+        }
+        await rmdir(mountPath);
+        await symlink(target, mountPath, "dir");
+      } else if (current) {
+        throw new Error(`${mount} persistent state has an unsupported filesystem type`);
+      } else {
+        await symlink(target, mountPath, "dir");
+      }
+      next.mounts[mount] = { kind: "external-symlink", target };
+    } else {
+      await ensureDirectory(mountPath, MANAGED_MOUNT_MODES[mount]);
+      next.mounts[mount] = { kind: "managed-directory" };
+    }
+  }
+  await writeMountConfig(layout, next);
+  await assertPersistentMounts(layout, next);
+  return next;
+}
+
+async function normalizeMutableMountSources(layout, declaredSources) {
+  if (!declaredSources || typeof declaredSources !== "object" || Array.isArray(declaredSources)) {
+    throw new Error("mutableMountSources must be a mount-name to path object");
+  }
+  const normalized = {};
+  for (const [mount, source] of Object.entries(declaredSources)) {
+    if (!MUTABLE_MOUNTS.includes(mount)) throw new Error(`unknown mutable mount source ${mount}`);
+    if (typeof source !== "string" || !isAbsolute(source) || /[\u0000-\u001f\u007f]/.test(source)) {
+      throw new Error(`${mount} source must be an absolute path without control characters`);
+    }
+    const target = await realpathDirectory(source, `${mount} source`);
+    if (isPathInside(layout.root, target) || isPathInside(target, layout.root)) {
+      throw new Error(`${mount} source cannot contain or be contained by the Lazurio install root`);
+    }
+    normalized[mount] = target;
+  }
+  return normalized;
+}
+
+async function readMountConfig(layout, {
+  allowMissing = false,
+  allowLegacyManaged = false,
+} = {}) {
+  let value;
+  try {
+    const file = await lstat(layout.mountConfigPath);
+    if (!file.isFile() || file.isSymbolicLink()) {
+      throw new Error("mutable mount config must be a regular non-symlink file");
+    }
+    value = JSON.parse(await readFile(layout.mountConfigPath, "utf8"));
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw new Error(`cannot read mutable mount config: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (allowLegacyManaged) {
+      const legacy = {
+        schema_version: MOUNT_CONFIG_SCHEMA,
+        mounts: Object.fromEntries(MUTABLE_MOUNTS.map((mount) => [mount, { kind: "managed-directory" }])),
+      };
+      await assertPersistentMounts(layout, legacy);
+      return legacy;
+    }
+    if (allowMissing) return null;
+    throw new Error("mutable mount config does not exist");
+  }
+  validateMountConfig(value);
+  return value;
+}
+
+function validateMountConfig(value) {
+  if (value?.schema_version !== MOUNT_CONFIG_SCHEMA
+    || !value.mounts || typeof value.mounts !== "object" || Array.isArray(value.mounts)
+    || Object.keys(value.mounts).sort().join(",") !== [...MUTABLE_MOUNTS].sort().join(",")) {
+    throw new Error("mutable mount config has an invalid shape");
+  }
+  for (const mount of MUTABLE_MOUNTS) {
+    const descriptor = value.mounts[mount];
+    if (descriptor?.kind === "managed-directory"
+      && Object.keys(descriptor).length === 1) continue;
+    if (descriptor?.kind === "external-symlink"
+      && Object.keys(descriptor).sort().join(",") === "kind,target"
+      && typeof descriptor.target === "string"
+      && isAbsolute(descriptor.target)
+      && resolve(descriptor.target) === descriptor.target
+      && !/[\u0000-\u001f\u007f]/.test(descriptor.target)) continue;
+    throw new Error(`${mount} mutable mount descriptor is invalid`);
+  }
+}
+
+async function writeMountConfig(layout, value) {
+  validateMountConfig(value);
+  const temporary = join(layout.state, `.mounts-${process.pid}-${randomBytes(6).toString("hex")}.json`);
+  let handle = await open(temporary, "wx", 0o600);
+  try {
+    await handle.writeFile(`${JSON.stringify(value, null, 2)}\n`);
+    await handle.sync();
+    await handle.close();
+    handle = null;
+    await rename(temporary, layout.mountConfigPath);
+  } finally {
+    if (handle) await handle.close();
+    await unlink(temporary).catch((error) => {
+      if (error?.code !== "ENOENT") throw error;
+    });
+  }
+}
+
+async function assertPersistentMounts(layout, config = layout.mountConfig) {
+  validateMountConfig(config);
+  for (const mount of MUTABLE_MOUNTS) {
+    const path = join(layout.state, mount);
+    const descriptor = config.mounts[mount];
+    const entry = await lstat(path);
+    if (descriptor.kind === "managed-directory") {
+      if (!entry.isDirectory() || entry.isSymbolicLink()) {
+        throw new Error(`${mount} managed persistent state must be a real directory`);
+      }
+      continue;
+    }
+    if (!entry.isSymbolicLink() || await readlink(path) !== descriptor.target) {
+      throw new Error(`${mount} external persistent state does not match its declared target`);
+    }
+    await realpathDirectory(path, `${mount} external persistent state`);
+  }
+}
+
+async function realpathDirectory(path, label) {
+  const target = await realpath(path).catch(() => null);
+  if (!target) throw new Error(`${label} cannot be resolved`);
+  const targetStat = await lstat(target);
+  if (!targetStat.isDirectory() || targetStat.isSymbolicLink()) {
+    throw new Error(`${label} must resolve to a real directory`);
+  }
+  return target;
+}
+
+function isPathInside(parent, child) {
+  const rel = relative(parent, child);
+  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
 
 async function ensureDirectory(path, mode) {
@@ -767,7 +1035,17 @@ function lifecycleResult(status, layout, lifecycle) {
     previous: lifecycle.previous,
     last_known_good: lifecycle.last_known_good,
     profile: lifecycle.profile,
+    mutable_mounts: summarizeMutableMounts(layout.mountConfig),
   };
+}
+
+function summarizeMutableMounts(config) {
+  return MUTABLE_MOUNTS.map((mount) => {
+    const descriptor = config.mounts[mount];
+    return descriptor.kind === "external-symlink"
+      ? { name: mount, kind: descriptor.kind, target: descriptor.target }
+      : { name: mount, kind: descriptor.kind };
+  });
 }
 
 function assertPosixUpdater() {
@@ -788,11 +1066,8 @@ async function assertMutableMounts(root, layout) {
     if (target !== expected) {
       throw new Error(`${mount} mutable mount has unsafe target ${target}`);
     }
-    const stateStat = await lstat(join(layout.state, mount));
-    if (!stateStat.isDirectory() || stateStat.isSymbolicLink()) {
-      throw new Error(`${mount} persistent state must be a real directory`);
-    }
   }
+  await assertPersistentMounts(layout);
 }
 
 async function lstatOrNull(path) {

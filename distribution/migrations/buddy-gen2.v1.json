@@ -32,7 +32,9 @@
       "target_paths": [
         "distribution/build-lib.mjs",
         "distribution/runtime/updater-lib.mjs",
-        "distribution/runtime/updater.mjs"
+        "distribution/runtime/updater.mjs",
+        "distribution/runtime/buddy-rollout-lib.mjs",
+        "distribution/runtime/buddy-rollout.mjs"
       ],
       "public_safe_review": "pass",
       "reason": "Resident machines receive an integrity-checked non-Git artifact and atomic version switch instead of a credentialless Git bundle checkout."
@@ -54,6 +56,24 @@
       "reason": "The scar survives as clean-source, immutable inventory, no-overwrite, corrupted-artifact and active-unchanged regression gates rather than Git checkout reconciliation."
     },
     {
+      "id": "existing-personalspace-adoption",
+      "source_paths": [
+        "host/personalspace/personalspace-env.sh",
+        "host/personalspace/provision-tree.sh"
+      ],
+      "disposition": "migrated_as_mount_contract",
+      "target_paths": [
+        "distribution/runtime/updater-lib.mjs",
+        "distribution/runtime/updater.mjs",
+        "distribution/runtime/buddy-rollout-lib.mjs",
+        "distribution/runtime/buddy-rollout.mjs",
+        "distribution/updater.test.mjs",
+        "distribution/buddy-rollout.test.mjs"
+      ],
+      "public_safe_review": "pass",
+      "reason": "An existing Personalspace tree is adopted by an explicit resolved local mount contract without copy or move. Later lifecycle operations reject retargeting, and a non-empty managed directory is never hidden."
+    },
+    {
       "id": "bridge-core",
       "source_paths": ["bridge/**"],
       "disposition": "migrated",
@@ -73,7 +93,10 @@
         "distribution/runtime/hermes-lazurio-root.conf.template",
         "distribution/runtime/buddy-service-lib.mjs",
         "distribution/runtime/buddy-service.mjs",
-        "distribution/buddy-service.test.mjs"
+        "distribution/runtime/buddy-rollout-lib.mjs",
+        "distribution/runtime/buddy-rollout.mjs",
+        "distribution/buddy-service.test.mjs",
+        "distribution/buddy-rollout.test.mjs"
       ],
       "public_safe_review": "pass",
       "reason": "The unit targets the atomic active Lazurio root and retains the separate bridge UID, configuration refusal and durable queue. The service seam also binds pinned Hermes context discovery to that root through TERMINAL_CWD, preserves both previous systemd inputs, verifies the existing listening baseline, performs an atomic cutover, requires Hermes health plus fresh poller registration and restores the old inputs on failure without copying secret values."

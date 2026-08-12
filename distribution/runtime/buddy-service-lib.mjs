@@ -108,6 +108,14 @@ export async function preflightBuddyBridgeService({
   }
   const profile = await inspectProfileDirectory(environment.profileDirectory);
   if (!profile.ok) throw new Error(`Buddy profile refused: ${profile.reason}`);
+  const activePersonalspace = await realpath(join(activeRoot, "personalspace")).catch(() => null);
+  if (!activePersonalspace || !isWithin(activePersonalspace, profile.resolved)) {
+    throw new Error("active Lazurio personalspace does not contain the declared Buddy profile");
+  }
+  const organizations = await readdir(join(activeRoot, "organizations")).catch(() => null);
+  if (!organizations || organizations.length !== 0) {
+    throw new Error("Buddy Personalspace host must carry an empty organizations mount");
+  }
   if (requireRootOwnership) {
     runtimeAccessProbe({
       activeRoot,
@@ -285,9 +293,13 @@ export async function installBuddyBridgeService({
 
 export async function restorePreResidentBuddyService({
   unitDirectory = "/etc/systemd/system",
+  environmentFile = "/run/buddy/buddy-bridge.env",
+  queueRoot = "/var/lib/buddy-bridge",
   commandRunner = runCommand,
   hermesReadinessProbe = waitForHermesGatewayReadiness,
+  bridgeReadinessProbe = waitForBuddyBridgeReadiness,
   runtimeHealthUrl,
+  now = () => Date.now(),
   requireRootOwnership = true,
   platform = process.platform,
 } = {}) {
@@ -296,6 +308,10 @@ export async function restorePreResidentBuddyService({
   if (typeof process.getuid === "function" && process.getuid() !== 0 && requireRootOwnership) {
     throw new Error("Buddy service restore must run as root");
   }
+  const environment = await inspectBridgeEnvironment(environmentFile, {
+    queueRoot,
+    requireRootOwnership,
+  });
   const unitPath = join(unitDirectory, BUDDY_SERVICE_UNIT);
   const backupPath = `${unitPath}${BUDDY_SERVICE_BACKUP_SUFFIX}`;
   const backup = await readOptionalRegularFile(backupPath);
@@ -316,11 +332,13 @@ export async function restorePreResidentBuddyService({
   else await unlink(hermesDropinPath);
   assertCommand(commandRunner, ["daemon-reload"]);
   assertCommand(commandRunner, ["restart", HERMES_SERVICE_UNIT]);
-  if (runtimeHealthUrl) {
-    await hermesReadinessProbe({ healthUrl: runtimeHealthUrl, commandRunner });
-  }
+  await hermesReadinessProbe({
+    healthUrl: runtimeHealthUrl ?? environment.runtimeHealthUrl,
+    commandRunner,
+  });
+  const bridgeRestartedAt = now();
   assertCommand(commandRunner, ["restart", BUDDY_SERVICE_UNIT]);
-  assertCommand(commandRunner, ["is-active", "--quiet", BUDDY_SERVICE_UNIT]);
+  await bridgeReadinessProbe({ queueRoot, notBefore: bridgeRestartedAt, commandRunner });
   return {
     schema_version: "lazurio.buddy-service.result.v1",
     action: "restored_pre_resident_unit",
@@ -691,6 +709,7 @@ export function probeBuddyRuntimeAccess({
     ["runuser", ["-u", "buddy-bridge", "--", "test", "-w", queueDirectory], "buddy-bridge cannot write its durable queue"],
     ["id", ["-u", "buddy"], "runtime user buddy does not exist"],
     ["runuser", ["-u", "buddy", "--", "test", "-r", join(activeRoot, "AGENTS.md")], "buddy cannot read the active Lazurio AGENTS.md"],
+    ["runuser", ["-u", "buddy", "--", "test", "-d", join(activeRoot, "personalspace")], "buddy cannot traverse the active Lazurio Personalspace mount"],
   ];
   for (const [command, args, failure] of checks) {
     const result = spawnSync(command, args, {
