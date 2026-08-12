@@ -310,7 +310,9 @@ const elements = {
   updateBannerAction: document.querySelector("#updateBannerAction"),
   moduleUpdateBanner: document.querySelector("#moduleUpdateBanner"),
   moduleUpdateBannerText: document.querySelector("#moduleUpdateBannerText"),
+  moduleUpdateBannerSummary: document.querySelector("#moduleUpdateBannerSummary"),
   moduleUpdateBannerAction: document.querySelector("#moduleUpdateBannerAction"),
+  moduleUpdateBannerDetails: document.querySelector("#moduleUpdateBannerDetails"),
   reloadButton: document.querySelector("#reloadButton"),
   hero: document.querySelector("#hero"),
   heroTitle: document.querySelector("#heroTitle"),
@@ -369,7 +371,12 @@ elements.reloadButton.addEventListener("click", () => {
   loadData();
 });
 elements.updateBannerAction?.addEventListener("click", () => runRootUpdate());
-elements.moduleUpdateBannerAction?.addEventListener("click", () => pullOrganizationRepositories());
+elements.moduleUpdateBannerAction?.addEventListener("click", () => {
+  if (state.pendingAction === "git:retry-status") return;
+  if (organizationGitStatusProblemIssue()) retryOrganizationGitStatus();
+  else pullOrganizationRepositories();
+});
+elements.moduleUpdateBannerDetails?.addEventListener("click", () => revealProblems());
 elements.doctorStatus.addEventListener("click", () => {
   closeMobileOverflow();
   revealProblems({ includeSystem: true });
@@ -1085,20 +1092,31 @@ function renderHero(apps, diagnostics) {
     return;
   }
 
-  const verdict = computeHeroState(apps, diagnostics);
+  const gitStatusIssue = organizationGitStatusProblemIssue();
+  const computedVerdict = computeHeroState(apps, diagnostics);
+  const verdict = gitStatusIssue && computedVerdict.tone === "ok"
+    ? {
+        ...computedVerdict,
+        tone: "warn",
+        title: "Prostor funguje, kontrola změn selhala",
+      }
+    : computedVerdict;
   hero.classList.add(`hero-${verdict.tone}`);
   elements.heroTitle.textContent = verdict.title;
-  renderHeroIssues(verdict, diagnostics);
+  renderHeroIssues(verdict, diagnostics, gitStatusIssue);
   renderSpaceHealthBadge(verdict, diagnostics);
 }
 
-function renderHeroIssues(verdict, diagnostics) {
+function renderHeroIssues(verdict, diagnostics, gitStatusIssue = null) {
   const model = buildSpaceProblemModel(diagnostics);
-  const relevantIssues = verdict.tone === "danger"
+  const diagnosticIssues = verdict.tone === "danger"
     ? model.issues.filter((issue) => issue.severity === "danger")
     : verdict.tone === "warn"
       ? model.issues.filter((issue) => issue.severity === "warning")
       : [];
+  const relevantIssues = gitStatusIssue && verdict.tone !== "danger"
+    ? [...diagnosticIssues, gitStatusIssue]
+    : diagnosticIssues;
 
   if (verdict.tone === "ok") {
     elements.heroSummary.textContent = "";
@@ -1231,9 +1249,11 @@ function renderDoctorStatus(spaceHealth = {}) {
 function renderProblems(spaceHealth) {
   const model = buildSpaceProblemModel(spaceHealth);
   const systemIssue = systemProblemIssue();
-  const spaceIssues = model.blockers > 0
+  const diagnosticIssues = model.blockers > 0
     ? model.issues.filter((issue) => issue.severity === "danger")
     : model.issues;
+  const gitStatusIssue = organizationGitStatusProblemIssue();
+  const spaceIssues = gitStatusIssue ? [...diagnosticIssues, gitStatusIssue] : diagnosticIssues;
   const visibleIssues = state.problemsIncludeSystem && systemIssue
     ? [...spaceIssues, systemIssue]
     : spaceIssues;
@@ -4747,6 +4767,48 @@ function activeOrganizationGitRepositories() {
   return [...repositories.values()];
 }
 
+function failedOrganizationGitRepositories() {
+  return activeOrganizationGitRepositories().filter((repo) =>
+    repo.status === "check_failed" || repo.freshness?.remote_refresh_state === "error");
+}
+
+function organizationGitStatusProblemIssue() {
+  if (state.filters.scope !== "org" || state.filters.company === "all") return null;
+  const failed = failedOrganizationGitRepositories();
+  if (!state.gitStatusError && failed.length === 0) return null;
+  const title = gitStatusFailureTitle(failed);
+  return {
+    severity: "warning",
+    title,
+    impact: "Aplikace můžete dál používat, ale Launchpad teď neví, jestli máte nejnovější změny.",
+    nextStep: "Zkuste kontrolu znovu. Pokud selže, zkontrolujte v technických detailech připojení nebo nastavení zdroje repozitáře.",
+    technical: failed.length > 0
+      ? failed.map((repo) => `${repo.name ?? repo.module ?? repo.key}: ${gitStatusFailureReason(repo)}`)
+      : ["Git přehled Organizace není dostupný."],
+  };
+}
+
+function gitStatusFailureTitle(failed) {
+  if (failed.length === 0) return "Aktuálnost Organizace a modulů se nepodařilo ověřit";
+  const rootFailed = failed.some((repo) => repo.repo_kind === "organization_root");
+  const moduleCount = failed.filter((repo) => repo.repo_kind !== "organization_root").length;
+  if (rootFailed && moduleCount > 0) {
+    return `Aktuálnost Organizace a ${moduleCount === 1 ? "1 modulu" : `${moduleCount} modulů`} se nepodařilo ověřit`;
+  }
+  if (rootFailed) return "Aktuálnost Organizace se nepodařilo ověřit";
+  return `Aktuálnost ${moduleCount === 1 ? "1 modulu" : `${moduleCount} modulů`} se nepodařilo ověřit`;
+}
+
+function gitStatusFailureReason(repo) {
+  if (!repo.remote && repo.freshness?.remote_refresh_state === "error") {
+    return "zdroj repozitáře není deklarovaný v manifestu";
+  }
+  return repo.freshness?.remote_error
+    ?? repo.details?.join("; ")
+    ?? repo.message
+    ?? "kontrola vzdálené verze selhala";
+}
+
 function pullableGitUpdate(repo) {
   return repo?.status === "pull_available" || canAutostashPull(repo);
 }
@@ -4760,8 +4822,10 @@ function moduleUpdateLocation(count) {
 function renderModuleUpdateBanner() {
   const banner = elements.moduleUpdateBanner;
   const text = elements.moduleUpdateBannerText;
+  const summary = elements.moduleUpdateBannerSummary;
   const action = elements.moduleUpdateBannerAction;
-  if (!banner || !text || !action || state.filters.scope === "personal") return;
+  const details = elements.moduleUpdateBannerDetails;
+  if (!banner || !text || !summary || !action || !details || state.filters.scope === "personal") return;
 
   const repositories = activeOrganizationGitRepositories();
   const rootRepo = repositories.find((repo) => repo.repo_kind === "organization_root") ?? null;
@@ -4769,8 +4833,8 @@ function renderModuleUpdateBanner() {
   const moduleUpdates = modules.filter(pullableGitUpdate);
   const rootUpdate = pullableGitUpdate(rootRepo);
   const pending = state.pendingAction === "git:pull-organization";
-  const checkFailed = state.gitStatusError || repositories.some((repo) =>
-    repo.status === "check_failed" || repo.freshness?.remote_refresh_state === "error");
+  const retrying = state.pendingAction === "git:retry-status";
+  const statusIssue = organizationGitStatusProblemIssue();
   const refreshing = repositories.some((repo) => repo.freshness?.remote_refresh_state === "refreshing");
 
   banner.hidden = false;
@@ -4778,6 +4842,17 @@ function renderModuleUpdateBanner() {
   action.hidden = true;
   action.disabled = true;
   action.textContent = "Stáhnout změny";
+  details.hidden = true;
+  summary.hidden = true;
+  summary.textContent = "";
+
+  if (retrying) {
+    text.textContent = "Ověřuji aktuálnost Organizace a modulů…";
+    action.textContent = "Ověřuji…";
+    action.hidden = false;
+    banner.classList.add("is-updating");
+    return;
+  }
 
   if (pending) {
     text.textContent = moduleUpdates.length > 0
@@ -4788,17 +4863,20 @@ function renderModuleUpdateBanner() {
     return;
   }
 
-  if (!state.gitStatusLoaded) {
-    text.textContent = state.gitStatusError
-      ? "Stav modulů se nepodařilo ověřit."
-      : "Kontroluji změny v modulech…";
-    if (state.gitStatusError) banner.classList.add("is-blocked");
+  if (statusIssue) {
+    text.textContent = `${statusIssue.title}.`;
+    summary.textContent = "V práci můžete pokračovat. Zkuste kontrolu znovu, nebo otevřete podrobnosti s příčinou a dalším krokem.";
+    summary.hidden = false;
+    action.textContent = "Zkusit znovu";
+    action.hidden = false;
+    action.disabled = false;
+    details.hidden = false;
+    banner.classList.add("is-blocked");
     return;
   }
 
-  if (checkFailed) {
-    text.textContent = "Stav modulů se nepodařilo ověřit.";
-    banner.classList.add("is-blocked");
+  if (!state.gitStatusLoaded) {
+    text.textContent = "Kontroluji změny v modulech…";
     return;
   }
 
@@ -4823,6 +4901,32 @@ function renderModuleUpdateBanner() {
 
   text.textContent = "Moduly jsou aktuální.";
   banner.classList.add("is-current");
+}
+
+async function retryOrganizationGitStatus() {
+  const organization = state.filters.company;
+  if (state.filters.scope !== "org" || organization === "all") return;
+  state.pendingAction = "git:retry-status";
+  render();
+  try {
+    const git = await fetchJson(`/api/git/repos?company=${encodeURIComponent(organization)}&refresh=1`);
+    state.gitReposByModule = indexGitReposByModule(git?.repos ?? []);
+    state.gitStatusLoaded = true;
+    state.gitStatusError = false;
+    const failed = failedOrganizationGitRepositories();
+    if (failed.length > 0) {
+      toast("Kontrola stále selhává. V Podrobnostech najdete příčinu a další krok.", "warn");
+    } else {
+      toast("Aktuálnost Organizace a modulů je ověřená.", "success");
+    }
+  } catch {
+    state.gitStatusLoaded = false;
+    state.gitStatusError = true;
+    toast("Kontrolu se nepodařilo dokončit. Otevřete Podrobnosti pro další krok.", "error");
+  } finally {
+    state.pendingAction = null;
+    render();
+  }
 }
 
 function renderUpdatePill() {

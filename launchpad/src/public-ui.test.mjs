@@ -759,11 +759,21 @@ test("Launchpad ukazuje jednoduchý stav modulů s počtem a jedním stažením 
   expect(html).toContain('id="updateBannerGroup"');
   expect(html).toContain('id="moduleUpdateBanner"');
   expect(html).toContain('id="moduleUpdateBannerText"');
+  expect(html).toContain('id="moduleUpdateBannerSummary"');
+  expect(html).toContain('id="moduleUpdateBannerDetails"');
   expect(html).toContain('id="moduleUpdateBannerAction"');
   expect(html).toContain("Stáhnout změny");
   expect(html).not.toContain('id="organizationGitPanel"');
   expect(js).toContain("function renderModuleUpdateBanner");
   expect(js).toContain("function activeOrganizationGitRepositories");
+  expect(js).toContain("function organizationGitStatusProblemIssue");
+  expect(js).toContain("function retryOrganizationGitStatus");
+  expect(js).toContain('`/api/git/repos?company=${encodeURIComponent(organization)}&refresh=1`');
+  expect(js).toContain('action.textContent = "Zkusit znovu"');
+  expect(js).toContain("details.hidden = false");
+  expect(js).toContain('return "Aktuálnost Organizace se nepodařilo ověřit"');
+  expect(js).toContain("zdroj repozitáře není deklarovaný v manifestu");
+  expect(js).toContain('title: "Prostor funguje, kontrola změn selhala"');
   expect(js).toContain("function moduleUpdateLocation");
   expect(js).toContain('repositories.set(repo.key ?? `${repo.organization}::${repo.module ?? repo.repo_kind}`, repo)');
   expect(js).toContain('`Změny jsou připravené ${moduleUpdateLocation(moduleUpdates.length)}.`');
@@ -775,7 +785,7 @@ test("Launchpad ukazuje jednoduchý stav modulů s počtem a jedním stažením 
   expect(js).toContain('`/api/git/pull-all?company=${encodeURIComponent(organization)}`');
   expect(js).not.toContain("Načíst nejnovější změny ve všech organizacích?");
   const moduleBannerBlock = js.slice(js.indexOf("function renderModuleUpdateBanner"), js.indexOf("function renderUpdatePill"));
-  expect(moduleBannerBlock.indexOf("if (checkFailed)")).toBeLessThan(
+  expect(moduleBannerBlock.indexOf("if (statusIssue)")).toBeLessThan(
     moduleBannerBlock.indexOf("if (moduleUpdates.length > 0)"),
   );
   expect(js).toContain("summary.materialized_count");
@@ -1268,7 +1278,8 @@ test("CAC-0083: dostupný root update je nepřehlédnutelný — banner ve všec
   expect(js).toContain('elements.updateBannerAction.hidden = true');
   expect(js).toContain('banner.classList.add("is-blocked")');
   expect(js).toContain('elements.updateBannerAction?.addEventListener("click", () => runRootUpdate())');
-  expect(js).toContain('elements.moduleUpdateBannerAction?.addEventListener("click", () => pullOrganizationRepositories())');
+  expect(js).toContain('if (organizationGitStatusProblemIssue()) retryOrganizationGitStatus()');
+  expect(js).toContain("else pullOrganizationRepositories()");
   expect(js).toContain("const moduleUpdates = modules.filter(pullableGitUpdate)");
   expect(js).toContain("moduleUpdateLocation(moduleUpdates.length)");
 

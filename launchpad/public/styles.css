@@ -5820,6 +5820,45 @@ body {
   line-height: 1.35;
 }
 
+.module-update-banner-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 0.25rem;
+}
+
+.module-update-banner-summary {
+  color: var(--lz-gray-600);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.module-update-banner-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.module-update-banner .update-banner-detail {
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--lz-ink);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.module-update-banner .update-banner-detail:hover,
+.module-update-banner .update-banner-detail:focus-visible {
+  background: var(--lz-gray-50);
+}
+
 .update-banner-group > .update-banner .update-banner-action {
   min-height: 38px;
   padding: 8px 14px;
@@ -5835,6 +5874,22 @@ body {
 .update-banner-group > .update-banner .update-banner-action:focus-visible:not(:disabled) {
   background: var(--lz-gray-50);
   filter: none;
+}
+
+@media (max-width: 640px) {
+  .module-update-banner {
+    align-items: flex-start;
+  }
+
+  .module-update-banner-actions {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .module-update-banner-actions .update-banner-action {
+    width: auto;
+    margin-left: 0;
+  }
 }
 
 /* Stav prostoru je třetí řádek stejného provozního přehledu. Ve zdravém

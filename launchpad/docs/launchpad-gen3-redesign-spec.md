@@ -741,6 +741,13 @@ jeden konflikt nezastaví ostatní repozitáře a výsledný souhrn musí pojmen
 každý skipped/conflict/failed checkout. Background fetch je během Git mutací
 pozastavený a mutace z různých karet jsou serializované.
 
+Selhání kontroly nesmí skončit slepou hláškou ani současně zeleným „Prostor je
+připravený“. Řádek rozliší, zda se nepodařilo ověřit Organization root, moduly,
+nebo obojí; vysvětlí, že aplikace lze dál používat, ale aktuálnost není potvrzená,
+a nabídne **Zkusit znovu** i **Podrobnosti**. Podrobnosti pojmenují konkrétní
+repozitář, příčinu a doporučený další krok. Stav prostoru se po dobu chyby přepne
+nejméně do varování, aby si sousední stavové povrchy neprotiřečily.
+
 **Freshness kontrakt (owner 2026-07-14).** Tichý browser refresh běží každých
 15 sekund jen tehdy, když je karta viditelná a okno fokusované. Hidden/blur jej
 zastaví; návrat spustí jeden okamžitý refresh. `/api/apps` smí používat pouze
