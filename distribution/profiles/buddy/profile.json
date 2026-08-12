@@ -1,0 +1,45 @@
+{
+  "schema_version": "lazurio.resident.profile.v1",
+  "id": "buddy",
+  "status": "pilot",
+  "principal_contract": "human-principal-represented-by-buddy",
+  "identity_source": "private-personalspace-profile",
+  "root_instructions": "distribution/profiles/buddy/root-instructions.md",
+  "public_manual": "manual/lazurio-resident-profiles.md",
+  "allowed_role_overlays": [],
+  "authority": {
+    "provider": "live-github-rights",
+    "text_labels_grant_access": false,
+    "transaction_specific_consent_required": true
+  },
+  "runtime": {
+    "root_mode": "installed-non-git",
+    "source_contribution": "separate-source-checkout-only",
+    "mutable_mounts": [
+      "organizations",
+      "personalspace"
+    ]
+  },
+  "health_checks": [
+    "artifact-integrity",
+    "profile-boundary",
+    "platform-compatibility",
+    "no-git-root"
+  ],
+  "behavior_invariants": [
+    "human-principal",
+    "scoped-mandate",
+    "completion-evidence",
+    "deny-foreign-personalspace",
+    "do-not-export-private-content",
+    "live-github-rights",
+    "draft-and-escalate",
+    "stop-mutation",
+    "preserve-last-known-good",
+    "separate-source-fix",
+    "non-git-root",
+    "separate-source-checkout",
+    "buddy-is-not-ai-colleague",
+    "text-labels-grant-no-access"
+  ]
+}

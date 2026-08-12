@@ -1,0 +1,20 @@
+{
+  "schema_version": "lazurio.resident.dependency-pin.v1",
+  "id": "hermes",
+  "repository": "Lazurio/hermes-agent",
+  "upstream_repository": "NousResearch/hermes-agent",
+  "release_tag": "v2026.7.20",
+  "commit": "3ef6bbd201263d354fd83ec55b3c306ded2eb72a",
+  "lock_file": "uv.lock",
+  "lock_sha256": "456f76d5396df0f543d1035c2d05173cae1882c290ba585cc926a79958b9d7fe",
+  "compatibility": {
+    "artifact_contract_versions": [
+      1
+    ],
+    "independent_self_update_allowed": false
+  },
+  "provenance": {
+    "migrated_from": "HumanAndMachine-ai/Buddy_GEN2@08b7ee79058a0ea91472fe6cc3651104221d2ab8:release/runtime-pins.json",
+    "remote_verified_on": "2026-07-30"
+  }
+}

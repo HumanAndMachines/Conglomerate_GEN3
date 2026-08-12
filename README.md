@@ -40,6 +40,23 @@ Organization selektor nepředstírá membership ani effective permissions:
 Organization, Team, modul i aplikace ve výstupu drží provider access
 `not_evaluated` a oddělují jej od lokální přítomnosti checkoutu.
 
+## Rezidentní distribuce
+
+`distribution/` drží build kontrakt pro celý non-Git Lazurio Root profilu
+Buddy a později AI Kolegy. Z čistého exact source commitu generuje jediný root
+`AGENTS.md`, manifest s hashi payloadu, public-safe offline manuál, Resident
+Doctor a deterministický per-platformní USTAR artefakt. Profilové fragmenty se
+ve source nejmenují `AGENTS.md`, takže v development checkoutu nejsou aktivní.
+
+```sh
+bun run resident:build -- --profile buddy --target linux-x64 \
+  --version 0.1.0-candidate.1 --channel candidate
+```
+
+Build sám nic nereleasuje ani nemění na živém hostu. Kontrakt a omezení jsou v
+[distribution/README.md](distribution/README.md), veřejné vysvětlení ekosystému
+v [manual/lazurio-resident-profiles.md](manual/lazurio-resident-profiles.md).
+
 Search ve výchozím `exact` režimu čte aktuální filesystem přes `rg`, takže vidí
 i novou neindexovanou změnu v explicitně deklarovaném nested repu, přestože
 jeho Organization mount ignoruje parent root Git. Nespouští však plošné
