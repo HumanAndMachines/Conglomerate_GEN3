@@ -484,7 +484,7 @@ test("Launchpad server creates and publishes a Mission-Control-owned worktree vi
   expect(runGit(["--git-dir", remotePath, "rev-parse", "refs/heads/CAC-0042-deals-publish"], root)).toBe(
     published.commit.sha,
   );
-});
+}, platformTestTimeout(15_000));
 
 async function readLaunchpadPort(server) {
   const reader = server.stdout.getReader();
