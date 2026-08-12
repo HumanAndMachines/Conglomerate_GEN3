@@ -100,8 +100,24 @@ v host custody a připojí je service EnvironmentFile.
 Přenesené behaviorální testy drží cold-start bez přehrání historie, pořadí
 durable record → watermark → acknowledgement, id-based routing, self-echo
 filtr, singleton, rate breaker, profilovou custody hranici, celé instrukce na
-wire a session recovery. Host service render/install a Hermes/gbrain
-materializace zůstávají dalšími explicitními parity gates.
+wire a session recovery. Host service seam znovu nepřenáší secrets: ověří
+existující root-owned `EnvironmentFile`, profil a runtime UID, uchová přesnou
+původní unit, atomicky nasadí unit mířící na `active`, restartuje ji a za
+úspěch považuje až čerstvou registraci polleru. Při chybě vrátí původní unit.
+Stejná transakce přidá Hermes gatewayi `TERMINAL_CWD=<active-root>`, takže
+pinned Hermes načte profilový root `AGENTS.md` do každé nově sestavené session;
+privátní ústava a mandáty zůstávají samostatnou vrstvou bridge system message.
+Před restartem seam ověří exact Hermes commit i digest `uv.lock` a po něm jeho
+HTTP health.
+
+```sh
+sudo bun /opt/lazurio/active/resident/buddy-service.mjs preflight \
+  --install-root /opt/lazurio
+sudo bun /opt/lazurio/active/resident/buddy-service.mjs install \
+  --install-root /opt/lazurio
+```
+
+Fresh Hermes/gbrain materializace zůstávají dalšími explicitními parity gates.
 
 ## Stav první fáze
 

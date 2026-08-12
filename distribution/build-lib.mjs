@@ -164,6 +164,24 @@ export async function buildResidentArtifact({
   );
   addGeneratedEntry(
     entries,
+    "resident/services/hermes-lazurio-root.conf.template",
+    readBlob(repositoryRoot, tree, "distribution/runtime/hermes-lazurio-root.conf.template"),
+    "0644",
+  );
+  addGeneratedEntry(
+    entries,
+    "resident/buddy-service-lib.mjs",
+    readBlob(repositoryRoot, tree, "distribution/runtime/buddy-service-lib.mjs"),
+    "0644",
+  );
+  addGeneratedEntry(
+    entries,
+    "resident/buddy-service.mjs",
+    readBlob(repositoryRoot, tree, "distribution/runtime/buddy-service.mjs"),
+    "0755",
+  );
+  addGeneratedEntry(
+    entries,
     "resident/manifest.schema.json",
     readBlob(repositoryRoot, tree, "distribution/manifest.schema.json"),
     "0644",
@@ -339,6 +357,7 @@ function residentPackageJson(profile) {
       "resident:rollback": "bun resident/updater.mjs rollback",
       "resident:status": "bun resident/updater.mjs status",
       "buddy:bridge": "bun bridge/run.ts",
+      "buddy:service": "bun resident/buddy-service.mjs",
     },
   }, null, 2)}\n`;
 }

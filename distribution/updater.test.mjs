@@ -222,6 +222,12 @@ async function buildFixture(root, version, target = currentResidentTarget()) {
       bytes: Buffer.from("[Service]\nUser=buddy-bridge\nRestartPreventExitStatus=78\n"),
       mode: "0644",
     }],
+    ["resident/services/hermes-lazurio-root.conf.template", {
+      bytes: Buffer.from("[Service]\nEnvironment=TERMINAL_CWD=/opt/lazurio/active\n"),
+      mode: "0644",
+    }],
+    ["resident/buddy-service-lib.mjs", { bytes: Buffer.from("export {};\n"), mode: "0644" }],
+    ["resident/buddy-service.mjs", { bytes: Buffer.from("#!/usr/bin/env bun\n"), mode: "0755" }],
     ["bridge/run.ts", { bytes: Buffer.from("export const fixtureBridge = true;\n"), mode: "0644" }],
     ["fixture/version.txt", { bytes: Buffer.from(`${version}\n`), mode: "0644" }],
   ]);

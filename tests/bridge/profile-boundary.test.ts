@@ -238,7 +238,7 @@ describe("the refusal is loud, and a monitor can see it", () => {
     expect(unit).toContain(`RestartPreventExitStatus=${BRIDGE_EXIT_CONFIG_REFUSED}`);
     expect(unit).toContain("User=buddy-bridge");
     expect(unit).toContain("Group=buddy-bridge");
-    expect(unit).toContain("ReadWritePaths=/var/lib/buddy-bridge");
+    expect(unit).toContain("ReadWritePaths=@@QUEUE_ROOT@@");
     expect(unit).toContain("ExecStart=@@BUN_BIN@@ @@ACTIVE_ROOT@@/bridge/run.ts");
   });
 });

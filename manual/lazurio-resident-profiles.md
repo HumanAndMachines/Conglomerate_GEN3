@@ -62,6 +62,12 @@ agentním runtime. Bridge sám nevlastní identitu ani mandáty: před prvním
 síťovým krokem ověří mount privátního profilu, vloží jeho ústavu a mandáty do
 každého turnu a odmítne běh bez úplného kontraktu. Běží pod odděleným účtem,
 nevystavuje příchozí port a trvanlivou frontu drží mimo immutable root.
+Přechodová služba používá již existující host custody soubor; jeho secrets
+nekopíruje ani nevypisuje. Cutover je vratný přes uchovanou původní systemd
+unit a úspěch dokazuje nová registrace polleru, nikoli jen stav procesu.
+Hermes dostává aktivní Lazurio Root jako `TERMINAL_CWD`, aby jeho context-file
+discovery vložilo veřejný profilový `AGENTS.md` i do Zulip session. Ten se
+vrství s privátní ústavou a mandáty; žádná z těchto vrstev nenahrazuje druhou.
 
 ## Profil AI Kolega a Steward overlay
 

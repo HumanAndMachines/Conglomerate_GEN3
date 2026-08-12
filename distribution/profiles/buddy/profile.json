@@ -27,7 +27,8 @@
     "profile-boundary",
     "platform-compatibility",
     "no-git-root",
-    "buddy-bridge-contract"
+    "buddy-bridge-contract",
+    "hermes-context-root"
   ],
   "behavior_invariants": [
     "human-principal",
@@ -43,6 +44,7 @@
     "non-git-root",
     "separate-source-checkout",
     "buddy-is-not-ai-colleague",
+    "root-instructions-every-runtime-session",
     "text-labels-grant-no-access"
   ]
 }

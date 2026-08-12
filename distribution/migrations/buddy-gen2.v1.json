@@ -67,10 +67,16 @@
         "host/bridge/**",
         "tests/bridge/install-seam.exec.test.ts"
       ],
-      "disposition": "partially_migrated",
-      "target_paths": ["distribution/runtime/buddy-bridge.service.template"],
-      "public_safe_review": "pass_for_template_installer_pending",
-      "reason": "The unit template now targets the immutable active Lazurio root and retains the separate bridge UID, configuration refusal and durable queue. Safe render/install and host readback remain pending."
+      "disposition": "migrated",
+      "target_paths": [
+        "distribution/runtime/buddy-bridge.service.template",
+        "distribution/runtime/hermes-lazurio-root.conf.template",
+        "distribution/runtime/buddy-service-lib.mjs",
+        "distribution/runtime/buddy-service.mjs",
+        "distribution/buddy-service.test.mjs"
+      ],
+      "public_safe_review": "pass",
+      "reason": "The unit targets the atomic active Lazurio root and retains the separate bridge UID, configuration refusal and durable queue. The service seam also binds pinned Hermes context discovery to that root through TERMINAL_CWD, preserves both previous systemd inputs, verifies the existing listening baseline, performs an atomic cutover, requires Hermes health plus fresh poller registration and restores the old inputs on failure without copying secret values."
     },
     {
       "id": "hermes-runtime-materialization",
@@ -87,7 +93,7 @@
       "disposition": "pending_itemized_migration",
       "target_paths": [],
       "public_safe_review": "required",
-      "reason": "The manifest owns the exact Hermes pin, but host materialization, gateway service and compatibility probes still execute from Buddy_GEN2."
+      "reason": "The manifest owns the exact Hermes pin and the resident service seam verifies live commit plus lock digest before binding TERMINAL_CWD to the active Lazurio Root. Fresh Hermes materialization and the base gateway unit still execute from Buddy_GEN2."
     },
     {
       "id": "gbrain-runtime",

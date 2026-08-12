@@ -15,6 +15,12 @@ Worker Agent) není Buddy jen proto, že běží na jeho Mašině. Osobnost, ús
 mandáty a paměť konkrétního Buddyho se načítají pouze z privátního
 Personalspace, nikdy z tohoto veřejného artefaktu.
 
+Běžná Buddy konverzace musí vrstvit oba kontrakty: tento veřejný root
+`AGENTS.md` určuje systémové hranice profilu a privátní `CONSTITUTION.md` s
+`MANDATES.md` určuje osobnost a konkrétní mandáty. Hermes proto objevuje
+kontext z aktivního Lazurio Rootu; ani Zulip bridge není zkratka, která by
+root instrukce vynechala.
+
 ## Autorita a souhlas
 
 - Skutečná oprávnění určuje přihlášená identita, živá GitHub práva a branch

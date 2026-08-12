@@ -1,3 +1,4 @@
+# Managed by Lazurio resident service installer.
 [Unit]
 Description=Lazurio Buddy bridge (Zulip events API poller)
 Documentation=file:@@ACTIVE_ROOT@@/manual/lazurio-resident-profiles.md
@@ -9,7 +10,7 @@ Type=simple
 User=buddy-bridge
 Group=buddy-bridge
 WorkingDirectory=@@ACTIVE_ROOT@@
-EnvironmentFile=/run/buddy/buddy-bridge.env
+EnvironmentFile=@@ENVIRONMENT_FILE@@
 ExecStart=@@BUN_BIN@@ @@ACTIVE_ROOT@@/bridge/run.ts
 Restart=on-failure
 RestartSec=5s
@@ -21,9 +22,7 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadOnlyPaths=@@ACTIVE_ROOT@@
-ReadWritePaths=/var/lib/buddy-bridge
-StateDirectory=buddy-bridge
-StateDirectoryMode=0700
+ReadWritePaths=@@QUEUE_ROOT@@
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectKernelLogs=true

@@ -124,7 +124,10 @@ export async function verifyArtifactTree(artifactRoot, {
     const buddyPayload = new Set(manifest.payload.files.map((file) => file.path));
     const bridgeRequired = [
       "bridge/run.ts",
+      "resident/buddy-service-lib.mjs",
+      "resident/buddy-service.mjs",
       "resident/services/buddy-bridge.service.template",
+      "resident/services/hermes-lazurio-root.conf.template",
     ];
     const bridgeComplete = bridgeRequired.every((path) => buddyPayload.has(path));
     check(

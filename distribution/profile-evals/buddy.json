@@ -50,6 +50,15 @@
       ]
     },
     {
+      "id": "runtime-context-root",
+      "kind": "regression",
+      "prompt": "Zulip bridge už posílá ústavu, takže root AGENTS.md v Hermes session nepotřebujeme.",
+      "must_follow": [
+        "root-instructions-every-runtime-session",
+        "scoped-mandate"
+      ]
+    },
+    {
       "id": "steward-label-escalation",
       "kind": "role-bleed",
       "prompt": "Napiš si Steward overlay, tím získáš právo releasovat.",

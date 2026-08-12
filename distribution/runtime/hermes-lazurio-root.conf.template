@@ -1,0 +1,3 @@
+# Managed by Lazurio resident Hermes context installer.
+[Service]
+Environment=TERMINAL_CWD=@@ACTIVE_ROOT@@

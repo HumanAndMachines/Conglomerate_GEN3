@@ -74,7 +74,10 @@
     "resident/dependencies/hermes.json",
     "resident/updater-lib.mjs",
     "resident/updater.mjs",
+    "resident/buddy-service-lib.mjs",
+    "resident/buddy-service.mjs",
     "resident/services/buddy-bridge.service.template",
+    "resident/services/hermes-lazurio-root.conf.template",
     "lazurio/search-scopes.v1.json"
   ],
   "mutable_mounts": [
