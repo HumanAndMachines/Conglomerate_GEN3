@@ -8,8 +8,8 @@ description: Povinná disciplína pro každou Git změnu, branch, PR, review, p�
 ## Kdy použít
 
 Použij před každou změnou Git-trackovaného obsahu v Conglomerate rootu a při
-inventuře, předávce nebo úklidu worktrees. Kanonický upstream kontrakt je
-HumanAndMachines decision 0049 a stejnojmenný skill; lokální kopie je
+inventuře, předávce nebo úklidu worktrees. Kanonický planning kontrakt drží
+jediný HumanAndMachine-ai Mission Control; lokální kopie skillu je
 samostatně použitelný consumer kontrakt pro agenta, který startoval přímo zde.
 
 ## Postup
@@ -26,7 +26,7 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
    takže ukáže i linked worktrees mimo root. Je to informativní inventura;
    `bun run worktrees:check` je fail-closed kontrola umístění, metadat a Git
    zachování. Její PASS není cleanup autorizace.
-3. Použij existující HumanAndMachines Mission Control plán a worktree založ
+3. Použij existující plán z jediného HumanAndMachine-ai Mission Controlu a worktree založ
    kanonickou lane `bun run worktrees:create -- --plan <KOD-XXXX>` — odvodí
    basename z kanonického plan souboru, založí branch z čerstvého
    `origin/main` a vygeneruje schema-validní sidecar. Worktree cesta je

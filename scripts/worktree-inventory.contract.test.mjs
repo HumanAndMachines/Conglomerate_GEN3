@@ -1,9 +1,11 @@
 import { afterEach, expect, setDefaultTimeout, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   auditRepository,
+  resolveAuthorityRoot,
+  resolveAuthorityPlanPath,
 } from "../.agents/skills/worktree-development-discipline/scripts/worktree-inventory.mjs";
 
 const cleanupPaths = [];
@@ -66,30 +68,24 @@ const fixturePlanSchema = {
     dev_code: { type: "string", pattern: "^[A-Z]{2,6}-[0-9]{4}$" },
   },
 };
-const fixtureSchemaValidator = `export function validateAgainstSchema(value, schema, label = "$") {
-  const failures = [];
-  if (!value || typeof value !== "object" || Array.isArray(value)) return [label + ": expected object"];
-  for (const key of schema.required ?? []) if (!(key in value)) failures.push(label + ": missing " + key);
-  for (const [key, rule] of Object.entries(schema.properties ?? {})) {
-    if (!(key in value)) continue;
-    if (Object.hasOwn(rule, "const") && value[key] !== rule.const) failures.push(label + "." + key + ": const mismatch");
-    if (rule.type === "string" && typeof value[key] !== "string") failures.push(label + "." + key + ": expected string");
-    if (rule.pattern && !new RegExp(rule.pattern).test(value[key])) failures.push(label + "." + key + ": pattern mismatch");
-  }
-  return failures;
+const fixtureSemanticValidator = `import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+function planSources(root) {
+  const files = [];
+  const walk = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const target = join(directory, entry.name);
+      if (entry.isDirectory()) walk(target);
+      else if (entry.isFile() && /\\.ya?ml$/.test(entry.name)) files.push(readFileSync(target, "utf8"));
+    }
+  };
+  walk(join(root, "data", "mission-control", "plans"));
+  return files;
 }
-`;
-const fixtureSemanticValidator = `export function loadMissionControlConfig() {
-  return {};
-}
-export function loadPlanSchema(_root, _config) {
-  return {};
-}
-export function validatePlanShape(record) {
-  const expectedId = "mcplan-" + String(record.plan?.dev_code ?? "").toLowerCase();
-  return record.plan?.id === expectedId
-    ? []
-    : [record.path + ": id must match dev_code"];
+export function validateMissionControlData(root) {
+  return planSources(root).some((source) => source.includes('title: "Semantically invalid"'))
+    ? ["semantic fixture rejection"]
+    : [];
 }
 `;
 
@@ -111,6 +107,136 @@ test("accepts an authority-backed exact Mission Control plan", async () => {
   expect(canonicalWorktree(report)).toMatchObject({
     sidecar_valid: true,
     sidecar_error: null,
+  });
+});
+
+test.each([
+  "mission-control/plans/2026/08/DEV-6439-runtime.yaml",
+  "data/mission-control/plans/2026/08/DEV-6439-runtime.yaml",
+])("bridges legacy sidecar plan locator %s to repository-db", async (planLocator) => {
+  const authorityRoot = await mkdtemp(join(tmpdir(), "worktree authority "));
+  cleanupPaths.push(authorityRoot);
+  const canonicalPlan = join(
+    authorityRoot,
+    "mission-control",
+    "db",
+    "data",
+    "mission-control",
+    "plans",
+    "2026",
+    "08",
+    "DEV-6439-runtime.yaml",
+  );
+  await mkdir(join(canonicalPlan, ".."), { recursive: true });
+  await writeFile(canonicalPlan, validPlanContents.replaceAll("CAC-0007", "DEV-6439"));
+
+  expect(resolveAuthorityPlanPath("/unused", planLocator, authorityRoot)).toBe(canonicalPlan);
+});
+
+test("repository-db plan wins when a stale legacy plan still exists", async () => {
+  const authorityRoot = await mkdtemp(join(tmpdir(), "worktree authority precedence "));
+  cleanupPaths.push(authorityRoot);
+  const locator = "mission-control/plans/2026/08/DEV-6439-runtime.yaml";
+  const legacyPlan = join(authorityRoot, ...locator.split("/"));
+  const canonicalPlan = join(
+    authorityRoot,
+    "mission-control",
+    "db",
+    "data",
+    "mission-control",
+    "plans",
+    "2026",
+    "08",
+    "DEV-6439-runtime.yaml",
+  );
+  await mkdir(join(legacyPlan, ".."), { recursive: true });
+  await mkdir(join(canonicalPlan, ".."), { recursive: true });
+  await writeFile(legacyPlan, "dev_code: DEV-6439\nstatus: archived\n");
+  await writeFile(canonicalPlan, validPlanContents.replaceAll("CAC-0007", "DEV-6439"));
+
+  expect(resolveAuthorityPlanPath("/unused", locator, authorityRoot)).toBe(canonicalPlan);
+});
+
+test.each([
+  "mission-control/./plans/2026/08/DEV-6439-runtime.yaml",
+  "mission-control/plans/../plans/2026/08/DEV-6439-runtime.yaml",
+  "data/mission-control/plans/../../mission-control/plans/2026/08/DEV-6439-runtime.yaml",
+])("rejects traversal-bearing legacy sidecar locator %s", async (planLocator) => {
+  const fixture = await createFixture({
+    authorityAvailable: true,
+    planAvailable: true,
+    sidecarOverrides: { mission_control_plan_path: planLocator },
+  });
+  const report = await auditRepository(fixture.root, {
+    authorityRoot: fixture.authorityRoot,
+  });
+  expect(canonicalWorktree(report)).toMatchObject({
+    sidecar_valid: false,
+    sidecar_error: "Mission Control plan is outside the HumanAndMachine-ai authority",
+  });
+});
+
+test("ignores environment overrides and keeps one local authority", () => {
+  expect(resolveAuthorityRoot("/workspace/Conglomerate", {
+    LAZURIO_MISSION_CONTROL_ROOT: "/fixtures/HumanAndMachine-ai_GEN3",
+    HUMANANDMACHINES_ROOT: "/retired/HumanAndMachines",
+  })).toBe("/workspace/Conglomerate/organizations/HumanAndMachine-ai_GEN3");
+});
+
+test("legacy sidecar locator fails toward repository-db when only a retired plan exists", async () => {
+  const authorityRoot = await mkdtemp(join(tmpdir(), "worktree authority retired "));
+  cleanupPaths.push(authorityRoot);
+  const locator = "mission-control/plans/2026/08/DEV-6439-runtime.yaml";
+  const legacyPlan = join(authorityRoot, ...locator.split("/"));
+  const canonicalPlan = join(
+    authorityRoot,
+    "mission-control",
+    "db",
+    "data",
+    "mission-control",
+    "plans",
+    "2026",
+    "08",
+    "DEV-6439-runtime.yaml",
+  );
+  await mkdir(join(legacyPlan, ".."), { recursive: true });
+  await writeFile(legacyPlan, validPlanContents.replaceAll("CAC-0007", "DEV-6439"));
+
+  expect(resolveAuthorityPlanPath("/unused", locator, authorityRoot)).toBe(canonicalPlan);
+});
+
+test("rejects a repository-db plans root redirected to retired legacy plans", async () => {
+  const fixture = await createFixture({
+    authorityAvailable: true,
+    planAvailable: true,
+  });
+  const canonicalPlansRoot = join(
+    fixture.authorityRoot,
+    "mission-control",
+    "db",
+    "data",
+    "mission-control",
+    "plans",
+  );
+  const legacyPlansRoot = join(fixture.authorityRoot, "mission-control", "plans");
+  const legacyPlan = join(legacyPlansRoot, "2026", "07", "CAC-0007-contract.yaml");
+  await mkdir(join(legacyPlan, ".."), { recursive: true });
+  await writeFile(legacyPlan, validPlanContents);
+  await rm(canonicalPlansRoot, { recursive: true });
+  await symlink(
+    legacyPlansRoot,
+    canonicalPlansRoot,
+    process.platform === "win32" ? "junction" : "dir",
+  );
+
+  const report = await auditRepository(fixture.root, {
+    authorityRoot: fixture.authorityRoot,
+  });
+  expect(canonicalWorktree(report)).toMatchObject({
+    sidecar_valid: false,
+    sidecar_error: expect.stringContaining(
+      "canonical repository-db plan root resolves through a redirected path",
+    ),
   });
 });
 
@@ -157,6 +283,26 @@ test("fails closed when canonical semantic plan validation rejects a schema-vali
     authorityAvailable: true,
     planAvailable: true,
     planContents: validPlanContents.replace(
+      'title: "Worktree contract fixture"',
+      'title: "Semantically invalid"',
+    ),
+  });
+  const report = await auditRepository(fixture.root, {
+    authorityRoot: fixture.authorityRoot,
+  });
+  expect(canonicalWorktree(report)).toMatchObject({
+    sidecar_valid: false,
+    sidecar_error: expect.stringContaining(
+      "Mission Control repository-db semantic validation failed",
+    ),
+  });
+});
+
+test("fails closed when selected plan id does not match dev_code", async () => {
+  const fixture = await createFixture({
+    authorityAvailable: true,
+    planAvailable: true,
+    planContents: validPlanContents.replace(
       "id: mcplan-cac-0007",
       "id: mcplan-cac-9999",
     ),
@@ -166,9 +312,7 @@ test("fails closed when canonical semantic plan validation rejects a schema-vali
   });
   expect(canonicalWorktree(report)).toMatchObject({
     sidecar_valid: false,
-    sidecar_error: expect.stringContaining(
-      "Mission Control plan semantic validation failed",
-    ),
+    sidecar_error: "Mission Control plan id must match dev_code",
   });
 });
 
@@ -435,26 +579,34 @@ async function createFixture({
   const remote = join(sandbox, "remotes", "HumanAndMachines", "Dashboard.git");
   const planRelativePath =
     "mission-control/plans/2026/07/CAC-0007-contract.yaml";
-  const planPath = join(authorityRoot, ...planRelativePath.split("/"));
+  const repositoryDbRoot = join(authorityRoot, "mission-control", "db");
+  const planPath = join(
+    repositoryDbRoot,
+    "data",
+    "mission-control",
+    "plans",
+    "2026",
+    "07",
+    "CAC-0007-contract.yaml",
+  );
+  const semanticValidatorPath = join(
+    repositoryDbRoot,
+    "scripts",
+    "validate-mission-control-data.mjs",
+  );
 
   await mkdir(root);
   await mkdir(remote, { recursive: true });
   if (authorityAvailable) {
-    await mkdir(join(authorityRoot, "mission-control", "plans", "2026", "07"), {
-      recursive: true,
-    });
-    await mkdir(join(authorityRoot, "schemas"), { recursive: true });
-    await mkdir(join(authorityRoot, "scripts"), { recursive: true });
+    await mkdir(join(planPath, ".."), { recursive: true });
+    await mkdir(join(repositoryDbRoot, "schemas"), { recursive: true });
+    await mkdir(join(semanticValidatorPath, ".."), { recursive: true });
     await writeFile(
-      join(authorityRoot, "schemas", "mission-control-plan.schema.json"),
+      join(repositoryDbRoot, "schemas", "mission-control-plan.schema.json"),
       `${JSON.stringify(fixturePlanSchema, null, 2)}\n`,
     );
     await writeFile(
-      join(authorityRoot, "scripts", "json-schema-mini.mjs"),
-      fixtureSchemaValidator,
-    );
-    await writeFile(
-      join(authorityRoot, "scripts", "mission-control-lib.mjs"),
+      semanticValidatorPath,
       fixtureSemanticValidator,
     );
   }
@@ -531,6 +683,7 @@ function sanitizedEnv() {
     "GIT_OBJECT_DIRECTORY",
     "GIT_PREFIX",
     "GIT_WORK_TREE",
+    "LAZURIO_MISSION_CONTROL_ROOT",
     "HUMANANDMACHINES_ROOT",
   ]) {
     delete env[key];
