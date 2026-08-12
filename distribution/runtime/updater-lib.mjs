@@ -228,7 +228,7 @@ export async function residentStatus({
   const layout = await requireLayout(installRoot);
   const active = await readActiveArtifactId(layout);
   const lifecycle = await readLifecycle(layout);
-  if (expectedProfile) assertLifecycleMatchesActive(lifecycle, active, expectedProfile);
+  assertLifecycleMatchesActive(lifecycle, active, expectedProfile);
   const installed = [];
   const entries = await readdir(layout.versions, { withFileTypes: true });
   for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
@@ -618,7 +618,7 @@ function assertLifecycleMatchesActive(lifecycle, active, expectedProfile) {
   if (lifecycle && lifecycle.active !== active) {
     throw new Error(`lifecycle active ${lifecycle.active} does not match active pointer ${active}`);
   }
-  if (lifecycle && lifecycle.profile !== expectedProfile) {
+  if (lifecycle && expectedProfile && lifecycle.profile !== expectedProfile) {
     throw new Error(`install root profile ${lifecycle.profile} does not match ${expectedProfile}`);
   }
 }

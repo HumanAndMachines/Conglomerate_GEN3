@@ -1,0 +1,181 @@
+{
+  "schema_version": "lazurio.resident.migration-inventory.v1",
+  "source": {
+    "repository": "HumanAndMachine-ai/Buddy_GEN2",
+    "commit": "08b7ee79058a0ea91472fe6cc3651104221d2ab8",
+    "visibility": "private"
+  },
+  "target": {
+    "repository": "Lazurio/Lazurio",
+    "development_repository_at_recording": "HumanAndMachines/Conglomerate_GEN3",
+    "plan": "DEV-6438"
+  },
+  "policy": {
+    "history_merge_allowed": false,
+    "private_content_copy_allowed": false,
+    "public_safe_review_required": true,
+    "artifact_contains_instance_data": false
+  },
+  "items": [
+    {
+      "id": "hermes-pin",
+      "source_paths": ["release/runtime-pins.json#/runtimes/hermes"],
+      "disposition": "migrated",
+      "target_paths": ["distribution/dependencies/hermes.json"],
+      "public_safe_review": "pass",
+      "reason": "Exact Lazurio fork tag, commit and uv.lock digest are profile-neutral release inputs. Live remote provenance was refreshed before publication."
+    },
+    {
+      "id": "git-source-delivery",
+      "source_paths": ["host/source/deploy-source.sh"],
+      "disposition": "superseded",
+      "target_paths": [
+        "distribution/build-lib.mjs",
+        "distribution/runtime/updater-lib.mjs",
+        "distribution/runtime/updater.mjs"
+      ],
+      "public_safe_review": "pass",
+      "reason": "Resident machines receive an integrity-checked non-Git artifact and atomic version switch instead of a credentialless Git bundle checkout."
+    },
+    {
+      "id": "artifact-integrity-and-doctor",
+      "source_paths": [
+        "tests/contracts/source-deploy.exec.test.ts",
+        "tests/fakes/tracked-tree.exec.test.ts",
+        "tests/scars/mutations/SOURCE-1.patch"
+      ],
+      "disposition": "migrated_as_contract",
+      "target_paths": [
+        "distribution/build.test.mjs",
+        "distribution/updater.test.mjs",
+        "distribution/runtime/integrity.mjs"
+      ],
+      "public_safe_review": "pass",
+      "reason": "The scar survives as clean-source, immutable inventory, no-overwrite, corrupted-artifact and active-unchanged regression gates rather than Git checkout reconciliation."
+    },
+    {
+      "id": "bridge-core",
+      "source_paths": ["bridge/**"],
+      "disposition": "pending_itemized_migration",
+      "target_paths": [],
+      "public_safe_review": "required",
+      "reason": "The durable Zulip-to-runtime bridge is required before a Lazurio Root can replace the old checkout as the service execution source. Code and tests must move together."
+    },
+    {
+      "id": "bridge-host-service",
+      "source_paths": [
+        "host/bridge/**",
+        "tests/bridge/install-seam.exec.test.ts"
+      ],
+      "disposition": "pending_refactor",
+      "target_paths": [],
+      "public_safe_review": "required",
+      "reason": "The service seam hardcodes the old checkout. Its successor must resolve the immutable active Lazurio version while retaining the separate bridge UID and durable queue."
+    },
+    {
+      "id": "hermes-runtime-materialization",
+      "source_paths": [
+        "host/runtime/hermes/**",
+        "host/runtime/read-pin.sh",
+        "host/runtime/runtime-seam.sh",
+        "tests/runtime/hermes-seam.exec.test.ts",
+        "tests/runtime/read-pin.exec.test.ts",
+        "tests/runtime/runtime-seam.exec.test.ts",
+        "tests/scars/mutations/RUNTIME-*.patch",
+        "tests/scars/mutations/SEAM-*.patch"
+      ],
+      "disposition": "pending_itemized_migration",
+      "target_paths": [],
+      "public_safe_review": "required",
+      "reason": "The manifest owns the exact Hermes pin, but host materialization, gateway service and compatibility probes still execute from Buddy_GEN2."
+    },
+    {
+      "id": "gbrain-runtime",
+      "source_paths": [
+        "host/runtime/gbrain/**",
+        "tests/runtime/gbrain-*.exec.test.ts",
+        "tests/runtime/postgres-lane.exec.test.ts",
+        "tests/scars/mutations/GBRAIN-*.patch",
+        "tests/scars/mutations/PG-*.patch"
+      ],
+      "disposition": "pending_separate_dependency_contract",
+      "target_paths": [],
+      "public_safe_review": "required",
+      "reason": "Memory runtime, PostgreSQL requirements and MCP handshake remain required, but gbrain needs a refreshed exact pin and canary evidence before entering a public artifact."
+    },
+    {
+      "id": "profile-materialization",
+      "source_paths": [
+        "host/runtime/hermes/profile-materialize.sh",
+        "tests/runtime/profile-materialize.exec.test.ts",
+        "tests/bridge/profile-boundary.test.ts"
+      ],
+      "disposition": "pending_refactor",
+      "target_paths": [],
+      "public_safe_review": "required",
+      "reason": "Reusable boundary code may move, but the profile repository, constitution, mandates, personality, auth and memory remain private Personalspace inputs and never become artifact payload."
+    },
+    {
+      "id": "host-bootstrap-and-network",
+      "source_paths": [
+        "host/base/**",
+        "host/network/**",
+        "tests/base/**",
+        "tests/contracts/firewall.exec.test.ts",
+        "tests/contracts/egress.test.ts"
+      ],
+      "disposition": "pending_operator_plane_decision",
+      "target_paths": [],
+      "public_safe_review": "required",
+      "reason": "Host provisioning is not immutable Lazurio Root payload. It needs a reviewed operator-kit owner and must retain provider and recovery gates."
+    },
+    {
+      "id": "backup-and-restore",
+      "source_paths": [
+        "host/drills/**",
+        "tests/drills/**",
+        "tests/contracts/drill-evidence.test.ts"
+      ],
+      "disposition": "pending_itemized_migration",
+      "target_paths": [],
+      "public_safe_review": "required",
+      "reason": "Backup and restore are cohort gates, but private keys, bundles and evidence remain installation custody and cannot enter Lazurio source or artifacts."
+    },
+    {
+      "id": "install-orchestrator",
+      "source_paths": ["host/install/**", "tests/install/**"],
+      "disposition": "pending_refactor",
+      "target_paths": [],
+      "public_safe_review": "required",
+      "reason": "The old whole-host orchestration mixes bootstrap, runtime and human gates. Resident lifecycle is migrated; remaining host steps need an explicit operator plan rather than a blind copy."
+    },
+    {
+      "id": "internal-docs-and-incident-history",
+      "source_paths": ["ARCHITECTURE.md", "ROADMAP.md", "TESTING.md", "docs/**"],
+      "disposition": "do_not_copy_wholesale",
+      "target_paths": [
+        "manual/lazurio-resident-profiles.md",
+        "HumanAndMachine-ai Knowledgebase namespace lazurio-ai",
+        "HumanAndMachine-ai Mission Control DEV-6438"
+      ],
+      "public_safe_review": "required_per_learning",
+      "reason": "Stable public behavior is synthesized into Lazurio; internal rationale and anonymized learnings go to Knowledgebase; rollout stays in Mission Control; instance history is not published."
+    },
+    {
+      "id": "test-and-scar-framework",
+      "source_paths": ["tests/**", "tools/**", ".github/workflows/scars.yml"],
+      "disposition": "pending_case_by_case_migration",
+      "target_paths": [],
+      "public_safe_review": "required",
+      "reason": "Each component must bring the scars that falsify it. The private corpus is not copied wholesale because some fixtures and histories encode cohort-specific assumptions."
+    },
+    {
+      "id": "third-party-notices",
+      "source_paths": ["THIRD-PARTY-NOTICES.md"],
+      "disposition": "pending_dependency_inventory",
+      "target_paths": [],
+      "public_safe_review": "required",
+      "reason": "Notices move only with the corresponding migrated dependency or bundled code and must be regenerated against the actual public artifact inventory."
+    }
+  ]
+}

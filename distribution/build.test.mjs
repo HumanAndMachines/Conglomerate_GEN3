@@ -156,6 +156,40 @@ test("Buddy profile eval pack covers normal and negative-path cases without role
   expect(profile.allowed_role_overlays).toEqual([]);
 });
 
+test("Buddy GEN2 migration inventory is exact, explicit and never a private history merge", async () => {
+  const inventory = JSON.parse(
+    await readFile(join(import.meta.dir, "migrations", "buddy-gen2.v1.json"), "utf8"),
+  );
+  expect(inventory).toMatchObject({
+    schema_version: "lazurio.resident.migration-inventory.v1",
+    source: {
+      repository: "HumanAndMachine-ai/Buddy_GEN2",
+      commit: "08b7ee79058a0ea91472fe6cc3651104221d2ab8",
+      visibility: "private",
+    },
+    policy: {
+      history_merge_allowed: false,
+      private_content_copy_allowed: false,
+      public_safe_review_required: true,
+      artifact_contains_instance_data: false,
+    },
+  });
+  expect(new Set(inventory.items.map((item) => item.id)).size).toBe(inventory.items.length);
+  expect(inventory.items.every((item) => (
+    item.source_paths.length > 0
+    && typeof item.disposition === "string"
+    && Array.isArray(item.target_paths)
+    && typeof item.reason === "string"
+    && item.reason.length > 0
+  ))).toBe(true);
+  expect(inventory.items.find((item) => item.id === "hermes-pin")).toMatchObject({
+    disposition: "migrated",
+    public_safe_review: "pass",
+  });
+  expect(inventory.items.find((item) => item.id === "internal-docs-and-incident-history"))
+    .toMatchObject({ disposition: "do_not_copy_wholesale" });
+});
+
 function runDoctor(root) {
   const result = spawnSync(process.execPath, ["resident/doctor.mjs", "--json"], {
     cwd: root,

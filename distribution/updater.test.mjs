@@ -180,6 +180,12 @@ test("archive parser rejects traversal and non-regular TAR entry types", () => {
   expect(() => parseResidentArchive(unsafeType)).toThrow("unsupported TAR entry type");
 });
 
+test("Windows resident lifecycle remains fail-closed until its atomic pointer adapter exists", async () => {
+  if (process.platform !== "win32") return;
+  await expect(installResidentArtifact({})).rejects.toThrow("POSIX atomic-symlink adapter");
+  await expect(rollbackResidentArtifact({})).rejects.toThrow("POSIX atomic-symlink adapter");
+});
+
 async function install(fixture, installRoot) {
   return installResidentArtifact({
     archivePath: fixture.archivePath,

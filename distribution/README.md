@@ -5,6 +5,10 @@ Sdílený produkt zůstává v běžných adresářích rootu; nevzniká paralel
 `common/` strom. Pod `distribution/` žijí pouze build kontrakt, profilové
 fragmenty, dependency piny, evaly a runtime lifecycle soubory.
 
+Kurátorovaný přechod ze starších produktových repozitářů drží
+`migrations/`. Inventář zapisuje exact source commit a disposition každé
+skupiny; není to svolení ke kopii privátního repozitáře ani vstup buildu.
+
 Profilový fragment se záměrně jmenuje `root-instructions.md`, nikoli
 `AGENTS.md`. V source checkoutu proto není aktivní instrukční scope. Builder z
 něj vytvoří jediný root `AGENTS.md` až ve výsledném artefaktu.
