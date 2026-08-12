@@ -1,9 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, isAbsolute, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { validateAgainstSchema } from "../launchpad/src/json-schema-mini.mjs";
+import { trustedGitExecutable } from "../scripts/agent-skills-entrypoint.mjs";
 import {
   buildResidentArtifact,
   createDeterministicTar,
@@ -78,6 +80,7 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
     (await readFile(first.archive_path)).equals(await readFile(second.archive_path)),
   ).toBe(true);
   expect(first.manifest.profile).toBe("buddy");
+  expect(first.manifest.source.repository).toBe("HumanAndMachines/Lazurio");
   expect(first.manifest.role_overlays).toEqual([]);
   expect(first.manifest.dependencies.hermes).toMatchObject({
     repository: "Lazurio/hermes-agent",
@@ -139,6 +142,80 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
   expect(tampered.status).toBe(1);
   expect(JSON.parse(tampered.stdout)).toMatchObject({ status: "fail" });
 });
+
+test("resident provenance is independent of mutable remote configuration", async () => {
+  const fixture = await isolatedRepositoryFixture();
+  const target = residentTarget();
+  const baseline = await buildResidentArtifact({
+    cwd: fixture.repositoryRoot,
+    profile: "buddy",
+    target,
+    artifactVersion: "0.1.0-provenance-test",
+    channel: "candidate",
+    outputRoot: join(fixture.sandbox, "baseline"),
+  });
+
+  runTrustedGit(fixture.repositoryRoot, [
+    "remote",
+    "set-url",
+    "origin",
+    "https://attacker.invalid/mutable/source.git",
+  ]);
+  const mutated = await buildResidentArtifact({
+    cwd: fixture.repositoryRoot,
+    profile: "buddy",
+    target,
+    artifactVersion: "0.1.0-provenance-test",
+    channel: "candidate",
+    outputRoot: join(fixture.sandbox, "mutated"),
+  });
+
+  expect(mutated.manifest.source.repository).toBe("HumanAndMachines/Lazurio");
+  expect(mutated.archive_sha256).toBe(baseline.archive_sha256);
+  expect(
+    (await readFile(mutated.archive_path)).equals(await readFile(baseline.archive_path)),
+  ).toBe(true);
+});
+
+test.skipIf(process.platform === "win32")(
+  "resident build ignores PATH git and a checkout-local fsmonitor helper",
+  async () => {
+    const fixture = await isolatedRepositoryFixture();
+    const fakeBin = join(fixture.sandbox, "fake-bin");
+    const fakeGit = join(fakeBin, "git");
+    const fakeGitMarker = `${fakeGit}.invoked`;
+    const fsmonitor = join(fixture.sandbox, "fsmonitor-hook");
+    const fsmonitorMarker = `${fsmonitor}.invoked`;
+    await mkdir(fakeBin, { recursive: true });
+    await writeFile(fakeGit, `#!/bin/sh\n: > "${fakeGitMarker}"\nexit 91\n`);
+    await writeFile(fsmonitor, `#!/bin/sh\n: > "${fsmonitorMarker}"\nexit 92\n`);
+    await chmod(fakeGit, 0o755);
+    await chmod(fsmonitor, 0o755);
+    runTrustedGit(fixture.repositoryRoot, ["config", "--local", "core.fsmonitor", fsmonitor]);
+
+    const originalPath = process.env.PATH;
+    process.env.PATH = originalPath
+      ? `${fakeBin}${delimiter}${originalPath}`
+      : fakeBin;
+    try {
+      const result = await buildResidentArtifact({
+        cwd: fixture.repositoryRoot,
+        profile: "buddy",
+        target: residentTarget(),
+        artifactVersion: "0.1.0-git-boundary-test",
+        channel: "candidate",
+        outputRoot: join(fixture.sandbox, "hardened"),
+      });
+      expect(result.manifest.source.repository).toBe("HumanAndMachines/Lazurio");
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
+    }
+
+    expect(existsSync(fakeGitMarker)).toBe(false);
+    expect(existsSync(fsmonitorMarker)).toBe(false);
+  },
+);
 
 test("Buddy profile eval pack covers normal and negative-path cases without role grants", async () => {
   const evals = JSON.parse(
@@ -211,4 +288,39 @@ function runDoctor(root) {
     stdout: result.stdout,
     stderr: result.stderr,
   };
+}
+
+function residentTarget() {
+  return `${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`;
+}
+
+async function isolatedRepositoryFixture() {
+  const sandbox = await mkdtemp(join(tmpdir(), "lazurio-resident-build-repository-"));
+  cleanup.push(sandbox);
+  const sourceRoot = runTrustedGit(import.meta.dir, ["rev-parse", "--show-toplevel"]);
+  const sourceCommit = runTrustedGit(sourceRoot, ["rev-parse", "HEAD"]);
+  const rawCommonDirectory = runTrustedGit(sourceRoot, ["rev-parse", "--git-common-dir"]);
+  const commonDirectory = isAbsolute(rawCommonDirectory)
+    ? rawCommonDirectory
+    : resolve(sourceRoot, rawCommonDirectory);
+  const repositoryRoot = join(sandbox, "repository");
+  runTrustedGit(sandbox, ["clone", "--no-checkout", "--no-hardlinks", commonDirectory, repositoryRoot]);
+  runTrustedGit(repositoryRoot, ["checkout", "--detach", sourceCommit]);
+  return { repositoryRoot, sandbox };
+}
+
+function runTrustedGit(cwd, args) {
+  const executable = trustedGitExecutable();
+  if (!executable) throw new Error("test requires Git from a trusted system-owned path");
+  const result = spawnSync(executable, args, {
+    cwd,
+    env: process.env,
+    encoding: "utf8",
+    shell: false,
+    windowsHide: true,
+  });
+  if (result.status !== 0) {
+    throw new Error(`git ${args.join(" ")} failed: ${String(result.stderr ?? "").trim()}`);
+  }
+  return String(result.stdout ?? "").trim();
 }

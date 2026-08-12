@@ -86,4 +86,3 @@ export class TurnBreaker {
     while (this.turns.length > 0 && this.turns[0] <= cutoff) this.turns.shift();
   }
 }
-

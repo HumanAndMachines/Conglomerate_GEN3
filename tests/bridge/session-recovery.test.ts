@@ -185,4 +185,3 @@ describe("the wrapped provider", () => {
     expect(seen).toEqual(["base", "base-r3", "base-r5"]);
   });
 });
-

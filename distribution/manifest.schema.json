@@ -80,7 +80,7 @@
       "properties": {
         "repository": {
           "type": "string",
-          "minLength": 1
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,38}/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$"
         },
         "commit": {
           "type": "string",

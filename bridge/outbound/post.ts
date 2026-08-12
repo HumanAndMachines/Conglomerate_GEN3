@@ -123,4 +123,3 @@ export async function buddyPost(
   const messageId = await sendToTopic(cfg, streamId, topic, request.markdown);
   return { messageId, streamId, topic };
 }
-

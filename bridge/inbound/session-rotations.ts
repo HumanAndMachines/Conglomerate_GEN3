@@ -77,4 +77,3 @@ async function syncPath(path: string): Promise<void> {
     await handle.close();
   }
 }
-

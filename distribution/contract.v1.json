@@ -1,5 +1,6 @@
 {
   "schema_version": "lazurio.resident.build-contract.v1",
+  "source_repository": "HumanAndMachines/Lazurio",
   "artifact_contract_version": 1,
   "compatibility_version": 1,
   "supported_targets": [

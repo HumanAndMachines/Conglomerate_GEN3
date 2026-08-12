@@ -67,4 +67,3 @@ export async function acquireSingletonLock(
   }
   throw new Error("could not take the Buddy bridge singleton lock");
 }
-

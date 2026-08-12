@@ -363,4 +363,3 @@ export function fakeRealmConfig(realm: FakeRealm) {
     fetchImpl: realm.fetch,
   };
 }
-

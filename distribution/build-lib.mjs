@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, posix, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { trustedGitExecutable } from "../scripts/agent-skills-entrypoint.mjs";
 import { verifyArtifactTree } from "./runtime/integrity.mjs";
 
 export { verifyArtifactTree } from "./runtime/integrity.mjs";
@@ -78,6 +79,7 @@ export async function buildResidentArtifact({
   if (contract.schema_version !== "lazurio.resident.build-contract.v1") {
     throw new Error("unsupported resident build contract");
   }
+  const sourceRepository = validateSourceRepository(contract.source_repository);
   const normalizedTarget = normalizeTarget(target);
   if (!contract.supported_targets.includes(normalizedTarget.id)) {
     throw new Error(`target ${normalizedTarget.id} is not declared by the build contract`);
@@ -252,7 +254,7 @@ export async function buildResidentArtifact({
       arch: normalizedTarget.arch,
     },
     source: {
-      repository: repositoryIdentity(repositoryRoot),
+      repository: sourceRepository,
       commit: sourceCommit,
       commit_epoch: commitEpoch,
     },
@@ -424,6 +426,16 @@ function validateProfileEvals(profile, descriptor, evals) {
       }
     }
   }
+}
+
+function validateSourceRepository(value) {
+  if (
+    typeof value !== "string"
+    || !/^[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,38})\/[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,99})$/.test(value)
+  ) {
+    throw new Error("resident build contract source_repository must be a canonical owner/repository identity");
+  }
+  return value;
 }
 
 export function scanArtifactEntries(entries, {
@@ -603,14 +615,6 @@ function readBlob(repositoryRoot, tree, path) {
   return gitBytes(repositoryRoot, ["cat-file", "blob", entry.object]);
 }
 
-function repositoryIdentity(repositoryRoot) {
-  const remote = gitText(repositoryRoot, ["config", "--local", "--get", "remote.origin.url"])
-    .replaceAll("\\", "/")
-    .replace(/\.git$/i, "");
-  const github = remote.match(/github\.com(?::|\/)([^/]+\/[^/]+)$/i);
-  return github?.[1] ?? remote;
-}
-
 function normalizeArtifactPath(path) {
   if (
     typeof path !== "string"
@@ -652,21 +656,20 @@ function gitText(cwd, args) {
 }
 
 function gitBytes(cwd, args) {
-  const env = { ...process.env };
-  for (const key of [
-    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-    "GIT_COMMON_DIR",
-    "GIT_DIR",
-    "GIT_INDEX_FILE",
-    "GIT_OBJECT_DIRECTORY",
-    "GIT_PREFIX",
-    "GIT_WORK_TREE",
-  ]) {
-    delete env[key];
+  const executable = trustedGitExecutable();
+  if (!executable) {
+    throw new Error("resident build requires Git from a trusted system-owned path");
   }
-  const result = spawnSync("git", args, {
+  const safeArgs = [
+    "-c", `core.hooksPath=${process.platform === "win32" ? "NUL" : "/dev/null"}`,
+    "-c", "core.fsmonitor=false",
+    "-c", "core.gitProxy=",
+    "-c", "protocol.ext.allow=never",
+    ...args,
+  ];
+  const result = spawnSync(executable, safeArgs, {
     cwd,
-    env,
+    env: residentBuildGitEnvironment(),
     encoding: args.includes("cat-file") || args.includes("ls-tree") ? null : "utf8",
     shell: false,
     windowsHide: true,
@@ -681,4 +684,21 @@ function gitBytes(cwd, args) {
   return Buffer.isBuffer(result.stdout)
     ? result.stdout
     : Buffer.from(String(result.stdout ?? ""), "utf8");
+}
+
+function residentBuildGitEnvironment(base = process.env) {
+  const environment = {};
+  for (const key of ["TMPDIR", "TEMP", "TMP", "SystemRoot", "ComSpec", "PATHEXT"]) {
+    if (typeof base[key] === "string") environment[key] = base[key];
+  }
+  environment.LC_ALL = "C";
+  environment.LANG = "C";
+  environment.GIT_ATTR_NOSYSTEM = "1";
+  environment.GIT_CONFIG_NOSYSTEM = "1";
+  environment.GIT_CONFIG_GLOBAL = process.platform === "win32" ? "NUL" : "/dev/null";
+  environment.GIT_CONFIG_COUNT = "0";
+  environment.GIT_OPTIONAL_LOCKS = "0";
+  environment.GIT_PAGER = "cat";
+  environment.GIT_TERMINAL_PROMPT = "0";
+  return environment;
 }

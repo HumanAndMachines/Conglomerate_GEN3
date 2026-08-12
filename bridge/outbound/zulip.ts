@@ -508,4 +508,3 @@ export async function downloadRuntimeImage(
   }
   return `data:${contentType};base64,${Buffer.from(bytes).toString("base64")}`;
 }
-

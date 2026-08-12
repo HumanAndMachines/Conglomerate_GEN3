@@ -231,4 +231,3 @@ export function hopHostname(url: string): string {
     return "";
   }
 }
-

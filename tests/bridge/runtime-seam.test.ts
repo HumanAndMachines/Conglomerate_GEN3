@@ -153,4 +153,3 @@ describe("K4 — the session id travels under the CONFIGURED header", () => {
     ).toThrow(/not a valid HTTP header name/);
   });
 });
-

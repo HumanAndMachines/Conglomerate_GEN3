@@ -161,4 +161,3 @@ export function readRuntimeSeam(env: RuntimeEnvironment): RuntimeSeam {
     keyFrom: key.from as RuntimeSeam["keyFrom"],
   };
 }
-

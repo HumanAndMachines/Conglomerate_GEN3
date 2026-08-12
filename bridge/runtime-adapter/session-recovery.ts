@@ -124,4 +124,3 @@ export function withSessionRecovery(
     return sessionRotatedNotice(buddyName);
   };
 }
-

@@ -437,4 +437,3 @@ export class EventBridge {
     if (created) this.options.logger.info(deliveryStateLine("received"));
   }
 }
-

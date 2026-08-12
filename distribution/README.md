@@ -17,6 +17,8 @@ něj vytvoří jediný root `AGENTS.md` až ve výsledném artefaktu.
 
 Builder přijímá pouze čistý checkout a čte všechny vstupy jako Git blobs z
 exact `HEAD`; ignored nebo necommitnutý obsah se do artefaktu nedostane.
+Kanonická identita source repozitáře je verzovanou součástí build kontraktu,
+nikoli hodnotou odvozenou z lokálního `remote.origin.url`.
 
 ```sh
 bun run resident:build -- --profile buddy --target linux-x64 \
