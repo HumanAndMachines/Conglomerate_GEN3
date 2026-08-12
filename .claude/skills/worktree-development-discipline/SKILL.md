@@ -26,10 +26,16 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
    takže ukáže i linked worktrees mimo root. Je to informativní inventura;
    `bun run worktrees:check` je fail-closed kontrola umístění, metadat a Git
    zachování. Její PASS není cleanup autorizace.
-3. Použij existující HumanAndMachines Mission Control plán a worktree založ
+3. Použij existující Mission Control plán jeho vlastníka a worktree založ
    kanonickou lane `bun run worktrees:create -- --plan <KOD-XXXX>` — odvodí
    basename z kanonického plan souboru, založí branch z čerstvého
-   `origin/main` a vygeneruje schema-validní sidecar. Worktree cesta je
+   `origin/main` a vygeneruje schema-validní sidecar. Historický default je
+   authority checkout HumanAndMachines; Organization-scoped repository-db
+   vyber přes `MISSION_CONTROL_AUTHORITY_ROOT=<organization-root>`.
+   Authority musí být lokální
+   `organizations/<organization>/mission-control/db`; create lane ji do
+   tohoto tvaru normalizuje a nikdy nevytváří duplicitní plán v jiném repu.
+   Worktree cesta je
    výhradně `<Conglomerate>/.worktrees/root/<canonical-plan-basename>/`;
    basename je název kanonického plan souboru bez `.yaml`. Branch obsahuje
    kód plánu.
@@ -37,7 +43,9 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
    `companiesascode.worktree.v1`) generuje create lane — zkontroluj ho,
    nevytvářej podruhé a nepřepisuj odvozená identity/path pole; doplň jen
    to, co skript nemohl bezpečně odvodit: `last_touched`, PR URL, purpose
-   a cleanup pravidlo. Platný sidecar navíc obsahuje
+   a cleanup pravidlo. Organization-scoped plán nese odvozený relativní
+   `mission_control_authority_path`; nepřepisuj ho absolutní cestou ani
+   traversalem. Platný sidecar navíc obsahuje
    `conversation_origin` (`surface`, `agent_label`, opaque `thread_id` nebo
    výslovný locator status, `captured_at`, `local_only: true`) a
    `recovery_handoff` (stav, stručné netajné summary, blocker, next action,
@@ -122,6 +130,8 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
 
 ```bash
 bun run worktrees:create -- --plan <KOD-XXXX> --dry-run
+# pro Organization-scoped repository-db authority:
+MISSION_CONTROL_AUTHORITY_ROOT=<organization-root> bun run worktrees:create -- --plan <KOD-XXXX> --dry-run
 bun run worktrees:status
 bun run worktrees:check
 # pouze před taskem z primárního main checkoutu

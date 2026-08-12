@@ -70,6 +70,15 @@ test("dry-run accepts a unique exact-code plan only after canonical validation",
   expect(result.stdout).toContain("ok - dry-run: plán mission-control/plans/CAC-0007.yaml");
 });
 
+test("dry-run accepts an Organization-scoped repository-db authority", async () => {
+  const fixture = await createRepositoryDbLaneFixture();
+  const result = runOrganizationCreateLane(fixture);
+  expect({ status: result.status, stderr: result.stderr }).toMatchObject({ status: 0 });
+  expect(result.stdout).toContain(
+    "ok - dry-run: plán data/mission-control/plans/2026/07/CAC-0007-create-lane.yaml",
+  );
+});
+
 test("dry-run rejects a plan whose declared dev_code does not match the request", async () => {
   const fixture = await createLaneFixture({
     plans: [["CAC-0007.yaml", validPlan.replace("CAC-0007", "CAC-0008")]],
@@ -168,6 +177,71 @@ export function validatePlanShape() { return []; }
   return { root, authorityRoot };
 }
 
+async function createRepositoryDbLaneFixture() {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "worktree-create-repository-db-"));
+  cleanupPaths.push(fixtureRoot);
+  const root = join(fixtureRoot, "Conglomerate_GEN3");
+  const organizationRoot = join(root, "organizations", "HumanAndMachine-ai_GEN3");
+  const authorityRoot = join(organizationRoot, "mission-control", "db");
+  const planRoot = join(
+    authorityRoot,
+    "data",
+    "mission-control",
+    "plans",
+    "2026",
+    "07",
+  );
+  await mkdir(planRoot, { recursive: true });
+  await mkdir(join(authorityRoot, "schemas"), { recursive: true });
+  await mkdir(join(authorityRoot, "scripts"), { recursive: true });
+  await writeFile(join(root, "launchpad.gen3.json"), "{}\n", "utf8");
+  await writeFile(
+    join(organizationRoot, "company.gen3.json"),
+    '{"organization_kind":"organization"}\n',
+    "utf8",
+  );
+  await writeFile(
+    join(authorityRoot, "repository-db.manifest.json"),
+    `${JSON.stringify({
+      schema_version: "companiesascode.repository_db.manifest.v1",
+      data_mode: "repository-db",
+      data_root: "data/mission-control",
+    }, null, 2)}\n`,
+    "utf8",
+  );
+  await writeFile(
+    join(authorityRoot, "schemas", "mission-control-plan.schema.json"),
+    `${JSON.stringify({
+      type: "object",
+      required: ["schema_version", "dev_code", "title"],
+      properties: {
+        schema_version: { const: "companiesascode.mission_control.plan.v2" },
+        dev_code: { type: "string", pattern: "^[A-Z]{2,6}-[0-9]{4}$" },
+        title: { type: "string", minLength: 1 },
+      },
+    }, null, 2)}\n`,
+    "utf8",
+  );
+  await writeFile(
+    join(authorityRoot, "scripts", "validate-mission-control-data.mjs"),
+    "export function validateMissionControlData() { return []; }\n",
+    "utf8",
+  );
+  await writeFile(
+    join(planRoot, "CAC-0007-create-lane.yaml"),
+    validPlan,
+    "utf8",
+  );
+  for (const args of [
+    ["init", "-b", "main"],
+    ["remote", "add", "origin", "git@github.com:HumanAndMachines/Conglomerate_GEN3.git"],
+  ]) {
+    const result = spawnSync("git", args, { cwd: root, encoding: "utf8" });
+    if (result.status !== 0) throw new Error(result.stderr);
+  }
+  return { root, organizationRoot };
+}
+
 function runCreateLane({ root, authorityRoot }) {
   return spawnSync(process.execPath, [
     createScript,
@@ -179,6 +253,21 @@ function runCreateLane({ root, authorityRoot }) {
     env: {
       ...process.env,
       HUMANANDMACHINES_ROOT: authorityRoot,
+    },
+  });
+}
+
+function runOrganizationCreateLane({ root, organizationRoot }) {
+  return spawnSync(process.execPath, [
+    createScript,
+    "--plan", "CAC-0007",
+    "--dry-run",
+  ], {
+    cwd: root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      MISSION_CONTROL_AUTHORITY_ROOT: organizationRoot,
     },
   });
 }

@@ -403,22 +403,28 @@ async function validateSidecar(
   if (declaredWorktree !== resolve(record.path)) {
     return { valid: false, error: "worktree_path does not match Git registry", planPath: null };
   }
-  if (isAbsolute(data.mission_control_plan_path)) {
+  if (isPortableAbsolutePath(data.mission_control_plan_path)) {
     return { valid: false, error: "mission_control_plan_path must be relative", planPath: null };
   }
+  const authority = await resolveSidecarAuthority(
+    primaryRoot,
+    authorityRoot,
+    data.mission_control_authority_path,
+  );
+  if (!authority.valid) {
+    return { valid: false, error: authority.error, planPath: null };
+  }
+  const effectiveAuthorityRoot = authority.root;
   const planPath = resolveAuthorityPlanPath(
     primaryRoot,
     data.mission_control_plan_path,
-    authorityRoot,
+    effectiveAuthorityRoot,
   );
-  const acceptedPlanRoots = [
-    join(authorityRoot, "mission-control", "db", "data", "mission-control", "plans"),
-    join(authorityRoot, "mission-control", "plans"),
-  ];
+  const acceptedPlanRoots = await missionControlPlanRoots(effectiveAuthorityRoot);
   if (!acceptedPlanRoots.some((root) => isWithin(root, planPath))) {
     return {
       valid: false,
-      error: "Mission Control plan is outside the HumanAndMachines authority",
+      error: "Mission Control plan is outside the declared authority",
       planPath,
     };
   }
@@ -500,9 +506,9 @@ async function validateSidecar(
   ]
     .filter((field) => !Object.hasOwn(data, field))
     .map((field) => `recommended operational field is missing: ${field}`);
-  const authorityAvailable = await pathExists(authorityRoot);
+  const authorityAvailable = await pathExists(effectiveAuthorityRoot);
   if (!authorityAvailable) {
-    const error = "HumanAndMachines authority checkout is unavailable; plan ownership was not verified";
+    const error = "Mission Control authority checkout is unavailable; plan ownership was not verified";
     advisories.push(error);
     return { valid: false, error, planPath, advisories };
   }
@@ -537,7 +543,7 @@ async function validateSidecar(
     };
   }
   const schemaValidation = await validateCanonicalMissionControlPlan(
-    authorityRoot,
+    effectiveAuthorityRoot,
     planPath,
     planSource,
     plan,
@@ -577,6 +583,103 @@ async function validateSidecar(
     conversationOrigin: data.conversation_origin ?? null,
     recoveryHandoff: data.recovery_handoff ?? null,
   };
+}
+
+async function resolveSidecarAuthority(primaryRoot, defaultAuthorityRoot, declaredPath) {
+  if (declaredPath === undefined) {
+    return { valid: true, error: null, root: defaultAuthorityRoot };
+  }
+  if (typeof declaredPath !== "string" || declaredPath.trim() === "") {
+    return {
+      valid: false,
+      error: "mission_control_authority_path must be a non-empty relative path",
+      root: null,
+    };
+  }
+  if (isPortableAbsolutePath(declaredPath) || declaredPath.includes("\\")) {
+    return {
+      valid: false,
+      error: "mission_control_authority_path must use a portable relative path",
+      root: null,
+    };
+  }
+  const segments = declaredPath.split("/");
+  if (
+    segments.some((segment) => segment === "" || segment === "." || segment === "..")
+    || !/^organizations\/[^/]+\/mission-control\/db$/.test(declaredPath)
+  ) {
+    return {
+      valid: false,
+      error: "mission_control_authority_path must be organizations/<organization>/mission-control/db",
+      root: null,
+    };
+  }
+
+  let cursor = resolve(primaryRoot);
+  try {
+    for (const segment of segments) {
+      cursor = join(cursor, segment);
+      const stat = await lstat(cursor);
+      if (!stat.isDirectory() || stat.isSymbolicLink()) {
+        throw new Error("authority path contains a symlink or non-directory component");
+      }
+    }
+    const realPrimary = await realpath(primaryRoot);
+    const realAuthority = await realpath(cursor);
+    if (!isWithin(realPrimary, realAuthority)) {
+      throw new Error("authority path escapes the Lazurio root");
+    }
+
+    const organizationRoot = join(primaryRoot, segments[0], segments[1]);
+    const markerPath = join(organizationRoot, "company.gen3.json");
+    const markerStat = await lstat(markerPath);
+    if (!markerStat.isFile() || markerStat.isSymbolicLink()) {
+      throw new Error("Organization marker is not a regular file");
+    }
+    const marker = JSON.parse(await readFile(markerPath, "utf8"));
+    if (marker?.organization_kind !== "organization") {
+      throw new Error("authority owner is not a runtime Organization");
+    }
+
+    const manifestPath = join(cursor, "repository-db.manifest.json");
+    const manifestStat = await lstat(manifestPath);
+    if (!manifestStat.isFile() || manifestStat.isSymbolicLink()) {
+      throw new Error("repository-db manifest is not a regular file");
+    }
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    if (
+      manifest?.schema_version !== "companiesascode.repository_db.manifest.v1"
+      || manifest?.data_mode !== "repository-db"
+      || manifest?.data_root !== "data/mission-control"
+    ) {
+      throw new Error("repository-db manifest is not a canonical Mission Control authority");
+    }
+    return { valid: true, error: null, root: cursor };
+  } catch (error) {
+    return {
+      valid: false,
+      error: `Mission Control authority is invalid: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      root: null,
+    };
+  }
+}
+
+async function missionControlPlanRoots(authorityRoot) {
+  if (await pathExists(join(authorityRoot, "repository-db.manifest.json"))) {
+    return [join(authorityRoot, "data", "mission-control", "plans")];
+  }
+  return [
+    join(authorityRoot, "mission-control", "db", "data", "mission-control", "plans"),
+    join(authorityRoot, "mission-control", "plans"),
+  ];
+}
+
+function isPortableAbsolutePath(path) {
+  return isAbsolute(path)
+    || /^[A-Za-z]:[\\/]/.test(path)
+    || path.startsWith("\\\\");
 }
 
 function validateConversationOrigin(value) {
@@ -669,6 +772,14 @@ export async function validateCanonicalMissionControlPlan(
   planSource,
   plan,
 ) {
+  if (await pathExists(join(authorityRoot, "repository-db.manifest.json"))) {
+    return validateRepositoryDbMissionControlPlan(
+      authorityRoot,
+      planPath,
+      planSource,
+      plan,
+    );
+  }
   const schemaPath = join(
     authorityRoot,
     "schemas",
@@ -761,6 +872,226 @@ export async function validateCanonicalMissionControlPlan(
       }`,
     };
   }
+}
+
+async function validateRepositoryDbMissionControlPlan(
+  authorityRoot,
+  planPath,
+  planSource,
+  plan,
+) {
+  const manifestPath = join(authorityRoot, "repository-db.manifest.json");
+  const schemaPath = join(authorityRoot, "schemas", "mission-control-plan.schema.json");
+  const validatorPath = join(
+    authorityRoot,
+    "scripts",
+    "validate-mission-control-data.mjs",
+  );
+  try {
+    const realAuthorityRoot = await realpath(authorityRoot);
+    const acceptedPlanRoot = join(
+      authorityRoot,
+      "data",
+      "mission-control",
+      "plans",
+    );
+    if (!isWithin(acceptedPlanRoot, planPath)) {
+      throw new Error("plan is outside data/mission-control/plans");
+    }
+    for (const path of [planPath, manifestPath, schemaPath, validatorPath]) {
+      const stat = await lstat(path);
+      const realPath = await realpath(path);
+      if (
+        !stat.isFile()
+        || stat.isSymbolicLink()
+        || !isWithin(realAuthorityRoot, realPath)
+      ) {
+        throw new Error("canonical repository-db validator path is not a file inside authority root");
+      }
+    }
+    if (await readFile(planPath, "utf8") !== planSource) {
+      throw new Error("validated plan source does not match the authority checkout");
+    }
+
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    if (
+      manifest?.schema_version !== "companiesascode.repository_db.manifest.v1"
+      || manifest?.data_mode !== "repository-db"
+      || manifest?.data_root !== "data/mission-control"
+    ) {
+      throw new Error("repository-db manifest contract is invalid");
+    }
+
+    const schema = JSON.parse(await readFile(schemaPath, "utf8"));
+    const unsupported = [];
+    validateSupportedSchemaSubset(schema, "Mission Control plan schema", unsupported);
+    if (unsupported.length > 0) {
+      throw new Error(unsupported.slice(0, 3).join("; "));
+    }
+    const schemaFailures = [];
+    validateSchemaSubset(plan, schema, "Mission Control plan", schemaFailures);
+    if (schemaFailures.length > 0) {
+      return {
+        valid: false,
+        error: `Mission Control plan schema validation failed: ${schemaFailures.slice(0, 3).join("; ")}`,
+      };
+    }
+
+    const validator = await import(pathToFileURL(validatorPath).href);
+    if (typeof validator.validateMissionControlData !== "function") {
+      throw new Error("canonical repository-db validator export is unavailable");
+    }
+    const dataFailures = validator.validateMissionControlData(authorityRoot);
+    if (!Array.isArray(dataFailures)) {
+      throw new Error("canonical repository-db validator returned an invalid result");
+    }
+    if (dataFailures.length > 0) {
+      return {
+        valid: false,
+        error: `Mission Control repository data validation failed: ${dataFailures.slice(0, 3).join("; ")}`,
+      };
+    }
+    return { valid: true, error: null };
+  } catch (error) {
+    return {
+      valid: false,
+      error: `cannot validate Mission Control repository data: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
+}
+
+const SUPPORTED_SCHEMA_KEYWORDS = new Set([
+  "$id",
+  "$schema",
+  "additionalProperties",
+  "const",
+  "description",
+  "enum",
+  "items",
+  "maxItems",
+  "minItems",
+  "minLength",
+  "minimum",
+  "pattern",
+  "properties",
+  "required",
+  "title",
+  "type",
+  "uniqueItems",
+]);
+
+function validateSupportedSchemaSubset(schema, path, failures) {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+    failures.push(`${path}: schema node must be an object`);
+    return;
+  }
+  for (const key of Object.keys(schema)) {
+    if (!SUPPORTED_SCHEMA_KEYWORDS.has(key)) {
+      failures.push(`${path}: unsupported schema keyword ${key}`);
+    }
+  }
+  if (schema.properties && typeof schema.properties === "object") {
+    for (const [key, child] of Object.entries(schema.properties)) {
+      validateSupportedSchemaSubset(child, `${path}.properties.${key}`, failures);
+    }
+  }
+  if (schema.items && typeof schema.items === "object") {
+    validateSupportedSchemaSubset(schema.items, `${path}.items`, failures);
+  }
+}
+
+function validateSchemaSubset(value, schema, path, failures) {
+  if (Object.hasOwn(schema, "const") && !schemaValuesEqual(value, schema.const)) {
+    failures.push(`${path}: value does not match const`);
+    return;
+  }
+  if (
+    Array.isArray(schema.enum)
+    && !schema.enum.some((candidate) => schemaValuesEqual(value, candidate))
+  ) {
+    failures.push(`${path}: value is not in enum`);
+  }
+
+  if (schema.type === "object") {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      failures.push(`${path}: expected object`);
+      return;
+    }
+    for (const key of schema.required ?? []) {
+      if (!Object.hasOwn(value, key)) failures.push(`${path}: missing required field ${key}`);
+    }
+    const properties = schema.properties ?? {};
+    if (schema.additionalProperties === false) {
+      for (const key of Object.keys(value)) {
+        if (!Object.hasOwn(properties, key)) failures.push(`${path}: unexpected field ${key}`);
+      }
+    }
+    for (const [key, child] of Object.entries(properties)) {
+      if (Object.hasOwn(value, key)) {
+        validateSchemaSubset(value[key], child, `${path}.${key}`, failures);
+      }
+    }
+    return;
+  }
+  if (schema.type === "array") {
+    if (!Array.isArray(value)) {
+      failures.push(`${path}: expected array`);
+      return;
+    }
+    if (Number.isInteger(schema.minItems) && value.length < schema.minItems) {
+      failures.push(`${path}: expected at least ${schema.minItems} items`);
+    }
+    if (Number.isInteger(schema.maxItems) && value.length > schema.maxItems) {
+      failures.push(`${path}: expected at most ${schema.maxItems} items`);
+    }
+    if (schema.uniqueItems === true) {
+      const serialized = value.map((item) => JSON.stringify(item));
+      if (new Set(serialized).size !== serialized.length) {
+        failures.push(`${path}: expected unique items`);
+      }
+    }
+    if (schema.items) {
+      value.forEach((item, index) => {
+        validateSchemaSubset(item, schema.items, `${path}[${index}]`, failures);
+      });
+    }
+    return;
+  }
+  if (schema.type === "string") {
+    if (typeof value !== "string") {
+      failures.push(`${path}: expected string`);
+      return;
+    }
+    if (Number.isInteger(schema.minLength) && value.length < schema.minLength) {
+      failures.push(`${path}: expected at least ${schema.minLength} characters`);
+    }
+    if (schema.pattern && !new RegExp(schema.pattern).test(value)) {
+      failures.push(`${path}: value does not match pattern ${schema.pattern}`);
+    }
+    return;
+  }
+  if (schema.type === "integer") {
+    if (!Number.isInteger(value)) {
+      failures.push(`${path}: expected integer`);
+      return;
+    }
+    if (typeof schema.minimum === "number" && value < schema.minimum) {
+      failures.push(`${path}: value is below minimum ${schema.minimum}`);
+    }
+    return;
+  }
+  if (schema.type === "number" && typeof value !== "number") {
+    failures.push(`${path}: expected number`);
+  }
+  if (schema.type === "boolean" && typeof value !== "boolean") {
+    failures.push(`${path}: expected boolean`);
+  }
+}
+
+function schemaValuesEqual(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 async function scanLocalOrphans(primaryRoot, commonDir, records, options = {}) {

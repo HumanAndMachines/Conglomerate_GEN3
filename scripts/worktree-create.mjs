@@ -8,9 +8,9 @@
 //     [--purpose "..."] [--surface claude-code] [--agent-label "Claude Code"]
 //     [--created-by <id>] [--dry-run]
 
-import { existsSync, lstatSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import { mkdir, readFile, readdir } from "node:fs/promises";
-import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { hostname, userInfo } from "node:os";
 import { trustedGitExecutable } from "./agent-skills-entrypoint.mjs";
@@ -71,11 +71,62 @@ function git(cwd, args, { allowFail = false, useSafetyConfig = true } = {}) {
 }
 
 function resolveAuthorityRoot(primaryRoot) {
-  if (basename(primaryRoot) === "HumanAndMachines") return primaryRoot;
-  if (process.env.HUMANANDMACHINES_ROOT) {
-    return resolve(process.env.HUMANANDMACHINES_ROOT);
+  let candidate;
+  if (process.env.MISSION_CONTROL_AUTHORITY_ROOT) {
+    candidate = resolve(process.env.MISSION_CONTROL_AUTHORITY_ROOT);
+  } else if (basename(primaryRoot) === "HumanAndMachines") {
+    candidate = primaryRoot;
+  } else if (process.env.HUMANANDMACHINES_ROOT) {
+    candidate = resolve(process.env.HUMANANDMACHINES_ROOT);
+  } else {
+    candidate = join(dirname(primaryRoot), "HumanAndMachines");
   }
-  return join(dirname(primaryRoot), "HumanAndMachines");
+  if (existsSync(candidate)) candidate = realpathSync(candidate);
+  const repositoryDb = join(candidate, "mission-control", "db");
+  return existsSync(join(repositoryDb, "repository-db.manifest.json"))
+    ? realpathSync(repositoryDb)
+    : candidate;
+}
+
+function organizationAuthorityPath(primaryRoot, authorityRoot) {
+  if (!existsSync(join(authorityRoot, "repository-db.manifest.json"))) return null;
+  const relativePath = relative(primaryRoot, authorityRoot).split(sep).join("/");
+  if (!/^organizations\/[^/]+\/mission-control\/db$/.test(relativePath)) {
+    fail(
+      `repository-db Mission Control authority ${authorityRoot} (${relativePath}) musí ležet v `
+      + "organizations/<organization>/mission-control/db pod tímto Lazurio rootem.",
+    );
+  }
+  let cursor = primaryRoot;
+  for (const segment of relativePath.split("/")) {
+    cursor = join(cursor, segment);
+    const stat = lstatSync(cursor);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      fail("repository-db Mission Control authority obsahuje symlink nebo neadresářovou komponentu.");
+    }
+  }
+  const realPrimary = realpathSync(primaryRoot);
+  const realAuthority = realpathSync(authorityRoot);
+  const realRelative = relative(realPrimary, realAuthority);
+  if (realRelative.startsWith("..") || isAbsolute(realRelative)) {
+    fail("repository-db Mission Control authority přes symlink uniká mimo Lazurio root.");
+  }
+  const organizationRoot = join(primaryRoot, ...relativePath.split("/").slice(0, 2));
+  const markerPath = join(organizationRoot, "company.gen3.json");
+  const marker = lstatSync(markerPath);
+  if (!marker.isFile() || marker.isSymbolicLink()) {
+    fail(`Mission Control authority nemá regulární Organization marker: ${markerPath}`);
+  }
+  let markerData;
+  try {
+    markerData = JSON.parse(readFileSync(markerPath, "utf8"));
+  } catch (error) {
+    fail(`Organization marker nejde načíst: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (markerData?.organization_kind !== "organization") {
+    fail("Mission Control authority musí vlastnit runtime Organization.");
+  }
+  return relativePath;
 }
 
 function resolveRepositoryIdentity(primaryRoot) {
@@ -121,6 +172,7 @@ function checkoutTransportOverrideKeys(primaryRoot) {
 
 async function findPlanFile(authorityRoot, planCode) {
   const planRoots = [
+    join(authorityRoot, "data", "mission-control", "plans"),
     join(authorityRoot, "mission-control", "db", "data", "mission-control", "plans"),
     join(authorityRoot, "mission-control", "plans"),
   ];
@@ -179,6 +231,7 @@ async function main() {
   }
 
   const authorityRoot = resolveAuthorityRoot(primaryRoot);
+  const authorityPath = organizationAuthorityPath(primaryRoot, authorityRoot);
   let plan;
   try {
     plan = await findPlanFile(authorityRoot, planCode);
@@ -270,6 +323,7 @@ async function main() {
     base_branch: "main",
     branch,
     mission_control_plan_code: planCode,
+    ...(authorityPath ? { mission_control_authority_path: authorityPath } : {}),
     mission_control_plan_path: plan.relative,
     worktree_path: `.worktrees/root/${planBasename}`,
     created_at: now,
