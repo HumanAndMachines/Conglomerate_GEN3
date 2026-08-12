@@ -40,10 +40,53 @@ profil a drift exact Hermes pinu.
 připojí jako explicitní perzistentní mutable mounty; Doctor jejich obsah
 nečte ani nehashuje.
 
+## Assisted install, update a rollback
+
+Updater v1 je explicitní operátorský příkaz, ne daemon. Před prvním během se
+spouští z exact reviewovaného source/release operator kitu; po instalaci je
+stejný updater součástí immutable rootu pod `resident/`. Buddyho mašina proto
+nepotřebuje Git checkout Lazuria.
+
+```sh
+bun distribution/runtime/updater.mjs install \
+  --archive /staging/lazurio-resident-buddy-<version>-linux-x64.tar \
+  --checksum /staging/lazurio-resident-buddy-<version>-linux-x64.tar.sha256 \
+  --install-root /opt/lazurio --profile buddy --channel candidate
+
+bun /opt/lazurio/active/resident/updater.mjs status \
+  --install-root /opt/lazurio --profile buddy
+
+bun /opt/lazurio/active/resident/updater.mjs rollback \
+  --install-root /opt/lazurio --profile buddy
+```
+
+Lifecycle layout je záměrně malý:
+
+```text
+/opt/lazurio/
+├── active -> versions/<artifact-id>
+├── versions/<artifact-id>/       # immutable, non-Git Lazurio Root
+└── state/
+    ├── lifecycle.v1.json         # content-free active/LKG metadata
+    ├── organizations/            # persistent mutable mount
+    └── personalspace/            # persistent mutable mount
+```
+
+Updater nejdřív ověří externí SHA-256, bezpečně parsuje pouze regular-file a
+directory USTAR entries, kontroluje manifest, profil, platformu, build a
+rollback kompatibilitu a exact payload hashe. Kandidát se rozbalí do nové
+staging cesty, dostane odkazy na existující mutable mounty a projde Resident
+Doctorem. Teprve potom atomický relativní symlink přepne `active`. Selže-li
+post-switch gate, původní pointer se obnoví; verzované rooty se automaticky
+nemažou.
+
+V1 používá POSIX atomic-symlink adapter pro Linux a macOS. Windows Kolegové
+zůstávají na stávajícím Git checkoutu a Windows resident lifecycle se
+nezapne, dokud nebude mít vlastní atomický pointer adapter a failure testy.
+
 ## Stav první fáze
 
-Build contract v1 vydává pouze profil `buddy`. Schema a engine jsou
-profilově neutrální, ale runtime profil `ai-colleague` ani Steward overlay se
-nepublikují před úspěšným Buddy cohort gatem. Updater a atomický rollback jsou
-navazující lifecycle řez; samotný build neopravňuje přístup na živý host ani
-release.
+Build contract v1 vydává pouze profil `buddy`. Schema, builder, integrity
+engine a updater jsou profilově neutrální, ale runtime profil `ai-colleague`
+ani Steward overlay se nepublikují před úspěšným Buddy cohort gatem. Build ani
+updater sám neopravňuje přístup na živý host, Release nebo production cutover.

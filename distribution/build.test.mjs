@@ -98,6 +98,20 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
   expect(first.manifest.payload.files.filter((file) => file.path.endsWith("AGENTS.md"))).toEqual([
     expect.objectContaining({ path: "AGENTS.md" }),
   ]);
+  expect(first.manifest.payload.files.map((file) => file.path)).toEqual(expect.arrayContaining([
+    "resident/integrity.mjs",
+    "resident/updater-lib.mjs",
+    "resident/updater.mjs",
+  ]));
+  const residentPackage = JSON.parse(
+    await readFile(join(first.artifact_root, "package.json"), "utf8"),
+  );
+  expect(residentPackage.scripts).toMatchObject({
+    "resident:doctor": "bun resident/doctor.mjs",
+    "resident:update": "bun resident/updater.mjs update",
+    "resident:rollback": "bun resident/updater.mjs rollback",
+    "resident:status": "bun resident/updater.mjs status",
+  });
 
   const doctor = runDoctor(first.artifact_root);
   expect(doctor.status).toBe(0);

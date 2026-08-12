@@ -67,9 +67,12 @@
     "package.json",
     "lazurio.resident.json",
     "resident/doctor.mjs",
+    "resident/integrity.mjs",
     "resident/manifest.schema.json",
     "resident/profile.json",
     "resident/dependencies/hermes.json",
+    "resident/updater-lib.mjs",
+    "resident/updater.mjs",
     "lazurio/search-scopes.v1.json"
   ],
   "mutable_mounts": [

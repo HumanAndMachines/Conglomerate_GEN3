@@ -1,8 +1,11 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { chmod, lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, posix, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { verifyArtifactTree } from "./runtime/integrity.mjs";
+
+export { verifyArtifactTree } from "./runtime/integrity.mjs";
 
 const CONTRACT_PATH = "distribution/contract.v1.json";
 const MANIFEST_PATH = "lazurio.resident.json";
@@ -133,6 +136,24 @@ export async function buildResidentArtifact({
     entries,
     "resident/doctor.mjs",
     readBlob(repositoryRoot, tree, "distribution/runtime/doctor.mjs"),
+    "0755",
+  );
+  addGeneratedEntry(
+    entries,
+    "resident/integrity.mjs",
+    readBlob(repositoryRoot, tree, "distribution/runtime/integrity.mjs"),
+    "0644",
+  );
+  addGeneratedEntry(
+    entries,
+    "resident/updater-lib.mjs",
+    readBlob(repositoryRoot, tree, "distribution/runtime/updater-lib.mjs"),
+    "0644",
+  );
+  addGeneratedEntry(
+    entries,
+    "resident/updater.mjs",
+    readBlob(repositoryRoot, tree, "distribution/runtime/updater.mjs"),
     "0755",
   );
   addGeneratedEntry(
@@ -307,6 +328,10 @@ function residentPackageJson(profile) {
       "launchpad:dev": "bun launchpad/src/server.mjs",
       lazurio: "bun lazurio/cli.mjs",
       "resident:doctor": "bun resident/doctor.mjs",
+      "resident:install": "bun resident/updater.mjs install",
+      "resident:update": "bun resident/updater.mjs update",
+      "resident:rollback": "bun resident/updater.mjs rollback",
+      "resident:status": "bun resident/updater.mjs status",
     },
   }, null, 2)}\n`;
 }
@@ -429,74 +454,6 @@ function digestInventory(files) {
     digest.update("\n");
   }
   return digest.digest("hex");
-}
-
-export async function verifyArtifactTree(artifactRoot) {
-  const failures = [];
-  let manifest;
-  try {
-    manifest = JSON.parse(await readFile(join(artifactRoot, MANIFEST_PATH), "utf8"));
-  } catch (error) {
-    return {
-      ok: false,
-      failures: [`cannot read resident manifest: ${error instanceof Error ? error.message : String(error)}`],
-    };
-  }
-  const expected = new Set([MANIFEST_PATH]);
-  for (const file of manifest?.payload?.files ?? []) {
-    expected.add(file.path);
-    const path = join(artifactRoot, ...file.path.split("/"));
-    try {
-      const stat = await lstat(path);
-      if (!stat.isFile() || stat.isSymbolicLink()) {
-        failures.push(`${file.path}: expected a regular file`);
-        continue;
-      }
-      const bytes = await readFile(path);
-      if (bytes.length !== file.size) failures.push(`${file.path}: size mismatch`);
-      if (sha256(bytes) !== file.sha256) failures.push(`${file.path}: sha256 mismatch`);
-    } catch {
-      failures.push(`${file.path}: missing payload file`);
-    }
-  }
-  const actual = await listArtifactFiles(artifactRoot);
-  for (const path of actual) {
-    if (!expected.has(path)) failures.push(`${path}: unexpected immutable file`);
-  }
-  for (const path of expected) {
-    if (!actual.includes(path)) failures.push(`${path}: manifest entry is missing`);
-  }
-  const files = manifest?.payload?.files ?? [];
-  if (digestInventory(files) !== manifest?.payload?.digest) {
-    failures.push("payload digest mismatch");
-  }
-  const agents = actual.filter((path) => basename(path) === "AGENTS.md");
-  if (agents.length !== 1 || agents[0] !== "AGENTS.md") {
-    failures.push("artifact does not contain exactly one root AGENTS.md");
-  }
-  if (existsSync(join(artifactRoot, ".git"))) failures.push("artifact root contains .git");
-  return { ok: failures.length === 0, failures, manifest };
-}
-
-async function listArtifactFiles(root) {
-  const output = [];
-  const visit = async (directory, prefix = "") => {
-    const entries = await readdir(directory, { withFileTypes: true });
-    entries.sort((left, right) => left.name.localeCompare(right.name));
-    for (const entry of entries) {
-      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
-      const path = join(directory, entry.name);
-      if (entry.isSymbolicLink()) {
-        output.push(relativePath);
-      } else if (entry.isDirectory()) {
-        await visit(path, relativePath);
-      } else if (entry.isFile()) {
-        output.push(relativePath);
-      }
-    }
-  };
-  await visit(root);
-  return output.sort((left, right) => left.localeCompare(right));
 }
 
 export function createDeterministicTar(rootName, entries, mtime) {

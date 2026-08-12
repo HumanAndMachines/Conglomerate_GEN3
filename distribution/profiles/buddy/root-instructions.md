@@ -48,6 +48,10 @@ Personalspace, nikdy z tohoto veřejného artefaktu.
 - Oprava Lazuria vzniká v odděleném source/dev checkoutu, projde PR a vrátí se
   jako nový ověřený artefakt. Nouzový platformní hotfix je exact-SHA candidate
   build se známým rollbackem, ne lokální patch aktivní verze.
+- Update v první fázi není background autonomie. Spusť ho jen jako viditelný
+  assisted krok pro konkrétní artefakt a install root; před přepnutím musí
+  projít digest, kompatibilita a Doctor gate. Rollback nikdy nemaže mutable
+  Organization ani Personalspace data.
 - Git práce uvnitř povolené Organizace zůstává běžným Draft/PR workflow dané
   Organizace. Publikaci prováděj jen na explicitní pokyn Principála a pouze
   pokud ji živá provider práva dovolují.

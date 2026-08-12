@@ -84,6 +84,18 @@ nepozorovaná fleet aktualizace a autonomní maintenance window nejsou součást
 základního kontraktu. Přesný stav aktuálního artefaktu ověří
 `bun run resident:doctor`.
 
+Updater v1 drží immutable verze pod `versions/`, content-free lifecycle stav a
+mutable `organizations/` a `personalspace/` pod odděleným `state/`. `active`
+je atomicky měněný odkaz na jednu zdravou verzi. Po prvním assisted bootstrapu
+se update, status a rollback spouští z `active/resident/updater.mjs`; živý root
+se kvůli tomu nestává source checkoutem.
+
+První lifecycle adapter je záměrně pouze POSIX (Linux a macOS). Windows
+rezidentní instalace se nezapne, dokud nebude mít vlastní atomický pointer
+adapter a stejné failure testy. To neomezuje dnešní Windows Kolegy: jejich
+Lazurio zůstává Git checkout, ve kterém mohou připravit platformní opravu přes
+branch a PR.
+
 ## Když je potřeba vlastní oprava Launchpadu
 
 Nainstalovaný root se ručně nepatchuje. Běžná oprava vznikne v odděleném
