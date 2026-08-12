@@ -27,6 +27,10 @@ import { FakeRealm, fakeRealmConfig, type SeedMessageSpec } from "../fakes/fake-
 const STREAM_ID = 101;
 
 const scratches: string[] = [];
+// These suites assert POSIX fsync ordering. The Buddy service is Linux-only in
+// resident v1; Windows activation is explicitly fail-closed until it has an
+// equivalent durable-filesystem adapter.
+const posixDurabilityDescribe = process.platform === "win32" ? describe.skip : describe;
 
 afterEach(async () => {
   await Promise.all(
@@ -113,7 +117,7 @@ const HISTORY: SeedMessageSpec[] = [
   { to: { kind: "stream", streamId: STREAM_ID, topic: "denik" }, text: "posledni" },
 ];
 
-describe("cold start in front of a realm that already has a past", () => {
+posixDurabilityDescribe("cold start in front of a realm that already has a past", () => {
   test("SCAR-R4 a first start against a realm with history sends NOTHING", async () => {
     // What actually happened on Host #1 on 2026-07-29: a brand-new bridge in
     // front of a realm with a past accepted fifteen historical messages and
@@ -223,7 +227,7 @@ describe("cold start in front of a realm that already has a past", () => {
   });
 });
 
-describe("the durability ordering — record, then watermark, then acknowledgement", () => {
+posixDurabilityDescribe("the durability ordering — record, then watermark, then acknowledgement", () => {
   test("SCAR-BRIDGE-1 the record is on disk BEFORE the watermark moves past the message", async () => {
     // Reverse these two and a crash between them puts a message BELOW the
     // watermark with no record: catch-up never re-fetches it because it is below
@@ -315,7 +319,7 @@ describe("the durability ordering — record, then watermark, then acknowledgeme
   });
 });
 
-describe("the queue is state we hold a handle to and do not own", () => {
+posixDurabilityDescribe("the queue is state we hold a handle to and do not own", () => {
   test("a garbage-collected queue is re-registered, not reported as an error", async () => {
     const realm = new FakeRealm();
     const { bridge, queue } = await harness({ realm });
@@ -348,7 +352,7 @@ describe("the queue is state we hold a handle to and do not own", () => {
   });
 });
 
-describe("the turn breaker is the second line of defence behind the echo filter", () => {
+posixDurabilityDescribe("the turn breaker is the second line of defence behind the echo filter", () => {
   test("over the ceiling, the message is recorded, refused and the human is told once", async () => {
     const realm = new FakeRealm();
     const { bridge, queue, notices, root } = await harness({
@@ -372,4 +376,3 @@ describe("the turn breaker is the second line of defence behind the echo filter"
     expect((await readdir(join(root, "inbox"))).length).toBe(3);
   });
 });
-

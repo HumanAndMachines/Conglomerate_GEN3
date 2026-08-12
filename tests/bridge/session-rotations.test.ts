@@ -12,12 +12,13 @@ import { createZulipReplySender } from "../../bridge/run.ts";
 import { FakeRealm, fakeRealmConfig } from "../fakes/fake-realm.ts";
 
 let scratch = "";
+const posixDurabilityTest = process.platform === "win32" ? test.skip : test;
 afterEach(async () => {
   if (scratch) await rm(scratch, { recursive: true, force: true });
   scratch = "";
 });
 
-test("/reset rotation is durable and idempotent under replay", async () => {
+posixDurabilityTest("/reset rotation is durable and idempotent under replay", async () => {
   scratch = await mkdtemp(join(tmpdir(), "buddy-session-rotations-"));
   const path = join(scratch, "state.json");
   const first = new SessionRotations(path);
@@ -30,7 +31,7 @@ test("/reset rotation is durable and idempotent under replay", async () => {
   expect(await afterRestart.resetAt("route", 41)).toBe("route-r42");
   expect(await afterRestart.resetAt("route", 99)).toBe("route-r99");
 });
-test("EventBridge handles rendered /reset without calling the runtime", async () => {
+posixDurabilityTest("EventBridge handles rendered /reset without calling the runtime", async () => {
   scratch = await mkdtemp(join(tmpdir(), "buddy-session-reset-e2e-"));
   const realm = new FakeRealm();
   const cfg = fakeRealmConfig(realm);
@@ -89,4 +90,3 @@ test("EventBridge handles rendered /reset without calling the runtime", async ()
   expect(notices).toHaveLength(1);
   expect(notices[0]).toContain("Fresh context started");
 });
-

@@ -28,6 +28,10 @@ import {
 } from "./runtime/buddy-service-lib.mjs";
 
 const scratches = [];
+// The service transaction deliberately targets systemd hosts. Windows keeps
+// the resident lifecycle fail-closed, and its filesystem does not model POSIX
+// execute/0600 bits, so only filesystem-neutral helpers run there.
+const linuxHostTest = process.platform === "win32" ? test.skip : test;
 afterEach(async () => {
   await Promise.all(scratches.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
@@ -136,7 +140,7 @@ function successfulSystemctl(log) {
   };
 }
 
-test("Buddy service cutover preserves the old unit and installs only the active-root unit", async () => {
+linuxHostTest("Buddy service cutover preserves the old unit and installs only the active-root unit", async () => {
   const paths = await fixture();
   const commands = [];
   const result = await installBuddyBridgeService({
@@ -171,7 +175,7 @@ test("Buddy service cutover preserves the old unit and installs only the active-
   ]);
 });
 
-test("a failed post-restart hearing gate restores the exact previous unit", async () => {
+linuxHostTest("a failed post-restart hearing gate restores the exact previous unit", async () => {
   const paths = await fixture();
   const commands = [];
   await expect(installBuddyBridgeService({
@@ -197,7 +201,7 @@ test("a failed post-restart hearing gate restores the exact previous unit", asyn
   ]);
 });
 
-test("the preserved unit remains an explicit operator rollback after a successful cutover", async () => {
+linuxHostTest("the preserved unit remains an explicit operator rollback after a successful cutover", async () => {
   const paths = await fixture();
   const commands = [];
   await installBuddyBridgeService({
@@ -220,7 +224,7 @@ test("the preserved unit remains an explicit operator rollback after a successfu
   expect(await readFile(paths.unitPath, "utf8")).toBe(paths.currentUnit);
 });
 
-test("EnvironmentFile validation names conflicting keys but never their secret values", async () => {
+linuxHostTest("EnvironmentFile validation names conflicting keys but never their secret values", async () => {
   const paths = await fixture();
   await writeFile(
     paths.environmentFile,
@@ -262,7 +266,7 @@ test("profile inspection follows a directory symlink and catches secret-shaped e
   expect(result.reason).not.toContain("PRIVATE=value");
 });
 
-test("Buddy service preflight refuses Organization data on a Personalspace host", async () => {
+linuxHostTest("Buddy service preflight refuses Organization data on a Personalspace host", async () => {
   const paths = await fixture();
   await writeFile(join(paths.installRoot, "state", "organizations", "foreign-org"), "must stay absent\n");
   await expect(installBuddyBridgeService({

@@ -38,6 +38,7 @@ import { FakeRealm, fakeRealmConfig } from "../fakes/fake-realm.ts";
 
 const STREAM_ID = 101;
 const BOT = { userId: 42, email: "buddy-bot@realm.test" };
+const posixDurabilityTest = process.platform === "win32" ? test.skip : test;
 
 const scratches: string[] = [];
 afterEach(async () => {
@@ -47,7 +48,7 @@ afterEach(async () => {
 });
 
 describe("SCAR-ID-1 — a channel the Principal renames keeps its conversation", () => {
-  test("SCAR-ID-1 the session id is unchanged by a rename, and a stranger cannot inherit it", async () => {
+  posixDurabilityTest("SCAR-ID-1 the session id is unchanged by a rename, and a stranger cannot inherit it", async () => {
     // The failure, concretely: the Principal renames #Buddy to a name of their
     // own — one click, on data that is theirs. Keyed on the NAME, that rename
     // silently forked the runtime session, so the thread they were still reading
@@ -234,4 +235,3 @@ describe("buddy_post — the one place unprompted speech decides a channel", () 
     ).rejects.toBeDefined();
   });
 });
-
