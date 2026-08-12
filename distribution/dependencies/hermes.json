@@ -15,6 +15,14 @@
   },
   "provenance": {
     "migrated_from": "HumanAndMachine-ai/Buddy_GEN2@08b7ee79058a0ea91472fe6cc3651104221d2ab8:release/runtime-pins.json",
-    "remote_verified_on": "2026-07-30"
+    "remote_verified_on": "2026-08-12",
+    "remote_verification": {
+      "fork": true,
+      "upstream_repository": "NousResearch/hermes-agent",
+      "tag_object": "c7d08de287556b3d339df336b180a39d4980ebd7",
+      "dereferenced_commit": "3ef6bbd201263d354fd83ec55b3c306ded2eb72a",
+      "lock_sha256_observed": "456f76d5396df0f543d1035c2d05173cae1882c290ba585cc926a79958b9d7fe",
+      "agrees_with_pin": true
+    }
   }
 }
