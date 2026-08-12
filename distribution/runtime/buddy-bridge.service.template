@@ -1,0 +1,45 @@
+[Unit]
+Description=Lazurio Buddy bridge (Zulip events API poller)
+Documentation=file:@@ACTIVE_ROOT@@/manual/lazurio-resident-profiles.md
+After=network-online.target hermes-gateway.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=buddy-bridge
+Group=buddy-bridge
+WorkingDirectory=@@ACTIVE_ROOT@@
+EnvironmentFile=/run/buddy/buddy-bridge.env
+ExecStart=@@BUN_BIN@@ @@ACTIVE_ROOT@@/bridge/run.ts
+Restart=on-failure
+RestartSec=5s
+RestartPreventExitStatus=78
+TimeoutStopSec=30s
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=@@ACTIVE_ROOT@@
+ReadWritePaths=/var/lib/buddy-bridge
+StateDirectory=buddy-bridge
+StateDirectoryMode=0700
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

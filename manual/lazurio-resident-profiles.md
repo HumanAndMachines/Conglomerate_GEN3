@@ -57,6 +57,12 @@ Mašině také není Buddy. Transakčně citlivé kroky — přístupy, secrets,
 destruktivní operace, billing, ownership a publish/release mimo trvalý mandát
 — vyžadují přesný souhlas lidského Principála.
 
+Veřejný Buddy runtime obsahuje komunikační bridge mezi privátním Zulipem a
+agentním runtime. Bridge sám nevlastní identitu ani mandáty: před prvním
+síťovým krokem ověří mount privátního profilu, vloží jeho ústavu a mandáty do
+každého turnu a odmítne běh bez úplného kontraktu. Běží pod odděleným účtem,
+nevystavuje příchozí port a trvanlivou frontu drží mimo immutable root.
+
 ## Profil AI Kolega a Steward overlay
 
 AI Kolega je samostatný Principál. Má vlastní účet, seat, Mašinu,

@@ -88,6 +88,21 @@ V1 používá POSIX atomic-symlink adapter pro Linux a macOS. Windows Kolegové
 zůstávají na stávajícím Git checkoutu a Windows resident lifecycle se
 nezapne, dokud nebude mít vlastní atomický pointer adapter a failure testy.
 
+## Buddy bridge
+
+Buddy artefakt nese veřejně bezpečné, runtime-neutrální bridge jádro pod
+`bridge/` a systemd template pod `resident/services/`. Bridge long-polluje
+Zulip, nevystavuje příchozí port, posílá každý turn přes `AGENT_RUNTIME_*`
+šev a před síťovým přístupem fail-closed ověří privátní profil. Jeho fronta,
+poller stav, Zulip credential, runtime bearer a profil nejsou payload; zůstávají
+v host custody a připojí je service EnvironmentFile.
+
+Přenesené behaviorální testy drží cold-start bez přehrání historie, pořadí
+durable record → watermark → acknowledgement, id-based routing, self-echo
+filtr, singleton, rate breaker, profilovou custody hranici, celé instrukce na
+wire a session recovery. Host service render/install a Hermes/gbrain
+materializace zůstávají dalšími explicitními parity gates.
+
 ## Stav první fáze
 
 Build contract v1 vydává pouze profil `buddy`. Schema, builder, integrity

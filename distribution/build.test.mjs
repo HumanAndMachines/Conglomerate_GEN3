@@ -102,6 +102,8 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
     "resident/integrity.mjs",
     "resident/updater-lib.mjs",
     "resident/updater.mjs",
+    "resident/services/buddy-bridge.service.template",
+    "bridge/run.ts",
   ]));
   const residentPackage = JSON.parse(
     await readFile(join(first.artifact_root, "package.json"), "utf8"),
@@ -111,6 +113,7 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
     "resident:update": "bun resident/updater.mjs update",
     "resident:rollback": "bun resident/updater.mjs rollback",
     "resident:status": "bun resident/updater.mjs status",
+    "buddy:bridge": "bun bridge/run.ts",
   });
 
   const doctor = runDoctor(first.artifact_root);

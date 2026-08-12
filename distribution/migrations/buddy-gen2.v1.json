@@ -56,10 +56,10 @@
     {
       "id": "bridge-core",
       "source_paths": ["bridge/**"],
-      "disposition": "pending_itemized_migration",
-      "target_paths": [],
-      "public_safe_review": "required",
-      "reason": "The durable Zulip-to-runtime bridge is required before a Lazurio Root can replace the old checkout as the service execution source. Code and tests must move together."
+      "disposition": "migrated",
+      "target_paths": ["bridge/**", "tests/bridge/**", "tests/fakes/fake-realm.ts"],
+      "public_safe_review": "pass",
+      "reason": "The durable Zulip-to-runtime bridge and its behavioral regression tests moved together with instance names removed from public comments and fixtures."
     },
     {
       "id": "bridge-host-service",
@@ -67,10 +67,10 @@
         "host/bridge/**",
         "tests/bridge/install-seam.exec.test.ts"
       ],
-      "disposition": "pending_refactor",
-      "target_paths": [],
-      "public_safe_review": "required",
-      "reason": "The service seam hardcodes the old checkout. Its successor must resolve the immutable active Lazurio version while retaining the separate bridge UID and durable queue."
+      "disposition": "partially_migrated",
+      "target_paths": ["distribution/runtime/buddy-bridge.service.template"],
+      "public_safe_review": "pass_for_template_installer_pending",
+      "reason": "The unit template now targets the immutable active Lazurio root and retains the separate bridge UID, configuration refusal and durable queue. Safe render/install and host readback remain pending."
     },
     {
       "id": "hermes-runtime-materialization",

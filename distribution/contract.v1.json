@@ -43,7 +43,8 @@
     "lazurio/context-v0.schema.json",
     "lazurio/lib.mjs",
     "lazurio/search-lib.mjs",
-    "manual/lazurio-resident-profiles.md"
+    "manual/lazurio-resident-profiles.md",
+    "bridge/"
   ],
   "source_excludes": {
     "basenames": [
@@ -73,6 +74,7 @@
     "resident/dependencies/hermes.json",
     "resident/updater-lib.mjs",
     "resident/updater.mjs",
+    "resident/services/buddy-bridge.service.template",
     "lazurio/search-scopes.v1.json"
   ],
   "mutable_mounts": [

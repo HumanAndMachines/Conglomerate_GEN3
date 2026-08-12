@@ -158,6 +158,12 @@ export async function buildResidentArtifact({
   );
   addGeneratedEntry(
     entries,
+    "resident/services/buddy-bridge.service.template",
+    readBlob(repositoryRoot, tree, "distribution/runtime/buddy-bridge.service.template"),
+    "0644",
+  );
+  addGeneratedEntry(
+    entries,
     "resident/manifest.schema.json",
     readBlob(repositoryRoot, tree, "distribution/manifest.schema.json"),
     "0644",
@@ -332,6 +338,7 @@ function residentPackageJson(profile) {
       "resident:update": "bun resident/updater.mjs update",
       "resident:rollback": "bun resident/updater.mjs rollback",
       "resident:status": "bun resident/updater.mjs status",
+      "buddy:bridge": "bun bridge/run.ts",
     },
   }, null, 2)}\n`;
 }

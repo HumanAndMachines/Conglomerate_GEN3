@@ -14,7 +14,7 @@
     "lazurio": "bun lazurio/cli.mjs",
     "lazurio:test": "bun test --cwd lazurio --timeout 15000 lazurio.test.mjs search.test.mjs",
     "resident:build": "bun distribution/build.mjs",
-    "resident:test": "bun test --timeout 60000 distribution/build.test.mjs distribution/updater.test.mjs",
+    "resident:test": "bun test --timeout 60000 distribution/build.test.mjs distribution/updater.test.mjs tests/bridge",
     "resident:install": "bun distribution/runtime/updater.mjs install",
     "resident:update": "bun distribution/runtime/updater.mjs update",
     "resident:rollback": "bun distribution/runtime/updater.mjs rollback",

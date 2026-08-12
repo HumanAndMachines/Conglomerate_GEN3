@@ -218,6 +218,11 @@ async function buildFixture(root, version, target = currentResidentTarget()) {
         independent_self_update_allowed: false,
       },
     }, null, 2)}\n`), mode: "0644" }],
+    ["resident/services/buddy-bridge.service.template", {
+      bytes: Buffer.from("[Service]\nUser=buddy-bridge\nRestartPreventExitStatus=78\n"),
+      mode: "0644",
+    }],
+    ["bridge/run.ts", { bytes: Buffer.from("export const fixtureBridge = true;\n"), mode: "0644" }],
     ["fixture/version.txt", { bytes: Buffer.from(`${version}\n`), mode: "0644" }],
   ]);
   const payload = [...entries.entries()]
