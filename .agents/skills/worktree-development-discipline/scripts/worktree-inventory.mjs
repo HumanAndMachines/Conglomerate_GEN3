@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { access, lstat, opendir, readFile, readdir, realpath } from "node:fs/promises";
-import { constants } from "node:fs";
+import { constants, existsSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
@@ -1484,11 +1484,14 @@ function isWithin(parent, child) {
 }
 
 function resolveAuthorityRoot(primaryRoot) {
-  if (basename(primaryRoot) === "HumanAndMachines") return primaryRoot;
-  if (process.env.HUMANANDMACHINES_ROOT) {
-    return resolve(process.env.HUMANANDMACHINES_ROOT);
+  if (process.env.MISSION_CONTROL_AUTHORITY_ROOT) {
+    const candidate = resolve(process.env.MISSION_CONTROL_AUTHORITY_ROOT);
+    const repositoryDb = join(candidate, "mission-control", "db");
+    if (existsSync(join(candidate, "repository-db.manifest.json"))) return candidate;
+    if (existsSync(join(repositoryDb, "repository-db.manifest.json"))) return repositoryDb;
+    return candidate;
   }
-  return join(dirname(primaryRoot), "HumanAndMachines");
+  return join(primaryRoot, ".mission-control-authority-unconfigured");
 }
 
 export function resolveAuthorityPlanPath(primaryRoot, planPath, authorityRoot) {

@@ -8,9 +8,9 @@ description: Povinná disciplína pro každou Git změnu, branch, PR, review, p�
 ## Kdy použít
 
 Použij před každou změnou Git-trackovaného obsahu v Conglomerate rootu a při
-inventuře, předávce nebo úklidu worktrees. Kanonický upstream kontrakt je
-HumanAndMachines decision 0049 a stejnojmenný skill; lokální kopie je
-samostatně použitelný consumer kontrakt pro agenta, který startoval přímo zde.
+inventuře, předávce nebo úklidu worktrees. Tato lokálně verzovaná kopie je
+samostatně použitelný consumer kontrakt pro agenta, který startoval přímo zde;
+veřejný root kvůli němu nepotřebuje privátní Knowledgebase ani Mission Control.
 
 ## Postup
 
@@ -29,12 +29,16 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
 3. Použij existující Mission Control plán jeho vlastníka a worktree založ
    kanonickou lane `bun run worktrees:create -- --plan <KOD-XXXX>` — odvodí
    basename z kanonického plan souboru, založí branch z čerstvého
-   `origin/main` a vygeneruje schema-validní sidecar. Historický default je
-   authority checkout HumanAndMachines; Organization-scoped repository-db
-   vyber přes `MISSION_CONTROL_AUTHORITY_ROOT=<organization-root>`.
-   Authority musí být lokální
+   `origin/main` a vygeneruje schema-validní sidecar. Create lane vyhledá exact
+   kód plánu v připojených
+   `organizations/*/mission-control/db`; přijme právě jednu shodu a při nule
+   nebo více shodách failne. Připojenou Organization lze výslovně zvolit
+   generickým `MISSION_CONTROL_AUTHORITY_ROOT=<organization-root-or-db>`;
+   externí checkout se pro nový worktree nepřijímá.
+   Organization authority musí být lokální
    `organizations/<organization>/mission-control/db`; create lane ji do
-   tohoto tvaru normalizuje a nikdy nevytváří duplicitní plán v jiném repu.
+   tohoto tvaru normalizuje, uloží do sidecaru a nikdy nevytváří duplicitní
+   plán v jiném repu.
    Worktree cesta je
    výhradně `<Conglomerate>/.worktrees/root/<canonical-plan-basename>/`;
    basename je název kanonického plan souboru bez `.yaml`. Branch obsahuje
@@ -130,8 +134,8 @@ samostatně použitelný consumer kontrakt pro agenta, který startoval přímo 
 
 ```bash
 bun run worktrees:create -- --plan <KOD-XXXX> --dry-run
-# pro Organization-scoped repository-db authority:
-MISSION_CONTROL_AUTHORITY_ROOT=<organization-root> bun run worktrees:create -- --plan <KOD-XXXX> --dry-run
+# pouze pro výslovný výběr připojené Organization; běžně se objeví automaticky:
+MISSION_CONTROL_AUTHORITY_ROOT=<organization-root-or-db> bun run worktrees:create -- --plan <KOD-XXXX> --dry-run
 bun run worktrees:status
 bun run worktrees:check
 # pouze před taskem z primárního main checkoutu

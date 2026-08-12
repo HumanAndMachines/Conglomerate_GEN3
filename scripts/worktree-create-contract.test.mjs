@@ -1,8 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   parseWorktreeCreateArgs,
   PLAN_CODE_PATTERN,
@@ -67,11 +67,78 @@ test("dry-run accepts a unique exact-code plan only after canonical validation",
   });
   const result = runCreateLane(fixture);
   expect({ status: result.status, stderr: result.stderr }).toMatchObject({ status: 0 });
-  expect(result.stdout).toContain("ok - dry-run: plán mission-control/plans/CAC-0007.yaml");
+  expect(result.stdout).toContain("ok - dry-run: plán data/mission-control/plans/CAC-0007.yaml");
 });
 
 test("dry-run accepts an Organization-scoped repository-db authority", async () => {
   const fixture = await createRepositoryDbLaneFixture();
+  const result = runOrganizationCreateLane(fixture);
+  expect({ status: result.status, stderr: result.stderr }).toMatchObject({ status: 0 });
+  expect(result.stdout).toContain(
+    "ok - dry-run: plán data/mission-control/plans/2026/07/CAC-0007-create-lane.yaml",
+  );
+});
+
+test("dry-run rejects an explicit external repository-db authority", async () => {
+  const fixture = await createRepositoryDbLaneFixture();
+  const externalAuthorityRoot = join(
+    dirname(fixture.root),
+    "external-repository-db-authority",
+  );
+  await cp(
+    join(fixture.organizationRoot, "mission-control", "db"),
+    externalAuthorityRoot,
+    { recursive: true },
+  );
+  const result = runCreateLane({
+    root: fixture.root,
+    authorityRoot: externalAuthorityRoot,
+  });
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(
+    "nový worktree vyžaduje Mission Control authority",
+  );
+});
+
+test.skipIf(process.platform === "win32")("dry-run rejects a symlinked Organization authority component", async () => {
+  const fixture = await createRepositoryDbLaneFixture();
+  const databaseRoot = join(fixture.organizationRoot, "mission-control", "db");
+  const externalAuthorityRoot = join(dirname(fixture.root), "symlink-target-db");
+  await cp(databaseRoot, externalAuthorityRoot, { recursive: true });
+  await rm(databaseRoot, { recursive: true, force: true });
+  await symlink(externalAuthorityRoot, databaseRoot, "dir");
+  const result = runOrganizationCreateLane(fixture);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain("obsahuje symlink nebo neadresářovou komponentu");
+});
+
+test("dry-run fails closed when multiple Organizations claim the same plan code", async () => {
+  const fixture = await createRepositoryDbLaneFixture();
+  await cp(
+    fixture.organizationRoot,
+    join(fixture.root, "organizations", "SecondOrganization_GEN3"),
+    { recursive: true },
+  );
+  const result = runOrganizationCreateLane(fixture);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain("nalezen ve více Organization Mission Control autoritách");
+});
+
+test("dry-run ignores an unrelated partial Organization authority", async () => {
+  const fixture = await createRepositoryDbLaneFixture();
+  const partialAuthorityRoot = join(
+    fixture.root,
+    "organizations",
+    "AA-PartialOrganization_GEN3",
+    "mission-control",
+    "db",
+  );
+  await mkdir(partialAuthorityRoot, { recursive: true });
+  await writeFile(
+    join(partialAuthorityRoot, "repository-db.manifest.json"),
+    '{"schema_version":"companiesascode.repository_db.manifest.v1","data_mode":"repository-db","data_root":"data/mission-control"}\n',
+    "utf8",
+  );
   const result = runOrganizationCreateLane(fixture);
   expect({ status: result.status, stderr: result.stderr }).toMatchObject({ status: 0 });
   expect(result.stdout).toContain(
@@ -116,13 +183,27 @@ async function createLaneFixture({ plans }) {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "worktree-create-contract-"));
   cleanupPaths.push(fixtureRoot);
   const root = join(fixtureRoot, "Conglomerate_GEN3");
-  const authorityRoot = join(fixtureRoot, "HumanAndMachines");
-  const plansRoot = join(authorityRoot, "mission-control", "plans");
-  await mkdir(root, { recursive: true });
+  const organizationRoot = join(root, "organizations", "TestOrganization_GEN3");
+  const authorityRoot = join(organizationRoot, "mission-control", "db");
+  const plansRoot = join(authorityRoot, "data", "mission-control", "plans");
   await mkdir(plansRoot, { recursive: true });
   await mkdir(join(authorityRoot, "schemas"), { recursive: true });
   await mkdir(join(authorityRoot, "scripts"), { recursive: true });
   await writeFile(join(root, "launchpad.gen3.json"), "{}\n", "utf8");
+  await writeFile(
+    join(organizationRoot, "company.gen3.json"),
+    '{"organization_kind":"organization"}\n',
+    "utf8",
+  );
+  await writeFile(
+    join(authorityRoot, "repository-db.manifest.json"),
+    `${JSON.stringify({
+      schema_version: "companiesascode.repository_db.manifest.v1",
+      data_mode: "repository-db",
+      data_root: "data/mission-control",
+    }, null, 2)}\n`,
+    "utf8",
+  );
   for (const [relativePath, contents] of plans) {
     const planPath = join(plansRoot, relativePath);
     await mkdir(join(planPath, ".."), { recursive: true });
@@ -142,34 +223,13 @@ async function createLaneFixture({ plans }) {
     "utf8",
   );
   await writeFile(
-    join(authorityRoot, "scripts", "json-schema-mini.mjs"),
-    `export function validateAgainstSchema(value, schema, label = "$") {
-  const failures = [];
-  for (const key of schema.required ?? []) {
-    if (!(key in value)) failures.push(label + ": missing " + key);
-  }
-  for (const [key, rule] of Object.entries(schema.properties ?? {})) {
-    if (!(key in value)) continue;
-    if (Object.hasOwn(rule, "const") && value[key] !== rule.const) failures.push(label + "." + key + ": const mismatch");
-    if (rule.type === "string" && typeof value[key] !== "string") failures.push(label + "." + key + ": expected string");
-    if (rule.pattern && !new RegExp(rule.pattern).test(value[key])) failures.push(label + "." + key + ": pattern mismatch");
-  }
-  return failures;
-}
-`,
-    "utf8",
-  );
-  await writeFile(
-    join(authorityRoot, "scripts", "mission-control-lib.mjs"),
-    `export function loadMissionControlConfig() { return {}; }
-export function loadPlanSchema() { return {}; }
-export function validatePlanShape() { return []; }
-`,
+    join(authorityRoot, "scripts", "validate-mission-control-data.mjs"),
+    "export function validateMissionControlData() { return []; }\n",
     "utf8",
   );
   for (const args of [
     ["init", "-b", "main"],
-    ["remote", "add", "origin", "git@github.com:HumanAndMachines/Conglomerate_GEN3.git"],
+    ["remote", "add", "origin", "git@github.com:TestProvider/Lazurio.git"],
   ]) {
     const result = spawnSync("git", args, { cwd: root, encoding: "utf8" });
     if (result.status !== 0) throw new Error(result.stderr);
@@ -234,7 +294,7 @@ async function createRepositoryDbLaneFixture() {
   );
   for (const args of [
     ["init", "-b", "main"],
-    ["remote", "add", "origin", "git@github.com:HumanAndMachines/Conglomerate_GEN3.git"],
+    ["remote", "add", "origin", "git@github.com:TestProvider/Lazurio.git"],
   ]) {
     const result = spawnSync("git", args, { cwd: root, encoding: "utf8" });
     if (result.status !== 0) throw new Error(result.stderr);
@@ -252,12 +312,14 @@ function runCreateLane({ root, authorityRoot }) {
     encoding: "utf8",
     env: {
       ...process.env,
-      HUMANANDMACHINES_ROOT: authorityRoot,
+      MISSION_CONTROL_AUTHORITY_ROOT: authorityRoot,
     },
   });
 }
 
-function runOrganizationCreateLane({ root, organizationRoot }) {
+function runOrganizationCreateLane({ root }) {
+  const env = { ...process.env };
+  delete env.MISSION_CONTROL_AUTHORITY_ROOT;
   return spawnSync(process.execPath, [
     createScript,
     "--plan", "CAC-0007",
@@ -265,9 +327,6 @@ function runOrganizationCreateLane({ root, organizationRoot }) {
   ], {
     cwd: root,
     encoding: "utf8",
-    env: {
-      ...process.env,
-      MISSION_CONTROL_AUTHORITY_ROOT: organizationRoot,
-    },
+    env,
   });
 }

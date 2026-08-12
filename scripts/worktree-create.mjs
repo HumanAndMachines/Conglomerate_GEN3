@@ -70,21 +70,61 @@ function git(cwd, args, { allowFail = false, useSafetyConfig = true } = {}) {
   };
 }
 
-function resolveAuthorityRoot(primaryRoot) {
-  let candidate;
-  if (process.env.MISSION_CONTROL_AUTHORITY_ROOT) {
-    candidate = resolve(process.env.MISSION_CONTROL_AUTHORITY_ROOT);
-  } else if (basename(primaryRoot) === "HumanAndMachines") {
-    candidate = primaryRoot;
-  } else if (process.env.HUMANANDMACHINES_ROOT) {
-    candidate = resolve(process.env.HUMANANDMACHINES_ROOT);
-  } else {
-    candidate = join(dirname(primaryRoot), "HumanAndMachines");
-  }
+function normalizeExplicitAuthorityRoot(rawCandidate) {
+  const candidate = resolve(rawCandidate);
   const repositoryDb = join(candidate, "mission-control", "db");
-  return existsSync(join(repositoryDb, "repository-db.manifest.json"))
-    ? repositoryDb
-    : existsSync(candidate) ? realpathSync(candidate) : candidate;
+  if (existsSync(join(candidate, "repository-db.manifest.json"))) {
+    return realpathSync(candidate);
+  }
+  if (existsSync(join(repositoryDb, "repository-db.manifest.json"))) {
+    return realpathSync(repositoryDb);
+  }
+  return existsSync(candidate) ? realpathSync(candidate) : candidate;
+}
+
+async function resolveAuthorityRoot(primaryRoot, planCode) {
+  if (process.env.MISSION_CONTROL_AUTHORITY_ROOT) {
+    return normalizeExplicitAuthorityRoot(process.env.MISSION_CONTROL_AUTHORITY_ROOT);
+  }
+
+  const organizationsRoot = join(primaryRoot, "organizations");
+  let entries = [];
+  try {
+    entries = await readdir(organizationsRoot, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+
+  const matches = [];
+  entries.sort((left, right) => left.name.localeCompare(right.name));
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const candidate = join(organizationsRoot, entry.name, "mission-control", "db");
+    let manifest;
+    try {
+      manifest = lstatSync(join(candidate, "repository-db.manifest.json"));
+    } catch {
+      continue;
+    }
+    if (!manifest.isFile() || manifest.isSymbolicLink()) continue;
+    const plan = await findPlanFile(candidate, planCode);
+    if (!plan) continue;
+    const authorityPath = organizationAuthorityPath(primaryRoot, candidate);
+    if (!authorityPath) continue;
+    matches.push(candidate);
+  }
+
+  if (matches.length === 1) return realpathSync(matches[0]);
+  if (matches.length > 1) {
+    fail(
+      `plán ${planCode} byl nalezen ve více Organization Mission Control autoritách: `
+      + matches.join(", "),
+    );
+  }
+  fail(
+    `plán ${planCode} nebyl nalezen v žádné připojené Organization Mission Control autoritě; `
+    + "připoj vlastnickou Organizaci nebo nastav MISSION_CONTROL_AUTHORITY_ROOT na její Organization root či mission-control/db.",
+  );
 }
 
 function organizationAuthorityPath(primaryRoot, authorityRoot) {
@@ -95,6 +135,7 @@ function organizationAuthorityPath(primaryRoot, authorityRoot) {
   const organizationsRoot = dirname(organizationRoot);
   const owningRoot = dirname(organizationsRoot);
   const organizationName = basename(organizationRoot);
+  if (!sameFilesystemEntry(primaryRoot, owningRoot)) return null;
   if (
     basename(databaseRoot) !== "db"
     || basename(missionControlRoot) !== "mission-control"
@@ -102,7 +143,6 @@ function organizationAuthorityPath(primaryRoot, authorityRoot) {
     || !organizationName
     || organizationName === "."
     || organizationName === ".."
-    || !sameFilesystemEntry(primaryRoot, owningRoot)
   ) {
     fail(
       `repository-db Mission Control authority ${authorityRoot} musí ležet v `
@@ -255,8 +295,15 @@ async function main() {
     fail("spouštěj z primárního checkoutu, ne z linked worktree.");
   }
 
-  const authorityRoot = resolveAuthorityRoot(primaryRoot);
+  const authorityRoot = await resolveAuthorityRoot(primaryRoot, planCode);
   const authorityPath = organizationAuthorityPath(primaryRoot, authorityRoot);
+  if (!authorityPath) {
+    fail(
+      "nový worktree vyžaduje Mission Control authority v "
+      + "organizations/<organization>/mission-control/db pod tímto Lazurio rootem; "
+      + "externí authority je podporovaná jen jako explicitní compatibility vstup inventury legacy sidecarů.",
+    );
+  }
   let plan;
   try {
     plan = await findPlanFile(authorityRoot, planCode);

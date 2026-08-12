@@ -168,10 +168,6 @@
           "path": "launchpad/README.md"
         },
         {
-          "label": "CAC-0015 authority plan",
-          "path": "../HumanAndMachines/mission-control/plans/2026/06/CAC-0015-doctor-managed-nested-repos.yaml"
-        },
-        {
           "label": "Filmbase FB-0002 transition decision",
           "path": "organizations/Filmbase_GEN3/mission-control/plans/2026/07/FB-0002-filmbase-knowledgebase.yaml"
         }
@@ -247,10 +243,6 @@
         {
           "label": "GEN2 to GEN3 migration gate",
           "path": "manual/gen2-to-gen3-migration.md"
-        },
-        {
-          "label": "Spectoda migration dogfood authority",
-          "path": "../HumanAndMachines/mission-control/plans/2026/06/CAC-0035-spectoda-gen3-migration-dogfood.yaml"
         }
       ]
     },
@@ -299,10 +291,6 @@
         {
           "label": "Server mutation wrapper",
           "path": "launchpad/src/apps-response-cache-lib.mjs"
-        },
-        {
-          "label": "Spectoda GEN2 to GEN3 migration authority",
-          "path": "../HumanAndMachines/mission-control/plans/2026/06/CAC-0035-spectoda-gen3-migration-dogfood.yaml"
         }
       ]
     }

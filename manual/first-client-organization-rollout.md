@@ -8,7 +8,7 @@ Cíl: nový klient má vlastní Organization repo, je lokálně namountovaný po
 
 | Vrstva | Patří sem | Nepatří sem |
 |---|---|---|
-| `HumanAndMachines/Conglomerate_GEN3` root | shared Launchpad, Guide, manuály, template/runbooky, registry metadata | klientská business pravda, klientská data, secrets |
+| veřejný Lazurio root | shared Launchpad, Guide, manuály, template/runbooky, registry metadata | klientská business pravda, klientská data, secrets |
 | `organizations/<ClientOrg>_GEN3/` | klientská Organization pravda, workspace/productionspace, moduly, jejich manifesty | shared framework změny |
 | `personalspace/` | osobní/Buddy overlay a root/operator secrets custody | Organization-owned klientská data |
 
@@ -31,7 +31,7 @@ Vyplň před tím, než vytvoříš nebo mountneš klientský checkout:
 | Design System scope | `active`, pokud je vytvoření objednané; jinak manifestový `planned_slot` bez repa a bez vymyšlených brandových dat |
 | Template baseline | Organization z `TemplatesRozjedeme-ai/OrganizationTemplate_GEN3`; Mission Control, Knowledgebase a Design System z vlastních `TemplatesRozjedeme-ai/*Template` upstreamů |
 | Klientské podklady | Hledej ve schválené delivery/sales knowledgebase dodavatele a souvisejících deal/quote/proposal záznamech; vendor-specific cesty patří do AGENTS.md dané dodavatelské Organizace, ne do sdíleného runbooku. Do nové Organizace přenášej jen relevantní, netajný delivery kontext, ne raw interní reasoning ani secrets |
-| Shared Guide | bere se ze sdíleného `HumanAndMachines/Conglomerate_GEN3/guide`, nekopíruje se ani neforkuje do klientské Organizace |
+| Shared Guide | bere se z `guide/` veřejného Lazurio rootu, nekopíruje se ani neforkuje do klientské Organizace |
 | Productionspace | co je release/produkční systém a nesmí být běžný workspace modul |
 | Zastřešující Admin Organizace | Nastav absolutní `ADMIN_ORGANIZATION_ROOT`, například `/Users/example/Conglomerate/organizations/AdminOrganization_GEN3`; musí být přímý Organization child tohoto Conglomerate rootu. |
 | Organization template checkout | Nastav absolutní `ORGANIZATION_TEMPLATE_ROOT` přesně na `$ADMIN_ORGANIZATION_ROOT/productionspace/OrganizationTemplate_GEN3`; checkout musí používat kanonický SSH origin. |
@@ -304,7 +304,7 @@ První reálný GEN3 klient začíná s:
    založ minimální lokální `infra/` repo bez remote: README, no-secrets
    hranice, budoucí template provenance/adoption issue a žádné cloud/DNS/IaC
    side effecty. Nepředstírej template fork, dokud upstream reálně neexistuje.
-5. **Guide** — shared z `HumanAndMachines/Conglomerate_GEN3/guide`; nekopíruj ani neforkuj Guide do klientské Organizace. Pokud klient vzniká migrací z GEN2 a má vlastní top-level `guide/`, obecný Guide z Organization repozitáře smaž — nahrazuje ho shared root Guide. Organization-specific onboarding přesuň do `manual/`, knowledgebase nebo role docs.
+5. **Guide** — shared z `guide/` veřejného Lazurio rootu; nekopíruj ani neforkuj Guide do klientské Organizace. Pokud klient vzniká migrací z GEN2 a má vlastní top-level `guide/`, obecný Guide z Organization repozitáře smaž — nahrazuje ho shared root Guide. Organization-specific onboarding přesuň do `manual/`, knowledgebase nebo role docs.
 
 Tento baseline není big-bang workspace rollout: v `workspace/` se na začátku
 provisionuje Knowledgebase a další moduly přibývají až podle business potřeby.
@@ -518,7 +518,7 @@ Pokud Doctor hlásí warning, nejdřív ho zařaď podle boundary:
 | Organization mount | špatný mount alias, symlink duplicate, stale checkout | lokální mount repair + Organization sync |
 | nested module repo | app manifest, runtime konstanta, package deps | module repo commit/PR |
 | Organization registry | `company.gen3.json`, `modules.manifest.json` | Organization root PR |
-| shared root | Launchpad/Doctor/Guide obecný bug | `HumanAndMachines/Conglomerate_GEN3` PR |
+| shared root | Launchpad/Doctor/Guide obecný bug | PR do veřejného Lazurio source |
 
 U lokálního rootu s více Organizacemi může globální Doctor nebo root task
 checker selhat kvůli jiným mountům, template fixture datům nebo mirror

@@ -136,6 +136,42 @@ test("accepts an Organization-scoped repository-db Mission Control authority", a
   });
 });
 
+test("normalizes the generic authority env from Organization root to repository-db", async () => {
+  const fixture = await createFixture({
+    authorityAvailable: false,
+    planAvailable: false,
+    sidecarOverrides: {
+      mission_control_plan_path:
+        "data/mission-control/plans/2026/07/CAC-0007-contract.yaml",
+    },
+  });
+  await createOrganizationAuthority(fixture.root);
+  const env = sanitizedEnv();
+  env.MISSION_CONTROL_AUTHORITY_ROOT = join(
+    fixture.root,
+    "organizations",
+    "HumanAndMachine-ai_GEN3",
+  );
+  const result = Bun.spawnSync([
+    process.execPath,
+    auditScript,
+    "--json",
+    "--root",
+    fixture.root,
+  ], {
+    stdout: "pipe",
+    stderr: "pipe",
+    env,
+    windowsHide: true,
+  });
+  expect(result.exitCode).toBe(0);
+  const report = JSON.parse(result.stdout.toString());
+  expect(canonicalWorktree(report)).toMatchObject({
+    sidecar_valid: true,
+    sidecar_error: null,
+  });
+});
+
 test.each([
   "/tmp/mission-control/db",
   "../HumanAndMachine-ai_GEN3/mission-control/db",
@@ -433,7 +469,7 @@ test("fails closed when the authority exists but the exact plan is missing", asy
   );
 });
 
-test("fails worktrees:check when the HumanAndMachines authority is unavailable", async () => {
+test("fails worktrees:check when the external Mission Control authority is unavailable", async () => {
   const fixture = await createFixture({
     authorityAvailable: false,
     planAvailable: false,
@@ -603,8 +639,8 @@ async function createFixture({
   const sandbox = await mkdtemp(join(tmpdir(), "worktree contract "));
   cleanupPaths.push(sandbox);
   const root = join(sandbox, "Dashboard");
-  const authorityRoot = join(sandbox, "HumanAndMachines");
-  const remote = join(sandbox, "remotes", "HumanAndMachines", "Dashboard.git");
+  const authorityRoot = join(sandbox, "external-mission-control-authority");
+  const remote = join(sandbox, "remotes", "TestProvider", "Dashboard.git");
   const planRelativePath =
     "mission-control/plans/2026/07/CAC-0007-contract.yaml";
   const planPath = join(authorityRoot, ...planRelativePath.split("/"));
@@ -658,7 +694,7 @@ async function createFixture({
     join(root, ".worktrees", "root", `${basename}.worktree.json`),
     `${JSON.stringify({
       schema_version: "companiesascode.worktree.v1",
-      organization: "HumanAndMachines",
+      organization: "TestProvider",
       organization_path: ".",
       workspace: "root",
       module: "Dashboard",
@@ -703,7 +739,7 @@ function sanitizedEnv() {
     "GIT_OBJECT_DIRECTORY",
     "GIT_PREFIX",
     "GIT_WORK_TREE",
-    "HUMANANDMACHINES_ROOT",
+    "MISSION_CONTROL_AUTHORITY_ROOT",
   ]) {
     delete env[key];
   }
