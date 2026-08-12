@@ -793,6 +793,11 @@ test("schema odmítne access verdikt mimo stavový slovník v0", async () => {
 
 test("rootless doctor spouští deklarovaný Personalspace doctor a propustí report", async () => {
   const root = await tempRoot("lazurio-rootless-doctor-");
+  // The fixture crosses the Bun process boundary twice: once through the
+  // library adapter and once through the CLI. GitHub's Windows runner can
+  // spend more than 5 s starting a nested Bun process under the full suite,
+  // so give each fixture doctor the same platform allowance as the test.
+  const childDoctorTimeoutMs = platformTestTimeout(5_000);
   const report = buildAggregateReport({
     scope: {
       type: "personalspace",
@@ -822,7 +827,7 @@ test("rootless doctor spouští deklarovaný Personalspace doctor a propustí re
       schema_version: "humanandmachines.doctor.declaration.v1",
       command: [process.execPath, "run", "fixture-doctor.mjs"],
       scope_type: "personalspace",
-      timeout_ms: 5_000,
+      timeout_ms: childDoctorTimeoutMs,
     },
   }));
 
@@ -835,7 +840,7 @@ test("rootless doctor spouští deklarovaný Personalspace doctor a propustí re
   const cli = run([process.execPath, "run", cliPath, "doctor", "--json", "--root", root], root);
   expect(cli.exitCode).toBe(0);
   expect(JSON.parse(cli.stdout)).toEqual(report);
-}, platformTestTimeout(5_000));
+}, platformTestTimeout(15_000));
 
 test("doctor bez deklarace vrací no_report exit 3, ne incomplete exit 2", async () => {
   const root = await tempRoot("lazurio-rootless-doctor-missing-");
