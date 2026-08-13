@@ -425,10 +425,7 @@ test("numeric port ownership is resolved across loopback bind variants", async (
     await waitForTcpListen(port);
     await expect(resolvePortOwner(port, { host: "::1" })).resolves.toMatchObject({ pid: squatter.pid });
   } finally {
-    try {
-      squatter.kill("SIGKILL");
-    } catch {}
-    await squatter.exited.catch(() => {});
+    await killFixtureProcess(squatter);
   }
 }, platformTestTimeout(10_000));
 
@@ -1435,11 +1432,7 @@ testWithInspectableProcessCwd("runtime manager rozpozná app-owned port, ale pro
     });
     expect((await fetch(`http://127.0.0.1:${port}/health`)).ok).toBe(true);
   } finally {
-    try {
-      previousLaunchpadProcess.kill("SIGKILL");
-    } catch {
-      // Cleanup only; proces už běžně ukončil runtime.stop.
-    }
+    await killFixtureProcess(previousLaunchpadProcess);
   }
 });
 
@@ -1488,11 +1481,7 @@ testWithInspectableProcessCwd("runtime manager neadoptuje zdravý app-owned port
     });
     expect((await fetch(`http://127.0.0.1:${port}/health`)).ok).toBe(true);
   } finally {
-    try {
-      foreignProcess.kill("SIGKILL");
-    } catch {
-      // Cleanup only; foreign proces nesmí ukončit runtime manager.
-    }
+    await killFixtureProcess(foreignProcess);
   }
 });
 
@@ -1623,9 +1612,7 @@ test("runtime manager fail-closed neadoptuje zdravý port při neznámém CWD (W
     });
     expect((await fetch(`http://127.0.0.1:${port}/health`)).ok).toBe(true);
   } finally {
-    try {
-      foreignProcess.kill("SIGKILL");
-    } catch {}
+    await killFixtureProcess(foreignProcess);
   }
 });
 
@@ -1767,9 +1754,7 @@ test("Windows po restartu adoptuje jen listener s platným capture-time owner pr
       failure_kind: "port_owner_cwd_unknown",
     });
   } finally {
-    try {
-      ownedProcess.kill("SIGKILL");
-    } catch {}
+    await killFixtureProcess(ownedProcess);
   }
 });
 
@@ -1850,9 +1835,7 @@ test("Windows standalone Start doplní owner proof, i když listener začne být
       },
     });
   } finally {
-    try {
-      child?.kill("SIGKILL");
-    } catch {}
+    await killFixtureProcess(child);
   }
 }, platformTestTimeout(10_000));
 
@@ -1915,9 +1898,7 @@ test("Windows Lazurio Start accepts a listener owned by the launcher's child pro
       }),
     ]);
   } finally {
-    try {
-      listener?.kill("SIGKILL");
-    } catch {}
+    await killFixtureProcess(listener);
   }
 }, platformTestTimeout(10_000));
 
@@ -2050,9 +2031,7 @@ test("Windows launcher exit after Start preserves Lazurio listener audit for res
   } finally {
     reportLauncherExit(0);
     releaseProofCapture();
-    try {
-      listener?.kill("SIGKILL");
-    } catch {}
+    await killFixtureProcess(listener);
   }
 }, platformTestTimeout(10_000));
 
@@ -2141,9 +2120,7 @@ test("Windows owner proof přežije restart Launchpadu mezi stopping zápisem a 
     await firstStop;
   } finally {
     releaseManagedSignal();
-    try {
-      child?.kill("SIGKILL");
-    } catch {}
+    await killFixtureProcess(child);
   }
 }, platformTestTimeout(10_000));
 
@@ -2216,9 +2193,7 @@ test("Windows owner proof přežije stop failure a po restartu dovolí bezpečn�
       metadata: { owner: "adopted-port" },
     });
   } finally {
-    try {
-      child?.kill("SIGKILL");
-    } catch {}
+    await killFixtureProcess(child);
   }
 }, platformTestTimeout(10_000));
 
@@ -2254,9 +2229,7 @@ test("Windows owner proof capture je bounded a health hot path ho neopakuje", as
     await runtime.health("test-company-demo-v1");
     expect(identityProbeCount).toBe(4);
   } finally {
-    try {
-      child?.kill("SIGKILL");
-    } catch {}
+    await killFixtureProcess(child);
   }
 }, platformTestTimeout(10_000));
 
@@ -2295,9 +2268,7 @@ test("adopted port zůstává diagnostický a Stop nikdy nezíská destruktivní
     });
     expect((await fetch(`http://127.0.0.1:${port}/health`)).ok).toBe(true);
   } finally {
-    try {
-      adoptedProcess.kill("SIGKILL");
-    } catch {}
+    await killFixtureProcess(adoptedProcess);
   }
 });
 
@@ -2348,11 +2319,7 @@ testWithInspectableProcessCwd("runtime manager neukončí ani stubborn adopted v
     });
     expect((await fetch(`http://127.0.0.1:${port}/health`)).ok).toBe(true);
   } finally {
-    try {
-      stubbornProcess.kill("SIGKILL");
-    } catch {
-      // Cleanup only; proces už běžně ukončil runtime.stop.
-    }
+    await killFixtureProcess(stubbornProcess);
   }
 }, 12_000);
 
@@ -2606,11 +2573,7 @@ test("legacy runtime still blocks on an occupied unhealthy port without a static
     // Squatter běží dál — open ho nesmí zabít ani přepsat.
     expect(squatter.killed).toBe(false);
   } finally {
-    try {
-      squatter.kill("SIGKILL");
-    } catch {
-      // Cleanup only.
-    }
+    await killFixtureProcess(squatter);
   }
 }, platformTestTimeout(10_000));
 
@@ -2664,9 +2627,7 @@ test("Lazurio static lease reclaims a foreign port and replaces it with the decl
     ])).resolves.toBe(true);
     await runtime.stop(app.id);
   } finally {
-    try {
-      squatter.kill("SIGKILL");
-    } catch {}
+    await killFixtureProcess(squatter);
   }
 }, platformTestTimeout(15_000));
 
@@ -3205,4 +3166,12 @@ async function executeWindowsStopCommand(command) {
     if (error?.code !== "ESRCH") throw error;
   }
   return { ok: true, exitCode: 0, stdout: "", stderr: "" };
+}
+
+async function killFixtureProcess(child) {
+  if (!child) return;
+  try {
+    child.kill("SIGKILL");
+  } catch {}
+  await Promise.resolve(child.exited).catch(() => {});
 }
