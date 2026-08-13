@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "crypto";
 import { link, mkdir, readFile, rename, rm, unlink, writeFile } from "fs/promises";
 import { join } from "path";
+import { trustedWindowsSystemExecutable } from "./windows-system-path-lib.mjs";
 
 const defaultTimeoutMs = 30_000;
 const defaultPollMs = 50;
@@ -181,15 +182,7 @@ async function defaultProcessIdentity(pid) {
     return cachedCurrentProcessIdentity;
   }
   const command = process.platform === "win32"
-    ? [
-        process.env.SystemRoot
-          ? join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
-          : "powershell.exe",
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        `$process = Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if ($null -eq $process) { exit 3 }; $process.StartTime.ToUniversalTime().ToString('o')`,
-      ]
+    ? windowsModuleLockProcessIdentityCommand(pid)
     : ["ps", "-o", "lstart=", "-p", String(pid)];
   try {
     const child = Bun.spawn(command, { stdout: "pipe", stderr: "ignore", windowsHide: true });
@@ -214,6 +207,20 @@ async function defaultProcessIdentity(pid) {
   } catch {
     return null;
   }
+}
+
+export function windowsModuleLockProcessIdentityCommand(pid, env = process.env) {
+  if (!Number.isInteger(pid) || pid <= 0) throw new Error(`Invalid Windows process id: ${pid}`);
+  return [
+    trustedWindowsSystemExecutable(
+      ["System32", "WindowsPowerShell", "v1.0", "powershell.exe"],
+      env,
+    ),
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    `$process = Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if ($null -eq $process) { exit 3 }; $process.StartTime.ToUniversalTime().ToString('o')`,
+  ];
 }
 
 async function boundedProcessIdentity(resolver, pid, deadline) {
