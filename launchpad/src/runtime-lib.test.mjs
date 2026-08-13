@@ -7,7 +7,7 @@ import {
   RuntimeActionError,
   bunExecutableCandidates,
   canonicalRuntimeListenerHost,
-  createRuntimeManager,
+  createRuntimeManager as createRuntimeManagerImpl,
   observedListenerMatchesDeclaration,
   parseProcessGroupListeners,
   parseWindowsProcessIdentity,
@@ -39,12 +39,9 @@ const testWithInspectableProcessCwd = process.platform === "win32" ? test.skip :
 const testOnPosix = process.platform === "win32" ? test.skip : test;
 
 afterAll(async () => {
-  await Promise.all(tempRoots.map((root) => rm(root, {
-    recursive: true,
-    force: true,
-    maxRetries: process.platform === "win32" ? 20 : 0,
-    retryDelay: 100,
-  })));
+  for (const fixture of tempRoots) {
+    await removeTempRootAfterChildExit(fixture);
+  }
 });
 
 test("runtime ownership považuje localhost a 127.0.0.1 za tentýž listener", () => {
@@ -72,6 +69,87 @@ test("TCP listener health používá skutečné spojení místo HTTP předpoklad
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+test("fixture cleanup proves the exact spawned child exited before removing its mapped temp root", async () => {
+  const events = [];
+  let resolveExit;
+  const exited = new Promise((resolve) => { resolveExit = resolve; });
+  await removeTempRootAfterChildExit(
+    {
+      root: "fixture-root",
+      port: 24001,
+      owner: "mapped creating test",
+      children: [{ pid: 4101, exited }],
+    },
+    {
+      childExitAttempts: 2,
+      retryDelayMs: 0,
+      removeFn: async () => events.push("remove"),
+      sleepFn: async () => {
+        events.push("wait");
+        resolveExit(0);
+      },
+    },
+  );
+  expect(events).toEqual(["wait", "remove"]);
+});
+
+test("fixture cleanup reports the creating test and PID instead of deleting a live child", async () => {
+  let removed = false;
+  await expect(removeTempRootAfterChildExit(
+    {
+      root: "fixture-root",
+      port: 24002,
+      owner: "mapped creating test",
+      children: [{ pid: 4242, exited: new Promise(() => {}) }],
+    },
+    {
+      childExitAttempts: 2,
+      retryDelayMs: 0,
+      removeFn: async () => { removed = true; },
+      sleepFn: async () => {},
+    },
+  )).rejects.toThrow("owner=mapped creating test; root=fixture-root; port=24002; child_pid=4242");
+  expect(removed).toBe(false);
+});
+
+test("fixture cleanup does not attribute a reused port to an exited fixture child", async () => {
+  let removed = false;
+  await removeTempRootAfterChildExit(
+    {
+      root: "fixture-root",
+      port: 24003,
+      owner: "mapped creating test",
+      children: [{ pid: 4242, exited: Promise.resolve(0) }],
+    },
+    {
+      removeFn: async () => { removed = true; },
+    },
+  );
+  expect(removed).toBe(true);
+});
+
+test("fixture cleanup uses an explicit bounded Windows retry after child exit", async () => {
+  let removeAttempts = 0;
+  await removeTempRootAfterChildExit(
+    { root: "fixture-root", port: null, owner: "mapped creating test" },
+    {
+      platform: "win32",
+      rootRemovalAttempts: 3,
+      retryDelayMs: 0,
+      removeFn: async () => {
+        removeAttempts += 1;
+        if (removeAttempts < 3) {
+          const error = new Error("simulated Windows handle release");
+          error.code = "EBUSY";
+          throw error;
+        }
+      },
+      sleepFn: async () => {},
+    },
+  );
+  expect(removeAttempts).toBe(3);
 });
 
 test("runtime manager spustí, změří a zastaví managed aplikaci", async () => {
@@ -472,7 +550,7 @@ testOnPosix("POSIX managed runtime starts detached and Stop signals its process 
     platform: "darwin",
     spawnProcess: (command, options) => {
       spawnOptions = options;
-      return Bun.spawn(command, options);
+      return spawnFixtureChild(root, command, options);
     },
     signalProcessGroupFn: (processGroupId, signal, record) => {
       groupSignals.push({ processGroupId, signal });
@@ -947,7 +1025,7 @@ test("Windows managed Stop ponechá ownership, když child handle nepotvrdí exi
     bunExecutable: process.execPath,
     resolvePortOwnerFn: async () => null,
     spawnProcess: (command, options) => {
-      const child = Bun.spawn(command, options);
+      const child = spawnFixtureChild(root, command, options);
       spawnedChildren.push(child);
       spawnCount += 1;
       if (spawnCount > 1) return child;
@@ -1133,7 +1211,7 @@ test("Windows Stop drží managed slot až do finálního zápisu a blokuje soub
     bunExecutable: process.execPath,
     spawnProcess: (command, options) => {
       spawnCount += 1;
-      return Bun.spawn(command, options);
+      return spawnFixtureChild(root, command, options);
     },
     resolvePortOwnerFn: async () => {
       if (!signalSent || !shouldBlockOwnerProbe) return null;
@@ -1398,7 +1476,7 @@ testWithInspectableProcessCwd("runtime manager rozpozná app-owned port, ale pro
   const port = await findFreePort();
   const root = await createCompaniesWorkspaceFixture({ port });
   const appRoot = join(root, "organizations", "TestCompany", "modules", "demo", "app", "v1");
-  const previousLaunchpadProcess = Bun.spawn(["bun", "server.mjs"], {
+  const previousLaunchpadProcess = spawnFixtureChild(root, ["bun", "server.mjs"], {
     cwd: appRoot,
     env: {
       ...process.env,
@@ -1437,7 +1515,7 @@ testWithInspectableProcessCwd("runtime manager rozpozná app-owned port, ale pro
     });
     expect((await fetch(`http://127.0.0.1:${port}/health`)).ok).toBe(true);
   } finally {
-    await killFixtureProcess(previousLaunchpadProcess);
+    await killFixtureProcess(previousLaunchpadProcess, root);
   }
 });
 
@@ -1446,8 +1524,8 @@ testWithInspectableProcessCwd("runtime manager neadoptuje zdravý app-owned port
   const root = await createCompaniesWorkspaceFixture({ port });
   const appRoot = join(root, "organizations", "TestCompany", "modules", "demo", "app", "v1");
   const foreignCwd = await mkdtemp(join(tmpdir(), "launchpad-foreign-checkout-"));
-  tempRoots.push(foreignCwd);
-  const foreignProcess = Bun.spawn(["bun", join(appRoot, "server.mjs")], {
+  registerTempRoot(foreignCwd);
+  const foreignProcess = spawnFixtureChild(foreignCwd, ["bun", join(appRoot, "server.mjs")], {
     cwd: foreignCwd,
     env: {
       ...process.env,
@@ -1486,7 +1564,7 @@ testWithInspectableProcessCwd("runtime manager neadoptuje zdravý app-owned port
     });
     expect((await fetch(`http://127.0.0.1:${port}/health`)).ok).toBe(true);
   } finally {
-    await killFixtureProcess(foreignProcess);
+    await killFixtureProcess(foreignProcess, foreignCwd);
   }
 });
 
@@ -1582,7 +1660,7 @@ test("runtime manager fail-closed neadoptuje zdravý port při neznámém CWD (W
   const port = await findFreePort();
   const root = await createCompaniesWorkspaceFixture({ port });
   const appRoot = join(root, "organizations", "TestCompany", "modules", "demo", "app", "v1");
-  const foreignProcess = Bun.spawn(["bun", "server.mjs"], {
+  const foreignProcess = spawnFixtureChild(root, ["bun", "server.mjs"], {
     cwd: appRoot,
     env: { ...process.env, HOST: "127.0.0.1", PORT: String(port) },
     stdout: "ignore",
@@ -1617,7 +1695,7 @@ test("runtime manager fail-closed neadoptuje zdravý port při neznámém CWD (W
     });
     expect((await fetch(`http://127.0.0.1:${port}/health`)).ok).toBe(true);
   } finally {
-    await killFixtureProcess(foreignProcess);
+    await killFixtureProcess(foreignProcess, root);
   }
 });
 
@@ -1625,7 +1703,7 @@ test("Windows po restartu adoptuje jen listener s platným capture-time owner pr
   const port = await findFreePort();
   const root = await createCompaniesWorkspaceFixture({ port });
   const appRoot = join(root, "organizations", "TestCompany", "modules", "demo", "app", "v1");
-  const ownedProcess = Bun.spawn([process.execPath, "server.mjs"], {
+  const ownedProcess = spawnFixtureChild(root, [process.execPath, "server.mjs"], {
     cwd: appRoot,
     env: { ...process.env, HOST: "127.0.0.1", PORT: String(port) },
     stdout: "ignore",
@@ -1759,7 +1837,7 @@ test("Windows po restartu adoptuje jen listener s platným capture-time owner pr
       failure_kind: "port_owner_cwd_unknown",
     });
   } finally {
-    await killFixtureProcess(ownedProcess);
+    await killFixtureProcess(ownedProcess, root);
   }
 });
 
@@ -1797,7 +1875,7 @@ test("Windows standalone Start doplní owner proof, i když listener začne být
     platform: "win32",
     bunExecutable: process.execPath,
     spawnProcess: (command, options) => {
-      child = Bun.spawn(command, options);
+      child = spawnFixtureChild(root, command, options);
       return child;
     },
     resolvePortOwnerFn: async () => child && Date.now() - startedAt >= 1200
@@ -1840,7 +1918,7 @@ test("Windows standalone Start doplní owner proof, i když listener začne být
       },
     });
   } finally {
-    await killFixtureProcess(child);
+    await killFixtureProcess(child, root);
   }
 }, platformTestTimeout(10_000));
 
@@ -1870,7 +1948,7 @@ test("Windows Lazurio Start accepts a listener owned by the launcher's child pro
     bunExecutable: process.execPath,
     discover: discoveryWithApp(app),
     spawnProcess: (_command, options) => {
-      listener = Bun.spawn([process.execPath, "server.mjs"], options);
+      listener = spawnFixtureChild(root, [process.execPath, "server.mjs"], options);
       return {
         pid: launcherPid,
         stdout: new Response("").body,
@@ -1903,7 +1981,7 @@ test("Windows Lazurio Start accepts a listener owned by the launcher's child pro
       }),
     ]);
   } finally {
-    await killFixtureProcess(listener);
+    await killFixtureProcess(listener, root);
   }
 }, platformTestTimeout(10_000));
 
@@ -1948,10 +2026,11 @@ test("Windows launcher exit after Start preserves Lazurio listener audit for res
     launchpadRoot: join(root, "launchpad"),
     instanceId: "windows-launcher-handoff",
     platform: "win32",
+    desiredRestartDelaysMs: [],
     bunExecutable: process.execPath,
     discover: discoveryWithApp(app),
     spawnProcess: (_command, options) => {
-      listener = Bun.spawn([process.execPath, "server.mjs"], options);
+      listener = spawnFixtureChild(root, [process.execPath, "server.mjs"], options);
       void listener.exited.then(() => { listenerExited = true; });
       return {
         pid: launcherPid,
@@ -2036,7 +2115,7 @@ test("Windows launcher exit after Start preserves Lazurio listener audit for res
   } finally {
     reportLauncherExit(0);
     releaseProofCapture();
-    await killFixtureProcess(listener);
+    await killFixtureProcess(listener, root);
   }
 }, platformTestTimeout(10_000));
 
@@ -2070,7 +2149,7 @@ test("Windows owner proof přežije restart Launchpadu mezi stopping zápisem a 
     platform: "win32",
     bunExecutable: process.execPath,
     spawnProcess: (command, options) => {
-      child = Bun.spawn(command, options);
+      child = spawnFixtureChild(root, command, options);
       void child.exited.then(() => { childExited = true; });
       return child;
     },
@@ -2125,7 +2204,7 @@ test("Windows owner proof přežije restart Launchpadu mezi stopping zápisem a 
     await firstStop;
   } finally {
     releaseManagedSignal();
-    await killFixtureProcess(child);
+    await killFixtureProcess(child, root);
   }
 }, platformTestTimeout(10_000));
 
@@ -2151,7 +2230,7 @@ test("Windows owner proof přežije stop failure a po restartu dovolí bezpečn�
     platform: "win32",
     bunExecutable: process.execPath,
     spawnProcess: (command, options) => {
-      child = Bun.spawn(command, options);
+      child = spawnFixtureChild(root, command, options);
       void child.exited.then(() => { childExited = true; });
       return child;
     },
@@ -2198,7 +2277,7 @@ test("Windows owner proof přežije stop failure a po restartu dovolí bezpečn�
       metadata: { owner: "adopted-port" },
     });
   } finally {
-    await killFixtureProcess(child);
+    await killFixtureProcess(child, root);
   }
 }, platformTestTimeout(10_000));
 
@@ -2214,7 +2293,7 @@ test("Windows owner proof capture je bounded a health hot path ho neopakuje", as
     platform: "win32",
     bunExecutable: process.execPath,
     spawnProcess: (command, options) => {
-      child = Bun.spawn(command, options);
+      child = spawnFixtureChild(root, command, options);
       return child;
     },
     resolvePortOwnerFn: async () => child ? { pid: child.pid, cwd_matches: null } : null,
@@ -2234,7 +2313,7 @@ test("Windows owner proof capture je bounded a health hot path ho neopakuje", as
     await runtime.health("test-company-demo-v1");
     expect(identityProbeCount).toBe(4);
   } finally {
-    await killFixtureProcess(child);
+    await killFixtureProcess(child, root);
   }
 }, platformTestTimeout(10_000));
 
@@ -2242,7 +2321,7 @@ test("adopted port zůstává diagnostický a Stop nikdy nezíská destruktivní
   const port = await findFreePort();
   const root = await createCompaniesWorkspaceFixture({ port });
   const appRoot = join(root, "organizations", "TestCompany", "modules", "demo", "app", "v1");
-  const adoptedProcess = Bun.spawn(["bun", "server.mjs"], {
+  const adoptedProcess = spawnFixtureChild(root, ["bun", "server.mjs"], {
     cwd: appRoot,
     env: { ...process.env, HOST: "127.0.0.1", PORT: String(port) },
     stdout: "ignore",
@@ -2273,7 +2352,7 @@ test("adopted port zůstává diagnostický a Stop nikdy nezíská destruktivní
     });
     expect((await fetch(`http://127.0.0.1:${port}/health`)).ok).toBe(true);
   } finally {
-    await killFixtureProcess(adoptedProcess);
+    await killFixtureProcess(adoptedProcess, root);
   }
 });
 
@@ -2297,7 +2376,7 @@ testWithInspectableProcessCwd("runtime manager neukončí ani stubborn adopted v
     ].join("\n"),
   });
   const appRoot = join(root, "organizations", "TestCompany", "modules", "demo", "app", "v1");
-  const stubbornProcess = Bun.spawn(["bun", "server.mjs"], {
+  const stubbornProcess = spawnFixtureChild(root, ["bun", "server.mjs"], {
     cwd: appRoot,
     env: {
       ...process.env,
@@ -2324,7 +2403,7 @@ testWithInspectableProcessCwd("runtime manager neukončí ani stubborn adopted v
     });
     expect((await fetch(`http://127.0.0.1:${port}/health`)).ok).toBe(true);
   } finally {
-    await killFixtureProcess(stubbornProcess);
+    await killFixtureProcess(stubbornProcess, root);
   }
 }, 12_000);
 
@@ -2474,7 +2553,7 @@ test("runtime manager Repair pro stale lockfile obnoví dependency state na read
     companiesRoot: root,
     launchpadRoot: join(root, "launchpad"),
     instanceId: "test-instance",
-    spawnProcess: (command, options) => Bun.spawn(
+    spawnProcess: (command, options) => spawnFixtureChild(root,
       command.slice(1).includes("install")
         ? [process.execPath, "-e", "console.log('fake bun install no changes')"]
         : command,
@@ -2550,7 +2629,7 @@ test("legacy runtime still blocks on an occupied unhealthy port without a static
   // health probe je unreachable, runtime je unhealthy s port_owner. open() nesmí
   // tiše fallbacknout: musí propadnout do start() → startConflictForRuntime →
   // blokující 409 app_port_conflict.
-  const squatter = Bun.spawn(
+  const squatter = spawnFixtureChild(root,
     [
       "bun",
       "-e",
@@ -2578,7 +2657,7 @@ test("legacy runtime still blocks on an occupied unhealthy port without a static
     // Squatter běží dál — open ho nesmí zabít ani přepsat.
     expect(squatter.killed).toBe(false);
   } finally {
-    await killFixtureProcess(squatter);
+    await killFixtureProcess(squatter, root);
   }
 }, platformTestTimeout(10_000));
 
@@ -2594,7 +2673,7 @@ test("Lazurio static lease reclaims a foreign port and replaces it with the decl
     instanceId: "lease-owner-instance",
     discover: discoveryWithApp(app),
   });
-  const squatter = Bun.spawn(
+  const squatter = spawnFixtureChild(root,
     [
       "bun",
       "-e",
@@ -2632,7 +2711,7 @@ test("Lazurio static lease reclaims a foreign port and replaces it with the decl
     ])).resolves.toBe(true);
     await runtime.stop(app.id);
   } finally {
-    await killFixtureProcess(squatter);
+    await killFixtureProcess(squatter, root);
   }
 }, platformTestTimeout(15_000));
 
@@ -3182,7 +3261,7 @@ async function createCompaniesWorkspaceFixture({
   installScripts = {},
 }) {
   const root = await mkdtemp(join(tmpdir(), "companiesascode-launchpad-"));
-  tempRoots.push(root);
+  registerTempRoot(root, { port });
   const companyRoot = join(root, "organizations", "TestCompany");
   const appRoot = join(companyRoot, "modules", "demo", "app", "v1");
   await mkdir(join(root, "launchpad"), { recursive: true });
@@ -3563,6 +3642,114 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function createRuntimeManager(options) {
+  const spawnProcess = options.spawnProcess ?? Bun.spawn;
+  return createRuntimeManagerImpl({
+    ...options,
+    spawnProcessIsNative: spawnProcess === Bun.spawn,
+    spawnProcess(command, spawnOptions) {
+      const child = spawnProcess(command, spawnOptions);
+      registerFixtureChild(options.companiesRoot, child);
+      return child;
+    },
+  });
+}
+
+function registerTempRoot(root, { port = null } = {}) {
+  const caller = new Error("fixture owner").stack
+    ?.split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.includes("runtime-lib.test.mjs")
+      && !line.includes("registerTempRoot")
+      && !line.includes("createCompaniesWorkspaceFixture"))
+    ?? "unknown runtime-lib.test.mjs fixture";
+  tempRoots.push({ root, port, owner: caller, children: [] });
+}
+
+function registerFixtureChild(root, child) {
+  const fixture = tempRoots.find((candidate) => candidate.root === root);
+  if (
+    !fixture
+    || !Number.isInteger(child?.pid)
+    || !child?.exited?.then
+    || typeof child.resourceUsage !== "function"
+    || fixture.children.some((candidate) => candidate.child === child)
+  ) return child;
+  const trackedChild = {
+    pid: child.pid,
+    child,
+    exitConfirmed: false,
+    exited: Promise.resolve(child.exited).then(
+      (exitCode) => {
+        trackedChild.exitConfirmed = true;
+        trackedChild.exitCode = exitCode;
+        return exitCode;
+      },
+      (error) => {
+        trackedChild.exitError = error;
+        throw error;
+      },
+    ),
+  };
+  fixture.children.push(trackedChild);
+  return child;
+}
+
+function spawnFixtureChild(root, command, options) {
+  return registerFixtureChild(root, Bun.spawn(command, options));
+}
+
+async function removeTempRootAfterChildExit({ root, port, owner, children = [] }, {
+  platform = process.platform,
+  childExitAttempts = 21,
+  rootRemovalAttempts = platform === "win32" ? 21 : 1,
+  retryDelayMs = 100,
+  removeFn = rm,
+  sleepFn = sleep,
+} = {}) {
+  for (const child of children) {
+    let exitResult = null;
+    for (let attempt = 0; attempt < childExitAttempts; attempt += 1) {
+      if (child.exitConfirmed) {
+        exitResult = { exited: true, exitCode: child.exitCode };
+        break;
+      }
+      exitResult = await Promise.race([
+        Promise.resolve(child.exited).then(
+          (exitCode) => ({ exited: true, exitCode }),
+          (error) => ({ exited: false, error }),
+        ),
+        sleepFn(retryDelayMs).then(() => ({ exited: false })),
+      ]);
+      if (exitResult.exited) break;
+    }
+    if (!exitResult?.exited) {
+      throw new Error(
+        `Runtime fixture child survived its test: owner=${owner}; root=${root}; port=${port ?? "none"}; child_pid=${child.pid}`,
+      );
+    }
+  }
+
+  let lastError = null;
+  for (let attempt = 0; attempt < rootRemovalAttempts; attempt += 1) {
+    try {
+      await removeFn(root, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      lastError = error;
+      const retryable = platform === "win32"
+        && ["EBUSY", "EPERM", "ENOTEMPTY"].includes(error?.code)
+        && attempt < rootRemovalAttempts - 1;
+      if (!retryable) break;
+      await sleepFn(retryDelayMs);
+    }
+  }
+  throw new Error(
+    `Runtime fixture root remained owned after child exit: owner=${owner}; root=${root}; code=${lastError?.code ?? "unknown"}`,
+    { cause: lastError },
+  );
+}
+
 async function executeWindowsStopCommand(command) {
   if (process.platform === "win32") {
     const child = Bun.spawn(command, {
@@ -3590,10 +3777,19 @@ async function executeWindowsStopCommand(command) {
   return { ok: true, exitCode: 0, stdout: "", stderr: "" };
 }
 
-async function killFixtureProcess(child) {
+async function killFixtureProcess(child, root) {
   if (!child) return;
   try {
     child.kill("SIGKILL");
   } catch {}
   await Promise.resolve(child.exited).catch(() => {});
+  const fixture = tempRoots.find((candidate) => candidate.root === root);
+  const trackedChild = fixture?.children
+    .find((candidate) => candidate.child === child);
+  if (trackedChild) {
+    trackedChild.exitConfirmed = true;
+    trackedChild.exitCode = "confirmed-by-kill-fixture-process";
+  } else if (fixture && typeof child.resourceUsage === "function") {
+    throw new Error(`Fixture child PID ${child.pid ?? "unknown"} was not registered for root ${root}`);
+  }
 }
