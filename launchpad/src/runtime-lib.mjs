@@ -989,66 +989,85 @@ export function createRuntimeManager({
     // mutex. An unexpected child exit may remove the managed record while Stop
     // waits, but it must not erase the user's intent or fall back to `main`.
     const requestedRecord = selectManagedModuleStopRecord(recordsAtRequest, app);
-    try {
-      return await withModuleLeaseLock(app, async () => {
-        const currentRecord = selectManagedModuleStopRecord(managedProcesses.values(), app);
-        const record = currentRecord ?? requestedRecord;
-        if (!record) {
-          const current = await healthForApp(app);
+    return withModuleLeaseLock(app, async () => {
+      const currentRecord = selectManagedModuleStopRecord(managedProcesses.values(), app);
+      const record = currentRecord ?? requestedRecord;
+      if (!record) {
+        const current = await healthForApp(app);
+        // A restart coordinator may have removed the exited record before
+        // this request and then held the cross-process lease while it tried
+        // to restore the durable runtime. Once Stop owns that lease, an
+        // ownerless but still-enabled desired state is safe to disable. A
+        // visible process owned by another Launchpad remains fail-closed.
+        if (current.owner !== "none" || current.desired?.enabled !== true) {
           throw appNotManagedError(app, current);
         }
-        const activeApp = record.runtimeApp ?? app;
-        // Stop is fail-safe: persistence is the commit point. If this atomic
-        // write fails no signal is sent. Once it succeeds, every later stop
-        // failure leaves desired disabled, so boot reconcile cannot resurrect
-        // a process the user explicitly stopped. The active runtime is selected
-        // by module lease rather than the reloaded UI selector: main, app/vN and
-        // worktree variants are one durable module process. Ambiguity fails
-        // before this commit point and therefore before any process is signaled.
-        const desired = await disableDesiredRuntime(activeApp);
-        resetDesiredRestartTracker(activeApp);
-        if (!currentRecord) {
-          return {
-            ...await stopActionResult(
-              activeApp,
-              record,
-              record.runtimeKey,
-              record.runtimeSource,
-              { forced: false },
-            ),
-            already_stopped: true,
-            desired,
-          };
-        }
-        let result;
-        try {
-          result = await stopRuntimeAppUnlocked(activeApp);
-        } catch (error) {
-          // Exit finalization is intentionally independent of the module lock.
-          // If it wins after the in-lock selection, disabled intent is already
-          // committed; report the exact captured runtime as stopped instead of
-          // turning a successful no-resurrection transaction into an error.
-          if (error?.code !== "app_not_managed") throw error;
-          result = {
-            ...await stopActionResult(
-              activeApp,
-              record,
-              record.runtimeKey,
-              record.runtimeSource,
-              { forced: false },
-            ),
-            already_stopped: true,
-          };
-        }
-        return { ...result, desired };
-      }, { timeoutMs: recordsAtRequest.length > 0 ? null : 100 });
-    } catch (error) {
-      if (recordsAtRequest.length === 0 && isModuleLockTimeout(error)) {
-        const current = await healthForApp(app);
-        throw appNotManagedError(app, current);
+        const desired = await disableDesiredRuntime(app, { acceptStoredSource: true });
+        resetDesiredRestartTracker(app);
+        const desiredApp = {
+          ...app,
+          id: desired.app_id,
+          runtime_source: desired.source,
+        };
+        return {
+          action: "stop",
+          app_id: desired.app_id,
+          runtime_key: desired.source.type === "worktree"
+            ? worktreeRuntimeKey(desiredApp, desired.source.slug)
+            : desired.app_id,
+          runtime_source: desired.source,
+          pid: null,
+          forced: false,
+          already_stopped: true,
+          runtime: await healthForApp(app),
+          desired,
+        };
       }
-      throw error;
-    }
+      const activeApp = record.runtimeApp ?? app;
+      // Stop is fail-safe: persistence is the commit point. If this atomic
+      // write fails no signal is sent. Once it succeeds, every later stop
+      // failure leaves desired disabled, so boot reconcile cannot resurrect
+      // a process the user explicitly stopped. The active runtime is selected
+      // by module lease rather than the reloaded UI selector: main, app/vN and
+      // worktree variants are one durable module process. Ambiguity fails
+      // before this commit point and therefore before any process is signaled.
+      const desired = await disableDesiredRuntime(activeApp);
+      resetDesiredRestartTracker(activeApp);
+      if (!currentRecord) {
+        return {
+          ...await stopActionResult(
+            activeApp,
+            record,
+            record.runtimeKey,
+            record.runtimeSource,
+            { forced: false },
+          ),
+          already_stopped: true,
+          desired,
+        };
+      }
+      let result;
+      try {
+        result = await stopRuntimeAppUnlocked(activeApp);
+      } catch (error) {
+        // Exit finalization is intentionally independent of the module lock.
+        // If it wins after the in-lock selection, disabled intent is already
+        // committed; report the exact captured runtime as stopped instead of
+        // turning a successful no-resurrection transaction into an error.
+        if (error?.code !== "app_not_managed") throw error;
+        result = {
+          ...await stopActionResult(
+            activeApp,
+            record,
+            record.runtimeKey,
+            record.runtimeSource,
+            { forced: false },
+          ),
+          already_stopped: true,
+        };
+      }
+      return { ...result, desired };
+    });
   }
 
   async function stopRuntimeAppUnlocked(inputApp) {
@@ -1812,10 +1831,6 @@ export function createRuntimeManager({
     });
   }
 
-  function isModuleLockTimeout(error) {
-    return String(error?.message ?? "").includes("nebyl získán do");
-  }
-
   function desiredPersistenceError(app, error) {
     return new RuntimeActionError(
       500,
@@ -1874,14 +1889,14 @@ export function createRuntimeManager({
     return state;
   }
 
-  async function disableDesiredRuntime(app) {
+  async function disableDesiredRuntime(app, { acceptStoredSource = false } = {}) {
     if (!supportsDurableDesiredRuntime(app)) return null;
     let previous = null;
     try {
       previous = await readDesiredRuntime(app);
     } catch {}
     const expectedSource = runtimeSourceForApp(app);
-    if (previous && (
+    if (!acceptStoredSource && previous && (
       previous.app_id !== app.id
       || !runtimeSourcesEqual(previous.source, expectedSource)
     )) {
@@ -1903,6 +1918,7 @@ export function createRuntimeManager({
       source: previous?.source ?? expectedSource,
       enabled: false,
       status: "disabled",
+      previous,
     });
     await writeDesiredModuleStateFn({ root: desiredStateRoot, state });
     return state;
