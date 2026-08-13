@@ -3151,6 +3151,90 @@ test("reloaded main selector stops the sole reconciled worktree and boot cannot 
   });
 }, platformTestTimeout(20_000));
 
+test("Stop disables the captured worktree when its child exits while waiting for the module lock", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port });
+  const app = withStaticEntrypoint(fixtureDiscoveryApp({ port }));
+  const { slug } = await createOwnedWorktreeFixture({
+    root,
+    slug: "DEV-6439-stop-exit-race",
+  });
+  let child = null;
+  let pauseNextLock = false;
+  let reportLockWait;
+  let releaseLockWait;
+  const lockWaitStarted = new Promise((resolve) => { reportLockWait = resolve; });
+  const lockWaitRelease = new Promise((resolve) => { releaseLockWait = resolve; });
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "stop-exit-race",
+    discover: discoveryWithApp(app),
+    desiredRestartDelaysMs: [0],
+    spawnProcess: (command, options) => {
+      child = Bun.spawn(command, options);
+      return child;
+    },
+    acquireModuleLockFn: async () => {
+      if (pauseNextLock) {
+        pauseNextLock = false;
+        reportLockWait();
+        await lockWaitRelease;
+      }
+      return { release: async () => {} };
+    },
+  });
+
+  await runtime.start(app.id, { source: { type: "worktree", slug } });
+  await waitForStatus(
+    () => runtime.health(app.id, { source: { type: "worktree", slug } }),
+    "healthy",
+  );
+
+  pauseNextLock = true;
+  const stopping = runtime.stop(app.id, { source: { type: "main" } });
+  await lockWaitStarted;
+  if (process.platform === "win32") {
+    await executeWindowsStopCommand(windowsTaskkillCommand(child.pid, { force: true }));
+  } else {
+    try {
+      process.kill(-child.pid, "SIGKILL");
+    } catch (error) {
+      if (error?.code !== "ESRCH") throw error;
+    }
+  }
+  await child.exited;
+  await waitForRuntime(
+    () => runtime.health(app.id, { source: { type: "worktree", slug } }),
+    (state) => state.managed === false,
+  );
+  releaseLockWait();
+
+  expect(await stopping).toMatchObject({
+    action: "stop",
+    already_stopped: true,
+    runtime_source: { type: "worktree", slug },
+    desired: { enabled: false, status: "disabled", source: { type: "worktree", slug } },
+  });
+  await sleep(50);
+  expect(await runtime.health(app.id, { source: { type: "worktree", slug } })).toMatchObject({
+    managed: false,
+    desired: { enabled: false, status: "disabled", source: { type: "worktree", slug } },
+  });
+
+  const afterReboot = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "stop-exit-race-after-reboot",
+    discover: discoveryWithApp(app),
+  });
+  expect(await afterReboot.reconcileDesiredState()).toMatchObject({
+    active: 0,
+    disabled: 1,
+    degraded: 0,
+  });
+}, platformTestTimeout(20_000));
+
 test("missing desired worktree becomes degraded without falling back to main", async () => {
   const port = await findFreePort();
   const root = await createCompaniesWorkspaceFixture({ port });

@@ -981,9 +981,14 @@ export function createRuntimeManager({
     const app = await runtimeAppForAction(appId, { source });
     if (!supportsDurableDesiredRuntime(app)) return stopRuntimeAppUnlocked(app);
     const recordsAtRequest = managedRecordsForModule(app);
+    // Capture the exact active source before waiting for the cross-process
+    // mutex. An unexpected child exit may remove the managed record while Stop
+    // waits, but it must not erase the user's intent or fall back to `main`.
+    const requestedRecord = selectManagedModuleStopRecord(recordsAtRequest, app);
     try {
       return await withModuleLeaseLock(app, async () => {
-        const record = selectManagedModuleStopRecord(managedProcesses.values(), app);
+        const currentRecord = selectManagedModuleStopRecord(managedProcesses.values(), app);
+        const record = currentRecord ?? requestedRecord;
         if (!record) {
           const current = await healthForApp(app);
           throw appNotManagedError(app, current);
@@ -998,7 +1003,39 @@ export function createRuntimeManager({
         // before this commit point and therefore before any process is signaled.
         const desired = await disableDesiredRuntime(activeApp);
         resetDesiredRestartTracker(activeApp);
-        const result = await stopRuntimeAppUnlocked(activeApp);
+        if (!currentRecord) {
+          return {
+            ...await stopActionResult(
+              activeApp,
+              record,
+              record.runtimeKey,
+              record.runtimeSource,
+              { forced: false },
+            ),
+            already_stopped: true,
+            desired,
+          };
+        }
+        let result;
+        try {
+          result = await stopRuntimeAppUnlocked(activeApp);
+        } catch (error) {
+          // Exit finalization is intentionally independent of the module lock.
+          // If it wins after the in-lock selection, disabled intent is already
+          // committed; report the exact captured runtime as stopped instead of
+          // turning a successful no-resurrection transaction into an error.
+          if (error?.code !== "app_not_managed") throw error;
+          result = {
+            ...await stopActionResult(
+              activeApp,
+              record,
+              record.runtimeKey,
+              record.runtimeSource,
+              { forced: false },
+            ),
+            already_stopped: true,
+          };
+        }
         return { ...result, desired };
       }, { timeoutMs: recordsAtRequest.length > 0 ? null : 100 });
     } catch (error) {
@@ -1839,9 +1876,27 @@ export function createRuntimeManager({
     try {
       previous = await readDesiredRuntime(app);
     } catch {}
+    const expectedSource = runtimeSourceForApp(app);
+    if (previous && (
+      previous.app_id !== app.id
+      || !runtimeSourcesEqual(previous.source, expectedSource)
+    )) {
+      throw new RuntimeActionError(
+        409,
+        "app_stop_superseded",
+        `${app.title}: Stop did not disable a desired runtime accepted for a different source.`,
+        [
+          `expected_app_id: ${app.id}`,
+          `actual_app_id: ${previous.app_id}`,
+          `expected_source: ${JSON.stringify(expectedSource)}`,
+          `actual_source: ${JSON.stringify(previous.source)}`,
+        ],
+        { failure_kind: "desired_runtime_superseded" },
+      );
+    }
     const state = buildDesiredModuleState({
       app: previous ? { ...app, id: previous.app_id } : app,
-      source: previous?.source ?? runtimeSourceForApp(app),
+      source: previous?.source ?? expectedSource,
       enabled: false,
       status: "disabled",
     });
