@@ -39,7 +39,12 @@ const testWithInspectableProcessCwd = process.platform === "win32" ? test.skip :
 const testOnPosix = process.platform === "win32" ? test.skip : test;
 
 afterAll(async () => {
-  await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(tempRoots.map((root) => rm(root, {
+    recursive: true,
+    force: true,
+    maxRetries: process.platform === "win32" ? 20 : 0,
+    retryDelay: 100,
+  })));
 });
 
 test("runtime ownership považuje localhost a 127.0.0.1 za tentýž listener", () => {
