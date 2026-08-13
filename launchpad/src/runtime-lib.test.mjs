@@ -3039,6 +3039,60 @@ test("failed Stop from a non-owning Launchpad cannot disable another instance's 
   await owner.stop(app.id);
 }, platformTestTimeout(15_000));
 
+test("Stop waits past the former lock timeout and disables an ownerless exact desired source", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port });
+  const app = withStaticEntrypoint(fixtureDiscoveryApp({ port }));
+  const { slug } = await createOwnedWorktreeFixture({
+    root,
+    slug: "DEV-6439-contended-stop-intent",
+  });
+  const desiredRoot = join(root, "launchpad", "runtime", "desired-modules");
+  await writeDesiredModuleState({
+    root: desiredRoot,
+    state: buildDesiredModuleState({ app, source: { type: "worktree", slug } }),
+  });
+
+  let reportLockWait;
+  let releaseLockWait;
+  const lockWaitStarted = new Promise((resolve) => { reportLockWait = resolve; });
+  const lockWaitRelease = new Promise((resolve) => { releaseLockWait = resolve; });
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "contended-stop-intent",
+    discover: discoveryWithApp(app),
+    acquireModuleLockFn: async ({ timeoutMs }) => {
+      reportLockWait(timeoutMs);
+      if (timeoutMs === 100) {
+        await sleep(100);
+        throw new Error("module lease nebyl získán do 100 ms");
+      }
+      await lockWaitRelease;
+      return { release: async () => {} };
+    },
+  });
+
+  const stopping = runtime.stop(app.id, { source: { type: "main" } });
+  expect(await lockWaitStarted).toBeUndefined();
+  expect(await Promise.race([
+    stopping.then(() => "settled", () => "settled"),
+    sleep(150).then(() => "waiting"),
+  ])).toBe("waiting");
+  releaseLockWait();
+
+  expect(await stopping).toMatchObject({
+    action: "stop",
+    already_stopped: true,
+    runtime_source: { type: "worktree", slug },
+    desired: { enabled: false, status: "disabled", source: { type: "worktree", slug } },
+  });
+  expect(await runtime.health(app.id, { source: { type: "worktree", slug } })).toMatchObject({
+    managed: false,
+    desired: { enabled: false, status: "disabled", source: { type: "worktree", slug } },
+  });
+}, platformTestTimeout(10_000));
+
 test("boot reconcile restores exact main and owned worktree desired sources", async () => {
   const mainPort = await findFreePort();
   const root = await createCompaniesWorkspaceFixture({ port: mainPort });
