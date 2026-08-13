@@ -428,6 +428,7 @@ test("numeric port ownership is resolved across loopback bind variants", async (
     try {
       squatter.kill("SIGKILL");
     } catch {}
+    await squatter.exited.catch(() => {});
   }
 }, platformTestTimeout(10_000));
 
