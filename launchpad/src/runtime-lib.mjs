@@ -156,6 +156,7 @@ export function createRuntimeManager({
   resolveObservedPortBindingsFn = null,
   platform = process.platform,
   spawnProcess = Bun.spawn,
+  spawnProcessIsNative = spawnProcess === Bun.spawn,
   runSystemCommandFn = runCommand,
   resolveProcessIdentityFn = null,
   signalProcessGroupFn = null,
@@ -187,7 +188,7 @@ export function createRuntimeManager({
   const processIdentityResolver = resolveProcessIdentityFn
     ?? ((pid) => resolveProcessIdentity(pid, { platform, runCommandFn: runSystemCommandFn }));
   const processGroupSignaler = signalProcessGroupFn
-    ?? ((processGroupId, signal, record) => spawnProcess === Bun.spawn
+    ?? ((processGroupId, signal, record) => spawnProcessIsNative
       ? process.kill(-processGroupId, signal)
       : record.child.kill(signal));
   const processGroupAlive = processGroupAliveFn
@@ -2465,7 +2466,7 @@ export function createRuntimeManager({
     }
     let observed = [];
     let groupObservation = "unavailable";
-    if (platform !== "win32" && spawnProcess === Bun.spawn && Number.isInteger(record.processGroupId)) {
+    if (platform !== "win32" && spawnProcessIsNative && Number.isInteger(record.processGroupId)) {
       try {
         const result = await runSystemCommandFn([
           "lsof", "-nP", "-a", "-g", String(record.processGroupId), "-iTCP", "-sTCP:LISTEN", "-FnP",
