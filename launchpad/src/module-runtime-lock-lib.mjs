@@ -4,7 +4,8 @@ import { join } from "path";
 
 const defaultTimeoutMs = 30_000;
 const defaultPollMs = 50;
-const defaultIdentityTimeoutMs = 2_000;
+const defaultIdentityTimeoutMs = 5_000;
+let cachedCurrentProcessIdentity = null;
 
 export function moduleRuntimeLockName(key) {
   const label = String(key ?? "module").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
@@ -176,6 +177,9 @@ async function defaultProcessAlive(pid) {
 
 async function defaultProcessIdentity(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return null;
+  if (pid === process.pid && cachedCurrentProcessIdentity) {
+    return cachedCurrentProcessIdentity;
+  }
   const command = process.platform === "win32"
     ? [
         process.env.SystemRoot
@@ -184,7 +188,7 @@ async function defaultProcessIdentity(pid) {
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        `$process = Get-CimInstance -ClassName Win32_Process -Filter 'ProcessId = ${pid}' -ErrorAction SilentlyContinue; if ($null -eq $process) { exit 3 }; $process.CreationDate.ToUniversalTime().ToString('o')`,
+        `$process = Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if ($null -eq $process) { exit 3 }; $process.StartTime.ToUniversalTime().ToString('o')`,
       ]
     : ["ps", "-o", "lstart=", "-p", String(pid)];
   try {
@@ -204,7 +208,9 @@ async function defaultProcessIdentity(pid) {
     }
     const [exitCode, stdout] = result;
     const identity = stdout.trim();
-    return exitCode === 0 && identity !== "" ? identity : null;
+    if (exitCode !== 0 || identity === "") return null;
+    if (pid === process.pid) cachedCurrentProcessIdentity = identity;
+    return identity;
   } catch {
     return null;
   }

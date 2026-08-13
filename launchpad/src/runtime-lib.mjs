@@ -159,6 +159,7 @@ export function createRuntimeManager({
   runSystemCommandFn = runCommand,
   resolveProcessIdentityFn = null,
   signalProcessGroupFn = null,
+  signalManagedProcessFn = null,
   processGroupAliveFn = null,
   signalPortOwnerFn = null,
   resolvePortOwnerProcessGroupFn = null,
@@ -1355,6 +1356,23 @@ export function createRuntimeManager({
       );
     }
 
+    if (signalManagedProcessFn) {
+      try {
+        await signalManagedProcessFn(record, signal);
+        return;
+      } catch (error) {
+        if (error?.code === "ESRCH") return;
+        await appendLog(record.logPath, `[launchpad] managed stop signal failed: ${error.message}\n`);
+        throw new RuntimeActionError(
+          error?.code === "EPERM" ? 403 : 500,
+          error?.code === "EPERM" ? "app_stop_forbidden" : "app_stop_failed",
+          `Managed proces PID ${record.pid} nelze zastavit: ${error.message}`,
+          [`runtime_key: ${runtimeKey}`, `pid: ${record.pid}`, `signal: ${signal}`],
+          { failure_kind: "stop_signal_failed", owner: "current-instance", pid: record.pid, signal },
+        );
+      }
+    }
+
     if (platform === "win32") {
       const command = windowsTaskkillCommand(record.pid, {
         // taskkill /T bez /F neumí spolehlivě ukončit console procesy. PID je
@@ -2149,6 +2167,20 @@ export function createRuntimeManager({
                 processIdentityResolver,
                 knownLauncherIdentity,
               ));
+              if (!owned
+                && validWindowsRuntimeOwnerProof(record.ownerProof)
+                && record.ownerProof.listener_pid === owner.pid) {
+                let currentListenerIdentity = null;
+                try {
+                  currentListenerIdentity = normalizeWindowsProcessIdentity(
+                    await processIdentityResolver(owner.pid),
+                  );
+                } catch {}
+                owned = sameWindowsProcessIdentity(
+                  record.ownerProof.listener_identity,
+                  currentListenerIdentity,
+                );
+              }
             }
           } else {
             processGroupId = await portOwnerProcessGroupResolver(owner.pid);
