@@ -2,7 +2,11 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { acquireModuleRuntimeLock, moduleRuntimeLockName } from "./module-runtime-lock-lib.mjs";
+import {
+  acquireModuleRuntimeLock,
+  moduleRuntimeLockName,
+  windowsModuleLockProcessIdentityCommand,
+} from "./module-runtime-lock-lib.mjs";
 
 const roots = [];
 afterAll(async () => Promise.all(roots.map((root) => rm(root, { recursive: true, force: true }))));
@@ -160,4 +164,20 @@ test("a malformed owner record cannot wedge the module lock", async () => {
 
 test("lock paths cannot escape the runtime lock directory", () => {
   expect(moduleRuntimeLockName("../../Acme/Demo")).toMatch(/^[a-z0-9-]+\.lock$/);
+});
+
+test("Windows lock identity probe uses only a trusted local system executable", () => {
+  expect(windowsModuleLockProcessIdentityCommand(4242, { SystemRoot: "D:\\Windows" })[0])
+    .toBe("D:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+  expect(windowsModuleLockProcessIdentityCommand(4242, { WINDIR: "C:\\Windows" })[0])
+    .toBe("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+
+  for (const env of [
+    {},
+    { SystemRoot: "relative-root" },
+    { SystemRoot: "C:\\Windows\\..\\attacker" },
+    { SystemRoot: "\\\\server\\share\\Windows" },
+  ]) {
+    expect(() => windowsModuleLockProcessIdentityCommand(4242, env)).toThrow("SystemRoot/WINDIR");
+  }
 });

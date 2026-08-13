@@ -868,6 +868,22 @@ test("Windows port ownership používá rychlý systémový netstat a ne lokaliz
   ]);
 });
 
+test("Windows module lifecycle system commands fail closed outside a trusted local SystemRoot", () => {
+  const invalidEnvironments = [
+    {},
+    { SystemRoot: "relative-root" },
+    { SystemRoot: "C:\\Windows\\..\\attacker" },
+    { SystemRoot: "\\\\server\\share\\Windows" },
+  ];
+  for (const env of invalidEnvironments) {
+    expect(() => windowsPowerShellExecutable(env)).toThrow("SystemRoot/WINDIR");
+    expect(() => windowsNetstatCommand(env)).toThrow("SystemRoot/WINDIR");
+    expect(() => windowsTaskkillCommand(123, { env })).toThrow("SystemRoot/WINDIR");
+  }
+  expect(windowsNetstatCommand({ WINDIR: "D:\\Windows" })[0])
+    .toBe("D:\\Windows\\System32\\netstat.exe");
+});
+
 test("Windows process identity command a parser drží PID, parent, creation time a executable", () => {
   const command = windowsProcessIdentityCommand(4242, { SystemRoot: "C:\\Windows" });
   expect(command[0]).toBe("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
@@ -3739,6 +3755,8 @@ function createRuntimeManager(options) {
   const spawnProcess = options.spawnProcess ?? Bun.spawn;
   return createRuntimeManagerImpl({
     ...options,
+    systemEnvironment: options.systemEnvironment
+      ?? (options.platform === "win32" ? { SystemRoot: "C:\\Windows" } : process.env),
     spawnProcessIsNative: spawnProcess === Bun.spawn,
     spawnProcess(command, spawnOptions) {
       const child = spawnProcess(command, spawnOptions);

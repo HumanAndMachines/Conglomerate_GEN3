@@ -7,6 +7,7 @@ import { discoverLaunchpadApps } from "./discovery-lib.mjs";
 import { recordAppOpen } from "./usage-lib.mjs";
 import { buildWorktreeIndex } from "./worktree-lib.mjs";
 import { acquireModuleRuntimeLock } from "./module-runtime-lock-lib.mjs";
+import { trustedWindowsSystemExecutable } from "./windows-system-path-lib.mjs";
 import {
   buildDesiredModuleState,
   listDesiredModuleStates,
@@ -176,6 +177,7 @@ export function createRuntimeManager({
   probeNumericPortOccupiedFn = probeNumericPortOccupied,
   resolveObservedPortBindingsFn = null,
   platform = process.platform,
+  systemEnvironment = process.env,
   spawnProcess = Bun.spawn,
   spawnProcessIsNative = spawnProcess === Bun.spawn,
   runSystemCommandFn = runCommand,
@@ -207,7 +209,11 @@ export function createRuntimeManager({
   const takeoverAuditPath = join(takeoverAuditRoot, "takeovers.jsonl");
   const logsRoot = join(launchpadRoot, "logs", "apps");
   const processIdentityResolver = resolveProcessIdentityFn
-    ?? ((pid) => resolveProcessIdentity(pid, { platform, runCommandFn: runSystemCommandFn }));
+    ?? ((pid) => resolveProcessIdentity(pid, {
+      platform,
+      runCommandFn: runSystemCommandFn,
+      env: systemEnvironment,
+    }));
   const processGroupSignaler = signalProcessGroupFn
     ?? ((processGroupId, signal, record) => spawnProcessIsNative
       ? process.kill(-processGroupId, signal)
@@ -227,14 +233,16 @@ export function createRuntimeManager({
     ?? ((pid) => resolvePosixProcessGroupId(pid, { runCommandFn: runSystemCommandFn }));
   const observedPortBindingsResolver = resolveObservedPortBindingsFn
     ?? ((port) => resolveObservedPortBindings(port, {
-      platform: process.platform,
+      platform,
       runCommandFn: runSystemCommandFn,
+      env: systemEnvironment,
     }));
   const portOwnerSignaler = signalPortOwnerFn
     ?? (async (pid, signal, context = {}) => {
       if (platform === "win32") {
         const result = await runSystemCommandFn(windowsTaskkillCommand(pid, {
           force: signal === "SIGKILL",
+          env: systemEnvironment,
         }));
         if (!result.ok && !isMissingProcessResult(result)) {
           if (signal === "SIGTERM") {
@@ -1405,6 +1413,7 @@ export function createRuntimeManager({
         // bezpečně svázaný s managedProcesses této instance, takže Windows
         // ukončí celý známý strom atomicky už při prvním Stop pokusu.
         force: true,
+        env: systemEnvironment,
       });
       const result = await runSystemCommandFn(command);
       if (!result.ok && !isMissingProcessResult(result)) {
@@ -3438,16 +3447,15 @@ export function resetBunExecutableCacheForTests() {
 
 export function windowsTaskkillCommand(pid, { force = false, env = process.env } = {}) {
   if (!Number.isInteger(pid) || pid <= 0) throw new Error(`Invalid Windows process id: ${pid}`);
-  const executable = env.SystemRoot
-    ? win32.join(env.SystemRoot, "System32", "taskkill.exe")
-    : "taskkill.exe";
+  const executable = trustedWindowsSystemExecutable(["System32", "taskkill.exe"], env);
   return [executable, "/PID", String(pid), "/T", ...(force ? ["/F"] : [])];
 }
 
 export function windowsPowerShellExecutable(env = process.env) {
-  return env.SystemRoot
-    ? win32.join(env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
-    : "powershell.exe";
+  return trustedWindowsSystemExecutable(
+    ["System32", "WindowsPowerShell", "v1.0", "powershell.exe"],
+    env,
+  );
 }
 
 export function windowsProcessIdentityCommand(pid, env = process.env) {
@@ -3474,9 +3482,12 @@ export function parseWindowsProcessIdentity(output) {
   }
 }
 
-async function resolveProcessIdentity(pid, { platform = process.platform, runCommandFn = runCommand } = {}) {
+async function resolveProcessIdentity(
+  pid,
+  { platform = process.platform, runCommandFn = runCommand, env = process.env } = {},
+) {
   if (platform !== "win32") return null;
-  const result = await runCommandFn(windowsProcessIdentityCommand(pid), {
+  const result = await runCommandFn(windowsProcessIdentityCommand(pid, env), {
     timeoutMs: windowsProcessIdentityTimeoutMs,
   });
   return result.ok ? parseWindowsProcessIdentity(result.stdout) : null;
@@ -3617,9 +3628,7 @@ function sameWindowsProcessIdentity(expected, actual) {
 }
 
 export function windowsNetstatCommand(env = process.env) {
-  const executable = env.SystemRoot
-    ? win32.join(env.SystemRoot, "System32", "netstat.exe")
-    : "netstat.exe";
+  const executable = trustedWindowsSystemExecutable(["System32", "netstat.exe"], env);
   // Bez `-p tcp`: Windows rozlišuje filtry `tcp` a `tcpv6`, zatímco
   // nefiltrovaný výstup obsahuje listenery obou rodin a parser si vybírá TCP.
   return [executable, "-ano"];
@@ -3661,11 +3670,11 @@ export function parseWindowsListeningBindings(output, port) {
 
 export async function resolveObservedPortBindings(
   port,
-  { platform = process.platform, runCommandFn = runCommand } = {},
+  { platform = process.platform, runCommandFn = runCommand, env = process.env } = {},
 ) {
   if (!Number.isInteger(port) || port < 1 || port > 65_535) return [];
   if (platform === "win32") {
-    const result = await runCommandFn(windowsNetstatCommand());
+    const result = await runCommandFn(windowsNetstatCommand(env));
     return result?.ok ? parseWindowsListeningBindings(result.stdout, port) : [];
   }
   const result = await runCommandFn(["lsof", "-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-FnP"]);
