@@ -70,6 +70,13 @@ testování nebo debugging. `lazurio.runtime.v1` popisuje runnable listenery a
 lifecycle pro Launchpad a Doctor; není úplným produkčním kontraktem pro
 deployment, ingress, identity ani MCP.
 
+Když je Team Workspace zapnutý, T3 Code a Launchpad jsou `desired-running`;
+tenký supervisor hlídá pouze je. Dashboard Development smí projektovat jen
+tyto dva stabilní vstupy a žádný modulový lifecycle nevlastní. Modulové dev
+preview se spouští a otevírá přes Launchpad. Produkční aplikace smí Dashboard
+zobrazit až z pozdějšího ověřeného deployment katalogu, nikdy z Workspace
+service katalogu nebo dev desired state.
+
 Produkční release patří do samostatného follow-upu: protected source/tag →
 reproducible immutable artifact → isolated production runtime s explicitním
 `public | authenticated | internal` ingressem, app authn/authz, secrets,
