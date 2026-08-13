@@ -407,25 +407,20 @@ test("legacy runtime cannot start with a declared cross-module port conflict", a
   expect(spawned).toBe(false);
 });
 
-test("numeric port ownership is resolved across loopback bind variants", async () => {
-  const port = await findFreePort();
-  const squatter = Bun.spawn(
-    [
-      "node",
-      "-e",
-      "const net=require('net');net.createServer(()=>{}).listen(Number(process.env.PORT),'127.0.0.1');setInterval(()=>{},2147483647);",
-    ],
-    {
-      env: { ...process.env, PORT: String(port) },
-      stdout: "ignore",
-      stderr: "ignore",
-    },
-  );
+test("numeric port ownership resolves the OS listener and excludes the current process", async () => {
+  const server = createServer();
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
   try {
-    await waitForTcpListen(port);
-    await expect(resolvePortOwner(port, { host: "::1" })).resolves.toMatchObject({ pid: squatter.pid });
+    await expect(resolvePortOwner(address.port, { includeSelf: true })).resolves.toMatchObject({ pid: process.pid });
+    await expect(resolvePortOwner(address.port)).resolves.toBeNull();
   } finally {
-    await killFixtureProcess(squatter);
+    await new Promise((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
   }
 }, platformTestTimeout(10_000));
 
