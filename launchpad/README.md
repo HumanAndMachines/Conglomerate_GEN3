@@ -63,6 +63,20 @@ je chyba. Katalog je navigační projekce, nikoli ACL ani portová autorita:
 generátor ingressu a brokeru jej spojuje s module lease registry a síťový
 obal dál vynucuje autentizaci i Team boundary.
 
+Hosted profil je privátní vývojový preview povrch uvnitř schváleného
+Tailscale/VPN access plane, nikoli produkční deployment. Zdroj lze editovat bez
+běžící aplikace a Launchpad spouští dev proces pouze pro UI/API/MCP preview,
+testování nebo debugging. `lazurio.runtime.v1` popisuje runnable listenery a
+lifecycle pro Launchpad a Doctor; není úplným produkčním kontraktem pro
+deployment, ingress, identity ani MCP.
+
+Produkční release patří do samostatného follow-upu: protected source/tag →
+reproducible immutable artifact → isolated production runtime s explicitním
+`public | authenticated | internal` ingressem, app authn/authz, secrets,
+daty, backupem, rollbackem, observability a stateless remote MCP. Produkční
+runtime neobsahuje T3, Codex, Launchpad, dev checkouty ani worktrees. Tento
+Launchpad kontrakt proto nezavádí per-module produkční kontejnery.
+
 ## Durable desired runtime
 
 Úspěšný `Start` nebo `Open` atomicky přijme přesný module-owned desired source
