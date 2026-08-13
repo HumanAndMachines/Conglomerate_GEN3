@@ -27,6 +27,9 @@ for (const tests of testGroups) {
 
   const exitCode = await child.exited;
   if (exitCode !== 0) {
+    console.error(
+      `[launchpad-test-runner] ${tests.join(" ")} exited with code ${exitCode ?? 1}`,
+    );
     failedExitCode ||= exitCode ?? 1;
   }
 }
