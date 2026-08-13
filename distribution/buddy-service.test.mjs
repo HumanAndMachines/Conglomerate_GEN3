@@ -6,6 +6,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  rename,
   rm,
   symlink,
   writeFile,
@@ -455,14 +456,14 @@ test("live Hermes compatibility requires the exact commit, clean tree and lock d
     .rejects.toThrow("lock digest");
 });
 
-linuxHostTest("Hermes verification ignores poisoned PATH Git and checkout-local fsmonitor", async () => {
+linuxHostTest("Hermes verification rejects Git and filesystem indirection around pinned bytes", async () => {
   const root = await scratch("lazurio-hermes-hostile-git-");
   const activeRoot = join(root, "active");
   const hermesRoot = join(root, "hermes");
   const fakeBin = join(root, "fake-bin");
   await Promise.all([
     mkdir(join(activeRoot, "resident", "dependencies"), { recursive: true }),
-    mkdir(hermesRoot, { recursive: true }),
+    mkdir(join(hermesRoot, "runtime"), { recursive: true }),
     mkdir(fakeBin, { recursive: true }),
   ]);
 
@@ -498,9 +499,10 @@ linuxHostTest("Hermes verification ignores poisoned PATH Git and checkout-local 
   git(["config", "user.name", "Lazurio fixture"]);
   git(["config", "user.email", "fixture@invalid.example"]);
   const lock = Buffer.from("trusted runtime lock\n");
+  const agentPath = join(hermesRoot, "runtime", "agent.py");
   await writeFile(join(hermesRoot, "uv.lock"), lock);
-  await writeFile(join(hermesRoot, "runtime.py"), "trusted runtime\n");
-  git(["add", "uv.lock", "runtime.py"]);
+  await writeFile(agentPath, "trusted runtime\n");
+  git(["add", "uv.lock", "runtime/agent.py"]);
   git(["commit", "-m", "fixture"]);
   const commit = git(["rev-parse", "HEAD"]);
 
@@ -539,8 +541,23 @@ linuxHostTest("Hermes verification ignores poisoned PATH Git and checkout-local 
   expect(existsSync(fakeGitMarker)).toBe(false);
   expect(existsSync(fsmonitorMarker)).toBe(false);
 
-  git(["update-index", "--assume-unchanged", "runtime.py"]);
-  await writeFile(join(hermesRoot, "runtime.py"), "locally changed runtime\n");
+  await writeFile(agentPath, "replacement runtime\n");
+  git(["add", "runtime/agent.py"]);
+  git(["commit", "-m", "replacement"]);
+  const replacementCommit = git(["rev-parse", "HEAD"]);
+  git(["reset", "--hard", commit]);
+  git(["replace", commit, replacementCommit]);
+  git(["reset", "--hard", "HEAD"]);
+  expect(git(["-c", "core.fsmonitor=false", "status", "--porcelain=v1", "--untracked-files=all"]))
+    .toBe("");
+  await rm(fsmonitorMarker, { force: true });
+  await expect(verifyHermesRuntime({ activeRoot, hermesRoot }))
+    .rejects.toThrow("tracked tree differs from pinned commit");
+  git(["replace", "-d", commit]);
+  git(["reset", "--hard", commit]);
+
+  git(["update-index", "--assume-unchanged", "runtime/agent.py"]);
+  await writeFile(agentPath, "locally changed runtime\n");
   expect(git(["-c", "core.fsmonitor=false", "status", "--porcelain=v1", "--untracked-files=all"]))
     .toBe("");
   await rm(fsmonitorMarker, { force: true });
@@ -548,6 +565,22 @@ linuxHostTest("Hermes verification ignores poisoned PATH Git and checkout-local 
     .rejects.toThrow("tracked tree differs from pinned commit");
   expect(existsSync(fakeGitMarker)).toBe(false);
   expect(existsSync(fsmonitorMarker)).toBe(false);
+
+  await writeFile(agentPath, "trusted runtime\n");
+  git(["update-index", "--no-assume-unchanged", "runtime/agent.py"]);
+  git(["reset", "--hard", commit]);
+  git(["update-index", "--assume-unchanged", "runtime/agent.py"]);
+  const externalRuntime = join(root, "external-runtime");
+  await rename(join(hermesRoot, "runtime"), join(root, "original-runtime"));
+  await mkdir(externalRuntime);
+  await writeFile(join(externalRuntime, "agent.py"), "trusted runtime\n");
+  await symlink(externalRuntime, join(hermesRoot, "runtime"));
+  await writeFile(join(hermesRoot, ".git", "info", "exclude"), "runtime\n", { flag: "a" });
+  expect(git(["-c", "core.fsmonitor=false", "status", "--porcelain=v1", "--untracked-files=all"]))
+    .toBe("");
+  await rm(fsmonitorMarker, { force: true });
+  await expect(verifyHermesRuntime({ activeRoot, hermesRoot }))
+    .rejects.toThrow("symlinked ancestor");
 });
 
 test("runtime access probe protects sandbox dependencies from both service identities", () => {
@@ -580,7 +613,14 @@ test("runtime access probe protects sandbox dependencies from both service ident
     ]);
     expect(calls).toContainEqual([
       "/trusted/runuser",
-      ["-u", username, "--", "/trusted/find", "/home/principal/src/hermes", "-writable", "-print", "-quit"],
+      ["-u", username, "--", "/trusted/test", "!", "-O", "/home/principal/.bun/bin/bun"],
+    ]);
+    expect(calls).toContainEqual([
+      "/trusted/runuser",
+      [
+        "-u", username, "--", "/trusted/find", "/home/principal/src/hermes",
+        "(", "-writable", "-o", "-user", username, ")", "-print", "-quit",
+      ],
     ]);
   }
 
@@ -593,7 +633,7 @@ test("runtime access probe protects sandbox dependencies from both service ident
         : "",
       stderr: "",
     }),
-  })).toThrow("can modify the Hermes sandbox checkout");
+  })).toThrow("owns or can modify the Hermes sandbox checkout");
 
   expect(() => probeBuddyRuntimeAccess({
     ...options,
@@ -603,6 +643,15 @@ test("runtime access probe protects sandbox dependencies from both service ident
       stderr: "",
     }),
   })).toThrow("can replace a pinned Buddy runtime dependency");
+
+  expect(() => probeBuddyRuntimeAccess({
+    ...options,
+    commandRunner: (_command, args) => ({
+      status: args.includes("-O") && args.at(-1) === "/home/principal/.bun/bin" ? 1 : 0,
+      stdout: "",
+      stderr: "",
+    }),
+  })).toThrow("runtime-owned path");
 });
 
 linuxHostTest("resident runtime rejects an executable below a user-writable path", async () => {

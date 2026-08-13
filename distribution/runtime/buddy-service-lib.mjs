@@ -842,21 +842,27 @@ export function probeBuddyRuntimeAccess({
   ])];
   for (const username of ["buddy", "buddy-bridge"]) {
     for (const path of replacementBoundaries) {
-      const result = commandRunner(runuserExecutable, [
-        "-u", username, "--", testExecutable, "!", "-w", path,
-      ], commandOptions);
-      if (result.status !== 0) {
-        throw new Error(`${username} can replace a pinned Buddy runtime dependency through ${path}`);
+      for (const predicate of ["-w", "-O"]) {
+        const result = commandRunner(runuserExecutable, [
+          "-u", username, "--", testExecutable, "!", predicate, path,
+        ], commandOptions);
+        if (result.status !== 0) {
+          const reason = predicate === "-O" ? "runtime-owned" : "writable";
+          throw new Error(
+            `${username} can replace a pinned Buddy runtime dependency through ${reason} path ${path}`,
+          );
+        }
       }
     }
-    const writable = commandRunner(runuserExecutable, [
-      "-u", username, "--", findExecutable, hermesRoot, "-writable", "-print", "-quit",
+    const mutable = commandRunner(runuserExecutable, [
+      "-u", username, "--", findExecutable, hermesRoot,
+      "(", "-writable", "-o", "-user", username, ")", "-print", "-quit",
     ], commandOptions);
-    if (writable.status !== 0) {
-      throw new Error(`cannot verify that ${username} has read-only access to the Hermes sandbox checkout`);
+    if (mutable.status !== 0) {
+      throw new Error(`cannot verify that ${username} neither owns nor writes the Hermes sandbox checkout`);
     }
-    if (String(writable.stdout ?? "").trim() !== "") {
-      throw new Error(`${username} can modify the Hermes sandbox checkout`);
+    if (String(mutable.stdout ?? "").trim() !== "") {
+      throw new Error(`${username} owns or can modify the Hermes sandbox checkout`);
     }
   }
 }
@@ -960,11 +966,20 @@ async function assertHermesTrackedTreeMatchesCommit({
     if (!isWithin(root, candidate)) {
       throw new Error("pinned Hermes tree contains a path outside its checkout");
     }
+    const candidateParent = dirname(candidate);
+    const physicalParent = await realpath(candidateParent).catch(() => null);
+    if (physicalParent !== candidateParent) {
+      throw new Error(`live Hermes tracked tree has a symlinked ancestor at ${path}`);
+    }
     const entry = await lstat(candidate).catch(() => null);
     let bytes;
     if (mode === "120000") {
       if (!entry?.isSymbolicLink()) {
         throw new Error(`live Hermes tracked tree differs from pinned commit at ${path}`);
+      }
+      const physicalTarget = await realpath(candidate).catch(() => null);
+      if (!physicalTarget || !isWithin(root, physicalTarget)) {
+        throw new Error(`live Hermes tracked symlink escapes its checkout at ${path}`);
       }
       bytes = Buffer.from(await readlink(candidate));
     } else if (mode === "100644" || mode === "100755") {
@@ -1062,6 +1077,7 @@ function isRootOwnedNonWritablePath(canonicalPath, { requireDirectory = false, r
 
 function safeGitArguments(platform = process.platform, safeDirectory = null) {
   return [
+    "--no-replace-objects",
     "-c", `core.hooksPath=${platform === "win32" ? "NUL" : "/dev/null"}`,
     "-c", "core.fsmonitor=false",
     "-c", "core.gitProxy=",
@@ -1077,6 +1093,7 @@ function residentGitEnvironment(base = process.env, platform = process.platform)
   environment.GIT_CONFIG_GLOBAL = platform === "win32" ? "NUL" : "/dev/null";
   environment.GIT_CONFIG_COUNT = "0";
   environment.GIT_OPTIONAL_LOCKS = "0";
+  environment.GIT_NO_REPLACE_OBJECTS = "1";
   environment.GIT_PAGER = "cat";
   environment.GIT_TERMINAL_PROMPT = "0";
   return environment;

@@ -223,6 +223,14 @@ Model stojí na ramenou providerů, kteří už řeší identity a přístup:
 
 ### Trust model Buddyho
 
+Model odpovídá na tři různé otázky; žádná z těchto hranic nenahrazuje jinou:
+
+| Otázka | Odpověď | Kde se drží |
+| --- | --- | --- |
+| Kdo smí zadat Buddyho turn? | Právě jeden lidský Principál. | Privátní komunikační surface a jeho provider access. |
+| Kdo smí měnit Mašinu a Lazurio? | Principál; lokální změna je legitimní a Doctor ji pouze zviditelní jako drift. | Vlastnictví Mašiny, manifest, Doctor a vratný lifecycle. |
+| Co smí běžící Agent dělat? | Jen to, co dovolí sandbox agentního runtime. | Hermes Agent; Lazurio nestaví paralelní ACL ani sandbox. |
+
 Buddyho komunikační surface patří právě jednomu lidskému Principálovi. Privátní
 Zulip realm, jeho membership, credentials a síťový access plane musí zajistit,
 že vstupní turn smí zadat pouze tento Principál; technická identita Buddy botu
@@ -241,13 +249,15 @@ systemd oddělení procesu, sanitizované spouštění instalačních příkazů
 integrity kontroly jsou provozní a recovery pojistky, ne druhý autorizační
 model proti Principálovi.
 
-Sandbox ale nesmí být zapisovatelný procesem, který sám omezuje. Hermes
-checkout a Bun binárku může vlastnit a měnit Principál nebo jeho servisní
-identita, ale účty `buddy` a `buddy-bridge` je nesmí přepsat ani nahradit přes
-zapisovatelný parent. Preflight proto porovnává tracked Hermes bytes přímo s
-pinned commitem bez důvěry v Git index a ptá se host kernelu na zapisovatelnost
-obou runtime účtů. To chrání integritu existujícího Hermes sandboxu před jeho
-vlastní relací; není to další ACL proti Principálovi.
+Sandbox ale nesmí být vlastněný ani zapisovatelný procesem, který sám omezuje.
+Hermes checkout a Bun binárku může vlastnit a měnit Principál nebo jím řízená
+maintenance identita, která nespouští agentní relaci. Účty `buddy` a
+`buddy-bridge` naopak nesmí tyto závislosti vlastnit, přepsat ani nahradit přes
+svůj parent. Preflight proto porovnává tracked Hermes bytes přímo s pinned
+commitem bez důvěry v Git index, replacement refs či symlinkované předky a ptá
+se host kernelu na vlastnictví i zapisovatelnost obou runtime účtů. To chrání
+integritu existujícího Hermes sandboxu před jeho vlastní relací; není to další
+ACL proti Principálovi.
 
 Uvnitř autorizované trust domény se nestaví druhý interní IAM jen proto, aby
 napodoboval providerové granty. Nevznikají vlastní auth proxy, relaye, obecné

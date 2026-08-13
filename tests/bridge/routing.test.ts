@@ -48,13 +48,12 @@ afterEach(async () => {
 });
 
 describe("SCAR-ID-1 — a channel the Principal renames keeps its conversation", () => {
-  posixDurabilityTest("SCAR-ID-1 the session id is unchanged by a rename, and a stranger cannot inherit it", async () => {
+  posixDurabilityTest("SCAR-ID-1 the session id is unchanged by a rename, and another channel cannot inherit it", async () => {
     // The failure, concretely: the Principal renames #Buddy to a name of their
     // own — one click, on data that is theirs. Keyed on the NAME, that rename
     // silently forked the runtime session, so the thread they were still reading
-    // lost its memory. And the freed name was then available to anyone, so a
-    // newly created channel called "Buddy" would let a NEW thread inherit the old
-    // conversation.
+    // lost its memory. A newly created channel reusing the freed name would then
+    // let a NEW thread inherit the old conversation.
     const realm = new FakeRealm({ streams: [{ id: STREAM_ID, name: "Buddy" }] });
     const root = await mkdtemp(join(tmpdir(), "buddy-routing-"));
     scratches.push(root);
@@ -173,7 +172,7 @@ describe("the self-echo filter, on the immutable sender id", () => {
     expect(messageTrigger(streamMessage, BOT, ["mentioned"])).toBe("mention");
   });
 
-  test("an id that says stranger while the e-mail says Buddy is a contradiction, and is dropped", () => {
+  test("an id naming another account while the e-mail says Buddy is a contradiction, and is dropped", () => {
     // The e-mail is asserted BESIDE the id, never used as a selector. A
     // contradiction fails closed, because dropping is the safe direction: the
     // alternative is Buddy answering its own reply, for ever, in the Principal's

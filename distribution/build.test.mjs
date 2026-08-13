@@ -248,7 +248,7 @@ test("Buddy profile eval pack covers normal and negative-path cases without role
     machine_owner_is_adversary: false,
     local_payload_edits: "allowed-and-reported-as-drift",
     agent_sandbox: "hermes-runtime",
-    sandbox_substrate_mutability: "principal-writable-runtime-identities-read-only",
+    sandbox_substrate_mutability: "principal-controlled-runtime-identities-non-owning-read-only",
     parallel_lazurio_acl: false,
   });
 });

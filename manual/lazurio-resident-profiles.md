@@ -59,6 +59,15 @@ destruktivní operace, billing, ownership a publish/release mimo trvalý mandát
 
 ### Trust model Buddyho
 
+Pro provoz se vždy rozlišují tři otázky:
+
+1. Buddyho turn smí zadat právě jeden lidský Principál; to drží privátní
+   komunikační surface a provider access.
+2. Mašinu a Lazurio vlastní Principál. Smí je lokálně upravit; Doctor změnu
+   popíše jako drift a lifecycle nabídne vratnou cestu, ale změnu nezakazuje.
+3. Přístup běžícího Agenta k souborům a nástrojům drží Hermes sandbox. Lazurio
+   vedle něj nevytváří druhý ACL ani paralelní sandbox.
+
 Skutečnou vstupní hranicí Buddyho je jeho privátní komunikační surface.
 Zulip realm, membership, credentials a síťový access plane musí být určené
 právě jednomu lidskému Principálovi a technické identitě jeho Buddy botu. Turn
@@ -72,12 +81,14 @@ dnes Hermes Agent. Manifest, Doctor, service oddělení a rollback pouze
 zviditelňují odchylky, omezují náhodnou self-mutaci procesu a umožňují obnovu;
 nejsou druhou autorizační hranicí.
 
-Jedna úzká provozní podmínka z toho neustupuje: runtime nesmí umět přepsat
-sandbox, který jej omezuje. Hermes checkout a Bun může vlastnit a měnit
-Principál, ale účty `buddy` a `buddy-bridge` k nim musí mít pouze potřebné
-čtení/spuštění. Preflight kontroluje skutečná host oprávnění a tracked Hermes
-bytes proti pinned commitu bez důvěry v Git index. Jde o self-protection
-existujícího Hermes sandboxu, ne o nový Lazurio ACL.
+Jedna úzká provozní podmínka z toho neustupuje: runtime nesmí vlastnit ani umět
+přepsat sandbox, který jej omezuje. Hermes checkout a Bun může vlastnit a měnit
+Principál nebo jím řízená maintenance identita, která nespouští agentní relaci.
+Účty `buddy` a `buddy-bridge` k nim musí mít pouze potřebné čtení/spuštění a
+nesmí je nahradit ani přes parent adresář. Preflight kontroluje skutečná host
+oprávnění a tracked Hermes bytes proti pinned commitu bez důvěry v Git index,
+replacement refs či symlinkované předky. Jde o self-protection existujícího
+Hermes sandboxu, ne o nový Lazurio ACL.
 
 Veřejný Buddy runtime obsahuje komunikační bridge mezi privátním Zulipem a
 agentním runtime. Bridge sám nevlastní identitu ani mandáty: před prvním
@@ -102,7 +113,8 @@ vrátí last-known-good a znovu zprovozní předchozí service vstupy.
 Bun binárku pro unit volí Principál explicitně přes `--bun PATH`; preflight ji
 resolveuje a ověří její spustitelnost runtime účtem, ale nevyžaduje root-owned
 instalaci. Současně ověří, že ji ani Hermes checkout účty `buddy` a
-`buddy-bridge` nemohou přepsat nebo nahradit přes zapisovatelný parent.
+`buddy-bridge` nevlastní a nemohou přepsat nebo nahradit přes zapisovatelný
+parent.
 Sanitizované privileged subprocessy chrání instalační krok před ambientním
 `PATH` a Git hooky, ne Lazurio před Principálem.
 Privátní Buddy profil zůstává mutable a služba jej čte přes běžná host

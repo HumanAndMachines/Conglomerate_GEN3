@@ -129,6 +129,10 @@ v host custody a připojí je service EnvironmentFile.
 Nasazení předpokládá privátní one-Principal Zulip realm: membership,
 credentials a síťový access plane jsou skutečná vstupní hranice Buddyho.
 Technická identita botu není další Principál a bridge sám nevytváří druhý IAM.
+Principál zároveň vlastní Mašinu a smí Lazurio lokálně měnit; manifest a Doctor
+změnu zviditelní jako drift, ale neblokují ji. Co smí běžící Agent dělat, určuje
+Hermes sandbox. Jde o tři samostatné odpovědnosti — komunikaci, vlastnictví
+Mašiny a agentní relaci — ne o tři překrývající se autorizační vrstvy.
 
 Přenesené behaviorální testy drží cold-start bez přehrání historie, pořadí
 durable record → watermark → acknowledgement, id-based routing, self-echo
@@ -149,9 +153,10 @@ indexu i digest `uv.lock` a po něm jeho HTTP health.
 Bun zapsaný do unit se resolveuje na přesnou spustitelnou binárku a preflight
 ověří, že ji runtime účet umí použít. Nemusí být root-owned: konkrétní host
 dependency volí Principál přes `--bun PATH` a installer ji nekopíruje ani
-neopravuje. Bun ani Hermes checkout však nesmí být zapisovatelný či
+neopravuje. Bun ani Hermes checkout však nesmí být vlastněný, zapisovatelný či
 nahraditelný účty `buddy` a `buddy-bridge`: sandbox nesmí umět přepsat sám
-sebe. Vlastníkem může dál být Principál nebo jeho servisní identita.
+sebe. Vlastníkem může dál být Principál nebo jím řízená maintenance identita,
+která nespouští agentní relaci.
 Privilegované instalační subprocessy nepoužívají ambientní `PATH` nebo
 checkout-local Git hooky; tyto kontroly chrání instalační krok a integritu
 sandboxu, nikoli Lazurio před Principálem.

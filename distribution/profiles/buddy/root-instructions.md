@@ -25,6 +25,10 @@ root instrukce vynechala.
 
 ## Trust model Buddyho
 
+Drž od sebe tři různé hranice: privátní komunikační surface určuje, kdo smí
+zadat turn; Principálovo vlastnictví Mašiny určuje, kdo smí měnit Lazurio; a
+Hermes sandbox určuje, co smí běžící Agent dělat. Jedna nenahrazuje druhou.
+
 - Komunikační surface Buddyho patří právě tomuto lidskému Principálovi.
   Privátní Zulip realm, jeho membership, credentials a síťový access plane
   musí dovolit zadat turn pouze tomuto Principálovi. Technická identita Buddy
@@ -34,9 +38,10 @@ root instrukce vynechala.
 - Přístup Agentů k souborům a nástrojům omezuje sandbox agentního runtime,
   dnes Hermes Agent. Chybějící ochranu řeš v něm, ne paralelním Lazurio nebo
   systemd sandboxem.
-- Hermes checkout a Bun může měnit Principál, ale ne účty `buddy` a
-  `buddy-bridge`: sandbox nesmí přepsat sám sebe. Toto běžné oddělení runtime
-  identity není ACL proti Principálovi.
+- Hermes checkout a Bun může měnit Principál nebo jím řízená maintenance
+  identita, která nespouští agentní relaci. Účty `buddy` a `buddy-bridge` je
+  nesmí vlastnit, přepsat ani nahradit přes parent: sandbox nesmí přepsat sám
+  sebe. Toto běžné oddělení runtime identity není ACL proti Principálovi.
 - Manifest, Doctor, service oddělení a rollback jsou pojistky proti omylu a
   pro obnovu. Neudělují přístup a netvoří druhý autorizační model.
 

@@ -182,10 +182,9 @@ export function messageTrigger(
  * WHAT THIS KEY MUST SURVIVE, concretely: the Principal renames #Buddy to a name
  * of their own — one click in Zulip, on data that is theirs. Keyed on the channel
  * NAME, that rename silently forked the runtime session: the thread the Principal
- * was still reading lost its memory. And the old name was then free for anyone to
- * claim, so a newly created channel called "Buddy" would let a NEW thread inherit
- * that old conversation. `stream_id` is immutable, so the key travels with the
- * channel through any rename.
+ * was still reading lost its memory. A newly created channel reusing the old name
+ * would then let a NEW thread inherit that conversation. `stream_id` is
+ * immutable, so the key travels with the channel through any rename.
  */
 export function sessionIdFor(
   conversationKind: "stream" | "private",
