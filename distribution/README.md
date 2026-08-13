@@ -136,6 +136,13 @@ privátní ústava a mandáty zůstávají samostatnou vrstvou bridge system mes
 Před restartem seam ověří exact Hermes commit i digest `uv.lock` a po něm jeho
 HTTP health.
 
+Bun zapsaný do privilegované unit musí být stabilní host dependency: resolved
+binárka i celý parent chain jsou root-owned a bez group/world write bitů a
+runtime účet ji musí umět spustit. Uživatelský `~/.bun/bin/bun` se proto
+nepřebírá jen proto, že jím operator spustil installer; nevyhovující default
+preflight odmítne a operator předá schválenou systémovou instalaci přes
+`--bun PATH`. Installer Bun nekopíruje ani neopravuje.
+
 ```sh
 sudo bun /opt/lazurio/active/resident/buddy-service.mjs preflight \
   --install-root /opt/lazurio

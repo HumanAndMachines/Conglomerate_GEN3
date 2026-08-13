@@ -215,11 +215,22 @@ export class EventBridge {
       );
     }
     this.options.logger.info("[inbound] event queue registered");
-    await this.catchUp();
-    // Readiness means both halves succeeded: the queue exists AND the durable
-    // message boundary/catch-up is established. Publishing it earlier lets a
-    // service gate report healthy while recover() is still able to fail.
-    await this.options.onRegistered?.({ registrations: this.registrations });
+    try {
+      await this.catchUp();
+      // Readiness means both halves succeeded: the queue exists AND the durable
+      // message boundary/catch-up is established. Publishing it earlier lets a
+      // service gate report healthy while recover() is still able to fail.
+      await this.options.onRegistered?.({ registrations: this.registrations });
+    } catch (error) {
+      // A queue whose historical gap was not closed is not usable live state.
+      // Forget it so the run loop registers a new atomic boundary and resumes
+      // catch-up from the durable watermark instead of silently pumping past
+      // the missing range on its next iteration.
+      this.queueId = undefined;
+      this.lastEventId = -1;
+      this.registrationMaxMessageId = undefined;
+      throw error;
+    }
   }
 
   /**
@@ -237,6 +248,16 @@ export class EventBridge {
    * a recovery path that disagree during an incident.
    */
   async catchUp(): Promise<number> {
+    const registrationBoundary = this.registrationMaxMessageId;
+    if (
+      typeof registrationBoundary !== "number" ||
+      !Number.isInteger(registrationBoundary) ||
+      registrationBoundary < 0
+    ) {
+      throw new Error(
+        "Zulip registration supplied no valid max_message_id catch-up boundary",
+      );
+    }
     let anchor = await this.options.watermark.read();
     let hasBoundary = await this.options.watermark.hasDurableBoundary();
     if (anchor === 0 && !hasBoundary) {
@@ -268,12 +289,7 @@ export class EventBridge {
       // the queue and that probe, then be misclassified as historical and
       // swallowed by inbox dedupe. Zulip's register `max_message_id` exists as
       // part of its initial-data/event-queue atomicity contract.
-      const newest = this.registrationMaxMessageId;
-      if (typeof newest !== "number" || !Number.isInteger(newest) || newest < 0) {
-        throw new Error(
-          "Zulip registration supplied no valid max_message_id cold-start boundary",
-        );
-      }
+      const newest = registrationBoundary;
       if (newest > 0) {
         // The anchor gets a durable REFUSAL record before the watermark moves.
         // Catch-up deliberately re-presents the message AT the watermark and
@@ -299,6 +315,7 @@ export class EventBridge {
       );
     }
     let seen = 0;
+    let reachedBoundary = false;
     for (let page = 0; page < this.options.maxCatchUpPages; page += 1) {
       const result = await this.options.api.messagesFrom(
         anchor,
@@ -312,7 +329,24 @@ export class EventBridge {
         seen += 1;
         anchor = Math.max(anchor, message.id ?? anchor);
       }
-      if (result.foundNewest || messages.length === 0) break;
+      // We only need to close the historical gap that existed when this queue
+      // was registered. Messages created afterwards are already durable in the
+      // queue, so an active realm cannot keep readiness perpetually chasing a
+      // moving "newest" value. foundNewest remains an equivalent success proof.
+      if (result.foundNewest || anchor >= registrationBoundary) {
+        reachedBoundary = true;
+        break;
+      }
+      if (messages.length === 0) {
+        throw new Error(
+          "Zulip catch-up returned an empty page before reaching the registration boundary",
+        );
+      }
+    }
+    if (!reachedBoundary) {
+      throw new Error(
+        `Zulip catch-up did not reach the registration boundary within ${this.options.maxCatchUpPages} pages`,
+      );
     }
     if (seen > 0) this.options.logger.info("[inbound] catch-up complete");
     return seen;

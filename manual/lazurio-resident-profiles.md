@@ -74,6 +74,9 @@ deklarovaný Buddy profil skutečně leží uvnitř `active/personalspace`.
 Produkční příkaz `buddy-rollout` skládá aktivaci rootu a service cutover do
 jedné kompenzované operace. Selže-li service gate, novou aktivaci odstraní nebo
 vrátí last-known-good a znovu zprovozní předchozí service vstupy.
+Privilegovaná unit přijme pouze Bun binárku pod plně root-owned parent chainem
+bez group/world write bitů; host ji dodá jako spravovanou dependency přes
+`--bun PATH`, ne jako měnitelnou instalaci z domovského adresáře operatora.
 
 ## Profil AI Kolega a Steward overlay
 

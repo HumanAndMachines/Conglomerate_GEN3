@@ -64,6 +64,9 @@ async function harness(options: {
   watermark?: DurableWatermark;
   breaker?: TurnBreaker;
   api?: ZulipEventsApi;
+  catchUpPageSize?: number;
+  maxCatchUpPages?: number;
+  onRegistered?: (info: { registrations: number }) => Promise<void> | void;
 } = {}): Promise<Harness> {
   const realm = options.realm ?? new FakeRealm();
   const root = options.root ?? (await scratch());
@@ -99,6 +102,15 @@ async function harness(options: {
     },
     buddyName: "Buddy",
     pollTimeoutMs: 1_000,
+    ...(options.catchUpPageSize === undefined
+      ? {}
+      : { catchUpPageSize: options.catchUpPageSize }),
+    ...(options.maxCatchUpPages === undefined
+      ? {}
+      : { maxCatchUpPages: options.maxCatchUpPages }),
+    ...(options.onRegistered === undefined
+      ? {}
+      : { onRegistered: options.onRegistered }),
   });
   return { bridge, queue, watermark, realm, root, lines, notices };
 }
@@ -216,6 +228,72 @@ posixDurabilityDescribe("cold start in front of a realm that already has a past"
     await second.queue.drainOnce();
     expect(await second.watermark.read()).toBe(liveMessageId);
     expect(realm.sent).toHaveLength(1);
+  });
+
+  test("catch-up page exhaustion never publishes readiness or leaves a live queue", async () => {
+    const realm = new FakeRealm({
+      history: [
+        { to: { kind: "dm" }, text: "one" },
+        { to: { kind: "dm" }, text: "two" },
+        { to: { kind: "dm" }, text: "three" },
+      ],
+    });
+    const root = await scratch();
+    const watermark = new DurableWatermark(join(root, "state", "watermark.json"));
+    await watermark.initializeAt(0);
+    let readinessPublications = 0;
+    const { bridge } = await harness({
+      realm,
+      root,
+      watermark,
+      catchUpPageSize: 1,
+      maxCatchUpPages: 1,
+      onRegistered: () => {
+        readinessPublications += 1;
+      },
+    });
+
+    await expect(bridge.recover()).rejects.toThrow(/did not reach the registration boundary/u);
+    expect(readinessPublications).toBe(0);
+    expect(bridge.registered).toBeFalse();
+  });
+
+  test("catch-up readiness closes the fixed registration boundary, not a moving newest", async () => {
+    const realm = new FakeRealm({
+      history: [{ to: { kind: "dm" }, text: "before register" }],
+    });
+    const root = await scratch();
+    const watermark = new DurableWatermark(join(root, "state", "watermark.json"));
+    await watermark.initializeAt(0);
+    const baseApi = createZulipEventsApi(fakeRealmConfig(realm));
+    const api: ZulipEventsApi = {
+      ...baseApi,
+      register: async () => {
+        const registered = await baseApi.register();
+        realm.post({ to: { kind: "dm" }, text: "after register" });
+        return registered;
+      },
+    };
+    let readinessPublications = 0;
+    const { bridge, queue } = await harness({
+      realm,
+      root,
+      watermark,
+      api,
+      catchUpPageSize: 1,
+      maxCatchUpPages: 1,
+      onRegistered: () => {
+        readinessPublications += 1;
+      },
+    });
+
+    await bridge.recover();
+    expect(readinessPublications).toBe(1);
+    expect(bridge.registered).toBeTrue();
+    expect(await watermark.read()).toBe(1);
+    await bridge.pumpOnce();
+    await queue.drainOnce();
+    expect(realm.sent).toHaveLength(2);
   });
 
   test("SCAR-R4 a lost queue after a quiet cold start does not answer the anchor", async () => {

@@ -99,6 +99,11 @@ export async function preflightBuddyBridgeService({
     throw new Error("Bun executable is not an executable regular file");
   }
   assertSystemdSafeAbsolutePath("resolved Bun", resolvedBun);
+  if (requireRootOwnership && !isTrustedResidentExecutablePath(resolvedBun, platform)) {
+    throw new Error(
+      "Bun executable must be below a root-owned path and must not be group- or world-writable",
+    );
+  }
 
   const environment = await inspectBridgeEnvironment(environmentFile, {
     queueRoot,

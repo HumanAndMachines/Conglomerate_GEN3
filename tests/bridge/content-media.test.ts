@@ -46,12 +46,14 @@ describe("authenticated Zulip images", () => {
   test("fetches only same-realm uploads with bot auth and returns a data URL", async () => {
     let authorization = "";
     let calls = 0;
+    const redirects: Array<RequestRedirect | undefined> = [];
     const result = await downloadRuntimeImage({
       site: "https://realm.test",
       botEmail: "bot@realm.test",
       botApiKey: "secret",
       fetchImpl: (async (_url: string, init?: RequestInit) => {
         calls += 1;
+        redirects.push(init?.redirect);
         if (calls === 1) {
           authorization = String(new Headers(init?.headers).get("authorization"));
           return Response.json({
@@ -66,6 +68,7 @@ describe("authenticated Zulip images", () => {
     }, "/user_uploads/1/a/test.png");
     expect(authorization).toStartWith("Basic ");
     expect(calls).toBe(2);
+    expect(redirects).toEqual(["error", "error"]);
     expect(result).toBe("data:image/png;base64,AQID");
   });
 

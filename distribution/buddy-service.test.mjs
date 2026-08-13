@@ -24,6 +24,7 @@ import {
   inspectProfileDirectory,
   isTrustedResidentExecutablePath,
   installBuddyBridgeService,
+  preflightBuddyBridgeService,
   isPrivateRuntimeHost as serviceAcceptsPrivateRuntimeHost,
   renderBuddyBridgeUnit,
   restorePreResidentBuddyService,
@@ -524,6 +525,23 @@ linuxHostTest("resident runtime rejects an executable below a user-writable path
   await writeFile(executable, "#!/bin/sh\nexit 0\n");
   await chmod(executable, 0o755);
   expect(isTrustedResidentExecutablePath(executable)).toBe(false);
+});
+
+linuxHostTest("privileged Buddy service refuses a replaceable Bun executable", async () => {
+  const paths = await fixture();
+  const root = await scratch("lazurio-untrusted-bun-");
+  const executable = join(root, "bun");
+  await writeFile(executable, "#!/bin/sh\nexit 0\n");
+  await chmod(executable, 0o755);
+
+  await expect(preflightBuddyBridgeService({
+    ...options(paths),
+    bunPath: executable,
+    requireRootOwnership: true,
+    runtimeAccessProbe: () => {
+      throw new Error("runtime probe must not run before the Bun ownership gate");
+    },
+  })).rejects.toThrow(/Bun executable must be below a root-owned path/u);
 });
 
 test("privileged Hermes Git verification uses runuser with no privileged buddy groups", () => {

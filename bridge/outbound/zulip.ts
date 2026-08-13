@@ -422,6 +422,7 @@ export async function downloadRuntimeImage(
   try {
     metadataResponse = await fetchImpl(metadataUrl, {
       headers: { Authorization: authHeader(cfg) },
+      redirect: "error",
       signal: AbortSignal.timeout(30_000),
     });
   } catch (error) {
@@ -453,6 +454,7 @@ export async function downloadRuntimeImage(
   let res: Response;
   try {
     res = await fetchImpl(temporary, {
+      redirect: "error",
       signal: AbortSignal.timeout(30_000),
     });
   } catch (error) {
