@@ -2830,13 +2830,17 @@ test("durable Stop commits disabled before signaling and cannot be resurrected a
       }
       return writeDesiredModuleState(options);
     },
-    signalProcessGroupFn: async (processGroupId, signal) => {
+    signalManagedProcessFn: async (record, signal) => {
       if (failSignal) {
         const error = new Error("simulated stop signal failure");
         error.code = "EPERM";
         throw error;
       }
-      process.kill(-processGroupId, signal);
+      if (process.platform === "win32") {
+        await executeWindowsStopCommand(windowsTaskkillCommand(record.pid, { force: true }));
+      } else {
+        process.kill(-record.processGroupId, signal);
+      }
     },
   });
 
@@ -3091,13 +3095,17 @@ test("desired restart never treats an unhealthy surviving replacement as recover
     desiredRestartDelaysMs: [10, 20],
     desiredRestartStableMs: 10_000,
     startedListenerOwnershipTimeoutMs: 200,
-    signalProcessGroupFn: async (processGroupId, signal) => {
+    signalManagedProcessFn: async (record, signal) => {
       if (rejectStopSignal) {
         const error = new Error("simulated retry cleanup signal failure");
         error.code = "EPERM";
         throw error;
       }
-      process.kill(-processGroupId, signal);
+      if (process.platform === "win32") {
+        await executeWindowsStopCommand(windowsTaskkillCommand(record.pid, { force: true }));
+      } else {
+        process.kill(-record.processGroupId, signal);
+      }
     },
   });
 
@@ -3420,7 +3428,7 @@ function crashOnceServerSource() {
     "    return new Response('ok');",
     "  },",
     "});",
-    "if (shouldCrash) setTimeout(() => { server.stop(true); process.exit(7); }, 1200);",
+    "if (shouldCrash) setTimeout(() => { server.stop(true); process.exit(7); }, process.platform === 'win32' ? 5000 : 1200);",
     "setInterval(() => {}, 2147483647);",
     "",
   ].join("\n");
@@ -3437,7 +3445,7 @@ function alwaysCrashServerSource() {
     "    return new Response('ok');",
     "  },",
     "});",
-    "setTimeout(() => { server.stop(true); process.exit(7); }, 1200);",
+    "setTimeout(() => { server.stop(true); process.exit(7); }, process.platform === 'win32' ? 5000 : 1200);",
     "setInterval(() => {}, 2147483647);",
     "",
   ].join("\n");
@@ -3459,7 +3467,7 @@ function crashThenStayUnhealthyServerSource() {
     "    return new Response('ok');",
     "  },",
     "});",
-    "if (firstRun) setTimeout(() => { server.stop(true); process.exit(7); }, 1200);",
+    "if (firstRun) setTimeout(() => { server.stop(true); process.exit(7); }, process.platform === 'win32' ? 5000 : 1200);",
     "setInterval(() => {}, 2147483647);",
     "",
   ].join("\n");
@@ -3481,7 +3489,8 @@ async function waitForStatus(readStatus, expectedStatus) {
 
 async function waitForRuntime(readRuntime, predicate, attempts = 60) {
   let lastRuntime = null;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
+  const effectiveAttempts = process.platform === "win32" ? attempts * 3 : attempts;
+  for (let attempt = 0; attempt < effectiveAttempts; attempt += 1) {
     lastRuntime = await readRuntime();
     if (predicate(lastRuntime)) return lastRuntime;
     await sleep(100);
