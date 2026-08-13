@@ -411,7 +411,7 @@ test("numeric port ownership is resolved across loopback bind variants", async (
   const port = await findFreePort();
   const squatter = Bun.spawn(
     [
-      "bun",
+      "node",
       "-e",
       "const net=require('net');net.createServer(()=>{}).listen(Number(process.env.PORT),'127.0.0.1');setInterval(()=>{},2147483647);",
     ],
