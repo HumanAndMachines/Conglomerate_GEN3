@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lazurio.ai/schemas/lazurio-module.v1.json",
+  "title": "Lazurio module identity and TCP port lease",
+  "type": "object",
+  "required": ["schema_version", "id", "company", "tcp_port_policy", "port_leases"],
+  "properties": {
+    "schema_version": { "const": "lazurio.module.v1" },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "company": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*$" },
+    "tcp_port_policy": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["mode"],
+          "properties": { "mode": { "const": "single" } },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["mode", "reason"],
+          "properties": {
+            "mode": { "const": "exception" },
+            "reason": { "type": "string", "minLength": 20 }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "port_leases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "host", "port"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "host": { "enum": ["127.0.0.1", "localhost", "::1"] },
+          "port": { "type": "integer", "minimum": 1024, "maximum": 65535 }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "tcp_port_policy": {
+            "properties": { "mode": { "const": "single" } },
+            "required": ["mode"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "port_leases": {
+            "minItems": 1,
+            "maxItems": 1,
+            "items": { "properties": { "id": { "const": "main" } } }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "tcp_port_policy": {
+            "properties": { "mode": { "const": "exception" } },
+            "required": ["mode"]
+          }
+        }
+      },
+      "then": { "properties": { "port_leases": { "minItems": 2 } } }
+    }
+  ]
+}

@@ -30,7 +30,7 @@ organizations/<company>/modules/<module>/app/<version>/launchpad.plugin.json
 ```
 
 V1 podporuje package-level `launchpad.plugin.json`, na který ukazuje pole
-`companyascode.app.plugin` v aplikačním `package.json`. Cesta může mířit i
+`lazurio.runtime.plugin` v aplikačním `package.json`. Cesta může mířit i
 výš v rámci stejného Organization, ale nesmí utéct mimo jeho root.
 Company-level plugin directory je připravený pro další generaci.
 

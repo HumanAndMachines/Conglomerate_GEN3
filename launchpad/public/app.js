@@ -2812,6 +2812,7 @@ function appCard(app, family = { key: app.id, members: [app], primary: app }) {
   const readOnly = isProductionspace(app) || nextAction.type === "disabled";
   const opensForeignViewer = nextAction.type === "open"
     && app.runtime?.owner === "foreign-port"
+    && !hasReclaimableStaticLease(app)
     && Boolean(app.url);
   const warning = cardWarningModel(app, gitRepoForApp(app));
 
@@ -3056,13 +3057,14 @@ function runningSharedPortPeer(app) {
   const targetPid = app.runtime?.pid;
   if (!Number.isInteger(targetPid)) return null;
   const declaredOwners = new Set((app.shared_port_owners ?? []).map((owner) => owner.app_id));
+  if (declaredOwners.size === 0) return null;
   return state.apps.find((candidate) =>
     candidate.id !== app.id
-    && candidate.company !== app.company
     && candidate.port === app.port
     && runtimeHostsShareListener(candidate.host, app.host)
-    && (declaredOwners.size === 0 || declaredOwners.has(candidate.id))
-    && ["current-instance", "adopted-port"].includes(candidate.runtime?.owner)
+    && declaredOwners.has(candidate.id)
+    && candidate.runtime?.owner === "current-instance"
+    && candidate.runtime?.controllable === true
   ) ?? null;
 }
 
@@ -3375,10 +3377,10 @@ function shouldOpenFromCardSurface(target) {
 // One-click open chain (CAC-0044, step-003): rezervace tabu → průběh → toast →
 // klasifikace chyb (port GEN2 web/app.js:2900–2994, 2938–2950).
 async function openAppChain(app, { feedback } = {}) {
-  // Cizí checkout už na deklarované URL běží, ale Launchpad ho nesmí
-  // adoptovat ani jinak měnit. Všechny vstupy (karta, stage i menu) proto
-  // končí přímým otevřením vieweru ještě před mutačním API voláním.
-  if (app.runtime?.owner === "foreign-port" && app.url) {
+  // Legacy manifest bez Lazurio static lease zůstává pouze čitelný. Nový
+  // kontrakt naopak dává Launchpadu explicitní autoritu port při Open
+  // reclaimnout a nahradit vlastníka deklarovaným modulem.
+  if (app.runtime?.owner === "foreign-port" && app.url && !hasReclaimableStaticLease(app)) {
     openResultUrl(app.url, null, app);
     return;
   }
@@ -3867,13 +3869,12 @@ function primaryNextAction(app) {
   if (app.kind === "workspace-module" && app.can_open_folder) {
     return { type: "folder", label: "Otevřít složku" };
   }
-  // Cizí checkout se nesmí adoptovat, spouštět ani zastavovat. Když ale
-  // odpovídá na deklarované lokální URL, je bezpečné nabídnout read-only
-  // otevření jeho vieweru — typický případ aktivního modulového worktree.
-  if (app.runtime?.owner === "foreign-port" && app.url) {
+  // Jen legacy manifest bez static lease otevírá cizí viewer read-only.
+  // Lazurio static lease při Open cizího vlastníka ukončí a spustí modul.
+  if (app.runtime?.owner === "foreign-port" && app.url && !hasReclaimableStaticLease(app)) {
     return { type: "open", label: "Otevřít běžící checkout" };
   }
-  if (isUntrustedPortOwner(app)) {
+  if (isUntrustedPortOwner(app) && !hasReclaimableStaticLease(app)) {
     return {
       type: "disabled",
       label: "Checkout procesu nelze ověřit",
@@ -3888,8 +3889,16 @@ function primaryNextAction(app) {
   if (["missing_access", "planned_slot", "restricted", "invalid_manifest", "missing_package", "unknown_package_manager"].includes(dependencyState)) {
     return { type: "disabled", label: humanDependencyLabel(dependencyState) };
   }
+  if (staticLeaseNeedsReclaim(app)) {
+    return { type: "open_chain", label: "Otevřít a převzít port" };
+  }
   if (app.runtime_status === "healthy" && app.url) {
-    return { type: "open", label: "Otevřít" };
+    return {
+      type: "open",
+      label: hasReclaimableStaticLease(app) && app.runtime?.owner !== "current-instance"
+        ? "Otevřít a převzít port"
+        : "Otevřít",
+    };
   }
   if (app.runtime_status === "unhealthy") {
     return { type: "logs", label: "Logy" };
@@ -3898,6 +3907,20 @@ function primaryNextAction(app) {
     return { type: "runtime", action: "start", label: "Spustit" };
   }
   return { type: "logs", label: "Logy" };
+}
+
+function hasReclaimableStaticLease(app) {
+  const listener = app.entrypoint_listener
+    ?? app.runtime_contract?.listeners?.find((candidate) => candidate?.role === "entrypoint");
+  return app.runtime_contract?.schema_version === "lazurio.runtime.v1"
+    && listener?.allocation === "static"
+    && Number.isInteger(listener?.port)
+    && listener?.claim?.mode === "exclusive";
+}
+
+function staticLeaseNeedsReclaim(app) {
+  return hasReclaimableStaticLease(app)
+    && ["adopted-port", "foreign-port", "unknown-port"].includes(app.runtime?.owner);
 }
 
 function isAttention(app) {
@@ -4080,7 +4103,8 @@ function canStart(app) {
 function canStop(app) {
   return !isProductionspace(app)
     && !app.is_readonly_system
-    && ["current-instance", "adopted-port"].includes(app.runtime?.owner)
+    && app.runtime?.owner === "current-instance"
+    && app.runtime?.controllable === true
     && Number.isInteger(app.runtime?.pid);
 }
 
@@ -5141,7 +5165,10 @@ function nextActionReason(app, nextAction) {
     return `Akce není dostupná: ${humanDependencyLabel(app.dependencies?.state)}. Vyřeš to přes Doktora nebo sync.`;
   }
   if (nextAction.type === "open_chain") {
-    return `Port ${app.port} teď bezpečně vlastní ${appBaseTitle(nextAction.peer)} z jiné Organizace. Otevřením ji Launchpad zastaví a spustí tuto aplikaci; poslední otevřený modul vyhraje.`;
+    const owner = nextAction.peer
+      ? appBaseTitle(nextAction.peer)
+      : "jiný nebo neověřený proces";
+    return `Port ${app.port} teď vlastní ${owner}. Otevřením jej Launchpad převezme a spustí tuto aplikaci; poslední otevřená verze modulu vyhraje.`;
   }
   if (nextAction.type === "open") return "Aplikace běží — otevře se v novém panelu, nic se nespouští.";
   if (nextAction.type === "folder") return "Otevře lokální checkout ve správci souborů; nic v něm nemění.";

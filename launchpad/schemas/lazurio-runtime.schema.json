@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lazurio.ai/schemas/lazurio-runtime.v1.json",
+  "title": "Lazurio runnable package runtime contract",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "id",
+    "title",
+    "company",
+    "module",
+    "surface",
+    "dev_script",
+    "tags",
+    "listeners"
+  ],
+  "properties": {
+    "schema_version": { "const": "lazurio.runtime.v1" },
+    "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+    "title": { "type": "string", "minLength": 1 },
+    "company": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*$" },
+    "module": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "surface": { "enum": ["internal", "manual", "admin", "public-preview"] },
+    "dev_script": { "type": "string", "minLength": 1 },
+    "preview_script": { "type": "string", "minLength": 1 },
+    "build_script": { "type": "string", "minLength": 1 },
+    "plugin": { "type": "string", "minLength": 1, "pattern": "\\.json$" },
+    "icon": { "type": "string", "minLength": 1 },
+    "description": { "type": "string", "minLength": 1, "maxLength": 240 },
+    "group": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "production_url": { "type": "string", "pattern": "^https?://" },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" }
+    },
+    "listeners": {
+      "type": "array",
+      "minItems": 1,
+      "contains": {
+        "type": "object",
+        "properties": { "role": { "const": "entrypoint" } },
+        "required": ["role"]
+      },
+      "minContains": 1,
+      "maxContains": 1,
+      "items": { "$ref": "#/$defs/listener" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "listener": {
+      "type": "object",
+        "required": ["id", "role", "lease", "protocol", "health"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "role": { "enum": ["entrypoint", "auxiliary"] },
+          "lease": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "protocol": { "enum": ["http", "https", "tcp"] },
+          "health": { "$ref": "#/$defs/health" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "role": { "const": "entrypoint" } },
+            "required": ["role"]
+          },
+          "then": { "properties": { "protocol": { "enum": ["http", "https"] } } }
+        },
+        {
+          "if": {
+            "properties": {
+              "health": {
+                "properties": { "kind": { "const": "http" } },
+                "required": ["kind"]
+              }
+            }
+          },
+          "then": { "properties": { "protocol": { "enum": ["http", "https"] } } }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "health": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "path"],
+          "properties": {
+            "kind": { "const": "http" },
+            "path": { "type": "string", "pattern": "^/" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": { "kind": { "const": "tcp" } },
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

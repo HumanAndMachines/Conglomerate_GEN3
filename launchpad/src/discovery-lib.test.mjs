@@ -555,10 +555,10 @@ test("deklarovaný port overlap zachová obě auto-discovered Organizace", async
     "organizations/OmegaCo_GEN3/mission-control/app/v3/package.json",
   );
   expect(portOverlaps.some((item) => item.port === 5393)).toBe(false);
-  expect(apps.find((app) => app.id === "omegaco-mission-control-v3")?.shared_port_owners).toHaveLength(2);
+  expect(apps.find((app) => app.id === "omegaco-mission-control-v3")?.shared_port_owners).toEqual([]);
 });
 
-test("port musí být unikátní mezi app surfaces uvnitř jedné Organizace", async () => {
+test("intra-Organization port collision zachová oba moduly a vrátí warning evidence", async () => {
   const root = await createGenerationMountFixture();
   await writeGenerationOrg({
     root,
@@ -571,14 +571,168 @@ test("port musí být unikátní mezi app surfaces uvnitř jedné Organizace", a
 
   const { apps, failures, port_overlaps: portOverlaps } = await discoverLaunchpadApps(root);
 
-  expect(failures.some((failure) =>
-    failure.includes("port 5392")
-    && failure.includes("Organization BetaCo")
-    && failure.includes("unikátní porty")
-  )).toBe(true);
+  expect(failures).toEqual([]);
   expect(apps.some((app) => app.id === "betaco-mission-control-v2")).toBe(true);
-  expect(apps.some((app) => app.id === "betaco-warehouse-v1")).toBe(false);
-  expect(portOverlaps.some((overlap) => overlap.port === 5392)).toBe(false);
+  expect(apps.some((app) => app.id === "betaco-warehouse-v1")).toBe(true);
+  expect(portOverlaps.find((overlap) => overlap.port === 5392)).toMatchObject({
+    classification: "legacy-overlap",
+    conflict: true,
+  });
+});
+
+test("lazurio.runtime.v1 discovers one entrypoint and auxiliary listeners", async () => {
+  const root = await createCompaniesWorkspaceFixture({
+    plugin: { schema_version: "companyascode.launchpad_plugin.v1", title: "Demo kontext" },
+  });
+  const packagePath = join(root, "organizations", "TestCompany", "modules", "demo", "app", "v1", "package.json");
+  const packageJson = await Bun.file(packagePath).json();
+  delete packageJson.companyascode;
+  packageJson.scripts.api = "bun api.mjs";
+  packageJson.lazurio = {
+    runtime: {
+      schema_version: "lazurio.runtime.v1",
+      id: "test-company-demo-v1",
+      title: "Demo",
+      company: "test-company",
+      module: "demo",
+      surface: "internal",
+      dev_script: "dev",
+      tags: ["demo"],
+      listeners: [
+        {
+          id: "web",
+          role: "entrypoint",
+          lease: "web",
+          protocol: "http",
+          health: { kind: "http", path: "/health" },
+        },
+        {
+          id: "api",
+          role: "auxiliary",
+          lease: "api",
+          protocol: "http",
+          health: { kind: "http", path: "/api/health" },
+        },
+      ],
+    },
+  };
+  await writeJson(packagePath, packageJson);
+  await writeJson(join(root, "organizations", "TestCompany", "modules.manifest.json"), {
+    company: "test-company",
+    github_org: "TestCompany",
+    module_slots: [{
+      path: "modules/demo",
+      slug: "demo",
+      git: { url: "git@github.com:TestCompany/demo.git", branch: "main" },
+    }],
+  });
+  await writeJson(join(root, "lazurio.port-registry.json"), {
+    schema_version: "lazurio.port_registry.v1",
+    allocation_strategy: "organization-blocks",
+    organization_blocks: [{ company: "test-company", start: 4300, end: 4399 }],
+  });
+  await writeJson(join(root, "organizations", "TestCompany", "modules", "demo", "lazurio.module.json"), {
+    schema_version: "lazurio.module.v1",
+    id: "demo",
+    company: "test-company",
+    tcp_port_policy: {
+      mode: "exception",
+      reason: "Fixture exercises an explicit split listener runtime contract.",
+    },
+    port_leases: [
+      { id: "web", host: "127.0.0.1", port: 4350 },
+      { id: "api", host: "127.0.0.1", port: 4351 },
+    ],
+  });
+
+  const result = await discoverLaunchpadApps(root);
+  expect(result.failures).toEqual([]);
+  expect(result.apps[0]).toMatchObject({
+    port: 4350,
+    health_path: "/health",
+    runtime_contract: { schema_version: "lazurio.runtime.v1", legacy: false },
+  });
+  expect(result.apps[0].listeners.map((listener) => listener.id)).toEqual(["web", "api"]);
+  expect(result.listener_owners.map((owner) => [owner.listener_id, owner.port])).toEqual([
+    ["web", 4350],
+    ["api", 4351],
+  ]);
+
+  const nestedModulePath = join(root, "organizations", "TestCompany", "modules", "demo", "app", "v1", "lazurio.module.json");
+  await writeJson(nestedModulePath, {
+    schema_version: "lazurio.module.v1",
+    id: "demo",
+    company: "test-company",
+    tcp_port_policy: { mode: "single" },
+    port_leases: [{ id: "web", host: "127.0.0.1", port: 4352 }],
+  });
+  const shadowed = await discoverLaunchpadApps(root);
+  expect(shadowed.failures.join("\n")).toContain(
+    "nested lazurio.module.json nesmí zastínit module-root lease",
+  );
+  await rm(nestedModulePath);
+
+  const runtimeSourcePath = join(root, "organizations", "TestCompany", "modules", "demo", "app", "v1", "server.mjs");
+  await writeFile(runtimeSourcePath, "Bun.serve({ port: 4351 });\n", "utf8");
+  const sourceDrift = await discoverLaunchpadApps(root);
+  expect(sourceDrift.invalid_apps).toHaveLength(1);
+  expect(sourceDrift.failures.join("\n")).toContain(
+    "server.mjs: runtime source kopíruje module lease port 4351",
+  );
+  expect(sourceDrift.invalid_apps[0].manifest_issues.join("\n")).toContain(
+    "server.mjs: runtime source kopíruje module lease port 4351",
+  );
+
+  await writeFile(
+    runtimeSourcePath,
+    "Bun.serve({ port: Number(process.env.PORT ?? 5281) });\n",
+    "utf8",
+  );
+  const staleFallback = await discoverLaunchpadApps(root);
+  expect(staleFallback.invalid_apps).toHaveLength(1);
+  expect(staleFallback.invalid_apps[0].manifest_issues.join("\n")).toContain(
+    "server.mjs: runtime source obsahuje číselný port fallback 5281",
+  );
+
+  await writeFile(
+    runtimeSourcePath,
+    "Bun.serve({ port: Number(process.env.PORT) || 5282 });\n",
+    "utf8",
+  );
+  const coercedFallback = await discoverLaunchpadApps(root);
+  expect(coercedFallback.invalid_apps).toHaveLength(1);
+  expect(coercedFallback.invalid_apps[0].manifest_issues.join("\n")).toContain(
+    "server.mjs: runtime source obsahuje číselný port fallback 5282",
+  );
+
+  await writeFile(runtimeSourcePath, "Bun.serve({ port: Number(process.env.PORT) });\n", "utf8");
+  packageJson.scripts.dev = "vite --port 5281";
+  await writeJson(packagePath, packageJson);
+  const drift = await discoverLaunchpadApps(root);
+  expect(drift.invalid_apps).toHaveLength(1);
+  expect(drift.failures.join("\n")).toContain(
+    "scripts.dev obsahuje číselný port 5281",
+  );
+  expect(drift.invalid_apps[0].manifest_issues.join("\n")).toContain(
+    "scripts.dev obsahuje číselný port 5281",
+  );
+
+  packageJson.scripts.dev = "bun server.mjs";
+  delete packageJson.lazurio.runtime.title;
+  await writeJson(packagePath, packageJson);
+  const appLocalIssue = await discoverLaunchpadApps(root);
+  expect(appLocalIssue.failures).toEqual([]);
+  expect(appLocalIssue.invalid_apps[0].manifest_issues.join("\n")).toContain(
+    "lazurio.runtime.title chybí",
+  );
+
+  packageJson.lazurio.runtime.title = "Demo";
+  packageJson.lazurio.runtime.listeners[0].port = 4350;
+  await writeJson(packagePath, packageJson);
+  const inlinePort = await discoverLaunchpadApps(root);
+  expect(inlinePort.failures.join("\n")).toContain(
+    "lazurio.runtime.listeners[0].port není povolené pole",
+  );
 });
 
 test("duplicitní app id izoluje druhý manifest, první zůstává platný (decision 0043)", async () => {
@@ -1462,6 +1616,13 @@ async function createCompaniesWorkspaceFixture({ plugin, appOverrides = {} }) {
       root_role: "companies-root",
     },
   });
+  await writeJson(join(root, "lazurio.port-registry.json"), {
+    schema_version: "lazurio.port_registry.v1",
+    allocation_strategy: "organization-blocks",
+    organization_blocks: [
+      { company: "test-company", start: 24000, end: 24099 },
+    ],
+  });
   await writeJson(join(companyRoot, "company.gen3.json"), {
     organization_generation: "gen3",
     company: { slug: "test-company", display_name: "Test Company", github_org: "TestCompany" },
@@ -1540,6 +1701,7 @@ async function createGenerationMountFixture() {
 async function writeGenerationOrg({ root, path, company, appDir, appId, port, organizationKind }) {
   const companyRoot = join(root, path);
   const appRoot = join(companyRoot, appDir);
+  const module = appDir.split("/")[0];
   await mkdir(join(companyRoot, "manual"), { recursive: true });
   await mkdir(join(companyRoot, "company", "colleagues"), { recursive: true });
   await mkdir(appRoot, { recursive: true });
@@ -1567,15 +1729,15 @@ async function writeGenerationOrg({ root, path, company, appDir, appId, port, or
       app: {
         schema_version: "companyascode.launchpad_app.v1",
         id: appId,
-        title: "Mission Control",
+        title: module === "mission-control" ? "Mission Control" : module,
         company,
-        module: "mission-control",
+        module,
         surface: "internal",
         port,
         host: "127.0.0.1",
         health_path: "/",
         dev_script: "dev",
-        tags: ["mission-control"],
+        tags: [module],
       },
     },
   });

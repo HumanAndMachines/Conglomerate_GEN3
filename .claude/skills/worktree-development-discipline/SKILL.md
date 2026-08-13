@@ -8,9 +8,11 @@ description: Povinná disciplína pro každou Git změnu, branch, PR, review, p�
 ## Kdy použít
 
 Použij před každou změnou Git-trackovaného obsahu v Conglomerate rootu a při
-inventuře, předávce nebo úklidu worktrees. Tato lokálně verzovaná kopie je
-samostatně použitelný consumer kontrakt pro agenta, který startoval přímo zde;
-veřejný root kvůli němu nepotřebuje privátní Knowledgebase ani Mission Control.
+inventuře, předávce nebo úklidu worktrees. Kanonický plán drží Mission Control
+Organizace, která práci vlastní; tato lokálně verzovaná kopie je samostatně
+použitelný consumer kontrakt pro agenta, který startoval přímo zde. Veřejný
+root kvůli němu nepotřebuje privátní Knowledgebase ani vlastní plánovací
+autoritu.
 
 ## Postup
 

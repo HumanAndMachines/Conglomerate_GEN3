@@ -40,6 +40,13 @@ import { createGenerationSafeResponseCache } from "./apps-response-cache-lib.mjs
 import { readOrganizationLaunchpadTheme } from "./organization-theme-lib.mjs";
 import { ModuleFolderActionError, createModuleFolderOpener } from "./module-folder-lib.mjs";
 import {
+  HostedAppUrlError,
+  createHostedAppUrlAdapter,
+  projectHostedAppUrl,
+  projectHostedRuntimePayload,
+  requireHostedAppUrl,
+} from "./hosted-app-url-lib.mjs";
+import {
   GIT_LOCAL_TIMEOUT_MS,
   resolveGitExecutableSync,
   safeGitCommandEnv,
@@ -59,6 +66,12 @@ const host = options.host ?? defaultHost;
 const port = Number(options.port ?? process.env.PORT ?? defaultPort);
 const explicitPort = options.port !== undefined;
 const principalEmail = resolvePrincipalEmail();
+const hostedAppUrls = createHostedAppUrlAdapter({
+  profile: process.env.LAZURIO_WORKSPACE_PROFILE,
+  expectedTeamId: process.env.LAZURIO_TEAM_ID,
+  serviceCatalogJson: process.env.LAZURIO_TEAM_SERVICE_CATALOG_JSON,
+  compatibilityUrlsJson: process.env.LAUNCHPAD_HOSTED_APP_URLS_JSON,
+});
 const runtimeManager = createRuntimeManager({ companiesRoot, launchpadRoot });
 const moduleFolderOpener = createModuleFolderOpener({ companiesRoot, getAppsResponse: buildAppsResponse });
 const gitStatusService = createGitStatusService();
@@ -111,10 +124,15 @@ if (startResult.mode === "reused") {
   process.exit(0);
 }
 const server = startResult.server;
+const bootReconcile = await runtimeManager.reconcileDesiredState();
 
 const serverUrl = `http://${host}:${server.port}`;
 console.log(`Launchpad GEN3 běží na ${serverUrl}`);
 console.log(`Launchpad GEN3 root: ${companiesRoot}`);
+console.log(`[launchpad] desired reconcile active=${bootReconcile.active} disabled=${bootReconcile.disabled} degraded=${bootReconcile.degraded}`);
+for (const result of bootReconcile.results.filter((item) => item.status === "degraded")) {
+  console.warn(`[launchpad] desired reconcile degraded ${result.module_lease_key ?? result.file}: ${result.error}`);
+}
 
 if (options.open) {
   await openBrowser(serverUrl);
@@ -135,6 +153,7 @@ async function buildAppsResponseUncached({ includeGit = false } = {}) {
     gitStatusService,
     includeGit,
   });
+  response.apps = response.apps.map((app) => projectHostedAppUrl(app, hostedAppUrls));
   const nextLogoPaths = new Map();
   await Promise.all((response.organizations ?? []).map(async (organization) => {
     const [logoPath, theme] = await Promise.all([
@@ -350,15 +369,19 @@ function notFound() {
   return jsonResponse({ error: "not_found" }, 404);
 }
 
-function runtimeErrorResponse(error) {
+function runtimeErrorResponse(error, { app = null, adapter = hostedAppUrls } = {}) {
+  if (error instanceof HostedAppUrlError) {
+    return jsonResponse({ error: error.code, message: error.message }, error.status);
+  }
   if (error instanceof RuntimeActionError) {
+    const payload = {
+      error: error.code,
+      message: error.message,
+      details: error.details,
+      ...error.metadata,
+    };
     return jsonResponse(
-      {
-        error: error.code,
-        message: error.message,
-        details: error.details,
-        ...error.metadata,
-      },
+      projectHostedRuntimePayload(payload, app, adapter),
       error.status,
     );
   }
@@ -714,37 +737,70 @@ async function jsonRequestPayload(request, code) {
 }
 
 async function handleRuntimeRoute(request, route) {
+  let hostedProjectionApp = null;
   try {
     const runtimeOptions = request.method === "POST" ? await runtimeRequestOptions(request) : {};
+    hostedProjectionApp = hostedAppUrls.profile === "hosted"
+      ? (await buildAppsResponse()).apps.find((app) => app.id === route.appId) ?? null
+      : { id: route.appId };
     if (route.action === "health" && (request.method === "GET" || request.method === "POST")) {
-      return jsonResponse(await runtimeManager.health(route.appId, runtimeOptions));
+      return jsonResponse(projectHostedRuntimePayload(
+        await runtimeManager.health(route.appId, runtimeOptions),
+        hostedProjectionApp,
+        hostedAppUrls,
+      ));
     }
     if (route.action === "logs" && request.method === "GET") {
       return jsonResponse(await runtimeManager.logs(route.appId));
     }
     if ((route.action === "install" || route.action === "repair") && request.method === "POST") {
-      return jsonResponse(await appsResponseCache.runMutation(() =>
-        runtimeManager.install(route.appId, { action: route.action, ...runtimeOptions })));
+      return jsonResponse(projectHostedRuntimePayload(
+        await appsResponseCache.runMutation(() =>
+          runtimeManager.install(route.appId, { action: route.action, ...runtimeOptions })),
+        hostedProjectionApp,
+        hostedAppUrls,
+      ));
     }
     if (route.action === "start" && request.method === "POST") {
-      return jsonResponse(await appsResponseCache.runMutation(() => runtimeManager.start(route.appId, runtimeOptions)));
+      return jsonResponse(projectHostedRuntimePayload(
+        await appsResponseCache.runMutation(() => runtimeManager.start(route.appId, runtimeOptions)),
+        hostedProjectionApp,
+        hostedAppUrls,
+      ));
     }
     if (route.action === "switch" && request.method === "POST") {
-      return jsonResponse(await appsResponseCache.runMutation(() => runtimeManager.switchApp(route.appId, runtimeOptions)));
+      return jsonResponse(projectHostedRuntimePayload(
+        await appsResponseCache.runMutation(() => runtimeManager.switchApp(route.appId, runtimeOptions)),
+        hostedProjectionApp,
+        hostedAppUrls,
+      ));
     }
     // One-click builder chain (CAC-0044): ensure install → ensure start → URL.
     if (route.action === "open" && request.method === "POST") {
-      return jsonResponse(await appsResponseCache.runMutation(() => runtimeManager.open(route.appId, runtimeOptions)));
+      if (hostedProjectionApp) requireHostedAppUrl(hostedProjectionApp, hostedAppUrls);
+      return jsonResponse(projectHostedRuntimePayload(
+        await appsResponseCache.runMutation(() => runtimeManager.open(route.appId, runtimeOptions)),
+        hostedProjectionApp,
+        hostedAppUrls,
+      ));
     }
     if (route.action === "stop" && request.method === "POST") {
-      return jsonResponse(await appsResponseCache.runMutation(() => runtimeManager.stop(route.appId, runtimeOptions)));
+      return jsonResponse(projectHostedRuntimePayload(
+        await appsResponseCache.runMutation(() => runtimeManager.stop(route.appId, runtimeOptions)),
+        hostedProjectionApp,
+        hostedAppUrls,
+      ));
     }
     if (route.action === "restart" && request.method === "POST") {
-      return jsonResponse(await appsResponseCache.runMutation(() => runtimeManager.restart(route.appId, runtimeOptions)));
+      return jsonResponse(projectHostedRuntimePayload(
+        await appsResponseCache.runMutation(() => runtimeManager.restart(route.appId, runtimeOptions)),
+        hostedProjectionApp,
+        hostedAppUrls,
+      ));
     }
     return jsonResponse({ error: "method_not_allowed" }, 405);
   } catch (error) {
-    return runtimeErrorResponse(error);
+    return runtimeErrorResponse(error, { app: hostedProjectionApp, adapter: hostedAppUrls });
   }
 }
 

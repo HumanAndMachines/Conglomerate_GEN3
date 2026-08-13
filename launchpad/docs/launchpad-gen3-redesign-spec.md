@@ -105,21 +105,47 @@ machines), or **hosted** with us on a Workspace Host VPS for a monthly
 subscription (Launchpad behind a login, the same per-Organization pattern as
 Solo/Team).
 
-Remote/hosted builder work runs BYOS ("bring your own subscription", decisions
-0061/0063). The officially supported Solo/Team mode is a **local Codex/Claude
-agent on the builder's machine that works in the remote Workspace over SSH** —
-the tree, runtime and dev servers live on the Workspace Host, while the agent and
-its subscription stay on the builder's machine. Installing an agent harness
-(T3 Code and similar) directly on a hosted Workspace is only an **optional
-add-on**, and only with server-safe credentials (organization API key, corporate
-Claude Team/Enterprise license), never a personal consumer login. Agents work
-**under supervision**: a closed laptop means the agent is not working — by
-design, not a limitation. Unattended, asynchronous work goes exclusively through
-**AI Kolegové** (AI colleagues), who do it on their own seat, machine (Workspace
-Host) and audit trail on the organization's LLM credentials; every agent-produced
-draft is approved by a human (worktree → PR → merge). Session continuity for
-Solo/Team therefore rests on worktree + Mission Control plan ownership
-(decision 0049), not on a live agent session on the server.
+The supported hosted Builder topology is **one non-root, builder-visible work
+container per Team Workspace**. T3 Code, Codex CLI, the always-available
+Launchpad, `~/Lazurio`, Organization checkouts, plan-owned worktrees and all
+allowed module child processes share one user, `$HOME`, filesystem, PID and
+network namespace. T3 is therefore part of the target hosted surface, not an
+optional add-on, and does not receive another working container. Module apps are
+ordinary Launchpad-managed child processes, never per-module Compose services.
+
+Outside this work container are infrastructure-only sidecars such as Tailscale
+and authenticated HTTPS ingress. Their control-plane sockets, Caddy admin,
+host mounts, sudo, unnecessary capabilities and GitHub App private key are not
+mounted into the Workspace. SSH may remain an operator/recovery transport, but
+it is not the canonical hosted agent topology and must not create a second
+filesystem or runtime procedure. Local and hosted profiles expose the same
+builder-visible `~/Lazurio` structure, discovery/manifests, module-owned leases,
+worktree lifecycle and Doctor/Install/Start/Stop/Open operations; only the
+hosted authentication, ingress and network envelope differs.
+
+This Hosted Team Workspace is a shared development workshop, not a production
+deployment. Module source remains editable while no app is running; Launchpad
+starts module dev children only for private UI/API/MCP preview, testing and
+debugging. Service-catalog origins are private preview endpoints inside the
+approved Tailscale/VPN access plane, never public production surfaces.
+`lazurio.runtime.v1` describes runnable listeners and lifecycle for Launchpad
+and Doctor only; it is not a complete production deployment, ingress, identity
+or MCP contract.
+
+While the Team Workspace is enabled, T3 Code and Launchpad are
+`desired-running`, and the thin supervisor watches only those two stable
+processes. Dashboard Development projects only their entry points and never
+owns module lifecycle; builders Start, Stop and Open module dev previews in
+Launchpad. Production applications appear only from a later verified deployment
+catalog, never from the Workspace service catalog or dev desired state.
+
+Production delivery is a separate follow-up contract: protected source/tag →
+reproducible immutable artifact → isolated production runtime with explicit
+`public | authenticated | internal` ingress, app authentication/authorization,
+secrets/data/backup/rollback, observability and stateless remote MCP. That
+runtime contains no T3, Codex, Launchpad, development checkouts or worktrees.
+No per-module production container is introduced into the Hosted Workspace by
+this scope.
 
 The redesign must preserve the current root behavior:
 
@@ -199,7 +225,7 @@ pipeline and is reported as `binary: { state: "not_available" }`.
 
 ## 1b. Builder Bridge API — versioning, transport adapters, CORS/LNA, pairing token, headless mode [PROPOSAL — pending founder ratification of decision 0077]
 
-**Canonical term (founder 2026-07-12).** The **Builder Bridge** is the **headless daemon + versioned API layer of the Launchpad**. It lives HERE — inside the Launchpad app in the source-available Lazurio core — not as a separate service. The local HTTP API is no longer an internal same-origin surface: it is the Bridge, one versioned API a browser served from another origin (the hosted Dashboard) can reach directly. The existing **agent-over-SSH remote work (decisions 0059/0060/0061) is ONE TRANSPORT under the Bridge umbrella**: remote builder agents keep using plain SSH into the Workspace Host, and the Launchpad/Bridge manages and exposes that access — it does not replace SSH. The canonical public contract is this section together with the versioned Bridge routes and their tests in this repo.
+**Canonical term (founder 2026-07-12).** The **Builder Bridge** is the **headless daemon + versioned API layer of the Launchpad**. It lives HERE — inside the Launchpad app in the source-available Lazurio core — not as a separate service. The local HTTP API is no longer an internal same-origin surface: it is the Bridge, one versioned API a browser served from another origin (the hosted Dashboard) can reach directly. In hosted Team Workspaces the Bridge runs in the same builder-visible work container as T3, Codex, checkout/worktrees and module children. SSH is only an optional operator/recovery transport; it does not define a second agent runtime or filesystem topology. The canonical public contract is this section together with the versioned Bridge routes and their tests in this repo.
 
 - **Foundation is the contract + shared Builder UI + transport/auth adapters — not routes on localhost.** Browser-to-loopback is one transport, not the architecture.
 - **One contract, two deployments, two security profiles.** `/bridge/v1/...` on the builder's `127.0.0.1` daemon (pairing token over CORS + LNA), or on the Workspace Host VPS as **normal HTTPS behind organization login** (same-origin reverse proxy; platform session CAC-0055; real organization authorization and audit on every request). Identical routes/shapes; transport binding, auth adapter and security profile differ. Maps 1:1 to the localhost-vs-Workspace-Host placement in section 1.
@@ -239,6 +265,12 @@ Dashboard (§1).
 module — one module = one card everywhere; surfaces differ only in **which runs
 they offer**. The canonical names are the vocabulary (users never see git jargon
 like "worktree" or "branch"):
+
+This future run vocabulary does not turn the current hosted service-catalog
+origin into PROD. In the current Hosted Workspace contract that origin exposes
+only private MAIN/worktree development preview over the approved access plane;
+`production_url` and the separate production release/runtime contract remain
+independent.
 
 | Run | What it is | Where it lives | Who opens it |
 | --- | --- | --- | --- |
@@ -289,7 +321,7 @@ ever public.
 (`public/app-state.js`) returns the four ordered runs; the card renders them via
 `renderRuntimeStages` (`public/app.js`) as a stage row under the tile. PROD is a
 real new-tab link when the module declares `production_url` (optional,
-warning-first manifest field, `schemas/launchpad-app.schema.json`), otherwise an
+warning-first manifest field, `schemas/lazurio-runtime.schema.json`), otherwise an
 honest disabled stub. MAIN and DEV remote are honest **"via tailnet — not wired
 yet"** affordances (transport is [OPEN]); disabled runs always state **why** in
 plain language. DEV local **reuses** the existing one-click open
@@ -364,25 +396,24 @@ precondition is false.
 
 | Action | Workspace app policy | Productionspace policy | Response must show |
 | --- | --- | --- | --- |
-| Open | Allowed when `url` exists; never starts anything | Allowed as read-only | target URL |
+| Open | Ensure install/start for the selected main/worktree source, prove health and accept desired state; local returns loopback, hosted returns the exact catalog origin | Allowed as read-only | target URL, runtime, desired source |
 | Install | Allowed only when `dependencies.can_install=true`; app-cwd scoped | Disabled until explicit production policy exists | action, command, cwd, exit_code, log_path, log_excerpt |
 | Repair | Same mechanism as Install for `ready`/`stale_lockfile` states | Disabled until explicit production policy exists | action, command, cwd, exit_code, log_path, log_excerpt |
-| Start | Allowed only when `dependencies.can_start=true` and no runtime conflict | Disabled or confirmation-gated until policy exists | runtime, pid, health, failure_kind on error |
-| Stop | Allowed only for app-owned/adopted local process | confirmation-gated | pid/owner/result |
+| Start | Allowed when `dependencies.can_start=true`; a valid static module lease replaces its current occupant under the module mutex | Disabled or confirmation-gated until policy exists | runtime, pid, health, desired source, failure_kind on error |
+| Stop | Allowed only for the active current-instance managed process; persist disabled desired state before signaling | confirmation-gated | desired state, pid/owner/result |
 | Restart | Stop + Start; never bypasses dependency/policy guards | confirmation-gated | both action results |
 | Logs | Always allowed for visible app | Always allowed | log_path and tail |
 | Pull | Organization root or Workspace module; clean expected branch; fresh remote check; `--ff-only` | Read-only / disabled | before/after status, new head |
 | Pull + autostash | Explicit confirmation; incoming > 0, outgoing = 0; stash tracked + untracked; restore staged state; preserve stash on conflict | Disabled | before/after, conflict or preserved-stash state |
 | Pull all | All mounted Organization roots + Workspace modules; clean pull or guarded autostash per repo; isolated result | Productionspace skipped | per-repo outcome + aggregate counts |
 
-For main Workspace runtimes, the manifest-owned port is only a discovery key,
-not proof of process ownership. A listener is `adopted-port` only when Launchpad
-resolves its PID and positively verifies that its canonical CWD matches the
-manifested app CWD. An explicit mismatch is `foreign-port`; an unavailable or
-inconclusive CWD lookup is `unknown-port`. Neither untrusted state may expose
-Stop/Restart or receive a signal. Stop re-resolves both PID and the positive CWD
-match immediately before `SIGTERM` and again before any bounded-timeout
-`SIGKILL`; an unknown, changed, or mismatched result fails closed.
+For legacy runtimes, the manifest-owned port is only a discovery key and never
+grants destructive authority. For a valid static `lazurio.module.v1` lease,
+Start/Open may reclaim any safely signalable occupant under the module mutex and
+immediately replace it with the declared module. Explicit Stop is intentionally
+narrower: it first persists disabled desired state and then signals only the
+active record managed by the current Launchpad instance. It never adopts or
+kills an unrelated process without performing that replacement lifecycle.
 
 Productionspace systems must not look like normal office apps. The first
 productionspace release should ship with read-only Open/Logs/Doctor and explicit
@@ -431,7 +462,9 @@ For `runtime_failed` or `app_start_failed`, the panel should show the exact
 - `missing_dependencies` → Install/Repair
 - `missing_script` → fix `dev_script` or package scripts
 - `bad_cwd` → Doctor sync / fix package path
-- `port_conflict` → Stop conflicting owner or free port
+- `reserved_port_owner_unresolvable` → inspect PID/process-group lookup; a
+  valid `lazurio.module.v1` lease otherwise reclaims the occupied port
+  automatically
 - `unknown_early_exit` → open Logs and inspect app error
 
 ## 8. Přepínač prostorů v záhlaví
@@ -574,9 +607,10 @@ Mission Control plan worktrees. Contract summary (decision 0049 in
 - The app card/detail offers a runtime source selector: `main` or an eligible
   worktree (owned by a plan, dependencies ready). A worktree run carries a
   prominent `WORKTREE · <PLAN-code> · <branch>` badge.
-- DEV instances get their port from Launchpad via the `PORT` env contract; an
-  app manifest declares support. A DEV instance never takes the main runtime's
-  port — collision is a blocking state.
+- Main i každý DEV worktree používají stejný přesný module-owned lease.
+  Launchpad pod OS-level module lockem zastaví předchozí variantu a spustí
+  zvolený source; v jednu chvíli proto běží nejvýše jedna verze modulu.
+  Dynamický worktree port ani remap mimo `lazurio.module.v1` není povolený.
 - Main i worktree runtime dostává absolutní
   `COMPANYASCODE_ORGANIZATION_ROOT`. Appka používá tento kontrakt pro
   Organization-level manifesty, `infra/`, shared compatibility soubory a
@@ -601,7 +635,7 @@ sdíleného GEN3, **bez org-specific hardcodů**.
 GEN2 UX stál na hardcodech jedné firmy (`APP_COPY`, `APP_ICON_STYLES`,
 `APP_GROUPS`, `QUICK_APP_IDS`). Sdílený Launchpad je nesmí obsahovat — žádná
 org-specific pravda v shared kódu (decisions 0040/0042). Builder metadata proto
-patří do **app manifestu** (`companyascode.app`), ne do shared kódu:
+patří do **app manifestu** (`lazurio.runtime`), ne do shared kódu:
 
 | Pole | Typ | Význam | Fallback když chybí |
 | --- | --- | --- | --- |
@@ -618,7 +652,7 @@ sdíleném Launchpadu.
 
 Validace je **warning-first**: vadná hodnota volitelného pole appku
 nezneplatní — jen se zaloguje varování (`… (builder metadata)`) a karta spadne
-na fallback. Schema: `schemas/launchpad-app.schema.json`; validace +
+na fallback. Schema: `schemas/lazurio-runtime.schema.json`; validace +
 normalizace: `src/discovery-lib.mjs` (`validateBuilderMetadata`,
 `builderMetadataString`). Pole se propisují na app objekt jako `string|null`,
 ať UI nemusí řešit prázdné hodnoty.
@@ -654,14 +688,23 @@ ani názvy jejich modulů.
 `POST /api/apps/:id/open` (`src/runtime-lib.mjs` → `open`) je idempotentní řetěz:
 ensure install (jen když dependency stav vyžaduje a jde bezpečně) → ensure start
 (běžící appka se reuse-ne, nespouští znovu) → vrátit URL. Každý krok je
-idempotentní a přerušitelný; **živá port kolize je blokující stav** (decision
-0049), žádný tichý fallback — konflikt propadne do srozumitelné chyby.
-Deklarovaný overlap je povolený pouze mezi různými Organizacemi; uvnitř jedné
-Organizace je hard discovery failure. Pokud port živě vlastní známá a pozitivně
-ověřená aplikace jiné Organizace, uživatelské `POST /api/apps/:id/open` ji
-bezpečně zastaví a spustí cíl — poslední otevřený modul vyhraje. Listener bez
-známé vazby nikdy automaticky neukončí. Samostatný
-`POST /api/apps/:id/switch` dál vyžaduje potvrzení. UI rezervuje tab
+idempotentní a přerušitelný; žádný tichý port fallback ani remap neexistuje.
+Validní `lazurio.module.v1` lease referencovaný z `lazurio.runtime.v1` dává explicitnímu
+`POST /api/apps/:id/open` autoritu obsazené deklarované porty reclaimnout:
+pod OS-level company/module mutexem znovu zjistí vlastníka, celé jeho process
+group pošle `SIGTERM`, při potřebě `SIGKILL`, ověří uvolnění, spustí zvolenou
+variantu a před uvolněním mutexu ověří novou process group na všech listenerech.
+Původ ani CWD procesu nejsou důvod port ponechat obsazený. Neznámá nebo
+nesignalizovatelná process group je vysvětlitelný hard failure. Stop dál cílí
+jen managed aktivní instanci.
+
+Deklarovaný overlap je přípustný pouze mezi verzemi a worktrees téhož
+`company/module#lease`; všechny ostatní shody číselného portu napříč
+Organizacemi jsou hard discovery/Doctor failure. Lifecycle stejného modulu je
+serializovaný OS-level mutexem i mezi více Launchpad procesy a v jednu chvíli
+běží jen jedna jeho varianta. Samostatný
+`POST /api/apps/:id/switch` dál vyžaduje potvrzení, běžný Start/Open ale
+nahrazuje jinou variantu stejného modulu bez portového dialogu. UI rezervuje tab
 před akcí (aby ho prohlížeč nezablokoval), ukazuje průběh „Otevírám…", toasty a
 klasifikaci chyb do lidského jazyka (`classifyOpenError`).
 

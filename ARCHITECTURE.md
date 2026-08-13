@@ -67,6 +67,53 @@ Více Residentů může sdílet jednu Mašinu pouze tehdy, když Owner vědomě 
 že kompromitace jednoho může kompromitovat všechny. Pokud mají mít oddělený
 blast radius, potřebují oddělené Mašiny.
 
+### Hosted Team Workspace jako Mašina
+
+Builder-visible Hosted Team Workspace má právě jeden non-root pracovní
+kontejner. Ve stejném user, `$HOME`, filesystem, PID a network namespace běží
+T3 Code, Codex CLI, Launchpad, `~/Lazurio`, checkouty, worktrees a
+Launchpadem spravované modulové child procesy. Uvnitř Team Workspace nejde o
+bezpečnostní hranice mezi jednotlivými členy; tvrdá access hranice je mezi
+Team Workspaces. Individuální izolaci poskytuje jednočlenný Team Workspace.
+
+Vně pracovního kontejneru zůstává jen infrastrukturní obal, například
+Tailscale sidecar a autentizovaný HTTPS ingress. Jejich control-plane sockety,
+host mounts, Caddy admin, sudo, zbytečné capabilities a provider private keys
+se do Workspace nemountují. Tenký init/supervisor obnovuje T3 a Launchpad;
+Launchpad je jediný owner modulových procesů a z durable desired state obnoví
+přesný main/worktree source. Per-module kontejnery, Docker-in-Docker ani další
+runtime orchestrátor do tohoto modelu nepatří.
+
+Dokud je Team Workspace zapnutý, T3 Code a Launchpad jsou
+`desired-running` a tenký supervisor hlídá pouze tyto dva stabilní procesy.
+Dashboard Development projektuje jen jejich vstupy; modulový dev proces
+spouští, zastavuje a otevírá výhradně Launchpad. Produkční aplikace se v
+Dashboardu objeví až z pozdějšího ověřeného deployment katalogu, nikdy z
+Workspace service katalogu nebo dev desired state.
+
+Lokální a hosted profil mají shodnou builder-visible strukturu a lifecycle
+postupy. Liší se pouze bezpečnostním a síťovým obalem: lokální `Open` vrací
+loopback, hosted `Open` exact autentizovaný HTTPS origin z Team service
+katalogu. Interní module leases nejsou VPN allowlist; externí hranicí je Team
+HTTPS/WSS ingress na 443.
+
+Hosted Team Workspace je sdílená vývojová dílna, ne produkční deployment.
+Zdroj modulu lze editovat i bez běžící aplikace; Launchpad spouští modulový dev
+proces jen pro privátní UI/API/MCP preview, testování a debugging. Katalogový
+HTTPS origin je dostupný pouze přes schválený Tailscale/VPN access plane a
+nikdy nepředstavuje veřejný produkční povrch. `lazurio.runtime.v1` proto
+popisuje jen runnable listenery a lifecycle pro Launchpad a Doctor, nikoli
+úplný produkční deployment, ingress, identity nebo MCP kontrakt.
+
+Produkční release je samostatná architektonická lane: chráněný source/tag se
+mění na reprodukovatelný immutable artefakt a ten běží v izolovaném produkčním
+runtime s explicitním `public | authenticated | internal` ingressem, app
+authentication/authorization, secrets, daty, backupem, rollbackem,
+observability a stateless remote MCP. Produkce neobsahuje T3, Codex, Launchpad,
+dev checkouty ani worktrees. Tato hranice nezavádí per-module produkční
+kontejnery do Hosted Workspace scope; konkrétní produkční topologie vyžaduje
+samostatný follow-up kontrakt.
+
 ### Resident
 
 Resident je dlouhodobá digitální identita, která na Mašině žije. Má jméno,

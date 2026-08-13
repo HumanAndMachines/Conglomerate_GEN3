@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "bun run preservation:test && bun run personalspace:test && bun run worktrees:test && bun run git-policy:test && bun run agent-skills:test && bun run integrations:contracts:test && bun run lazurio:test && bun run resident:test && bun run doctor:agent-skills && bun run --cwd launchpad check",
+    "check": "bun run preservation:test && bun run personalspace:test && bun run worktrees:test && bun run runtime:migrate:test && bun run git-policy:test && bun run agent-skills:test && bun run integrations:contracts:test && bun run lazurio:test && bun run resident:test && bun run doctor:agent-skills && bun run --cwd launchpad check",
     "doctor": "bun run --cwd launchpad doctor",
     "doctor:task": "bun run --cwd launchpad doctor:task",
     "doctor:json": "bun run --cwd launchpad doctor:json",
@@ -37,6 +37,8 @@
     "worktrees:create": "bun scripts/worktree-create.mjs",
     "worktrees:status": "bun .agents/skills/worktree-development-discipline/scripts/worktree-inventory.mjs",
     "worktrees:check": "bun .agents/skills/worktree-development-discipline/scripts/worktree-inventory.mjs --check",
+    "runtime:migrate": "bun scripts/lazurio-runtime-migrate.mjs",
+    "runtime:migrate:test": "bun test scripts/lazurio-runtime-migrate.test.mjs scripts/lazurio-module-port.test.mjs",
     "worktrees:test": "bun test scripts/worktree-inventory.contract.test.mjs scripts/worktree-create-contract.test.mjs scripts/worktree-create.test.mjs scripts/worktree-create-git-policy.test.mjs scripts/worktree-create-lock.test.mjs"
   }
 }

@@ -385,10 +385,13 @@ Launchpad je **builder-first** root surface (decision 0047): spouští
 aplikace z `main` i z worktrees podle Mission Control plánů (decision 0049),
 dynamicky načítá Organizace/Teamy/moduly a productionspace ukazuje jen
 read-only; admin konfigurace a vstup Organization Users do produkčních
-aplikací patří do Conglomerate Dashboardu GEN3. Porty jsou app-owned
-(deklaruje je `package.json` manifest aplikace, uvnitř Organizace unikátní);
-shared Launchpad nikdy nedrží hardcodovaný port map jedné Organizace a cizí
-nebo neověřitelný listener nikdy automaticky neukončuje. Productionspace
+aplikací patří do Conglomerate Dashboardu GEN3. Porty jsou module-owned
+(přiděluje je `lazurio.module.v1`, konkrétní runtime je pouze používá);
+shared Launchpad nikdy nedrží hardcodovaný port map jedné Organizace. Platný
+static module lease dává `Start`/`Open` autoritu tvrdě převzít každý bezpečně
+signalizovatelný proces na rezervovaném listeneru; explicitní `Stop` ukončuje
+jen managed aktivní instanci. Legacy nebo nevalidní lease takovou autoritu
+nedává. Productionspace
 repozitáře z rootu nespouštěj ani nereleasuj bez explicitní org policy.
 
 ## Handoff / closeout

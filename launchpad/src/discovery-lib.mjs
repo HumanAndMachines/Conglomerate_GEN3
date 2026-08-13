@@ -1,7 +1,16 @@
 import { existsSync, lstatSync, readdirSync, realpathSync } from "fs";
 import { readdir, readFile } from "fs/promises";
-import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "path";
-import { buildPortOwner, buildPortOwnershipIndex } from "./port-ownership-lib.mjs";
+import { basename, dirname, extname, isAbsolute, join, posix, relative, resolve, sep } from "path";
+import { buildPortOwner, buildPortOwnershipIndex, canonicalListenerHost } from "./port-ownership-lib.mjs";
+import { normalizePackageRuntime } from "./runtime-contract-lib.mjs";
+import {
+  materializeRuntimeFromModule,
+  normalizeModuleManifest,
+} from "./module-contract-lib.mjs";
+import {
+  normalizePortRegistry,
+  validateModuleLeasesAgainstRegistry,
+} from "./port-registry-lib.mjs";
 import {
   isCanonicalOrganizationRepositorySlotPath,
   normalizeOrganizationSlotPath,
@@ -22,8 +31,32 @@ const ignoredDirs = new Set([
   // It must not acquire Launchpad lifecycle actions merely by containing a package manifest.
   "productionspace",
 ]);
+const runtimeSourceIgnoredDirs = new Set([
+  ".git",
+  ".build",
+  ".next",
+  "__tests__",
+  "archive",
+  "assets",
+  "build",
+  "coverage",
+  "data",
+  "dist",
+  "fixture",
+  "fixtures",
+  "generated",
+  "migrations",
+  "node_modules",
+  "test",
+  "tests",
+  "vendor",
+]);
+const runtimeSourceExtensions = new Set([".cjs", ".js", ".jsx", ".mjs", ".ts", ".tsx"]);
 const launchpadRoot = join(import.meta.dirname, "..");
 const appSchemaPath = join(launchpadRoot, "schemas", "launchpad-app.schema.json");
+const runtimeSchemaPath = join(launchpadRoot, "schemas", "lazurio-runtime.schema.json");
+const moduleSchemaPath = join(launchpadRoot, "schemas", "lazurio-module.schema.json");
+const portRegistrySchemaPath = join(launchpadRoot, "schemas", "lazurio-port-registry.schema.json");
 const pluginSchemaPath = join(launchpadRoot, "schemas", "launchpad-plugin.schema.json");
 const defaultOrganizationMountpoint = "organizations";
 const defaultModuleTemplateMountpoint = "templates";
@@ -373,6 +406,196 @@ export async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"));
 }
 
+async function resolveRuntimeModuleContract({
+  companiesRoot,
+  packagePath,
+  company,
+  runtime,
+}) {
+  const packageDirectory = dirname(resolve(companiesRoot, packagePath));
+  const boundary = resolve(companiesRoot, company.path ?? ".");
+  if (!pathIsWithin(boundary, packageDirectory)) {
+    return {
+      module: null,
+      issues: [`${packagePath}: runtime package leží mimo deklarovanou company boundary ${company.path ?? "."}`],
+    };
+  }
+  const declaredRoots = company.discovery_source === "local_surface"
+    ? [boundary]
+    : await declaredOrganizationModuleRoots(boundary);
+  const containingRoots = declaredRoots
+    .filter((root) => pathIsWithin(root, packageDirectory))
+    .sort((left, right) => right.length - left.length);
+  if (containingRoots.length === 0) {
+    return {
+      module: null,
+      issues: [`${packagePath}: runtime package neleží v žádném modulu deklarovaném v modules.manifest.json nebo company.gen3.json#modules`],
+    };
+  }
+  const moduleRoot = containingRoots[0];
+  const nestedManifests = [];
+  let cursor = packageDirectory;
+  while (cursor !== moduleRoot && pathIsWithin(moduleRoot, cursor)) {
+    const candidate = join(cursor, "lazurio.module.json");
+    if (existsSync(candidate)) nestedManifests.push(workspaceRelativePath(companiesRoot, candidate));
+    const parent = dirname(cursor);
+    if (parent === cursor) break;
+    cursor = parent;
+  }
+  if (nestedManifests.length > 0) {
+    return {
+      module: null,
+      issues: nestedManifests.map(
+        (path) => `${path}: nested lazurio.module.json nesmí zastínit module-root lease ${workspaceRelativePath(companiesRoot, join(moduleRoot, "lazurio.module.json"))}`,
+      ),
+    };
+  }
+  const manifestPath = join(moduleRoot, "lazurio.module.json");
+  const relativeManifestPath = workspaceRelativePath(companiesRoot, manifestPath);
+  if (!existsSync(manifestPath)) {
+    return {
+      module: null,
+      issues: [`${relativeManifestPath}: v deklarovaném kořeni modulu chybí lazurio.module.v1`],
+    };
+  }
+  let manifest;
+  try {
+    manifest = await readJson(manifestPath);
+  } catch (error) {
+    return {
+      module: null,
+      issues: [`${relativeManifestPath}: lazurio.module.json nejde přečíst: ${error.message}`],
+    };
+  }
+  const normalized = normalizeModuleManifest({
+    manifest,
+    modulePath: relativeManifestPath,
+  });
+  if (runtime?.module && normalized.module?.id && runtime.module !== normalized.module.id) {
+    normalized.issues.push(
+      `${packagePath}: module-root ${relativeManifestPath} patří modulu ${normalized.module.id}, runtime deklaruje ${runtime.module}`,
+    );
+  }
+  return normalized;
+}
+
+async function declaredOrganizationModuleRoots(organizationRoot) {
+  const paths = [];
+  for (const [fileName, collection] of [
+    ["modules.manifest.json", "module_slots"],
+    ["company.gen3.json", "modules"],
+  ]) {
+    const manifestPath = join(organizationRoot, fileName);
+    if (!existsSync(manifestPath)) continue;
+    const manifest = await readJson(manifestPath);
+    for (const slot of manifest?.[collection] ?? []) {
+      if (typeof slot?.path !== "string" || slot.path === "" || isAbsolute(slot.path)) continue;
+      const root = resolve(organizationRoot, slot.path);
+      if (pathIsWithin(organizationRoot, root)) paths.push(root);
+    }
+  }
+  return [...new Set(paths)];
+}
+
+function runtimeScriptPortAuthorityIssues({ packageJson, packagePath, module }) {
+  const issues = [];
+  for (const [scriptName, command] of Object.entries(packageJson?.scripts ?? {})) {
+    if (typeof command !== "string") continue;
+    const inlinePort = command.match(/(?:^|\s)--port(?:=|\s+)["']?(\d{4,5})(?=["'\s]|$)/);
+    if (inlinePort) {
+      issues.push(
+        `${packagePath}: scripts.${scriptName} obsahuje číselný port ${inlinePort[1]}; použij Launchpadem injektované PORT nebo LAZURIO_RUNTIME_LISTENER_<ID>_PORT`,
+      );
+    }
+    for (const lease of (module?.port_leases ?? []).filter((entry) => Number.isInteger(entry?.port))) {
+      if (new RegExp(`(^|\\D)${lease.port}(?=\\D|$)`).test(command)) {
+        issues.push(
+          `${packagePath}: scripts.${scriptName} kopíruje module lease port ${lease.port}; použij Launchpadem injektované PORT nebo LAZURIO_RUNTIME_LISTENER_<ID>_PORT`,
+        );
+      }
+    }
+  }
+  return issues;
+}
+
+function splitRuntimeValidationIssues(issues) {
+  const authority = [];
+  const appLocal = [];
+  for (const issue of issues) {
+    const portAuthorityIssue =
+      issue.includes("package nesmí současně deklarovat lazurio.runtime a legacy companyascode.app")
+      || /: lazurio\.runtime\.(module|port|host)(?:\s|\.)/.test(issue)
+      || /: lazurio\.runtime\.listeners musí být neprázdné pole/.test(issue)
+      || /: lazurio\.runtime\.listeners\[\d+\]\.(lease|port|host|allocation|claim)(?:\s|\.)/.test(issue);
+    (portAuthorityIssue ? authority : appLocal).push(issue);
+  }
+  return { authority, appLocal };
+}
+
+export async function runtimeSourcePortAuthorityIssues({
+  packageDirectory,
+  packagePath,
+  module,
+}) {
+  const leases = (module?.port_leases ?? []).filter((lease) => Number.isInteger(lease.port));
+  if (leases.length === 0) return [];
+  const issues = [];
+
+  async function visit(directory) {
+    let entries;
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch (error) {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue;
+      const absolutePath = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (!runtimeSourceIgnoredDirs.has(entry.name)) await visit(absolutePath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const extension = extname(entry.name).toLowerCase();
+      if (!runtimeSourceExtensions.has(extension)) continue;
+      if (/(^|[.-])(test|spec)([.-]|$)/i.test(entry.name)) continue;
+
+      let source;
+      try {
+        source = await readFile(absolutePath, "utf8");
+      } catch {
+        continue;
+      }
+      const sourcePath = posix.join(
+        posix.dirname(packagePath),
+        relative(packageDirectory, absolutePath).replace(/\\/g, "/"),
+      );
+      const fallbackPatterns = [
+        /(?:process\.env|Bun\.env)(?:\.(?:PORT|LAZURIO_RUNTIME_LISTENER_[A-Z0-9_]+_PORT)|\[["'](?:PORT|LAZURIO_RUNTIME_LISTENER_[A-Z0-9_]+_PORT)["']\])\s*(?:\?\?|\|\|)\s*["']?(\d{4,5})["']?/g,
+        /(?:Number|parseInt)\([^;\n)]*(?:PORT|_PORT)[^;\n)]*\)\s*(?:\?\?|\|\|)\s*["']?(\d{4,5})["']?/g,
+        /\b(?:const|let|var)\s+(?:[A-Z0-9]+_)*PORT(?:_[A-Z0-9]+)*\s*=\s*["']?(\d{4,5})["']?/g,
+      ];
+      for (const pattern of fallbackPatterns) {
+        for (const match of source.matchAll(pattern)) {
+          issues.push(
+            `${sourcePath}: runtime source obsahuje číselný port fallback ${match[1]}; port smí materializovat jen module lease`,
+          );
+        }
+      }
+      for (const lease of leases) {
+        if (new RegExp(`(^|\\D)${lease.port}(?=\\D|$)`).test(source)) {
+          issues.push(
+            `${sourcePath}: runtime source kopíruje module lease port ${lease.port}; použij Launchpadem injektované PORT nebo LAZURIO_RUNTIME_LISTENER_<ID>_PORT`,
+          );
+        }
+      }
+    }
+  }
+
+  await visit(packageDirectory);
+  return issues;
+}
+
 // Cesty vracené v discovery/API modelu jsou přenositelné identifikátory
 // workspace, ne nativní filesystem cesty. Drží proto vždy POSIX oddělovače i na
 // Windows; až spotřebitel je přes join/resolve překládá zpět na lokální cestu.
@@ -456,34 +679,34 @@ function builderMetadataProductionUrl(value) {
   return trimmed;
 }
 
-function validateBuilderMetadata({ app, packagePath, softWarnings }) {
+function validateBuilderMetadata({ app, packagePath, softWarnings, sourceLabel = "companyascode.app" }) {
   if (!softWarnings) return;
   for (const key of ["icon", "description", "group"]) {
     if (app[key] === undefined) continue;
     if (typeof app[key] !== "string" || app[key].trim() === "") {
       softWarnings.push(
-        `${packagePath}: companyascode.app.${key} má být neprázdný string; ignoruji a použiju fallback`,
+        `${packagePath}: ${sourceLabel}.${key} má být neprázdný string; ignoruji a použiju fallback`,
       );
       continue;
     }
     const limit = BUILDER_METADATA_SOFT_LIMITS[key];
     if (limit && app[key].length > limit) {
       softWarnings.push(
-        `${packagePath}: companyascode.app.${key} je delší než ${limit} znaků; karta text zkrátí`,
+        `${packagePath}: ${sourceLabel}.${key} je delší než ${limit} znaků; karta text zkrátí`,
       );
     }
   }
   if (app.production_url !== undefined && builderMetadataProductionUrl(app.production_url) === null) {
     softWarnings.push(
-      `${packagePath}: companyascode.app.production_url má být http(s) URL; ignoruji a PROD zůstane bez odkazu`,
+      `${packagePath}: ${sourceLabel}.production_url má být http(s) URL; ignoruji a PROD zůstane bez odkazu`,
     );
   }
 }
 
-// Exportováno pro personalspace discovery lane (CAC-0048): osobní aplikace drží
-// identický companyascode.app kontrakt jako org aplikace, takže znovu používají
-// přesně stejnou validaci proti launchpad-app.schema.json. Personalspace lane
-// zůstává jinak úplně oddělená od organizations/* auto-discovery.
+// Exportováno pro personalspace discovery lane (CAC-0048): tato funkce drží
+// pouze read-compatible validaci legacy companyascode.app. Nový
+// lazurio.runtime kontrakt pro obě lane normalizuje runtime-contract-lib.
+// Personalspace lane zůstává jinak úplně oddělená od organizations/* discovery.
 export function validateAppManifest({ app, packageJson, packagePath, schema, failures, softWarnings }) {
   for (const key of schema.required ?? []) {
     if (app[key] === undefined) failures.push(`${packagePath}: companyascode.app.${key} chybí`);
@@ -791,7 +1014,6 @@ async function discoverOrganizations({ companiesRoot, companiesConfig, failures,
 
     const mount = autoOrganizationFromCompanyJson({ companyJson, path, directoryName: entry.name });
     if (!mount) continue;
-
     if (mount.organization_kind === "template") {
       if (seenTemplateSlugs.has(mount.slug)) {
         warnings.push(`${mount.path}: template mount přeskočen, protože slug ${mount.slug} už drží jiný template mount`);
@@ -1175,6 +1397,32 @@ export async function discoverLaunchpadApps(
     );
   }
   const appSchema = await readJson(appSchemaPath);
+  const runtimeSchema = await readJson(runtimeSchemaPath);
+  if (runtimeSchema?.properties?.schema_version?.const !== "lazurio.runtime.v1") {
+    failures.push("launchpad/schemas/lazurio-runtime.schema.json nemá canonical lazurio.runtime.v1 schema_version");
+  }
+  const moduleSchema = await readJson(moduleSchemaPath);
+  if (moduleSchema?.properties?.schema_version?.const !== "lazurio.module.v1") {
+    failures.push("launchpad/schemas/lazurio-module.schema.json nemá canonical lazurio.module.v1 schema_version");
+  }
+  const portRegistrySchema = await readJson(portRegistrySchemaPath);
+  if (portRegistrySchema?.properties?.schema_version?.const !== "lazurio.port_registry.v1") {
+    failures.push("launchpad/schemas/lazurio-port-registry.schema.json nemá canonical lazurio.port_registry.v1 schema_version");
+  }
+  const portRegistryPath = join(companiesRoot, "lazurio.port-registry.json");
+  let portRegistry = null;
+  const portRegistryReadIssues = [];
+  if (!existsSync(portRegistryPath)) {
+    portRegistryReadIssues.push("Chybí centrální lazurio.port-registry.json");
+  } else {
+    try {
+      const normalizedRegistry = normalizePortRegistry(await readJson(portRegistryPath));
+      portRegistry = normalizedRegistry.registry;
+      portRegistryReadIssues.push(...normalizedRegistry.issues);
+    } catch (error) {
+      portRegistryReadIssues.push(`lazurio.port-registry.json nejde přečíst: ${error.message}`);
+    }
+  }
   const pluginSchema = await readJson(pluginSchemaPath);
   const packageEntries = [];
   const templatePackageEntries = [];
@@ -1240,28 +1488,77 @@ export async function discoverLaunchpadApps(
   const apps = [];
   const invalidApps = [];
   const portOwners = [];
-  const organizationPortOwners = new Map();
+  const moduleContractsByPath = new Map();
   const appIds = new Map();
   for (const { packagePath, company } of sortedPackageEntries) {
     const absolutePackagePath = join(companiesRoot, packagePath);
     const packageJson = await readJson(absolutePackagePath);
-    const app = packageJson.companyascode?.app;
-    if (!app) continue;
+    const normalizedRuntime = normalizePackageRuntime({ packageJson, packagePath });
+    if (!normalizedRuntime) continue;
+    let app = normalizedRuntime.app;
+    const sourceLabel = app.runtime_contract?.source ?? "runtime manifest";
+    const usesLazurioRuntime = app.runtime_contract?.legacy !== true;
+    const splitRuntimeIssues = usesLazurioRuntime
+      ? splitRuntimeValidationIssues(normalizedRuntime.issues)
+      : { authority: [], appLocal: normalizedRuntime.issues };
 
-    const manifestIssues = [];
+    const manifestIssues = [...splitRuntimeIssues.appLocal];
+    const runtimeContractIssues = [...splitRuntimeIssues.authority];
     const securityIssues = [];
-    const builderMetadataWarnings = [];
-    validateAppManifest({
-      app,
-      packageJson,
-      packagePath,
-      schema: appSchema,
-      failures: manifestIssues,
-      softWarnings: builderMetadataWarnings,
-    });
+    const builderMetadataWarnings = [...normalizedRuntime.warnings];
+    if (app.runtime_contract?.legacy === true) {
+      validateAppManifest({
+        app: packageJson.companyascode.app,
+        packageJson,
+        packagePath,
+        schema: appSchema,
+        failures: manifestIssues,
+        softWarnings: builderMetadataWarnings,
+      });
+      const governingModule = await resolveRuntimeModuleContract({
+        companiesRoot,
+        packagePath,
+        company,
+        runtime: app,
+      });
+      if (governingModule.module) {
+        runtimeContractIssues.push(
+          `${packagePath}: legacy companyascode.app nesmí existovat vedle module-root lazurio.module.json; migruj runtime na lazurio.runtime.v1`,
+        );
+      }
+    } else {
+      const moduleResult = await resolveRuntimeModuleContract({
+        companiesRoot,
+        packagePath,
+        company,
+        runtime: app,
+      });
+      runtimeContractIssues.push(...moduleResult.issues);
+      if (moduleResult.module) {
+        moduleContractsByPath.set(moduleResult.module.module_path, moduleResult.module);
+        const materialized = materializeRuntimeFromModule({
+          runtime: app,
+          module: moduleResult.module,
+          packagePath,
+        });
+        app = materialized.app;
+        runtimeContractIssues.push(...materialized.issues);
+        runtimeContractIssues.push(...runtimeScriptPortAuthorityIssues({
+          packageJson,
+          packagePath,
+          module: moduleResult.module,
+        }));
+        runtimeContractIssues.push(...await runtimeSourcePortAuthorityIssues({
+          packageDirectory: dirname(absolutePackagePath),
+          packagePath,
+          module: moduleResult.module,
+        }));
+      }
+      validateBuilderMetadata({ app, packagePath, softWarnings: builderMetadataWarnings, sourceLabel });
+    }
     if (typeof app.company === "string" && app.company !== company.slug) {
       manifestIssues.push(
-        `${packagePath}: companyascode.app.company musí být ${company.slug}, protože package leží ve ${company.path}`,
+        `${packagePath}: ${sourceLabel}.company musí být ${company.slug}, protože package leží ve ${company.path}`,
       );
     }
     if (
@@ -1270,7 +1567,7 @@ export async function discoverLaunchpadApps(
       && !app.id.startsWith(organizationAppIdPrefix(company.slug))
     ) {
       manifestIssues.push(
-        `${packagePath}: companyascode.app.id musí začínat Organization prefixem ${organizationAppIdPrefix(company.slug)}`,
+        `${packagePath}: ${sourceLabel}.id musí začínat Organization prefixem ${organizationAppIdPrefix(company.slug)}`,
       );
     }
 
@@ -1294,6 +1591,16 @@ export async function discoverLaunchpadApps(
     // Organizace (decision 0042 bezpečnostní parita, decision 0043).
     if (securityIssues.length > 0) {
       failures.push(...securityIssues);
+      continue;
+    }
+    if (runtimeContractIssues.length > 0) {
+      failures.push(...runtimeContractIssues);
+      invalidApps.push(invalidAppRecord({
+        app,
+        packagePath,
+        company,
+        issues: [...runtimeContractIssues, ...manifestIssues],
+      }));
       continue;
     }
     if (manifestIssues.length > 0) {
@@ -1333,18 +1640,9 @@ export async function discoverLaunchpadApps(
       }
       appIds.set(app.id, packagePath);
     }
-    if (Number.isInteger(app.port)) {
-      const owner = buildPortOwner({ app, packagePath, company });
-      const organizationPortKey = `${company.path}\u0000${app.port}`;
-      const existing = organizationPortOwners.get(organizationPortKey);
-      if (existing) {
-        failures.push(
-          `${packagePath}: port ${app.port} už v Organization ${company.slug} vlastní ${existing.package_path}; app surfaces jedné Organizace musí mít unikátní porty`,
-        );
-        continue;
-      }
-      organizationPortOwners.set(organizationPortKey, owner);
-      portOwners.push(owner);
+    for (const listener of app.listeners ?? []) {
+      if (listener.allocation !== "static" || !Number.isInteger(listener.port)) continue;
+      portOwners.push(buildPortOwner({ app, listener, packagePath, company }));
     }
 
     // Warning-first builder metadata (CAC-0044): valid appka se špatným
@@ -1361,6 +1659,12 @@ export async function discoverLaunchpadApps(
       host: app.host,
       health_path: app.health_path,
       dev_script: app.dev_script,
+      preview_script: app.preview_script ?? null,
+      build_script: app.build_script ?? null,
+      listeners: app.listeners ?? [],
+      entrypoint_listener: app.entrypoint_listener ?? null,
+      module_contract: app.module_contract ?? null,
+      runtime_contract: app.runtime_contract ?? null,
       plugin,
       package_path: packagePath,
       organization_path: company.path,
@@ -1380,15 +1684,45 @@ export async function discoverLaunchpadApps(
     });
   }
 
-  // Founder refinement 2026-07-22: dvě app surfaces různých Organizací
-  // smějí deklarovat stejný stabilní port. Uvnitř jedné Organizace je port
-  // unikátní (hard failure výše). Cross-Organization index je read-only
-  // evidence pro Doctor/UI a nikdy nevede k tichému přemapování.
-  const portOverlaps = buildPortOwnershipIndex(portOwners).overlaps;
-  const overlapByPort = new Map(portOverlaps.map((overlap) => [overlap.port, overlap.owners]));
+  // Všechny statické listenery zůstávají viditelné i při kolizi. Port patří
+  // jednomu company/module listener lease; pouze jiné verze a worktrees téhož
+  // modulu smějí deklarovat stejné číslo. Runtime port nikdy nepřemapovává a
+  // při explicitním Start/Open dosavadního live vlastníka lease nahradí.
+  const listenerIndex = buildPortOwnershipIndex(portOwners);
+  const portOverlaps = listenerIndex.overlaps;
+  const overlapByPort = new Map(portOverlaps.map((overlap) => [overlap.port, overlap]));
   for (const app of apps) {
-    app.shared_port_owners = overlapByPort.get(app.port) ?? [];
+    app.listener_claims = (app.listeners ?? [])
+      .filter((listener) => listener.allocation === "static" && Number.isInteger(listener.port))
+      .map((listener) => {
+        const endpoint = `${canonicalListenerHost(listener.host)}:${listener.port}`;
+        const overlap = overlapByPort.get(listener.port);
+        return {
+          listener_id: listener.id,
+          endpoint,
+          overlap: overlap ?? null,
+        };
+      });
+    const entrypointPort = app.entrypoint_listener?.allocation === "static"
+      ? app.entrypoint_listener.port
+      : null;
+    const entrypointOverlap = Number.isInteger(entrypointPort)
+      ? overlapByPort.get(entrypointPort)
+      : null;
+    // Legacy UI consumer uses this field as a list of safely switchable peers.
+    // Conflicts remain fully visible through listener_claims/port_overlaps, but
+    // must never be presented as candidates for a destructive switch.
+    app.shared_port_owners = entrypointOverlap?.classification === "module-version-lease"
+      ? entrypointOverlap.owners
+      : [];
   }
+  const moduleContracts = [...moduleContractsByPath.values()];
+  if (moduleContracts.length > 0) failures.push(...portRegistryReadIssues);
+  else warnings.push(...portRegistryReadIssues);
+  const portRegistryIssues = portRegistry
+    ? validateModuleLeasesAgainstRegistry({ modules: moduleContracts, registry: portRegistry })
+    : [];
+  failures.push(...portRegistryIssues);
 
   const templateApps = await collectTemplateApps({
     companiesRoot,
@@ -1405,6 +1739,11 @@ export async function discoverLaunchpadApps(
     template_mounts: templateMounts,
     module_templates: moduleTemplates,
     port_overlaps: portOverlaps,
+    listener_overlaps: portOverlaps,
+    listener_owners: listenerIndex.owners,
+    module_listener_drifts: listenerIndex.module_listener_drifts,
+    module_contracts: moduleContracts,
+    port_registry_issues: portRegistryIssues,
     // Internal per-machine evidence for downstream readiness classification.
     // buildLaunchpadAppsResponse does not expose this object through /api/apps.
     local_config: localConfig,
@@ -1449,18 +1788,21 @@ async function collectTemplateApps({ companiesRoot, templatePackageEntries, appS
       });
       continue;
     }
-    const app = packageJson.companyascode?.app;
-    if (!app) continue;
+    const normalizedRuntime = normalizePackageRuntime({ packageJson, packagePath });
+    if (!normalizedRuntime) continue;
+    const app = normalizedRuntime.app;
 
-    const manifestIssues = [];
-    validateAppManifest({
-      app,
-      packageJson,
-      packagePath,
-      schema: appSchema,
-      softWarnings: null,
-      failures: manifestIssues,
-    });
+    const manifestIssues = [...normalizedRuntime.issues];
+    if (app.runtime_contract?.legacy === true) {
+      validateAppManifest({
+        app: packageJson.companyascode.app,
+        packageJson,
+        packagePath,
+        schema: appSchema,
+        softWarnings: null,
+        failures: manifestIssues,
+      });
+    }
     // Company-slug match se u template mountu ZÁMĚRNĚ nekontroluje: slug template
     // mountu je placeholder-derived label (jméno adresáře), ne kanonická identita
     // firmy. Template app manifesty legitimně nesou generický placeholder company
@@ -1490,6 +1832,9 @@ async function collectTemplateApps({ companiesRoot, templatePackageEntries, appS
       surface: typeof app.surface === "string" ? app.surface : null,
       port: Number.isInteger(app.port) ? app.port : null,
       host: typeof app.host === "string" ? app.host : null,
+      listeners: app.listeners ?? [],
+      entrypoint_listener: app.entrypoint_listener ?? null,
+      runtime_contract: app.runtime_contract ?? null,
       package_path: packagePath,
       organization_path: company.path,
       organization_kind: "template",

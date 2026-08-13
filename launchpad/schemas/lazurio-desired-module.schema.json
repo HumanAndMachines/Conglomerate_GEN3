@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lazurio.dev/schemas/lazurio-desired-module.schema.json",
+  "title": "Lazurio Launchpad desired module state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "company",
+    "module",
+    "module_lease_key",
+    "app_id",
+    "enabled",
+    "source",
+    "status",
+    "revision",
+    "accepted_at",
+    "updated_at",
+    "last_reconciled_at",
+    "last_error",
+    "failure_kind"
+  ],
+  "properties": {
+    "schema_version": { "const": "lazurio.launchpad.desired_module.v1" },
+    "company": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "module": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "module_lease_key": { "type": "string", "minLength": 3, "maxLength": 257 },
+    "app_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
+    "enabled": { "type": "boolean" },
+    "source": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": { "type": { "const": "main" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "slug"],
+          "properties": {
+            "type": { "const": "worktree" },
+            "slug": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "pattern": "^(?!.*\\.\\.)[A-Za-z0-9._-]+$"
+            }
+          }
+        }
+      ]
+    },
+    "status": { "enum": ["active", "disabled", "degraded"] },
+    "revision": { "type": "string", "format": "uuid" },
+    "accepted_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "last_reconciled_at": { "type": ["string", "null"], "format": "date-time" },
+    "last_error": { "type": ["string", "null"], "maxLength": 2000 },
+    "failure_kind": { "type": ["string", "null"], "maxLength": 128 }
+  }
+}

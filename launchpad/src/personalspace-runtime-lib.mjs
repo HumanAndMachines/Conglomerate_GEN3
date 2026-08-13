@@ -14,7 +14,7 @@ import { existsSync } from "fs";
 import { join, win32 } from "path";
 import { discoverPersonalspace } from "./personalspace-lib.mjs";
 import { GbrainAccessError } from "./gbrain-lib.mjs";
-import { createRuntimeManager } from "./runtime-lib.mjs";
+import { createRuntimeManager, runtimeUrlHost } from "./runtime-lib.mjs";
 
 const githubRepositoryPattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const githubPrivacyCheckTimeoutMs = 10_000;
@@ -79,6 +79,17 @@ export function createPersonalspaceRuntimeManager({ companiesRoot, launchpadRoot
   });
 }
 
+export function personalspaceRuntimeUrls(app) {
+  const protocol = app?.entrypoint_listener?.protocol === "https" ? "https" : "http";
+  const hasEndpoint = typeof app?.host === "string" && Number.isInteger(app?.port);
+  return {
+    url: hasEndpoint ? `${protocol}://${runtimeUrlHost(app.host)}:${app.port}` : null,
+    health_url: hasEndpoint && typeof app?.health_path === "string"
+      ? `${protocol}://${runtimeUrlHost(app.host)}:${app.port}${app.health_path}`
+      : null,
+  };
+}
+
 export async function buildPersonalspaceResponse({
   companiesRoot = join(import.meta.dirname, "..", ".."),
   launchpadRoot = join(import.meta.dirname, ".."),
@@ -92,8 +103,7 @@ export async function buildPersonalspaceResponse({
   const appsWithRuntime = await runtimeManager.appsWithRuntime(
     discovery.apps.map((app) => ({
       ...app,
-      url: app.host && app.port ? `http://${app.host}:${app.port}` : null,
-      health_url: app.host && app.port && app.health_path ? `http://${app.host}:${app.port}${app.health_path}` : null,
+      ...personalspaceRuntimeUrls(app),
     })),
   );
   const appsBySpace = new Map();
@@ -115,7 +125,7 @@ export async function buildPersonalspaceResponse({
     dependency_status: "invalid_manifest",
     runtime: {
       status: "stopped",
-      message: "Osobní aplikace s nevalidním manifestem se nespouští; oprav companyascode.app manifest.",
+      message: "Osobní aplikace s nevalidním runtime manifestem se nespouští; oprav lazurio.runtime nebo read-compatible legacy manifest.",
     },
     runtime_status: "stopped",
   }));

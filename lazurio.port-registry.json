@@ -1,0 +1,16 @@
+{
+  "schema_version": "lazurio.port_registry.v1",
+  "allocation_strategy": "organization-blocks",
+  "organization_blocks": [
+    { "company": "conglomerate", "start": 23900, "end": 23999 },
+    { "company": "AgentMint", "start": 24000, "end": 24099 },
+    { "company": "AVALTAR", "start": 24100, "end": 24199 },
+    { "company": "HumanAndMachine-ai", "start": 24200, "end": 24299 },
+    { "company": "iotor", "start": 24300, "end": 24399 },
+    { "company": "lokreative", "start": 24400, "end": 24499 },
+    { "company": "Lumbio", "start": 24500, "end": 24599 },
+    { "company": "Macano-Tech", "start": 24600, "end": 24699 },
+    { "company": "Spectoda", "start": 24700, "end": 24799 },
+    { "company": "Tiskarna-Adamek", "start": 24800, "end": 24899 }
+  ]
+}
