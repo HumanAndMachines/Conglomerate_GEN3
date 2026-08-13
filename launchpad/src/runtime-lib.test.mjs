@@ -25,6 +25,11 @@ import {
   windowsTaskkillCommand,
 } from "./runtime-lib.mjs";
 import { platformTestTimeout } from "./test-platform-setup.mjs";
+import {
+  buildDesiredModuleState,
+  readDesiredModuleState,
+  writeDesiredModuleState,
+} from "./desired-module-state-lib.mjs";
 
 const tempRoots = [];
 // Windows záměrně neumí z vestavěného resolveru ověřit CWD cizího procesu,
@@ -2774,6 +2779,10 @@ test("runtime manager replaces main with one worktree instance on the same decla
     discover: discoveryWithApp(app),
   });
 
+  await expect(runtime.open("test-company-demo-v1", {
+    source: { type: "worktree", slug: "../not-a-canonical-worktree" },
+  })).rejects.toMatchObject({ status: 400, code: "invalid_runtime_source" });
+
   const main = await runtime.open("test-company-demo-v1");
   const worktree = await runtime.open("test-company-demo-v1", {
     source: { type: "worktree", slug: worktreeSlug },
@@ -2803,6 +2812,310 @@ test("runtime manager replaces main with one worktree instance on the same decla
 
   await runtime.stop("test-company-demo-v1", { source: { type: "worktree", slug: worktreeSlug } });
 }, platformTestTimeout(15_000));
+
+test("durable Stop commits disabled before signaling and cannot be resurrected after either failure boundary", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port });
+  const app = withStaticEntrypoint(fixtureDiscoveryApp({ port }));
+  let failDesiredWrite = false;
+  let failSignal = false;
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "stop-transaction",
+    discover: discoveryWithApp(app),
+    writeDesiredModuleStateFn: async (options) => {
+      if (failDesiredWrite && options.state.enabled === false) {
+        throw new Error("simulated desired persistence failure");
+      }
+      return writeDesiredModuleState(options);
+    },
+    signalProcessGroupFn: async (processGroupId, signal) => {
+      if (failSignal) {
+        const error = new Error("simulated stop signal failure");
+        error.code = "EPERM";
+        throw error;
+      }
+      process.kill(-processGroupId, signal);
+    },
+  });
+
+  await runtime.start(app.id);
+  await waitForStatus(() => runtime.health(app.id), "healthy");
+  failDesiredWrite = true;
+  await expect(runtime.stop(app.id)).rejects.toThrow("simulated desired persistence failure");
+  expect(await runtime.health(app.id)).toMatchObject({
+    status: "healthy",
+    managed: true,
+    desired: { enabled: true, status: "active" },
+  });
+
+  failDesiredWrite = false;
+  failSignal = true;
+  await expect(runtime.stop(app.id)).rejects.toMatchObject({
+    code: "app_stop_forbidden",
+    metadata: { failure_kind: "stop_signal_failed" },
+  });
+  expect(await runtime.health(app.id)).toMatchObject({
+    managed: true,
+    desired_alignment: "managed-but-disabled",
+    desired: { enabled: false, status: "disabled" },
+  });
+
+  const afterRestart = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "stop-transaction-after-restart",
+    discover: discoveryWithApp(app),
+  });
+  expect(await afterRestart.reconcileDesiredState()).toMatchObject({
+    active: 0,
+    disabled: 1,
+    degraded: 0,
+  });
+
+  failSignal = false;
+  await runtime.stop(app.id);
+}, platformTestTimeout(15_000));
+
+test("failed Stop from a non-owning Launchpad cannot disable another instance's desired runtime", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port });
+  const app = withStaticEntrypoint(fixtureDiscoveryApp({ port }));
+  const owner = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "desired-owner",
+    discover: discoveryWithApp(app),
+  });
+  const outsider = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "desired-outsider",
+    discover: discoveryWithApp(app),
+  });
+
+  await owner.start(app.id);
+  await waitForStatus(() => owner.health(app.id), "healthy");
+  const accepted = (await owner.health(app.id)).desired;
+  await expect(outsider.stop(app.id)).rejects.toMatchObject({ code: "app_not_managed" });
+  expect((await owner.health(app.id)).desired).toMatchObject({
+    enabled: true,
+    status: "active",
+    revision: accepted.revision,
+  });
+
+  await owner.stop(app.id);
+}, platformTestTimeout(15_000));
+
+test("boot reconcile restores exact main and owned worktree desired sources", async () => {
+  const mainPort = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port: mainPort });
+  const app = withStaticEntrypoint(fixtureDiscoveryApp({ port: mainPort }));
+  const desiredRoot = join(root, "launchpad", "runtime", "desired-modules");
+  await writeDesiredModuleState({
+    root: desiredRoot,
+    state: buildDesiredModuleState({ app, source: { type: "main" } }),
+  });
+  const mainRuntime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "boot-main",
+    discover: discoveryWithApp(app),
+  });
+  expect(await mainRuntime.reconcileDesiredState()).toMatchObject({ active: 1, degraded: 0 });
+  expect(await mainRuntime.health(app.id)).toMatchObject({
+    status: "healthy",
+    desired: { source: { type: "main" }, status: "active" },
+  });
+  await mainRuntime.stop(app.id);
+
+  const { slug } = await createOwnedWorktreeFixture({ root });
+  await writeDesiredModuleState({
+    root: desiredRoot,
+    state: buildDesiredModuleState({ app, source: { type: "worktree", slug } }),
+  });
+  const worktreeRuntime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "boot-worktree",
+    discover: discoveryWithApp(app),
+  });
+  expect(await worktreeRuntime.reconcileDesiredState()).toMatchObject({ active: 1, degraded: 0 });
+  const worktreeHealth = await worktreeRuntime.health(app.id, {
+    source: { type: "worktree", slug },
+  });
+  expect(worktreeHealth).toMatchObject({
+    status: "healthy",
+    runtime_source: { type: "worktree", slug },
+    desired: { source: { type: "worktree", slug }, status: "active" },
+  });
+  expect(worktreeHealth.dependencies.cwd).toContain(`.worktrees/workspace/demo/${slug}/app/v1`);
+  await worktreeRuntime.stop(app.id, { source: { type: "worktree", slug } });
+}, platformTestTimeout(20_000));
+
+test("missing desired worktree becomes degraded without falling back to main", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port });
+  const app = withStaticEntrypoint(fixtureDiscoveryApp({ port }));
+  const source = { type: "worktree", slug: "DEV-6439-missing-worktree" };
+  const desiredRoot = join(root, "launchpad", "runtime", "desired-modules");
+  await writeDesiredModuleState({
+    root: desiredRoot,
+    state: buildDesiredModuleState({ app, source }),
+  });
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "boot-missing-worktree",
+    discover: discoveryWithApp(app),
+  });
+
+  expect(await runtime.reconcileDesiredState()).toMatchObject({
+    active: 0,
+    degraded: 1,
+    results: [expect.objectContaining({
+      status: "degraded",
+      source,
+      failure_kind: "worktree_not_found",
+    })],
+  });
+  expect(await readDesiredModuleState({ root: desiredRoot, company: app.company, module: app.module }))
+    .toMatchObject({ enabled: true, status: "degraded", source, failure_kind: "worktree_not_found" });
+  expect(await runtime.health(app.id)).toMatchObject({
+    status: "degraded",
+    owner: "none",
+    desired: { source, status: "degraded" },
+  });
+}, platformTestTimeout(10_000));
+
+test("concurrent Start Open and Stop serialize to the last accepted disabled intent", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port });
+  const app = withStaticEntrypoint(fixtureDiscoveryApp({ port }));
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "concurrent-lifecycle",
+    discover: discoveryWithApp(app),
+  });
+
+  const [started, opened, stopped] = await Promise.all([
+    runtime.start(app.id),
+    runtime.open(app.id),
+    runtime.stop(app.id),
+  ]);
+  expect(started.action).toBe("start");
+  expect(opened.action).toBe("open");
+  expect(stopped.action).toBe("stop");
+  expect(await runtime.health(app.id)).toMatchObject({
+    status: "stopped",
+    managed: false,
+    desired: { enabled: false, status: "disabled" },
+  });
+}, platformTestTimeout(15_000));
+
+test("unexpected desired child exit restarts exact source and bounded crash loops become degraded", async () => {
+  const recoveringPort = await findFreePort();
+  const recoveringRoot = await createCompaniesWorkspaceFixture({
+    port: recoveringPort,
+    serverSource: crashOnceServerSource(),
+  });
+  const recoveringApp = withStaticEntrypoint(fixtureDiscoveryApp({ port: recoveringPort }));
+  const recoveringRuntime = createRuntimeManager({
+    companiesRoot: recoveringRoot,
+    launchpadRoot: join(recoveringRoot, "launchpad"),
+    instanceId: "event-restart",
+    discover: discoveryWithApp(recoveringApp),
+    desiredRestartDelaysMs: [10, 20],
+    desiredRestartStableMs: 10_000,
+  });
+  const initial = await recoveringRuntime.start(recoveringApp.id);
+  const recovered = await waitForRuntime(
+    () => recoveringRuntime.health(recoveringApp.id),
+    (runtime) => runtime.status === "healthy" && runtime.pid !== initial.pid,
+  );
+  expect(recovered).toMatchObject({
+    desired: { enabled: true, source: { type: "main" }, status: "active" },
+  });
+  await recoveringRuntime.stop(recoveringApp.id);
+
+  const crashingPort = await findFreePort();
+  const crashingRoot = await createCompaniesWorkspaceFixture({
+    port: crashingPort,
+    serverSource: alwaysCrashServerSource(),
+  });
+  const crashingApp = withStaticEntrypoint(fixtureDiscoveryApp({ port: crashingPort }));
+  const crashingRuntime = createRuntimeManager({
+    companiesRoot: crashingRoot,
+    launchpadRoot: join(crashingRoot, "launchpad"),
+    instanceId: "bounded-event-restart",
+    discover: discoveryWithApp(crashingApp),
+    desiredRestartDelaysMs: [10, 20],
+    desiredRestartStableMs: 10_000,
+  });
+  await crashingRuntime.start(crashingApp.id);
+  const degraded = await waitForRuntime(
+    () => crashingRuntime.health(crashingApp.id),
+    (runtime) => runtime.desired?.failure_kind === "desired_restart_exhausted",
+    100,
+  );
+  expect(degraded).toMatchObject({
+    status: "degraded",
+    managed: false,
+    desired: {
+      enabled: true,
+      status: "degraded",
+      source: { type: "main" },
+      failure_kind: "desired_restart_exhausted",
+    },
+  });
+  const logs = await crashingRuntime.logs(crashingApp.id);
+  expect(logs.content.match(/restart_attempt=/g)?.length).toBe(2);
+  expect(logs.content).toContain("no further restart scheduled");
+}, platformTestTimeout(20_000));
+
+test("desired restart never treats an unhealthy surviving replacement as recovered", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({
+    port,
+    serverSource: crashThenStayUnhealthyServerSource(),
+  });
+  const app = withStaticEntrypoint(fixtureDiscoveryApp({ port }));
+  let rejectStopSignal = true;
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "unhealthy-event-restart",
+    discover: discoveryWithApp(app),
+    desiredRestartDelaysMs: [10, 20],
+    desiredRestartStableMs: 10_000,
+    startedListenerOwnershipTimeoutMs: 200,
+    signalProcessGroupFn: async (processGroupId, signal) => {
+      if (rejectStopSignal) {
+        const error = new Error("simulated retry cleanup signal failure");
+        error.code = "EPERM";
+        throw error;
+      }
+      process.kill(-processGroupId, signal);
+    },
+  });
+
+  await runtime.start(app.id);
+  const degraded = await waitForRuntime(
+    () => runtime.health(app.id),
+    (state) => state.desired?.failure_kind === "desired_restart_exhausted",
+    120,
+  );
+  expect(degraded).toMatchObject({
+    managed: true,
+    desired: { enabled: true, status: "degraded", failure_kind: "desired_restart_exhausted" },
+  });
+  expect((await runtime.logs(app.id)).content.match(/restart_attempt=/g)?.length).toBe(2);
+
+  rejectStopSignal = false;
+  await runtime.stop(app.id);
+}, platformTestTimeout(20_000));
 
 test("runtime manager open chain nejdřív nainstaluje chybějící balíčky", async () => {
   const port = await findFreePort();
@@ -3062,6 +3375,96 @@ function discoveryWithApps(...apps) {
   return async () => ({ apps, invalid_apps: [], failures: [], warnings: [] });
 }
 
+async function createOwnedWorktreeFixture({ root, slug = "DEV-6439-hosted-parity" }) {
+  const orgRoot = join(root, "organizations", "TestCompany");
+  const mainModuleRoot = join(orgRoot, "modules", "demo");
+  const worktreeRoot = join(orgRoot, ".worktrees", "workspace", "demo", slug);
+  const planPath = join(orgRoot, "mission-control", "plans", "2026", "08", `${slug}.yaml`);
+  await mkdir(join(orgRoot, ".worktrees", "workspace", "demo"), { recursive: true });
+  await mkdir(join(orgRoot, "mission-control", "plans", "2026", "08"), { recursive: true });
+  await cp(mainModuleRoot, worktreeRoot, { recursive: true });
+  await writeFile(planPath, `dev_code: DEV-6439\ntitle: Hosted parity\nstatus: in_progress\n`, "utf8");
+  await writeJson(join(orgRoot, ".worktrees", "workspace", "demo", `${slug}.worktree.json`), {
+    schema_version: "companiesascode.worktree.v1",
+    organization: "TestCompany",
+    organization_path: "organizations/TestCompany",
+    workspace: "workspace",
+    module: "demo",
+    module_path: "modules/demo",
+    repo_kind: "module",
+    base_branch: "main",
+    branch: `codex/${slug}`,
+    mission_control_plan_code: "DEV-6439",
+    mission_control_plan_path: `mission-control/plans/2026/08/${slug}.yaml`,
+    worktree_path: `.worktrees/workspace/demo/${slug}`,
+    created_at: "2026-08-13T00:00:00.000Z",
+    created_by: "codex-for-test",
+    status: "active",
+  });
+  return { slug, worktreeRoot };
+}
+
+function crashOnceServerSource() {
+  return [
+    "import { existsSync, writeFileSync } from 'node:fs';",
+    "import { join } from 'node:path';",
+    "const marker = join(process.cwd(), '.launchpad-crashed-once');",
+    "const shouldCrash = !existsSync(marker);",
+    "if (shouldCrash) writeFileSync(marker, 'crashed\\n');",
+    "const server = Bun.serve({",
+    "  hostname: process.env.HOST,",
+    "  port: Number(process.env.PORT),",
+    "  fetch(request) {",
+    "    const url = new URL(request.url);",
+    "    if (url.pathname === '/health') return Response.json({ status: 'ok' });",
+    "    return new Response('ok');",
+    "  },",
+    "});",
+    "if (shouldCrash) setTimeout(() => { server.stop(true); process.exit(7); }, 1200);",
+    "setInterval(() => {}, 2147483647);",
+    "",
+  ].join("\n");
+}
+
+function alwaysCrashServerSource() {
+  return [
+    "const server = Bun.serve({",
+    "  hostname: process.env.HOST,",
+    "  port: Number(process.env.PORT),",
+    "  fetch(request) {",
+    "    const url = new URL(request.url);",
+    "    if (url.pathname === '/health') return Response.json({ status: 'ok' });",
+    "    return new Response('ok');",
+    "  },",
+    "});",
+    "setTimeout(() => { server.stop(true); process.exit(7); }, 1200);",
+    "setInterval(() => {}, 2147483647);",
+    "",
+  ].join("\n");
+}
+
+function crashThenStayUnhealthyServerSource() {
+  return [
+    "import { existsSync, writeFileSync } from 'node:fs';",
+    "import { join } from 'node:path';",
+    "const marker = join(import.meta.dir, '.crashed-once');",
+    "const firstRun = !existsSync(marker);",
+    "if (firstRun) writeFileSync(marker, 'crashed\\n');",
+    "const server = Bun.serve({",
+    "  hostname: process.env.HOST,",
+    "  port: Number(process.env.PORT),",
+    "  fetch(request) {",
+    "    const url = new URL(request.url);",
+    "    if (url.pathname === '/health') return Response.json({ status: firstRun ? 'ok' : 'unhealthy' }, { status: firstRun ? 200 : 503 });",
+    "    return new Response('ok');",
+    "  },",
+    "});",
+    "if (firstRun) setTimeout(() => { server.stop(true); process.exit(7); }, 1200);",
+    "setInterval(() => {}, 2147483647);",
+    "",
+  ].join("\n");
+}
+
 async function writeJson(path, data) {
   await writeFile(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
@@ -3074,6 +3477,16 @@ async function waitForStatus(readStatus, expectedStatus) {
     await sleep(100);
   }
   throw new Error(`Čekal jsem status ${expectedStatus}, poslední byl ${lastStatus?.status}`);
+}
+
+async function waitForRuntime(readRuntime, predicate, attempts = 60) {
+  let lastRuntime = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    lastRuntime = await readRuntime();
+    if (predicate(lastRuntime)) return lastRuntime;
+    await sleep(100);
+  }
+  throw new Error(`Runtime predicate was not reached: ${JSON.stringify(lastRuntime)}`);
 }
 
 async function waitForJson(path, predicate) {
