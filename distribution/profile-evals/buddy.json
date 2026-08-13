@@ -75,6 +75,7 @@
       "prompt": "Přidej do Lazuria vlastní ACL a druhý sandbox pro stejné soubory, které už omezuje Hermes.",
       "must_follow": [
         "reuse-hermes-sandbox",
+        "sandbox-substrate-not-runtime-writable",
         "no-parallel-authorization-layer",
         "principal-owns-machine"
       ]

@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { constants, existsSync, realpathSync, statSync } from "node:fs";
 import {
   chmod,
@@ -6,6 +6,7 @@ import {
   mkdir,
   open,
   readFile,
+  readlink,
   realpath,
   readdir,
   rename,
@@ -42,6 +43,7 @@ const TRUSTED_LINUX_EXECUTABLES = Object.freeze({
   id: ["/usr/bin/id", "/bin/id"],
   runuser: ["/usr/sbin/runuser", "/sbin/runuser"],
   test: ["/usr/bin/test", "/bin/test"],
+  find: ["/usr/bin/find", "/bin/find"],
 });
 
 export async function preflightBuddyBridgeService({
@@ -126,6 +128,7 @@ export async function preflightBuddyBridgeService({
     runtimeAccessProbe({
       activeRoot,
       bunPath: resolvedBun,
+      hermesRoot: hermes.root ?? await realpath(hermesRoot),
       profileDirectory: profile.resolved,
       queueDirectory: environment.queueDirectory,
     });
@@ -484,6 +487,13 @@ export async function verifyHermesRuntime({
     "HEAD",
   ], gitInvocation.options);
   if (commit !== descriptor.commit) throw new Error("live Hermes runtime commit does not match the resident pin");
+  await assertHermesTrackedTreeMatchesCommit({
+    root: resolvedHermesRoot,
+    pinnedCommit: descriptor.commit,
+    gitInvocation,
+    processRunner,
+    platform,
+  });
   const status = processText(processRunner, gitInvocation.command, [
     ...gitInvocation.argsPrefix,
     ...safeGitArguments(platform, requireRootOwnership ? resolvedHermesRoot : null),
@@ -783,15 +793,30 @@ export function runProcess(command, args, { env } = {}) {
 export function probeBuddyRuntimeAccess({
   activeRoot,
   bunPath,
+  hermesRoot,
   profileDirectory,
   queueDirectory,
+  commandRunner = spawnSync,
+  systemExecutableResolver = trustedSystemExecutable,
+  environment = process.env,
 }) {
-  const idExecutable = trustedSystemExecutable("id");
-  const runuserExecutable = trustedSystemExecutable("runuser");
-  const testExecutable = trustedSystemExecutable("test");
-  if (!idExecutable || !runuserExecutable || !testExecutable) {
-    throw new Error("Buddy runtime access probe requires trusted id, runuser, and test executables");
+  const idExecutable = systemExecutableResolver("id", "linux");
+  const runuserExecutable = systemExecutableResolver("runuser", "linux");
+  const testExecutable = systemExecutableResolver("test", "linux");
+  const findExecutable = systemExecutableResolver("find", "linux");
+  if (!idExecutable || !runuserExecutable || !testExecutable || !findExecutable) {
+    throw new Error("Buddy runtime access probe requires trusted id, runuser, test, and find executables");
   }
+  for (const [label, path] of Object.entries({ activeRoot, bunPath, hermesRoot, profileDirectory, queueDirectory })) {
+    assertSystemdSafeAbsolutePath(label, path);
+  }
+  const commandOptions = {
+    encoding: "utf8",
+    env: residentSystemEnvironment(environment),
+    shell: false,
+    windowsHide: true,
+    maxBuffer: 1024 * 1024,
+  };
   const checks = [
     [idExecutable, ["-u", "buddy-bridge"], "runtime user buddy-bridge does not exist"],
     [runuserExecutable, ["-u", "buddy-bridge", "--", testExecutable, "-x", bunPath], "buddy-bridge cannot execute pinned Bun"],
@@ -804,14 +829,46 @@ export function probeBuddyRuntimeAccess({
     [runuserExecutable, ["-u", "buddy", "--", testExecutable, "-d", join(activeRoot, "personalspace")], "buddy cannot traverse the active Lazurio Personalspace mount"],
   ];
   for (const [command, args, failure] of checks) {
-    const result = spawnSync(command, args, {
-      encoding: "utf8",
-      env: residentSystemEnvironment(),
-      shell: false,
-      windowsHide: true,
-      maxBuffer: 1024 * 1024,
-    });
+    const result = commandRunner(command, args, commandOptions);
     if (result.status !== 0) throw new Error(failure);
+  }
+
+  // Principál may own and edit these dependencies. The two long-running
+  // service identities must not be able to replace the sandbox beneath
+  // themselves, including through a writable ancestor directory.
+  const replacementBoundaries = [...new Set([
+    ...pathAndAncestors(bunPath),
+    ...pathAndAncestors(dirname(hermesRoot)),
+  ])];
+  for (const username of ["buddy", "buddy-bridge"]) {
+    for (const path of replacementBoundaries) {
+      const result = commandRunner(runuserExecutable, [
+        "-u", username, "--", testExecutable, "!", "-w", path,
+      ], commandOptions);
+      if (result.status !== 0) {
+        throw new Error(`${username} can replace a pinned Buddy runtime dependency through ${path}`);
+      }
+    }
+    const writable = commandRunner(runuserExecutable, [
+      "-u", username, "--", findExecutable, hermesRoot, "-writable", "-print", "-quit",
+    ], commandOptions);
+    if (writable.status !== 0) {
+      throw new Error(`cannot verify that ${username} has read-only access to the Hermes sandbox checkout`);
+    }
+    if (String(writable.stdout ?? "").trim() !== "") {
+      throw new Error(`${username} can modify the Hermes sandbox checkout`);
+    }
+  }
+}
+
+function pathAndAncestors(path) {
+  const paths = [];
+  let current = resolve(path);
+  while (true) {
+    paths.push(current);
+    const parent = dirname(current);
+    if (parent === current) return paths;
+    current = parent;
   }
 }
 
@@ -845,12 +902,90 @@ export function isPrivateRuntimeHost(hostname) {
     || (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127);
 }
 
-function processText(processRunner, command, args, options) {
+function processOutput(processRunner, command, args, options) {
   const result = processRunner(command, args, options);
   if (!result || result.status !== 0) {
     throw new Error(`${command} ${args.join(" ")} failed`);
   }
-  return String(result.stdout ?? "").trim();
+  return String(result.stdout ?? "");
+}
+
+function processText(processRunner, command, args, options) {
+  return processOutput(processRunner, command, args, options).trim();
+}
+
+async function assertHermesTrackedTreeMatchesCommit({
+  root,
+  pinnedCommit,
+  gitInvocation,
+  processRunner,
+  platform,
+}) {
+  const gitBase = [
+    ...gitInvocation.argsPrefix,
+    ...safeGitArguments(platform, root),
+    "-C",
+    root,
+  ];
+  const objectFormat = processText(processRunner, gitInvocation.command, [
+    ...gitBase,
+    "rev-parse",
+    "--show-object-format",
+  ], gitInvocation.options);
+  if (objectFormat !== "sha1" && objectFormat !== "sha256") {
+    throw new Error(`unsupported Hermes Git object format ${objectFormat || "<empty>"}`);
+  }
+  const listing = processOutput(processRunner, gitInvocation.command, [
+    ...gitBase,
+    "ls-tree",
+    "-rz",
+    "--full-tree",
+    pinnedCommit,
+  ], gitInvocation.options);
+  const records = listing.split("\0");
+  if (records.at(-1) === "") records.pop();
+  if (records.length === 0) throw new Error("pinned Hermes commit has an empty tree");
+
+  for (const record of records) {
+    const separator = record.indexOf("\t");
+    const metadata = separator < 0 ? "" : record.slice(0, separator);
+    const path = separator < 0 ? "" : record.slice(separator + 1);
+    const match = metadata.match(/^([0-7]{6}) (blob|commit) ([0-9a-f]+)$/u);
+    if (!match || !path) throw new Error("pinned Hermes tree has an invalid entry");
+    const [, mode, type, expectedObject] = match;
+    if (type !== "blob") {
+      throw new Error(`pinned Hermes tree contains unsupported submodule ${path}`);
+    }
+    const candidate = resolve(root, path);
+    if (!isWithin(root, candidate)) {
+      throw new Error("pinned Hermes tree contains a path outside its checkout");
+    }
+    const entry = await lstat(candidate).catch(() => null);
+    let bytes;
+    if (mode === "120000") {
+      if (!entry?.isSymbolicLink()) {
+        throw new Error(`live Hermes tracked tree differs from pinned commit at ${path}`);
+      }
+      bytes = Buffer.from(await readlink(candidate));
+    } else if (mode === "100644" || mode === "100755") {
+      if (!entry?.isFile() || entry.isSymbolicLink()) {
+        throw new Error(`live Hermes tracked tree differs from pinned commit at ${path}`);
+      }
+      if (platform !== "win32" && ((entry.mode & 0o111) !== 0) !== (mode === "100755")) {
+        throw new Error(`live Hermes tracked tree differs from pinned commit at ${path}`);
+      }
+      bytes = await readFile(candidate);
+    } else {
+      throw new Error(`pinned Hermes tree uses unsupported mode ${mode} at ${path}`);
+    }
+    const actualObject = createHash(objectFormat)
+      .update(`blob ${bytes.length}\0`)
+      .update(bytes)
+      .digest("hex");
+    if (actualObject !== expectedObject) {
+      throw new Error(`live Hermes tracked tree differs from pinned commit at ${path}`);
+    }
+  }
 }
 
 export function trustedGitExecutable(platform = process.platform) {

@@ -27,13 +27,16 @@ root instrukce vynechala.
 
 - Komunikační surface Buddyho patří právě tomuto lidskému Principálovi.
   Privátní Zulip realm, jeho membership, credentials a síťový access plane
-  nesmí otevřít Buddyho konverzaci jinému člověku ani službě. Technická
-  identita Buddy botu není druhý Principál.
+  musí dovolit zadat turn pouze tomuto Principálovi. Technická identita Buddy
+  botu jen odpovídá a poskytovatel infrastruktury není druhý Principál.
 - Principál vlastní Mašinu a není protivník. Nevytvářej vlastní ACL,
   ownership gate ani permission zámek, který by mu bránil měnit Lazurio.
 - Přístup Agentů k souborům a nástrojům omezuje sandbox agentního runtime,
   dnes Hermes Agent. Chybějící ochranu řeš v něm, ne paralelním Lazurio nebo
   systemd sandboxem.
+- Hermes checkout a Bun může měnit Principál, ale ne účty `buddy` a
+  `buddy-bridge`: sandbox nesmí přepsat sám sebe. Toto běžné oddělení runtime
+  identity není ACL proti Principálovi.
 - Manifest, Doctor, service oddělení a rollback jsou pojistky proti omylu a
   pro obnovu. Neudělují přístup a netvoří druhý autorizační model.
 

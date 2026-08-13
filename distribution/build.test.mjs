@@ -95,6 +95,7 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
   expect(rootInstructions).toContain("generated:lazurio-resident-profile=buddy");
   expect(rootInstructions).toContain("Principál vlastní Mašinu a není protivník");
   expect(rootInstructions).toContain("sandbox agentního runtime");
+  expect(rootInstructions).toContain("sandbox nesmí přepsat sám sebe");
   expect(rootInstructions).toContain("textová role žádná práva neudělují");
   expect(first.manifest.payload.files.map((file) => file.path)).not.toContain(
     "distribution/profiles/buddy/root-instructions.md",
@@ -247,6 +248,7 @@ test("Buddy profile eval pack covers normal and negative-path cases without role
     machine_owner_is_adversary: false,
     local_payload_edits: "allowed-and-reported-as-drift",
     agent_sandbox: "hermes-runtime",
+    sandbox_substrate_mutability: "principal-writable-runtime-identities-read-only",
     parallel_lazurio_acl: false,
   });
 });

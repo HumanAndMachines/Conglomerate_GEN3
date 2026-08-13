@@ -61,8 +61,9 @@ destruktivní operace, billing, ownership a publish/release mimo trvalý mandát
 
 Skutečnou vstupní hranicí Buddyho je jeho privátní komunikační surface.
 Zulip realm, membership, credentials a síťový access plane musí být určené
-právě jednomu lidskému Principálovi a technické identitě jeho Buddy botu. Jiný
-člověk nebo služba v této konverzaci znamená porušené nasazení, ne novou roli.
+právě jednomu lidskému Principálovi a technické identitě jeho Buddy botu. Turn
+smí zadat pouze Principál; bot odpovídá a poskytovatel infrastruktury není další
+Principál. Jiný autor konverzace znamená porušené nasazení, ne novou roli.
 
 Principál vlastní svou Mašinu a systém předpokládá, že to se sebou myslí dobře.
 Lazurio proti němu nestaví vlastní ACL, ownership gate ani permission zámek.
@@ -70,6 +71,13 @@ Agentní přístup k souborům a nástrojům omezuje existující sandbox runtim
 dnes Hermes Agent. Manifest, Doctor, service oddělení a rollback pouze
 zviditelňují odchylky, omezují náhodnou self-mutaci procesu a umožňují obnovu;
 nejsou druhou autorizační hranicí.
+
+Jedna úzká provozní podmínka z toho neustupuje: runtime nesmí umět přepsat
+sandbox, který jej omezuje. Hermes checkout a Bun může vlastnit a měnit
+Principál, ale účty `buddy` a `buddy-bridge` k nim musí mít pouze potřebné
+čtení/spuštění. Preflight kontroluje skutečná host oprávnění a tracked Hermes
+bytes proti pinned commitu bez důvěry v Git index. Jde o self-protection
+existujícího Hermes sandboxu, ne o nový Lazurio ACL.
 
 Veřejný Buddy runtime obsahuje komunikační bridge mezi privátním Zulipem a
 agentním runtime. Bridge sám nevlastní identitu ani mandáty: před prvním
@@ -86,15 +94,17 @@ Hermes dostává aktivní Lazurio Root jako `TERMINAL_CWD`, aby jeho context-fil
 discovery vložilo veřejný profilový `AGENTS.md` i do Zulip session. Ten se
 vrství s privátní ústavou a mandáty; žádná z těchto vrstev nenahrazuje druhou.
 Existující Personalspace se při migraci nekopíruje: updater ho adoptuje jako
-explicitní, root-owned mutable mount kontrakt a service preflight ověří, že
+explicitní updater-managed mutable mount kontrakt a service preflight ověří, že
 deklarovaný Buddy profil skutečně leží uvnitř `active/personalspace`.
 Produkční příkaz `buddy-rollout` skládá aktivaci rootu a service cutover do
 jedné kompenzované operace. Selže-li service gate, novou aktivaci odstraní nebo
 vrátí last-known-good a znovu zprovozní předchozí service vstupy.
 Bun binárku pro unit volí Principál explicitně přes `--bun PATH`; preflight ji
 resolveuje a ověří její spustitelnost runtime účtem, ale nevyžaduje root-owned
-instalaci. Sanitizované privileged subprocessy chrání instalační krok před
-ambientním `PATH` a Git hooky, ne Lazurio před Principálem.
+instalaci. Současně ověří, že ji ani Hermes checkout účty `buddy` a
+`buddy-bridge` nemohou přepsat nebo nahradit přes zapisovatelný parent.
+Sanitizované privileged subprocessy chrání instalační krok před ambientním
+`PATH` a Git hooky, ne Lazurio před Principálem.
 Privátní Buddy profil zůstává mutable a služba jej čte přes běžná host
 oprávnění. Další sandbox pro Personalspace tu nevzniká; přístup agentních
 nástrojů omezuje existující Hermes sandbox.

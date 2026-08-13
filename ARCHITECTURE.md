@@ -225,8 +225,9 @@ Model stojí na ramenou providerů, kteří už řeší identity a přístup:
 
 Buddyho komunikační surface patří právě jednomu lidskému Principálovi. Privátní
 Zulip realm, jeho membership, credentials a síťový access plane musí zajistit,
-že do Buddyho konverzace nevstoupí jiný člověk ani služba; technická identita
-Buddy botu není druhý Principál. To je primární bezpečnostní hranice Buddyho.
+že vstupní turn smí zadat pouze tento Principál; technická identita Buddy botu
+jen odpovídá a poskytovatel komunikační infrastruktury není další Principál.
+To je primární bezpečnostní hranice Buddyho.
 
 Principál vlastní svou Mašinu a v tomto modelu není protivník. Lazurio mu proto
 nebrání měnit lokální soubory ownership triky, vlastní ACL vrstvou ani
@@ -239,6 +240,14 @@ nebo konfiguruje tam; Lazurio kolem ní nestaví paralelní sandbox. Běžné
 systemd oddělení procesu, sanitizované spouštění instalačních příkazů a
 integrity kontroly jsou provozní a recovery pojistky, ne druhý autorizační
 model proti Principálovi.
+
+Sandbox ale nesmí být zapisovatelný procesem, který sám omezuje. Hermes
+checkout a Bun binárku může vlastnit a měnit Principál nebo jeho servisní
+identita, ale účty `buddy` a `buddy-bridge` je nesmí přepsat ani nahradit přes
+zapisovatelný parent. Preflight proto porovnává tracked Hermes bytes přímo s
+pinned commitem bez důvěry v Git index a ptá se host kernelu na zapisovatelnost
+obou runtime účtů. To chrání integritu existujícího Hermes sandboxu před jeho
+vlastní relací; není to další ACL proti Principálovi.
 
 Uvnitř autorizované trust domény se nestaví druhý interní IAM jen proto, aby
 napodoboval providerové granty. Nevznikají vlastní auth proxy, relaye, obecné

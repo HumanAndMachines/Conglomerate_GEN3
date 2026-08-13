@@ -25,6 +25,7 @@ import {
   isTrustedResidentExecutablePath,
   installBuddyBridgeService,
   preflightBuddyBridgeService,
+  probeBuddyRuntimeAccess,
   isPrivateRuntimeHost as serviceAcceptsPrivateRuntimeHost,
   renderBuddyBridgeUnit,
   restorePreResidentBuddyService,
@@ -423,6 +424,10 @@ test("live Hermes compatibility requires the exact commit, clean tree and lock d
   await mkdir(hermesRoot, { recursive: true });
   const lock = Buffer.from("synthetic uv lock\n");
   const digest = createHash("sha256").update(lock).digest("hex");
+  const lockObject = createHash("sha1")
+    .update(`blob ${lock.length}\0`)
+    .update(lock)
+    .digest("hex");
   const commit = "a".repeat(40);
   await writeFile(join(hermesRoot, "uv.lock"), lock);
   await writeFile(
@@ -431,12 +436,21 @@ test("live Hermes compatibility requires the exact commit, clean tree and lock d
   );
   const cleanGit = (_command, args) => ({
     status: 0,
-    stdout: args.includes("rev-parse") ? `${commit}\n` : "",
+    stdout: args.includes("--show-object-format")
+      ? "sha1\n"
+      : args.includes("ls-tree")
+        ? `100644 blob ${lockObject}\tuv.lock\0`
+        : args.includes("rev-parse")
+          ? `${commit}\n`
+          : "",
     stderr: "",
   });
   await expect(verifyHermesRuntime({ activeRoot, hermesRoot, processRunner: cleanGit }))
     .resolves.toMatchObject({ commit, lock_sha256: digest });
-  await writeFile(join(hermesRoot, "uv.lock"), "drifted\n");
+  await writeFile(
+    join(activeRoot, "resident", "dependencies", "hermes.json"),
+    `${JSON.stringify({ repository: "Lazurio/hermes-agent", commit, lock_file: "uv.lock", lock_sha256: "0".repeat(64) })}\n`,
+  );
   await expect(verifyHermesRuntime({ activeRoot, hermesRoot, processRunner: cleanGit }))
     .rejects.toThrow("lock digest");
 });
@@ -485,7 +499,8 @@ linuxHostTest("Hermes verification ignores poisoned PATH Git and checkout-local 
   git(["config", "user.email", "fixture@invalid.example"]);
   const lock = Buffer.from("trusted runtime lock\n");
   await writeFile(join(hermesRoot, "uv.lock"), lock);
-  git(["add", "uv.lock"]);
+  await writeFile(join(hermesRoot, "runtime.py"), "trusted runtime\n");
+  git(["add", "uv.lock", "runtime.py"]);
   git(["commit", "-m", "fixture"]);
   const commit = git(["rev-parse", "HEAD"]);
 
@@ -523,6 +538,71 @@ linuxHostTest("Hermes verification ignores poisoned PATH Git and checkout-local 
   })).resolves.toMatchObject({ commit });
   expect(existsSync(fakeGitMarker)).toBe(false);
   expect(existsSync(fsmonitorMarker)).toBe(false);
+
+  git(["update-index", "--assume-unchanged", "runtime.py"]);
+  await writeFile(join(hermesRoot, "runtime.py"), "locally changed runtime\n");
+  expect(git(["-c", "core.fsmonitor=false", "status", "--porcelain=v1", "--untracked-files=all"]))
+    .toBe("");
+  await rm(fsmonitorMarker, { force: true });
+  await expect(verifyHermesRuntime({ activeRoot, hermesRoot }))
+    .rejects.toThrow("tracked tree differs from pinned commit");
+  expect(existsSync(fakeGitMarker)).toBe(false);
+  expect(existsSync(fsmonitorMarker)).toBe(false);
+});
+
+test("runtime access probe protects sandbox dependencies from both service identities", () => {
+  const calls = [];
+  const executables = new Map([
+    ["id", "/trusted/id"],
+    ["runuser", "/trusted/runuser"],
+    ["test", "/trusted/test"],
+    ["find", "/trusted/find"],
+  ]);
+  const options = {
+    activeRoot: "/opt/lazurio/versions/candidate-a",
+    bunPath: "/home/principal/.bun/bin/bun",
+    hermesRoot: "/home/principal/src/hermes",
+    profileDirectory: "/srv/personalspace/owner_GEN3/buddy",
+    queueDirectory: "/var/lib/buddy-bridge/queue",
+    systemExecutableResolver: (name) => executables.get(name) ?? null,
+  };
+  probeBuddyRuntimeAccess({
+    ...options,
+    commandRunner: (command, args) => {
+      calls.push([command, args]);
+      return { status: 0, stdout: "", stderr: "" };
+    },
+  });
+  for (const username of ["buddy", "buddy-bridge"]) {
+    expect(calls).toContainEqual([
+      "/trusted/runuser",
+      ["-u", username, "--", "/trusted/test", "!", "-w", "/home/principal/.bun/bin/bun"],
+    ]);
+    expect(calls).toContainEqual([
+      "/trusted/runuser",
+      ["-u", username, "--", "/trusted/find", "/home/principal/src/hermes", "-writable", "-print", "-quit"],
+    ]);
+  }
+
+  expect(() => probeBuddyRuntimeAccess({
+    ...options,
+    commandRunner: (command, args) => ({
+      status: 0,
+      stdout: command === "/trusted/runuser" && args.includes("/trusted/find")
+        ? "/home/principal/src/hermes/runtime.py\n"
+        : "",
+      stderr: "",
+    }),
+  })).toThrow("can modify the Hermes sandbox checkout");
+
+  expect(() => probeBuddyRuntimeAccess({
+    ...options,
+    commandRunner: (_command, args) => ({
+      status: args.includes("!") && args.at(-1) === "/home/principal/.bun/bin" ? 1 : 0,
+      stdout: "",
+      stderr: "",
+    }),
+  })).toThrow("can replace a pinned Buddy runtime dependency");
 });
 
 linuxHostTest("resident runtime rejects an executable below a user-writable path", async () => {

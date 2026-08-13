@@ -7,14 +7,13 @@
 // default; and that the refusal is loud, carries a remedy, and never quotes the
 // Principal's own text.
 //
-// DOES NOT COVER: the KERNEL layer under all of this. The bridge runs under its
-// own uid `buddy-bridge`, in no group but its own (ARCHITECTURE §10.3.2), and
-// that uid — not this file — is what holds when a check here is wrong. Whether
-// the uid exists, whether it can traverse to the profile and whether it can read
-// anything else in the Conglomerate tree are host facts, owned by the install
-// seam (exec ring) and by T3. Nor does it cover containment: "is this path inside
-// the Personalspace?" is not decidable from a bare path, which is why the gate
-// judges the directory's CONTENT contract instead.
+// DOES NOT COVER: participant authorization or Agent tool access. The private
+// communication surface admits only the Principal, while Hermes owns the Agent
+// sandbox. The bridge's separate uid is ordinary process isolation. Whether it
+// exists, can traverse to the profile and can read its contracts are host facts
+// owned by the install seam. Nor does this file prove containment: "is this path
+// inside the Personalspace?" is not decidable from a bare path, which is why the
+// gate judges the directory's CONTENT contract instead.
 
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";

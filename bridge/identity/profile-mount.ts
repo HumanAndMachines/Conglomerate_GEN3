@@ -1,16 +1,17 @@
 // The custody gate on the directory BUDDY_PROFILE_DIR actually names, asserted
-// from INSIDE the bridge process — the one process an outsider's text reaches.
+// from INSIDE the input-facing bridge process. Only the Principal may reach the
+// private communication surface; this check catches a miswired host profile,
+// rather than trying to authorize chat participants a second time.
 //
 // WHAT THE BRIDGE IS ALLOWED TO OPEN, AND WHY THE LIST IS THIS SHORT. The whole
 // Conglomerate tree lives on this host: the Principal's modules, their private
-// `<login>-gbrain` memory, their secrets directory. The bridge is the process
-// that parses text written by someone who is not the Principal. Of that entire
-// tree it may open exactly ONE directory — `<personalspace>/<login>_GEN3/buddy`,
-// the profile — and per ARCHITECTURE §10.3.2 it now runs under its own uid
-// `buddy-bridge`, in no group but its own. THAT uid is the only kernel-level
-// layer between the parser of untrusted text and the Principal's entire memory.
-// Everything in this file is the layer ABOVE it: a check the process can still
-// make about a path the kernel would happily let it read.
+// `<login>-gbrain` memory, their secrets directory. Of that entire tree the
+// bridge may open exactly ONE directory — `<personalspace>/<login>_GEN3/buddy`,
+// the profile — and it runs under its own uid `buddy-bridge`, in no group but
+// its own. That uid is ordinary process separation against accidental bridge
+// self-mutation, not Buddy's authorization boundary or the Agent sandbox. The
+// latter belongs to Hermes. Everything in this file is a startup check the
+// bridge can still make about a path the kernel would otherwise let it read.
 //
 // WHY THERE ARE TWO GATES, AND WHY THIS ONE IS NOT REDUNDANT. The resident host
 // service installer resolves the declared path, refuses a path that is not a
@@ -38,7 +39,7 @@
 // profile read". A Buddy that silently stops reading its own CONSTITUTION writes
 // without gendered self-reference and looks like a Buddy whose Principal has not
 // filled the block in yet — the operator would have no reason to look, while the
-// person's memory sits open to the process that parses untrusted text.
+// person's memory sits open to the input-facing bridge process.
 
 import {
   closeSync,
@@ -283,8 +284,7 @@ export function assertProfileMountIsSafe(mountDir: string | undefined): string {
   throw new Error(
     `refusing to start: the profile declared at ${mountDir ?? "<nothing>"} is not ` +
       `a secret-free <login>-buddy profile.\n  reason: ${verdict.reason}${listed}\n` +
-      "  This directory is readable by the process an outsider's text reaches, and " +
-      "the bridge's own uid is the only kernel-level layer under it. Fix " +
+      "  This directory is readable by the input-facing bridge process. Fix " +
       "BUDDY_PROFILE_DIR through the resident service installer and " +
       "restart the bridge; read-only does not make the wrong directory safe to read.",
   );

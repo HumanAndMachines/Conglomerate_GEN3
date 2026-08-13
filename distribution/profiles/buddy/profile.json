@@ -12,6 +12,7 @@
     "machine_owner_is_adversary": false,
     "local_payload_edits": "allowed-and-reported-as-drift",
     "agent_sandbox": "hermes-runtime",
+    "sandbox_substrate_mutability": "principal-writable-runtime-identities-read-only",
     "parallel_lazurio_acl": false
   },
   "authority": {
@@ -58,6 +59,7 @@
     "private-communication-surface",
     "do-not-invent-second-role",
     "reuse-hermes-sandbox",
+    "sandbox-substrate-not-runtime-writable",
     "no-parallel-authorization-layer"
   ]
 }

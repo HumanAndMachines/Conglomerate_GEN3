@@ -143,15 +143,18 @@ nasadí unit mířící na `active`, restartuje ji a za
 Stejná transakce přidá Hermes gatewayi `TERMINAL_CWD=<active-root>`, takže
 pinned Hermes načte profilový root `AGENTS.md` do každé nově sestavené session;
 privátní ústava a mandáty zůstávají samostatnou vrstvou bridge system message.
-Před restartem seam ověří exact Hermes commit i digest `uv.lock` a po něm jeho
-HTTP health.
+Před restartem seam ověří exact Hermes commit, tracked bytes nezávisle na Git
+indexu i digest `uv.lock` a po něm jeho HTTP health.
 
 Bun zapsaný do unit se resolveuje na přesnou spustitelnou binárku a preflight
 ověří, že ji runtime účet umí použít. Nemusí být root-owned: konkrétní host
 dependency volí Principál přes `--bun PATH` a installer ji nekopíruje ani
-neopravuje. Privilegované instalační subprocessy dál nepoužívají ambientní
-`PATH` nebo checkout-local Git hooky; to chrání instalační krok před omylem,
-nikoli Lazurio před Principálem.
+neopravuje. Bun ani Hermes checkout však nesmí být zapisovatelný či
+nahraditelný účty `buddy` a `buddy-bridge`: sandbox nesmí umět přepsat sám
+sebe. Vlastníkem může dál být Principál nebo jeho servisní identita.
+Privilegované instalační subprocessy nepoužívají ambientní `PATH` nebo
+checkout-local Git hooky; tyto kontroly chrání instalační krok a integritu
+sandboxu, nikoli Lazurio před Principálem.
 
 Bridge běží jako neprivilegovaná služba a k deklarovanému profilu přistupuje
 přes běžná host oprávnění; nestaví nad Personalspace druhý sandbox ani vlastní
