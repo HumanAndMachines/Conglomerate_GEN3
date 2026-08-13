@@ -19,6 +19,7 @@ import {
   resolvePosixProcessGroupId,
   runtimeHostsShareListener,
   runtimeListenerHasStaticLease,
+  selectManagedModuleStopRecord,
   windowsNetstatCommand,
   windowsProcessIdentityCommand,
   windowsPowerShellExecutable,
@@ -52,6 +53,32 @@ test("runtime ownership považuje localhost a 127.0.0.1 za tentýž listener", (
   expect(runtimeHostsShareListener("localhost", "localhost")).toBe(true);
   expect(runtimeHostsShareListener("127.0.0.1", "127.0.0.1")).toBe(true);
   expect(runtimeHostsShareListener("localhost", "0.0.0.0")).toBe(false);
+});
+
+test("durable Stop selects one managed module runtime and rejects true ambiguity", () => {
+  const app = fixtureDiscoveryApp({ port: 24001 });
+  const main = {
+    runtimeKey: app.id,
+    runtimeSource: { type: "main" },
+    runtimeApp: app,
+  };
+  const worktree = {
+    runtimeKey: `${app.id}--worktree--DEV-6439-stop-selector`,
+    runtimeSource: { type: "worktree", slug: "DEV-6439-stop-selector" },
+    runtimeApp: app,
+  };
+
+  expect(selectManagedModuleStopRecord([], app)).toBeNull();
+  expect(selectManagedModuleStopRecord([worktree], app)).toBe(worktree);
+  expect(() => selectManagedModuleStopRecord([main, worktree], app)).toThrow(
+    expect.objectContaining({
+      code: "app_stop_ambiguous",
+      metadata: expect.objectContaining({
+        failure_kind: "ambiguous_managed_module_runtime",
+        runtime_keys: [main.runtimeKey, worktree.runtimeKey],
+      }),
+    }),
+  );
 });
 
 test("TCP listener health používá skutečné spojení místo HTTP předpokladu", async () => {
@@ -3040,6 +3067,72 @@ test("boot reconcile restores exact main and owned worktree desired sources", as
   });
   expect(worktreeHealth.dependencies.cwd).toContain(`.worktrees/workspace/demo/${slug}/app/v1`);
   await worktreeRuntime.stop(app.id, { source: { type: "worktree", slug } });
+}, platformTestTimeout(20_000));
+
+test("reloaded main selector stops the sole reconciled worktree and boot cannot resurrect it", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port });
+  const app = withStaticEntrypoint(fixtureDiscoveryApp({ port }));
+  const { slug } = await createOwnedWorktreeFixture({
+    root,
+    slug: "DEV-6439-reconciled-worktree-stop",
+  });
+  const desiredRoot = join(root, "launchpad", "runtime", "desired-modules");
+  await writeDesiredModuleState({
+    root: desiredRoot,
+    state: buildDesiredModuleState({ app, source: { type: "worktree", slug } }),
+  });
+  const reconciledRuntime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "reconciled-worktree-owner",
+    discover: discoveryWithApp(app),
+  });
+
+  expect(await reconciledRuntime.reconcileDesiredState()).toMatchObject({ active: 1, degraded: 0 });
+  expect(await reconciledRuntime.health(app.id, {
+    source: { type: "worktree", slug },
+  })).toMatchObject({
+    status: "healthy",
+    managed: true,
+    runtime_source: { type: "worktree", slug },
+    desired: { enabled: true, status: "active", source: { type: "worktree", slug } },
+  });
+
+  // A freshly loaded UI currently submits its default main selector. Stop must
+  // still target the one durable runtime owned by this module lease.
+  const stopped = await reconciledRuntime.stop(app.id, { source: { type: "main" } });
+  expect(stopped).toMatchObject({
+    action: "stop",
+    runtime_source: { type: "worktree", slug },
+    desired: { enabled: false, status: "disabled", source: { type: "worktree", slug } },
+  });
+  expect(await reconciledRuntime.health(app.id, {
+    source: { type: "worktree", slug },
+  })).toMatchObject({
+    status: "stopped",
+    managed: false,
+    desired: { enabled: false, status: "disabled", source: { type: "worktree", slug } },
+  });
+
+  const afterReboot = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "after-explicit-stop-reboot",
+    discover: discoveryWithApp(app),
+  });
+  expect(await afterReboot.reconcileDesiredState()).toMatchObject({
+    active: 0,
+    disabled: 1,
+    degraded: 0,
+  });
+  expect(await afterReboot.health(app.id, {
+    source: { type: "worktree", slug },
+  })).toMatchObject({
+    status: "stopped",
+    managed: false,
+    desired: { enabled: false, status: "disabled", source: { type: "worktree", slug } },
+  });
 }, platformTestTimeout(20_000));
 
 test("missing desired worktree becomes degraded without falling back to main", async () => {

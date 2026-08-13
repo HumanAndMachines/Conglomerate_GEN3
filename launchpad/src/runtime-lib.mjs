@@ -67,6 +67,27 @@ export function moduleRuntimeLeaseMatches(left, right) {
     && left.module === right?.module;
 }
 
+export function selectManagedModuleStopRecord(records, app) {
+  const matches = [...records].filter((record) =>
+    moduleRuntimeLeaseMatches(record?.runtimeApp, app)
+  );
+  if (matches.length === 0) return null;
+  if (matches.length === 1) return matches[0];
+  throw new RuntimeActionError(
+    409,
+    "app_stop_ambiguous",
+    `${app.title ?? app.id}: Launchpad found multiple managed runtimes for the same module lease and did not stop any of them.`,
+    matches.map((record) =>
+      `runtime_key: ${record.runtimeKey}; source: ${record.runtimeSource?.type ?? "unknown"}${record.runtimeSource?.slug ? `/${record.runtimeSource.slug}` : ""}`
+    ),
+    {
+      failure_kind: "ambiguous_managed_module_runtime",
+      module_lease_key: `${app.company}/${app.module}`,
+      runtime_keys: matches.map((record) => record.runtimeKey),
+    },
+  );
+}
+
 export function runtimeListenerHasStaticLease(app, listener) {
   return app?.runtime_contract?.schema_version === "lazurio.runtime.v1"
     && app?.personal !== true
@@ -951,25 +972,29 @@ export function createRuntimeManager({
   async function stop(appId, { source = null } = {}) {
     const app = await runtimeAppForAction(appId, { source });
     if (!supportsDurableDesiredRuntime(app)) return stopRuntimeAppUnlocked(app);
-    const recordAtRequest = managedProcesses.get(runtimeKeyForApp(app));
+    const recordsAtRequest = managedRecordsForModule(app);
     try {
       return await withModuleLeaseLock(app, async () => {
-        const record = managedProcesses.get(runtimeKeyForApp(app));
+        const record = selectManagedModuleStopRecord(managedProcesses.values(), app);
         if (!record) {
           const current = await healthForApp(app);
           throw appNotManagedError(app, current);
         }
+        const activeApp = record.runtimeApp ?? app;
         // Stop is fail-safe: persistence is the commit point. If this atomic
         // write fails no signal is sent. Once it succeeds, every later stop
         // failure leaves desired disabled, so boot reconcile cannot resurrect
-        // a process the user explicitly stopped.
-        const desired = await disableDesiredRuntime(app);
-        resetDesiredRestartTracker(app);
-        const result = await stopRuntimeAppUnlocked(app);
+        // a process the user explicitly stopped. The active runtime is selected
+        // by module lease rather than the reloaded UI selector: main, app/vN and
+        // worktree variants are one durable module process. Ambiguity fails
+        // before this commit point and therefore before any process is signaled.
+        const desired = await disableDesiredRuntime(activeApp);
+        resetDesiredRestartTracker(activeApp);
+        const result = await stopRuntimeAppUnlocked(activeApp);
         return { ...result, desired };
-      }, { timeoutMs: recordAtRequest ? null : 100 });
+      }, { timeoutMs: recordsAtRequest.length > 0 ? null : 100 });
     } catch (error) {
-      if (!recordAtRequest && isModuleLockTimeout(error)) {
+      if (recordsAtRequest.length === 0 && isModuleLockTimeout(error)) {
         const current = await healthForApp(app);
         throw appNotManagedError(app, current);
       }
@@ -1985,9 +2010,13 @@ export function createRuntimeManager({
   }
 
   function managedRecordForModule(app) {
-    return [...managedProcesses.values()].find((record) =>
+    return managedRecordsForModule(app)[0] ?? null;
+  }
+
+  function managedRecordsForModule(app) {
+    return [...managedProcesses.values()].filter((record) =>
       moduleRuntimeLeaseMatches(record.runtimeApp, app)
-    ) ?? null;
+    );
   }
 
   function runtimeSourcesEqual(left, right) {
