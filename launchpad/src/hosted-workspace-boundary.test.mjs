@@ -32,3 +32,13 @@ test("runtime docs keep production delivery outside lazurio.runtime.v1", () => {
     expect(document).toMatch(/no T3|neobsahuje T3/);
   }
 });
+
+test("hosted workspace docs keep Dashboard and supervisor authority narrow", () => {
+  for (const document of documents) {
+    expect(document).toMatch(/T3 Code (?:a|and) Launchpad\s+(?:jsou|are)\s+`desired-running`/);
+    expect(document).toMatch(/supervisor\s+(?:hlídá|watches)\s+(?:pouze\s+(?:je|tyto)|only\s+(?:those|them))/);
+    expect(document).toMatch(/Dashboard Development\s+(?:smí\s+)?(?:projektuje|projektovat|projects)\s+(?:právě\s+|jen\s+|only\s+)/);
+    expect(document).toMatch(/deployment\s+katalogu|deployment\s+catalog/);
+    expect(document).toMatch(/nikdy\s+z\s+Workspace\s+service\s+katalogu|never\s+from\s+the\s+Workspace\s+service\s+catalog/);
+  }
+});

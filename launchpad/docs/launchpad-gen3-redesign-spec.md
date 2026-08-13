@@ -132,6 +132,13 @@ approved Tailscale/VPN access plane, never public production surfaces.
 and Doctor only; it is not a complete production deployment, ingress, identity
 or MCP contract.
 
+While the Team Workspace is enabled, T3 Code and Launchpad are
+`desired-running`, and the thin supervisor watches only those two stable
+processes. Dashboard Development projects only their entry points and never
+owns module lifecycle; builders Start, Stop and Open module dev previews in
+Launchpad. Production applications appear only from a later verified deployment
+catalog, never from the Workspace service catalog or dev desired state.
+
 Production delivery is a separate follow-up contract: protected source/tag →
 reproducible immutable artifact → isolated production runtime with explicit
 `public | authenticated | internal` ingress, app authentication/authorization,

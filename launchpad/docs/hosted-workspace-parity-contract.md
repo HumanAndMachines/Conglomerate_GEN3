@@ -26,6 +26,13 @@ source selection, URL mapping ani reconcile logiku. Launchpad zůstává jediný
 ownerem modulových procesů. Tailscale a autentizovaný HTTPS ingress jsou
 infrastrukturní sidecary mimo pracovní kontejner.
 
+Dokud je Team Workspace zapnutý, T3 Code a Launchpad jsou `desired-running` a
+tenký supervisor hlídá pouze je. Dashboard Development projektuje právě tyto
+dva stabilní vstupy; modulový dev proces spouští, zastavuje a otevírá výhradně
+Launchpad. Produkční aplikace se v Dashboardu objeví až z pozdějšího ověřeného
+deployment katalogu, nikdy z Workspace service katalogu nebo dev desired
+state.
+
 `lazurio.runtime.v1` v tomto kontraktu popisuje pouze runnable listenery a
 lifecycle pro Launchpad a Doctor. Není úplným produkčním deployment, ingress,
 identity ani MCP kontraktem. Produkční lane začíná chráněným source/tagem,

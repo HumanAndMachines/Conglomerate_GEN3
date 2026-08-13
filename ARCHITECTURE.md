@@ -84,6 +84,13 @@ Launchpad je jediný owner modulových procesů a z durable desired state obnov�
 přesný main/worktree source. Per-module kontejnery, Docker-in-Docker ani další
 runtime orchestrátor do tohoto modelu nepatří.
 
+Dokud je Team Workspace zapnutý, T3 Code a Launchpad jsou
+`desired-running` a tenký supervisor hlídá pouze tyto dva stabilní procesy.
+Dashboard Development projektuje jen jejich vstupy; modulový dev proces
+spouští, zastavuje a otevírá výhradně Launchpad. Produkční aplikace se v
+Dashboardu objeví až z pozdějšího ověřeného deployment katalogu, nikdy z
+Workspace service katalogu nebo dev desired state.
+
 Lokální a hosted profil mají shodnou builder-visible strukturu a lifecycle
 postupy. Liší se pouze bezpečnostním a síťovým obalem: lokální `Open` vrací
 loopback, hosted `Open` exact autentizovaný HTTPS origin z Team service
