@@ -448,6 +448,9 @@ linuxHostTest("Hermes verification ignores poisoned PATH Git and checkout-local 
 });
 
 test("privileged Hermes immutable-tree gate rejects a writable nested runtime file", () => {
+  const root = "/trusted/hermes";
+  const runtime = join(root, "runtime");
+  const agent = join(runtime, "agent.py");
   const directory = (mode = 0o755) => ({
     uid: 0,
     mode,
@@ -463,14 +466,14 @@ test("privileged Hermes immutable-tree gate rejects a writable nested runtime fi
     isFile: () => true,
   });
   const entries = new Map([
-    ["/trusted/hermes", directory()],
-    ["/trusted/hermes/runtime", directory()],
-    ["/trusted/hermes/runtime/agent.py", file(0o664)],
+    [root, directory()],
+    [runtime, directory()],
+    [agent, file(0o664)],
   ]);
-  expect(() => assertRootOwnedImmutableTree("/trusted/hermes", {
+  expect(() => assertRootOwnedImmutableTree(root, {
     lstatEntry: (path) => entries.get(path),
-    listEntries: (path) => path === "/trusted/hermes" ? ["runtime"] : ["agent.py"],
-  })).toThrow("writable entry: runtime/agent.py");
+    listEntries: (path) => path === root ? ["runtime"] : ["agent.py"],
+  })).toThrow(/writable entry: runtime[\\/]agent\.py/u);
 });
 
 linuxHostTest("resident runtime rejects an executable below a user-writable path", async () => {
