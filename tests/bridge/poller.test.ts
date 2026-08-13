@@ -17,7 +17,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { EventBridge, createZulipEventsApi } from "../../bridge/inbound/events.ts";
+import {
+  EventBridge,
+  createZulipEventsApi,
+  type ZulipEventsApi,
+} from "../../bridge/inbound/events.ts";
 import { FileReplyQueue } from "../../bridge/inbound/reply-queue.ts";
 import { TurnBreaker } from "../../bridge/inbound/turn-breaker.ts";
 import { DurableWatermark } from "../../bridge/inbound/watermark.ts";
@@ -59,6 +63,7 @@ async function harness(options: {
   root?: string;
   watermark?: DurableWatermark;
   breaker?: TurnBreaker;
+  api?: ZulipEventsApi;
 } = {}): Promise<Harness> {
   const realm = options.realm ?? new FakeRealm();
   const root = options.root ?? (await scratch());
@@ -83,7 +88,7 @@ async function harness(options: {
   const watermark =
     options.watermark ?? new DurableWatermark(join(root, "state", "watermark.json"));
   const bridge = new EventBridge({
-    api: createZulipEventsApi(cfg),
+    api: options.api ?? createZulipEventsApi(cfg),
     inbox: queue,
     watermark,
     bot: { userId: realm.botUserId, email: realm.botEmail },
@@ -164,6 +169,55 @@ posixDurabilityDescribe("cold start in front of a realm that already has a past"
     expect(realm.sent[0]!.content).toContain("an answer from Buddy");
   });
 
+  test("a message after register response is live, never a cold-start anchor", async () => {
+    const realm = new FakeRealm({ history: HISTORY });
+    const baseApi = createZulipEventsApi(fakeRealmConfig(realm));
+    let liveMessageId = 0;
+    const api: ZulipEventsApi = {
+      ...baseApi,
+      register: async () => {
+        const registered = await baseApi.register();
+        // This is the exact old race: the queue exists and its atomic initial
+        // boundary has returned, then the Principal writes before recover()
+        // starts its catch-up. A later newest-message probe would anchor this
+        // queued event and dedupe it away.
+        liveMessageId = realm.post({ to: { kind: "dm" }, text: "zprava během startu" });
+        return registered;
+      },
+    };
+    const { bridge, queue, watermark } = await harness({ realm, api });
+
+    await bridge.recover();
+    await queue.drainOnce();
+    // catchUp processes from the register boundary immediately; pump sees the
+    // deliberate queue overlap later and the inbox absorbs it.
+    expect(await watermark.read()).toBe(liveMessageId);
+    expect(realm.sent).toHaveLength(1);
+    await bridge.pumpOnce();
+    await queue.drainOnce();
+    expect(realm.sent).toHaveLength(1);
+  });
+
+  test("an empty realm persists zero as a real boundary across restart", async () => {
+    const realm = new FakeRealm();
+    const root = await scratch();
+    const first = await harness({ realm, root });
+    await first.bridge.recover();
+    expect(await first.watermark.hasDurableBoundary()).toBe(true);
+    expect(await first.watermark.read()).toBe(0);
+
+    // The first post is now after the durable empty-realm boundary. Even if the
+    // old queue/process disappears before consuming it, the replacement must
+    // catch it up from zero instead of reclassifying it as history.
+    const liveMessageId = realm.post({ to: { kind: "dm" }, text: "první zpráva" });
+    realm.dropQueue();
+    const second = await harness({ realm, root });
+    await second.bridge.recover();
+    await second.queue.drainOnce();
+    expect(await second.watermark.read()).toBe(liveMessageId);
+    expect(realm.sent).toHaveLength(1);
+  });
+
   test("SCAR-R4 a lost queue after a quiet cold start does not answer the anchor", async () => {
     // Catch-up pages from the watermark INCLUSIVE on purpose and relies on the
     // inbox's EEXIST to swallow the overlap — a promise consume() keeps for
@@ -194,9 +248,10 @@ posixDurabilityDescribe("cold start in front of a realm that already has a past"
   });
 
   test("a cold start that cannot read the realm stays SILENT rather than starting at zero", async () => {
-    // The fail-closed half. `0` is not a safe default here: it is precisely the
-    // value that replays the Principal's whole history, so an unreadable probe
-    // throws and the run loop backs off instead.
+    // The fail-closed half. `0` is not a safe guessed default here: it is
+    // precisely the value that replays the Principal's whole history, so a
+    // register response that cannot establish the atomic boundary throws and
+    // the run loop backs off instead.
     const realm = new FakeRealm({ history: HISTORY });
     const { bridge } = await harness({ realm });
     realm.breakGateway("nginx-502");

@@ -207,6 +207,12 @@ export interface ZulipRegisteredQueue {
   /** The cursor to start polling from. Volatile: it dies with this queue. */
   lastEventId: number;
   /**
+   * Atomic cold-start boundary returned by the SAME register request that
+   * allocates the queue. Unlike a later GET /messages probe, this cannot absorb
+   * a message that arrived after registration into the historical anchor.
+   */
+  maxMessageId: number;
+  /**
    * Zulip's own advice for the HTTP read timeout of the long-poll, "guaranteed
    * to be higher than heartbeat timeout". Absent on older servers.
    */
@@ -238,6 +244,10 @@ export async function registerEventQueue(
 ): Promise<ZulipRegisteredQueue> {
   const json = await apiForm(cfg, "POST", "register", {
     event_types: JSON.stringify(["message"]),
+    // Explicit even though Zulip defaults this to event_types. `message` makes
+    // max_message_id part of the register response, giving the bridge one
+    // server-owned atomic boundary between initial state and queued events.
+    fetch_event_types: JSON.stringify(["message"]),
     apply_markdown: "false",
     // No narrow. The trigger predicate lives in bridge/inbound/message.ts and is
     // applied to the live lane and the catch-up lane alike; a narrow here would
@@ -245,9 +255,16 @@ export async function registerEventQueue(
     // narrows are conjunctive so it could not express "a DM to me OR a mention"
     // in the first place.
   });
+  const maxMessageId = Number(json.max_message_id);
+  if (!Number.isInteger(maxMessageId) || maxMessageId < 0) {
+    throw new Error(
+      "Zulip register did not return a valid max_message_id cold-start boundary",
+    );
+  }
   return {
     queueId: String(json.queue_id),
     lastEventId: Number(json.last_event_id ?? -1),
+    maxMessageId,
     longpollTimeoutSeconds:
       typeof json.event_queue_longpoll_timeout_seconds === "number"
         ? json.event_queue_longpoll_timeout_seconds
@@ -321,45 +338,6 @@ export async function getMessagesFrom(
     messages: json.messages,
     foundNewest: json.found_newest !== false,
   };
-}
-
-/**
- * The realm's newest message id, or 0 for a realm that has never had a message.
- *
- * WHAT IT IS FOR — the cold start. A bridge with no watermark and no inbox
- * record knows nothing about this host's past, and the tempting reading of
- * "nothing" is `anchor = 0`, i.e. the beginning of the realm. On Host #1 that
- * reading answered fifteen historical messages and delivered FIVE real replies
- * into existing private conversations in twenty seconds (scar R4). This probe is
- * how a cold start learns where "now" is instead of guessing where "the
- * beginning" is.
- *
- * IT IS FAIL-CLOSED. An unreadable answer THROWS; it never degrades to 0,
- * because 0 is precisely the value that replays the Principal's history. A
- * genuinely empty realm answers with an empty page and `found_newest`, and that
- * is the only path to a returned 0.
- *
- * `anchor: "newest"` with `num_before: 1` is documented upstream (Zulip REST API,
- * `GET /api/v1/messages`); the id arithmetic below is OURS.
- */
-export async function getNewestMessageId(cfg: ZulipConfig): Promise<number> {
-  const json = await apiRequest(cfg, "GET", "messages", {
-    query: {
-      anchor: "newest",
-      num_before: "1",
-      num_after: "0",
-      narrow: "[]",
-      apply_markdown: "false",
-    },
-  });
-  if (!Array.isArray(json.messages)) {
-    throw new Error("Zulip did not report the realm's newest message");
-  }
-  let newest = 0;
-  for (const message of json.messages as Array<{ id?: unknown }>) {
-    if (typeof message?.id === "number" && message.id > newest) newest = message.id;
-  }
-  return newest;
 }
 
 /**

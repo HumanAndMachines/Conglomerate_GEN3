@@ -810,14 +810,15 @@ function derivePrivateRuntimeHealthUrl(runtimeUrl) {
   return new URL("/health", parsed).toString();
 }
 
-function isPrivateRuntimeHost(hostname) {
+export function isPrivateRuntimeHost(hostname) {
   const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (host === "localhost" || host === "::1" || host.startsWith("127.")) return true;
+  if (host === "localhost" || host === "::1") return true;
   const octets = host.split(".").map(Number);
   if (octets.length !== 4 || octets.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
     return false;
   }
-  return octets[0] === 10
+  return octets[0] === 127
+    || octets[0] === 10
     || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31)
     || (octets[0] === 192 && octets[1] === 168)
     || (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127);

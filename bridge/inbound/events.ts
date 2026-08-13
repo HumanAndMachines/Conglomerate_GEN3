@@ -48,7 +48,6 @@ import type { DurableWatermark } from "./watermark.ts";
 import {
   getEvents,
   getMessagesFrom,
-  getNewestMessageId,
   registerEventQueue,
   ZulipQueueGoneError,
   type ZulipConfig,
@@ -63,6 +62,7 @@ export interface ZulipEventsApi {
   register(): Promise<{
     queueId: string;
     lastEventId: number;
+    maxMessageId: number;
     longpollTimeoutSeconds?: number;
   }>;
   poll(
@@ -74,12 +74,6 @@ export interface ZulipEventsApi {
     anchor: number,
     numAfter: number,
   ): Promise<{ messages: ZulipMessage[]; foundNewest: boolean }>;
-  /**
-   * The realm's newest message id, or 0 for a realm that never had one. Used by
-   * the cold start and by nothing else. It THROWS rather than answering 0 when
-   * the realm cannot be read — see `catchUp`.
-   */
-  newestMessageId(): Promise<number>;
 }
 
 export function createZulipEventsApi(cfg: ZulipConfig): ZulipEventsApi {
@@ -94,7 +88,6 @@ export function createZulipEventsApi(cfg: ZulipConfig): ZulipEventsApi {
         foundNewest: page.foundNewest,
       };
     },
-    newestMessageId: () => getNewestMessageId(cfg),
   };
 }
 
@@ -165,6 +158,7 @@ export class EventBridge {
     EventBridgeOptions;
   private queueId?: string;
   private lastEventId = -1;
+  private registrationMaxMessageId?: number;
   private registrations = 0;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly pollTimeoutPinned: boolean;
@@ -211,6 +205,7 @@ export class EventBridge {
     const queue = await this.options.api.register();
     this.queueId = queue.queueId;
     this.lastEventId = queue.lastEventId;
+    this.registrationMaxMessageId = queue.maxMessageId;
     this.registrations += 1;
     if (queue.longpollTimeoutSeconds && !this.pollTimeoutPinned) {
       // Zulip's own advice, "guaranteed to be higher than heartbeat timeout".
@@ -220,8 +215,11 @@ export class EventBridge {
       );
     }
     this.options.logger.info("[inbound] event queue registered");
-    await this.options.onRegistered?.({ registrations: this.registrations });
     await this.catchUp();
+    // Readiness means both halves succeeded: the queue exists AND the durable
+    // message boundary/catch-up is established. Publishing it earlier lets a
+    // service gate report healthy while recover() is still able to fail.
+    await this.options.onRegistered?.({ registrations: this.registrations });
   }
 
   /**
@@ -240,14 +238,18 @@ export class EventBridge {
    */
   async catchUp(): Promise<number> {
     let anchor = await this.options.watermark.read();
-    if (anchor === 0) {
+    let hasBoundary = await this.options.watermark.hasDurableBoundary();
+    if (anchor === 0 && !hasBoundary) {
       // The watermark file is gone but the inbox may not be. Seeding from the
       // highest recorded id is what stops a lost watermark from re-answering the
       // realm's whole history, message by message.
       anchor = await this.options.inbox.highestRecordedMessageId();
-      if (anchor > 0) await this.options.watermark.advanceTo(anchor);
+      if (anchor > 0) {
+        await this.options.watermark.advanceTo(anchor);
+        hasBoundary = true;
+      }
     }
-    if (anchor === 0) {
+    if (anchor === 0 && !hasBoundary) {
       // COLD START — no watermark, no record, nothing at all. This is scar R4,
       // and it is not hypothetical: on Host #1 a brand-new bridge in front of a
       // realm that already had a past accepted fifteen historical messages and
@@ -260,12 +262,18 @@ export class EventBridge {
       // suite never saw it, and why `tests/fakes/fake-realm.ts` takes a
       // `history` in its constructor.
       //
-      // So a cold start ANCHORS AT NOW and answers only what arrives after it.
-      // The probe throws rather than answering 0 when the realm cannot be read,
-      // and that throw propagates: the run loop backs off and retries. A bridge
-      // that cannot establish where "now" is must stay silent, because the only
-      // other option is to start at the beginning of the Principal's history.
-      const newest = await this.options.api.newestMessageId();
+      // So a cold start anchors at the server-owned boundary returned by the
+      // SAME register request that allocated this queue. A separate newest-
+      // message probe after registration has a race: a new DM can enter both
+      // the queue and that probe, then be misclassified as historical and
+      // swallowed by inbox dedupe. Zulip's register `max_message_id` exists as
+      // part of its initial-data/event-queue atomicity contract.
+      const newest = this.registrationMaxMessageId;
+      if (typeof newest !== "number" || !Number.isInteger(newest) || newest < 0) {
+        throw new Error(
+          "Zulip registration supplied no valid max_message_id cold-start boundary",
+        );
+      }
       if (newest > 0) {
         // The anchor gets a durable REFUSAL record before the watermark moves.
         // Catch-up deliberately re-presents the message AT the watermark and
@@ -278,12 +286,17 @@ export class EventBridge {
         // same durability order consume() lives by.
         await this.options.inbox.refuse(newest, "cold_start_anchor");
         await this.options.watermark.advanceTo(newest);
-        this.options.logger.info(
-          "[inbound] cold start: anchored at the realm's newest message; " +
-            "history is not answered",
-        );
+        anchor = newest;
+      } else {
+        // Persist zero as an ESTABLISHED boundary. Without this distinction, a
+        // realm that was empty on first start can lose its first message if the
+        // process restarts after Zulip queued it but before it was recorded: the
+        // second start would mistake that message for pre-existing history.
+        await this.options.watermark.initializeAt(0);
       }
-      return 0;
+      this.options.logger.info(
+        "[inbound] cold start: anchored at the register boundary; history is not answered",
+      );
     }
     let seen = 0;
     for (let page = 0; page < this.options.maxCatchUpPages; page += 1) {

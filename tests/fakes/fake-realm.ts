@@ -204,6 +204,9 @@ export class FakeRealm {
           result: "success",
           queue_id: this.registerQueue(),
           last_event_id: -1,
+          // Zulip returns this when `message` is in fetch_event_types. It is the
+          // initial-state boundary from the same request that creates the queue.
+          max_message_id: this.newestMessageId,
           event_queue_longpoll_timeout_seconds: 90,
         });
       case "GET events":

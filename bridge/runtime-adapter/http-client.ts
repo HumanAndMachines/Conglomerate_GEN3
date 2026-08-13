@@ -5,9 +5,9 @@
 // WHICH CLAUSE LIVES WHERE, so a future runtime swap knows what to re-verify:
 //
 //   K1  OpenAI-shaped chat endpoint     `POST <url>`, `choices[0].message.content`
-//   K2  bearer on a private bind        `Authorization: Bearer …`; the bind itself
-//                                       is the gateway's business, asserted in
-//                                       `host/runtime/hermes/gateway-env.sh`
+//   K2  bearer on a private bind        `Authorization: Bearer …`; the gateway
+//                                       owns its bind and this client reasserts
+//                                       loopback/private destination at each start
 //   K3  the system message LAYERS       one `{role:"system"}` message ahead of the
 //                                       Principal's text, assembled per turn
 //   K4  caller-supplied session id      sent under a CONFIGURABLE header name
@@ -76,6 +76,25 @@ export interface RuntimeClientConfig {
   systemMessage: (input: BridgeReplyInput) => string | null;
 }
 
+export function isPrivateRuntimeHost(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (host === "localhost" || host === "::1") return true;
+  const octets = host.split(".").map(Number);
+  if (
+    octets.length !== 4 ||
+    octets.some((part) => !Number.isInteger(part) || part < 0 || part > 255)
+  ) {
+    return false;
+  }
+  return (
+    octets[0] === 127 ||
+    octets[0] === 10 ||
+    (octets[0] === 172 && octets[1]! >= 16 && octets[1]! <= 31) ||
+    (octets[0] === 192 && octets[1] === 168) ||
+    (octets[0] === 100 && octets[1]! >= 64 && octets[1]! <= 127)
+  );
+}
+
 function normalizedEndpoint(value: string): string {
   // Both throws carry `refusing to start:` because a malformed endpoint is
   // configuration, not weather — it routes to exit 78 (scar R10), where a bare
@@ -89,8 +108,17 @@ function normalizedEndpoint(value: string): string {
         "(the value itself is withheld from this message on purpose)",
     );
   }
-  if (!/^https?:$/.test(endpoint.protocol)) {
-    throw new Error("refusing to start: the agent runtime endpoint must use HTTP or HTTPS");
+  if (!/^https?:$/.test(endpoint.protocol) || endpoint.username || endpoint.password) {
+    throw new Error(
+      "refusing to start: the agent runtime endpoint must use HTTP or HTTPS " +
+        "without embedded credentials",
+    );
+  }
+  if (!isPrivateRuntimeHost(endpoint.hostname)) {
+    throw new Error(
+      "refusing to start: AGENT_RUNTIME_URL must target loopback or a private " +
+        "host address; the configured value is withheld",
+    );
   }
   return endpoint.toString();
 }
@@ -149,6 +177,9 @@ export function createRuntimeReplyProvider(
     try {
       response = await fetchImpl(endpoint, {
         method: "POST",
+        // A 307/308 must not carry the Principal's contract and message body
+        // from an allowed private endpoint to an arbitrary redirect target.
+        redirect: "error",
         headers: {
           Authorization: `Bearer ${config.apiKey}`,
           "Content-Type": "application/json",

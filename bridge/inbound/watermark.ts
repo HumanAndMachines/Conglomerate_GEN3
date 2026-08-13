@@ -8,8 +8,10 @@
 // destroys it. After a re-register the old cursor means nothing.
 //
 // So the only cursor that survives is keyed on the Zulip MESSAGE id, which is
-// realm-global, immutable and increasing. This file is that cursor: the highest
-// message id for which a durable inbox record exists on disk.
+// realm-global, immutable and increasing. This file is that cursor: normally the
+// highest message id the bridge has durably judged. Its one special value is a
+// persisted zero, meaning the first atomic register boundary observed an empty
+// realm; that distinguishes "initialized empty" from "state is missing".
 //
 // PRIVACY. The number is a monotonically increasing count of realm messages, so
 // it leaks message volume. It stays in the host's gitignored runtime tree and
@@ -30,6 +32,7 @@ interface StoredWatermark {
 export class DurableWatermark {
   private readonly path: string;
   private cached?: number;
+  private initialized = false;
 
   constructor(path: string) {
     if (!path.trim()) throw new Error("Watermark path is required");
@@ -43,10 +46,12 @@ export class DurableWatermark {
       const parsed = JSON.parse(
         await readFile(this.path, "utf8"),
       ) as StoredWatermark;
-      this.cached =
-        parsed.version === 1 && Number.isInteger(parsed.message_id)
-          ? Math.max(0, parsed.message_id)
-          : 0;
+      if (parsed.version === 1 && Number.isInteger(parsed.message_id)) {
+        this.cached = Math.max(0, parsed.message_id);
+        this.initialized = true;
+      } else {
+        this.cached = 0;
+      }
     } catch {
       // Absent or unreadable both mean "no durable anchor". Catch-up then starts
       // from 0, re-presents messages that already have records, and every one of
@@ -55,6 +60,26 @@ export class DurableWatermark {
       this.cached = 0;
     }
     return this.cached;
+  }
+
+  /** Whether zero means an established empty-realm boundary, not no state. */
+  async hasDurableBoundary(): Promise<boolean> {
+    await this.read();
+    return this.initialized;
+  }
+
+  /**
+   * Persist the first server-owned cold-start boundary, including zero.
+   * Once initialized it never moves through this method; normal message
+   * progress belongs to advanceTo().
+   */
+  async initializeAt(messageId: number): Promise<void> {
+    if (!Number.isInteger(messageId) || messageId < 0) {
+      throw new Error("Initial watermark message id must be a non-negative integer");
+    }
+    await this.read();
+    if (this.initialized) return;
+    await this.write(messageId);
   }
 
   /**
@@ -68,6 +93,10 @@ export class DurableWatermark {
     }
     const current = await this.read();
     if (messageId <= current) return;
+    await this.write(messageId);
+  }
+
+  private async write(messageId: number): Promise<void> {
     const directory = dirname(this.path);
     await mkdir(directory, { recursive: true, mode: 0o700 });
     const temporary = join(directory, `.watermark.${randomUUID()}.tmp`);
@@ -82,6 +111,7 @@ export class DurableWatermark {
       await unlink(temporary).catch(() => undefined);
     }
     this.cached = messageId;
+    this.initialized = true;
   }
 }
 

@@ -15,7 +15,10 @@ import {
   readRuntimeSeam,
   resolveAliased,
 } from "../../bridge/runtime-adapter/seam.ts";
-import { createRuntimeReplyProvider } from "../../bridge/runtime-adapter/http-client.ts";
+import {
+  createRuntimeReplyProvider,
+  isPrivateRuntimeHost,
+} from "../../bridge/runtime-adapter/http-client.ts";
 import type { BridgeReplyInput } from "../../bridge/inbound/message.ts";
 
 const CANONICAL = {
@@ -151,5 +154,65 @@ describe("K4 — the session id travels under the CONFIGURED header", () => {
     expect(() =>
       readRuntimeSeam({ ...CANONICAL, AGENT_RUNTIME_SESSION_HEADER: "X Session Id" }),
     ).toThrow(/not a valid HTTP header name/);
+  });
+});
+
+describe("K2 — private runtime destination is reasserted in the bridge process", () => {
+  const provider = (endpoint: string) =>
+    createRuntimeReplyProvider({
+      endpoint,
+      apiKey: "secret-that-must-stay-local",
+      model: "hermes",
+      systemMessage: () => "private contract marker",
+    });
+
+  test("loopback, RFC1918 and host-local CGNAT addresses are accepted", () => {
+    for (const host of [
+      "localhost",
+      "127.0.0.1",
+      "127.255.255.254",
+      "::1",
+      "10.0.0.4",
+      "172.16.0.1",
+      "172.31.255.254",
+      "192.168.1.3",
+      "100.64.0.1",
+      "100.127.255.254",
+    ]) {
+      expect(isPrivateRuntimeHost(host)).toBe(true);
+      expect(() =>
+        provider(`http://${host.includes(":") ? `[${host}]` : host}:8642/v1`),
+      ).not.toThrow();
+    }
+  });
+
+  test("public, ambiguous and credential-bearing destinations fail before fetch", () => {
+    for (const endpoint of [
+      "https://runtime.example.test/v1",
+      "https://8.8.8.8/v1",
+      "http://172.32.0.1/v1",
+      "http://100.128.0.1/v1",
+      "http://0.0.0.0/v1",
+      "http://127.evil.example.test/v1",
+      "http://user:password@127.0.0.1:8642/v1",
+    ]) {
+      expect(() => provider(endpoint)).toThrow(/^refusing to start:/);
+    }
+  });
+
+  test("runtime requests refuse redirects outside the validated destination", async () => {
+    let redirect: RequestRedirect | undefined;
+    const runtime = createRuntimeReplyProvider({
+      endpoint: CANONICAL.AGENT_RUNTIME_URL,
+      apiKey: "k",
+      model: "hermes",
+      systemMessage: () => "private contract",
+      fetchImpl: (async (_url: string, init: RequestInit) => {
+        redirect = init.redirect;
+        return Response.json({ choices: [{ message: { content: "ok" } }] });
+      }) as unknown as typeof fetch,
+    });
+    await runtime(JOB);
+    expect(redirect).toBe("error");
   });
 });

@@ -24,6 +24,7 @@ import {
   inspectProfileDirectory,
   isTrustedResidentExecutablePath,
   installBuddyBridgeService,
+  isPrivateRuntimeHost as serviceAcceptsPrivateRuntimeHost,
   renderBuddyBridgeUnit,
   restorePreResidentBuddyService,
   residentGitInvocation,
@@ -34,6 +35,9 @@ import {
   waitForBuddyBridgeReadiness,
   waitForHermesGatewayReadiness,
 } from "./runtime/buddy-service-lib.mjs";
+import {
+  isPrivateRuntimeHost as bridgeAcceptsPrivateRuntimeHost,
+} from "../bridge/runtime-adapter/http-client.ts";
 
 const scratches = [];
 // The service transaction deliberately targets systemd hosts. Windows keeps
@@ -273,6 +277,30 @@ test("profile inspection follows a directory symlink and catches secret-shaped e
   expect(result.ok).toBe(false);
   expect(result.reason).toContain(".env");
   expect(result.reason).not.toContain("PRIVATE=value");
+});
+
+test("service preflight and bridge process share the private runtime host boundary", () => {
+  for (const host of [
+    "localhost",
+    "127.0.0.1",
+    "::1",
+    "10.2.3.4",
+    "172.16.0.1",
+    "172.31.255.254",
+    "192.168.1.2",
+    "100.64.0.1",
+    "100.127.255.254",
+    "8.8.8.8",
+    "172.32.0.1",
+    "100.128.0.1",
+    "runtime.example.test",
+    "127.evil.example.test",
+    "0.0.0.0",
+  ]) {
+    expect(bridgeAcceptsPrivateRuntimeHost(host)).toBe(
+      serviceAcceptsPrivateRuntimeHost(host),
+    );
+  }
 });
 
 test("service preflight refuses contract files symlinked outside the profile", async () => {
