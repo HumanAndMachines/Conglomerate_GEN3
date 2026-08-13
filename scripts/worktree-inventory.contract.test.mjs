@@ -180,7 +180,7 @@ test("ignores environment overrides and keeps one local authority", () => {
   expect(resolveAuthorityRoot("/workspace/Conglomerate", {
     LAZURIO_MISSION_CONTROL_ROOT: "/fixtures/HumanAndMachine-ai_GEN3",
     HUMANANDMACHINES_ROOT: "/retired/HumanAndMachines",
-  })).toBe("/workspace/Conglomerate/organizations/HumanAndMachine-ai_GEN3");
+  })).toBe(join("/workspace/Conglomerate", "organizations", "HumanAndMachine-ai_GEN3"));
 });
 
 test("legacy sidecar locator fails toward repository-db when only a retired plan exists", async () => {
