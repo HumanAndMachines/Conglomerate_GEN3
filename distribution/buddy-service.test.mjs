@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import {
   chmod,
   lstat,
@@ -12,16 +13,23 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import {
   BUDDY_SERVICE_BACKUP_SUFFIX,
   BUDDY_SERVICE_UNIT,
   HERMES_CONTEXT_DROPIN,
   HERMES_SERVICE_UNIT,
+  assertRootOwnedImmutableTree,
   inspectBridgeEnvironment,
   inspectProfileDirectory,
+  isTrustedResidentExecutablePath,
   installBuddyBridgeService,
   renderBuddyBridgeUnit,
   restorePreResidentBuddyService,
+  residentGitInvocation,
+  runCommand,
+  trustedGitExecutable,
+  trustedSystemExecutable,
   verifyHermesRuntime,
   waitForBuddyBridgeReadiness,
   waitForHermesGatewayReadiness,
@@ -32,6 +40,7 @@ const scratches = [];
 // the resident lifecycle fail-closed, and its filesystem does not model POSIX
 // execute/0600 bits, so only filesystem-neutral helpers run there.
 const linuxHostTest = process.platform === "win32" ? test.skip : test;
+const linuxSystemdTest = process.platform === "linux" ? test : test.skip;
 afterEach(async () => {
   await Promise.all(scratches.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
@@ -342,6 +351,182 @@ test("live Hermes compatibility requires the exact commit, clean tree and lock d
   await writeFile(join(hermesRoot, "uv.lock"), "drifted\n");
   await expect(verifyHermesRuntime({ activeRoot, hermesRoot, processRunner: cleanGit }))
     .rejects.toThrow("lock digest");
+});
+
+linuxHostTest("Hermes verification ignores poisoned PATH Git and checkout-local fsmonitor", async () => {
+  const root = await scratch("lazurio-hermes-hostile-git-");
+  const activeRoot = join(root, "active");
+  const hermesRoot = join(root, "hermes");
+  const fakeBin = join(root, "fake-bin");
+  await Promise.all([
+    mkdir(join(activeRoot, "resident", "dependencies"), { recursive: true }),
+    mkdir(hermesRoot, { recursive: true }),
+    mkdir(fakeBin, { recursive: true }),
+  ]);
+
+  const gitExecutable = trustedGitExecutable();
+  expect(gitExecutable).not.toBeNull();
+  const git = (args) => {
+    const fixtureGitEnvironment = {
+      LC_ALL: "C",
+      LANG: "C",
+      GIT_ATTR_NOSYSTEM: "1",
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_CONFIG_COUNT: "0",
+      GIT_OPTIONAL_LOCKS: "0",
+      GIT_PAGER: "cat",
+      GIT_TERMINAL_PROMPT: "0",
+    };
+    const result = spawnSync(gitExecutable, [
+      "-c", "core.hooksPath=/dev/null",
+      "-c", "commit.gpgSign=false",
+      ...args,
+    ], {
+      cwd: hermesRoot,
+      encoding: "utf8",
+      env: fixtureGitEnvironment,
+      shell: false,
+      windowsHide: true,
+    });
+    expect(result.status, String(result.stderr ?? "")).toBe(0);
+    return String(result.stdout ?? "").trim();
+  };
+  git(["init"]);
+  git(["config", "user.name", "Lazurio fixture"]);
+  git(["config", "user.email", "fixture@invalid.example"]);
+  const lock = Buffer.from("trusted runtime lock\n");
+  await writeFile(join(hermesRoot, "uv.lock"), lock);
+  git(["add", "uv.lock"]);
+  git(["commit", "-m", "fixture"]);
+  const commit = git(["rev-parse", "HEAD"]);
+
+  const fsmonitorHook = join(hermesRoot, ".git", "hostile-fsmonitor.sh");
+  const fsmonitorMarker = join(hermesRoot, ".git", "fsmonitor-invoked");
+  await writeFile(
+    fsmonitorHook,
+    "#!/bin/sh\n: > \"$(dirname \"$0\")/fsmonitor-invoked\"\nprintf 'fixture-token\\n'\n",
+  );
+  await chmod(fsmonitorHook, 0o755);
+  git(["config", "core.fsmonitor", fsmonitorHook]);
+  git(["config", "core.fsmonitorHookVersion", "2"]);
+  git(["status", "--porcelain=v1"]);
+  expect(existsSync(fsmonitorMarker)).toBe(true);
+  await rm(fsmonitorMarker, { force: true });
+
+  const fakeGit = join(fakeBin, "git");
+  const fakeGitMarker = join(fakeBin, "invoked");
+  await writeFile(fakeGit, "#!/bin/sh\n: > \"$(dirname \"$0\")/invoked\"\nexit 97\n");
+  await chmod(fakeGit, 0o755);
+  await writeFile(
+    join(activeRoot, "resident", "dependencies", "hermes.json"),
+    `${JSON.stringify({
+      repository: "Lazurio/hermes-agent",
+      commit,
+      lock_file: "uv.lock",
+      lock_sha256: createHash("sha256").update(lock).digest("hex"),
+    })}\n`,
+  );
+
+  await expect(verifyHermesRuntime({
+    activeRoot,
+    hermesRoot,
+    environment: { ...process.env, PATH: fakeBin },
+  })).resolves.toMatchObject({ commit });
+  expect(existsSync(fakeGitMarker)).toBe(false);
+  expect(existsSync(fsmonitorMarker)).toBe(false);
+
+  await expect(verifyHermesRuntime({
+    activeRoot,
+    hermesRoot,
+    requireRootOwnership: true,
+    platform: "linux",
+    processRunner: () => {
+      throw new Error("Git must not run before the ownership gate");
+    },
+  })).rejects.toThrow("root-owned non-writable path");
+});
+
+test("privileged Hermes immutable-tree gate rejects a writable nested runtime file", () => {
+  const directory = (mode = 0o755) => ({
+    uid: 0,
+    mode,
+    isSymbolicLink: () => false,
+    isDirectory: () => true,
+    isFile: () => false,
+  });
+  const file = (mode) => ({
+    uid: 0,
+    mode,
+    isSymbolicLink: () => false,
+    isDirectory: () => false,
+    isFile: () => true,
+  });
+  const entries = new Map([
+    ["/trusted/hermes", directory()],
+    ["/trusted/hermes/runtime", directory()],
+    ["/trusted/hermes/runtime/agent.py", file(0o664)],
+  ]);
+  expect(() => assertRootOwnedImmutableTree("/trusted/hermes", {
+    lstatEntry: (path) => entries.get(path),
+    listEntries: (path) => path === "/trusted/hermes" ? ["runtime"] : ["agent.py"],
+  })).toThrow("writable entry: runtime/agent.py");
+});
+
+linuxHostTest("resident runtime rejects an executable below a user-writable path", async () => {
+  const root = await scratch("lazurio-untrusted-executable-");
+  const executable = join(root, "git");
+  await writeFile(executable, "#!/bin/sh\nexit 0\n");
+  await chmod(executable, 0o755);
+  expect(isTrustedResidentExecutablePath(executable)).toBe(false);
+});
+
+test("privileged Hermes Git verification uses runuser with no privileged buddy groups", () => {
+  const invocation = residentGitInvocation({
+    gitExecutable: "/usr/bin/git",
+    environment: { PATH: "/hostile" },
+    platform: "linux",
+    requireRootOwnership: true,
+    effectiveUid: 0,
+    identityResolver: (username) => {
+      expect(username).toBe("buddy");
+      return { uid: 12_345, gid: 12_346, groups: [12_346, 12_347] };
+    },
+    systemExecutableResolver: () => "/usr/sbin/runuser",
+  });
+  expect(invocation.command).toMatch(/\/runuser$/u);
+  expect(invocation.argsPrefix).toEqual(["-u", "buddy", "--", "/usr/bin/git"]);
+  expect(invocation.options.env.PATH).toBeUndefined();
+  expect(() => residentGitInvocation({
+    gitExecutable: "/usr/bin/git",
+    platform: "linux",
+    requireRootOwnership: true,
+    effectiveUid: 0,
+    identityResolver: () => ({ uid: 12_345, gid: 0, groups: [0, 12_345] }),
+    systemExecutableResolver: () => "/usr/sbin/runuser",
+  })).toThrow("unprivileged buddy identity");
+});
+
+linuxSystemdTest("systemctl lifecycle ignores a poisoned PATH executable", async () => {
+  const root = await scratch("lazurio-hostile-systemctl-");
+  const fakeBin = join(root, "fake-bin");
+  const fakeSystemctl = join(fakeBin, "systemctl");
+  const marker = join(fakeBin, "invoked");
+  await mkdir(fakeBin, { recursive: true });
+  await writeFile(fakeSystemctl, "#!/bin/sh\n: > \"$(dirname \"$0\")/invoked\"\nexit 97\n");
+  await chmod(fakeSystemctl, 0o755);
+
+  const result = runCommand(["--version"], {
+    allowFailure: true,
+    environment: { ...process.env, PATH: fakeBin },
+    platform: "linux",
+  });
+  if (trustedSystemExecutable("systemctl", "linux")) {
+    expect(result.status, result.stderr).toBe(0);
+  } else {
+    expect(result).toMatchObject({ status: 127 });
+  }
+  expect(existsSync(marker)).toBe(false);
 });
 
 test("Hermes readiness requires both the bounded health contract and active systemd", async () => {

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, realpathSync, statSync } from "node:fs";
 import {
   chmod,
   lstat,
@@ -13,7 +13,7 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep, win32 as pathWin32 } from "node:path";
 import { spawnSync } from "node:child_process";
 import { sha256, verifyArtifactTree } from "./integrity.mjs";
 
@@ -36,6 +36,12 @@ const PROFILE_FORBIDDEN = [
   /^personal\.gen3\.json$/,
 ];
 const UNSCANNED_PROFILE_DIRECTORIES = new Set([".git", "node_modules"]);
+const TRUSTED_LINUX_EXECUTABLES = Object.freeze({
+  systemctl: ["/usr/bin/systemctl", "/bin/systemctl"],
+  id: ["/usr/bin/id", "/bin/id"],
+  runuser: ["/usr/sbin/runuser", "/sbin/runuser"],
+  test: ["/usr/bin/test", "/bin/test"],
+});
 
 export async function preflightBuddyBridgeService({
   installRoot,
@@ -80,7 +86,7 @@ export async function preflightBuddyBridgeService({
   if (!health?.ok) {
     throw new Error(`active Buddy artifact failed Doctor: ${(health?.failures ?? ["unknown failure"]).join("; ")}`);
   }
-  const hermes = await verifyHermes({ activeRoot, hermesRoot });
+  const hermes = await verifyHermes({ activeRoot, hermesRoot, requireRootOwnership });
 
   const bunStat = await lstat(bunPath).catch(() => null);
   if (!bunStat || (!bunStat.isFile() && !bunStat.isSymbolicLink())) {
@@ -436,21 +442,50 @@ export async function verifyHermesRuntime({
   activeRoot,
   hermesRoot = "/opt/buddy-runtime/hermes",
   processRunner = runProcess,
+  environment = process.env,
+  requireRootOwnership = false,
+  platform = process.platform,
+  effectiveUid = typeof process.geteuid === "function" ? process.geteuid() : null,
+  identityResolver = resolveLinuxIdentity,
+  systemExecutableResolver = trustedSystemExecutable,
 } = {}) {
   const descriptor = JSON.parse(
     await readFile(join(activeRoot, "resident", "dependencies", "hermes.json"), "utf8"),
   );
   const resolvedHermesRoot = await realpath(hermesRoot).catch(() => null);
   if (!resolvedHermesRoot) throw new Error("Hermes runtime root cannot be resolved");
-  const commit = processText(processRunner, "git", ["-C", resolvedHermesRoot, "rev-parse", "HEAD"]);
+  if (requireRootOwnership) assertTrustedHermesCheckout(resolvedHermesRoot, platform);
+  const gitExecutable = trustedGitExecutable(platform);
+  if (!gitExecutable) {
+    throw new Error("Hermes verification requires Git from a trusted system-owned path");
+  }
+  const gitInvocation = residentGitInvocation({
+    gitExecutable,
+    environment,
+    platform,
+    requireRootOwnership,
+    effectiveUid,
+    identityResolver,
+    systemExecutableResolver,
+  });
+  const commit = processText(processRunner, gitInvocation.command, [
+    ...gitInvocation.argsPrefix,
+    ...safeGitArguments(platform, requireRootOwnership ? resolvedHermesRoot : null),
+    "-C",
+    resolvedHermesRoot,
+    "rev-parse",
+    "HEAD",
+  ], gitInvocation.options);
   if (commit !== descriptor.commit) throw new Error("live Hermes runtime commit does not match the resident pin");
-  const status = processText(processRunner, "git", [
+  const status = processText(processRunner, gitInvocation.command, [
+    ...gitInvocation.argsPrefix,
+    ...safeGitArguments(platform, requireRootOwnership ? resolvedHermesRoot : null),
     "-C",
     resolvedHermesRoot,
     "status",
     "--porcelain=v1",
     "--untracked-files=all",
-  ]);
+  ], gitInvocation.options);
   if (status !== "") throw new Error("live Hermes runtime checkout is dirty");
   const lockPath = join(resolvedHermesRoot, descriptor.lock_file);
   const lockStat = await lstat(lockPath).catch(() => null);
@@ -664,9 +699,22 @@ function assertCommand(commandRunner, args) {
   return result;
 }
 
-export function runCommand(args, { allowFailure = false } = {}) {
-  const result = spawnSync("systemctl", args, {
+export function runCommand(args, {
+  allowFailure = false,
+  environment = process.env,
+  platform = process.platform,
+} = {}) {
+  const executable = trustedSystemExecutable("systemctl", platform);
+  if (!executable) {
+    return {
+      status: 127,
+      stdout: "",
+      stderr: "systemctl is unavailable at a trusted system-owned path",
+    };
+  }
+  const result = spawnSync(executable, args, {
     encoding: "utf8",
+    env: residentSystemEnvironment(environment),
     shell: false,
     windowsHide: true,
     maxBuffer: 1024 * 1024,
@@ -680,9 +728,10 @@ export function runCommand(args, { allowFailure = false } = {}) {
   return response;
 }
 
-export function runProcess(command, args) {
+export function runProcess(command, args, { env } = {}) {
   const result = spawnSync(command, args, {
     encoding: "utf8",
+    ...(env ? { env } : {}),
     shell: false,
     windowsHide: true,
     maxBuffer: 1024 * 1024,
@@ -700,20 +749,27 @@ export function probeBuddyRuntimeAccess({
   profileDirectory,
   queueDirectory,
 }) {
+  const idExecutable = trustedSystemExecutable("id");
+  const runuserExecutable = trustedSystemExecutable("runuser");
+  const testExecutable = trustedSystemExecutable("test");
+  if (!idExecutable || !runuserExecutable || !testExecutable) {
+    throw new Error("Buddy runtime access probe requires trusted id, runuser, and test executables");
+  }
   const checks = [
-    ["id", ["-u", "buddy-bridge"], "runtime user buddy-bridge does not exist"],
-    ["runuser", ["-u", "buddy-bridge", "--", "test", "-x", bunPath], "buddy-bridge cannot execute pinned Bun"],
-    ["runuser", ["-u", "buddy-bridge", "--", "test", "-r", join(activeRoot, "bridge", "run.ts")], "buddy-bridge cannot read the active bridge"],
-    ["runuser", ["-u", "buddy-bridge", "--", "test", "-r", join(profileDirectory, "CONSTITUTION.md")], "buddy-bridge cannot read CONSTITUTION.md"],
-    ["runuser", ["-u", "buddy-bridge", "--", "test", "-r", join(profileDirectory, "MANDATES.md")], "buddy-bridge cannot read MANDATES.md"],
-    ["runuser", ["-u", "buddy-bridge", "--", "test", "-w", queueDirectory], "buddy-bridge cannot write its durable queue"],
-    ["id", ["-u", "buddy"], "runtime user buddy does not exist"],
-    ["runuser", ["-u", "buddy", "--", "test", "-r", join(activeRoot, "AGENTS.md")], "buddy cannot read the active Lazurio AGENTS.md"],
-    ["runuser", ["-u", "buddy", "--", "test", "-d", join(activeRoot, "personalspace")], "buddy cannot traverse the active Lazurio Personalspace mount"],
+    [idExecutable, ["-u", "buddy-bridge"], "runtime user buddy-bridge does not exist"],
+    [runuserExecutable, ["-u", "buddy-bridge", "--", testExecutable, "-x", bunPath], "buddy-bridge cannot execute pinned Bun"],
+    [runuserExecutable, ["-u", "buddy-bridge", "--", testExecutable, "-r", join(activeRoot, "bridge", "run.ts")], "buddy-bridge cannot read the active bridge"],
+    [runuserExecutable, ["-u", "buddy-bridge", "--", testExecutable, "-r", join(profileDirectory, "CONSTITUTION.md")], "buddy-bridge cannot read CONSTITUTION.md"],
+    [runuserExecutable, ["-u", "buddy-bridge", "--", testExecutable, "-r", join(profileDirectory, "MANDATES.md")], "buddy-bridge cannot read MANDATES.md"],
+    [runuserExecutable, ["-u", "buddy-bridge", "--", testExecutable, "-w", queueDirectory], "buddy-bridge cannot write its durable queue"],
+    [idExecutable, ["-u", "buddy"], "runtime user buddy does not exist"],
+    [runuserExecutable, ["-u", "buddy", "--", testExecutable, "-r", join(activeRoot, "AGENTS.md")], "buddy cannot read the active Lazurio AGENTS.md"],
+    [runuserExecutable, ["-u", "buddy", "--", testExecutable, "-d", join(activeRoot, "personalspace")], "buddy cannot traverse the active Lazurio Personalspace mount"],
   ];
   for (const [command, args, failure] of checks) {
     const result = spawnSync(command, args, {
       encoding: "utf8",
+      env: residentSystemEnvironment(),
       shell: false,
       windowsHide: true,
       maxBuffer: 1024 * 1024,
@@ -751,12 +807,212 @@ function isPrivateRuntimeHost(hostname) {
     || (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127);
 }
 
-function processText(processRunner, command, args) {
-  const result = processRunner(command, args);
+function processText(processRunner, command, args, options) {
+  const result = processRunner(command, args, options);
   if (!result || result.status !== 0) {
     throw new Error(`${command} ${args.join(" ")} failed`);
   }
   return String(result.stdout ?? "").trim();
+}
+
+export function trustedGitExecutable(platform = process.platform) {
+  const candidates = platform === "darwin"
+    ? ["/usr/bin/git", "/opt/homebrew/bin/git", "/usr/local/bin/git"]
+    : platform === "linux"
+      ? ["/usr/bin/git", "/bin/git", "/usr/local/bin/git"]
+      : platform === "win32"
+        ? [
+          "C:\\Program Files\\Git\\cmd\\git.exe",
+          "C:\\Program Files\\Git\\bin\\git.exe",
+          "C:\\Program Files (x86)\\Git\\cmd\\git.exe",
+          "C:\\Program Files (x86)\\Git\\bin\\git.exe",
+        ]
+        : [];
+  return firstTrustedExecutable(candidates, platform);
+}
+
+export function trustedSystemExecutable(command, platform = process.platform) {
+  if (platform !== "linux") return null;
+  return firstTrustedExecutable(TRUSTED_LINUX_EXECUTABLES[command] ?? [], platform);
+}
+
+function firstTrustedExecutable(candidates, platform) {
+  for (const candidate of candidates) {
+    try {
+      const canonicalPath = realpathSync.native(candidate);
+      if (isTrustedResidentExecutablePath(canonicalPath, platform)) {
+        return canonicalPath;
+      }
+    } catch {
+      // Fail closed and try only the next hard-coded system-owned candidate.
+    }
+  }
+  return null;
+}
+
+export function isTrustedResidentExecutablePath(canonicalPath, platform = process.platform) {
+  if (!isAbsolute(canonicalPath)) return false;
+  let executable;
+  try {
+    executable = statSync(canonicalPath);
+  } catch {
+    return false;
+  }
+  if (!executable.isFile()) return false;
+  if (platform === "win32") {
+    const normalized = pathWin32.normalize(canonicalPath).toLowerCase();
+    return ["C:\\Program Files\\Git", "C:\\Program Files (x86)\\Git"]
+      .some((root) => normalized.startsWith(`${root.toLowerCase()}\\`));
+  }
+  if ((executable.mode & 0o111) === 0) return false;
+  return isRootOwnedNonWritablePath(canonicalPath, { requireFile: true });
+}
+
+function assertTrustedHermesCheckout(hermesRoot, platform) {
+  if (platform !== "linux" || !isRootOwnedNonWritablePath(hermesRoot, { requireDirectory: true })) {
+    throw new Error("Hermes runtime checkout must be below a root-owned non-writable path");
+  }
+  assertRootOwnedImmutableTree(hermesRoot);
+  if (!lstatSync(join(hermesRoot, ".git")).isDirectory()) {
+    throw new Error("Hermes Git metadata must be a root-owned immutable directory");
+  }
+}
+
+export function assertRootOwnedImmutableTree(root, {
+  lstatEntry = lstatSync,
+  listEntries = readdirSync,
+} = {}) {
+  const walk = (path) => {
+    const entry = lstatEntry(path);
+    if (entry.isSymbolicLink()) {
+      throw new Error(`Hermes immutable checkout contains a symlink: ${relative(root, path) || "."}`);
+    }
+    if (entry.uid !== 0 || (entry.mode & 0o022) !== 0) {
+      throw new Error(`Hermes immutable checkout has a non-root or writable entry: ${relative(root, path) || "."}`);
+    }
+    if (entry.isDirectory()) {
+      for (const child of listEntries(path)) walk(join(path, child));
+      return;
+    }
+    if (!entry.isFile()) {
+      throw new Error(`Hermes immutable checkout has an unsupported entry: ${relative(root, path) || "."}`);
+    }
+  };
+  walk(root);
+}
+
+function isRootOwnedNonWritablePath(canonicalPath, { requireDirectory = false, requireFile = false } = {}) {
+  if (!isAbsolute(canonicalPath)) return false;
+  try {
+    const target = statSync(canonicalPath);
+    if (requireDirectory && !target.isDirectory()) return false;
+    if (requireFile && !target.isFile()) return false;
+    let component = canonicalPath;
+    while (true) {
+      const componentStat = statSync(component);
+      if (componentStat.uid !== 0 || (componentStat.mode & 0o022) !== 0) return false;
+      const parent = dirname(component);
+      if (parent === component) return true;
+      component = parent;
+    }
+  } catch {
+    return false;
+  }
+}
+
+function safeGitArguments(platform = process.platform, safeDirectory = null) {
+  return [
+    "-c", `core.hooksPath=${platform === "win32" ? "NUL" : "/dev/null"}`,
+    "-c", "core.fsmonitor=false",
+    "-c", "core.gitProxy=",
+    "-c", "protocol.ext.allow=never",
+    ...(safeDirectory ? ["-c", `safe.directory=${safeDirectory}`] : []),
+  ];
+}
+
+function residentGitEnvironment(base = process.env, platform = process.platform) {
+  const environment = residentProcessEnvironment(base);
+  environment.GIT_ATTR_NOSYSTEM = "1";
+  environment.GIT_CONFIG_NOSYSTEM = "1";
+  environment.GIT_CONFIG_GLOBAL = platform === "win32" ? "NUL" : "/dev/null";
+  environment.GIT_CONFIG_COUNT = "0";
+  environment.GIT_OPTIONAL_LOCKS = "0";
+  environment.GIT_PAGER = "cat";
+  environment.GIT_TERMINAL_PROMPT = "0";
+  return environment;
+}
+
+export function residentGitInvocation({
+  gitExecutable,
+  environment = process.env,
+  platform = process.platform,
+  requireRootOwnership = false,
+  effectiveUid = typeof process.geteuid === "function" ? process.geteuid() : null,
+  identityResolver = resolveLinuxIdentity,
+  systemExecutableResolver = trustedSystemExecutable,
+} = {}) {
+  const options = { env: residentGitEnvironment(environment, platform) };
+  if (!requireRootOwnership || effectiveUid !== 0) {
+    return { command: gitExecutable, argsPrefix: [], options };
+  }
+  if (platform !== "linux") {
+    throw new Error("privileged Hermes Git verification is supported only on Linux");
+  }
+  const identity = identityResolver("buddy", environment);
+  if (
+    !Number.isInteger(identity?.uid)
+    || !Number.isInteger(identity?.gid)
+    || !Array.isArray(identity?.groups)
+    || identity.groups.some((group) => !Number.isInteger(group) || group <= 0)
+    || identity.uid <= 0
+    || identity.gid <= 0
+  ) {
+    throw new Error("Hermes Git verification cannot resolve an unprivileged buddy identity");
+  }
+  const runuserExecutable = systemExecutableResolver("runuser", platform);
+  if (!runuserExecutable) throw new Error("trusted runuser executable is unavailable");
+  return {
+    command: runuserExecutable,
+    argsPrefix: ["-u", "buddy", "--", gitExecutable],
+    options,
+  };
+}
+
+function resolveLinuxIdentity(username, environment = process.env) {
+  const idExecutable = trustedSystemExecutable("id", "linux");
+  if (!idExecutable) throw new Error("trusted id executable is unavailable");
+  const run = (flag) => {
+    const result = spawnSync(idExecutable, [flag, username], {
+      encoding: "utf8",
+      env: residentSystemEnvironment(environment),
+      shell: false,
+      windowsHide: true,
+      maxBuffer: 1024 * 1024,
+    });
+    const value = String(result.stdout ?? "").trim();
+    if (result.status !== 0 || !/^\d+(?:\s+\d+)*$/.test(value)) {
+      throw new Error(`cannot resolve ${username} identity`);
+    }
+    return value.split(/\s+/u).map(Number);
+  };
+  return { uid: run("-u")[0], gid: run("-g")[0], groups: run("-G") };
+}
+
+function residentSystemEnvironment(base = process.env) {
+  const environment = residentProcessEnvironment(base);
+  environment.SYSTEMD_COLORS = "0";
+  environment.SYSTEMD_PAGER = "cat";
+  return environment;
+}
+
+function residentProcessEnvironment(base = process.env) {
+  const environment = {};
+  for (const key of ["TMPDIR", "TEMP", "TMP", "SystemRoot", "ComSpec", "PATHEXT"]) {
+    if (typeof base[key] === "string") environment[key] = base[key];
+  }
+  environment.LC_ALL = "C";
+  environment.LANG = "C";
+  return environment;
 }
 
 function assertLinux(platform) {

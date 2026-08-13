@@ -1638,6 +1638,11 @@ test("runtime manager classifyuje selhaný Install/Repair s failure_kind", async
     companiesRoot: root,
     launchpadRoot: join(root, "launchpad"),
     instanceId: "test-instance",
+    spawnProcess: () => ({
+      stdout: new Response("").body,
+      stderr: new Response("fixture install script failed: lifecycle script\n").body,
+      exited: Promise.resolve(13),
+    }),
   });
 
   let failure;
@@ -1651,9 +1656,9 @@ test("runtime manager classifyuje selhaný Install/Repair s failure_kind", async
     code: "app_install_failed",
   });
   expect(failure.metadata.action).toBe("repair");
-  expect(["install_failed", "install_script_failed"]).toContain(failure.metadata.failure_kind);
+  expect(failure.metadata.failure_kind).toBe("install_script_failed");
   const health = await runtime.health("test-company-demo-v1");
-  expect(["install_failed", "install_script_failed"]).toContain(health.failure_kind);
+  expect(health.failure_kind).toBe("install_script_failed");
   expect(health.last_install.action).toBe("repair");
 });
 
