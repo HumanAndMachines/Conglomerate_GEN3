@@ -8,6 +8,7 @@ import {
   discoverGitHubCliExecutable,
   githubCliExecutableCandidates,
   inspectGitHubRepository,
+  personalspaceRuntimeUrls,
   personalspaceDoctorCheck,
   resolveSpaceGbrainVault,
 } from "./personalspace-runtime-lib.mjs";
@@ -17,6 +18,18 @@ const tempRoots = [];
 const privateRepoInspector = async (repo) => ({
   nameWithOwner: repo,
   visibility: "PRIVATE",
+});
+
+test("personalspace runtime URLs preserve HTTPS and bracket IPv6 loopback", () => {
+  expect(personalspaceRuntimeUrls({
+    host: "::1",
+    port: 5443,
+    health_path: "/health",
+    entrypoint_listener: { protocol: "https" },
+  })).toEqual({
+    url: "https://[::1]:5443",
+    health_url: "https://[::1]:5443/health",
+  });
 });
 
 afterAll(async () => {

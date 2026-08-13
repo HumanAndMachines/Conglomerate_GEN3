@@ -8,7 +8,12 @@ import {
 } from "./discovery-lib.mjs";
 import { UPDATE_CHANNELS, selectHighestStableTag } from "./update-lib.mjs";
 import { buildGitApiResponse, compactGitSummaryForApp } from "./git-api-lib.mjs";
-import { createRuntimeManager, resolveBunExecutable } from "./runtime-lib.mjs";
+import {
+  createRuntimeManager,
+  resolveBunExecutable,
+  runtimeListenerHasStaticLease,
+  runtimeUrlHost,
+} from "./runtime-lib.mjs";
 import { buildWorktreeIndex } from "./worktree-lib.mjs";
 import {
   GIT_LOCAL_TIMEOUT_MS,
@@ -141,13 +146,17 @@ export async function buildLaunchpadAppsResponse({
       }),
     ]),
   );
-  const apps = await runtimeManager.appsWithRuntime(discovery.apps.map((app) => ({
-    ...app,
-    company_display_name: companyNames.get(app.company) ?? app.company,
-    ...appPlacementFor(placementResolvers, app),
-    url: `http://${app.host}:${app.port}`,
-    health_url: `http://${app.host}:${app.port}${app.health_path}`,
-  })));
+  const apps = await runtimeManager.appsWithRuntime(discovery.apps.map((app) => {
+    const protocol = app.entrypoint_listener?.protocol === "https" ? "https" : "http";
+    const hasEndpoint = typeof app.host === "string" && Number.isInteger(app.port);
+    return {
+      ...app,
+      company_display_name: companyNames.get(app.company) ?? app.company,
+      ...appPlacementFor(placementResolvers, app),
+      url: hasEndpoint ? `${protocol}://${runtimeUrlHost(app.host)}:${app.port}` : null,
+      health_url: hasEndpoint ? `${protocol}://${runtimeUrlHost(app.host)}:${app.port}${app.health_path}` : null,
+    };
+  }));
   const invalidApps = (discovery.invalid_apps ?? []).map((app) => ({
     ...app,
     company_display_name: companyNames.get(app.company) ?? app.company,
@@ -163,7 +172,7 @@ export async function buildLaunchpadAppsResponse({
     dependency_status: "invalid_manifest",
     runtime: {
       status: "stopped",
-      message: "Aplikace s nevalidním manifestem se nespouští; oprav companyascode.app manifest.",
+      message: "Aplikace s nevalidním runtime manifestem se nespouští; oprav lazurio.runtime nebo read-compatible legacy manifest.",
     },
     runtime_status: "stopped",
   }));
@@ -206,6 +215,8 @@ export async function buildLaunchpadAppsResponse({
       organization_count: companies.length,
       company_count: companies.length,
       port_overlap_count: discovery.port_overlaps?.length ?? 0,
+      module_listener_drift_count: discovery.module_listener_drifts?.length ?? 0,
+      port_registry_issue_count: discovery.port_registry_issues?.length ?? 0,
       template_mount_count: templateMounts.length,
       template_app_count: templateApps.length,
       failure_count: discovery.failures.length,
@@ -218,6 +229,9 @@ export async function buildLaunchpadAppsResponse({
     template_apps: templateApps,
     apps: publicApps,
     port_overlaps: discovery.port_overlaps ?? [],
+    module_listener_drifts: discovery.module_listener_drifts ?? [],
+    module_contracts: discovery.module_contracts ?? [],
+    port_registry_issues: discovery.port_registry_issues ?? [],
     failures: discovery.failures,
     warnings: [...(discovery.warnings ?? []), ...gitContext.warnings],
   };
@@ -274,7 +288,7 @@ export async function buildLaunchpadDoctorReport(options = {}) {
 
 /**
  * Schéma surfacu je KONTRAKT DODANÝ S KÓDEM, ne per-root konfigurace: čte se ze
- * zdrojového `launchpad/schemas/`, stejně jako `launchpad-app.schema.json` v
+ * zdrojového `launchpad/schemas/`, stejně jako runtime schémata v
  * `discovery-lib.mjs` — nikdy z diagnostikovaného rootu, protože ten může být
  * fixture nebo cizí checkout, a schéma přinesené kontrolovaným stromem by
  * znamenalo, že se subjekt kontroly měří vlastním metrem. Když chybí, root nemá
@@ -1937,25 +1951,48 @@ function discoveryCheck(appsResponse) {
   };
 }
 
-// Cross-Organization overlap není chyba konfigurace: app-owned port je
-// stabilní součást app surface a mezi Organizacemi se smí opakovat. Intra-org
-// duplicitu už discovery failne. Doctor cross-org vlastníky vypíše jako
-// informační evidence; neznámý živý listener dál failuje v runtime checku.
+// Doctor i Launchpad čtou stejný owner-aware listener index. Port smí sdílet
+// pouze více verzí/worktrees stejného module listener lease. Cross-module
+// překryv, drift portu mezi verzemi i port mimo povinnou Organization policy
+// jsou hard failure. Live proces na platném lease při Start/Open Launchpad
+// ukončí a nahradí deklarovanou aplikací; deklarace samotná se nepřemapovává.
 function portOverlapCheck(appsResponse) {
   const overlaps = appsResponse.port_overlaps ?? [];
-  const details = overlaps.map(({ port, owners = [] }) => {
-    const labels = owners.map((owner) => `${owner.app_id} (${owner.package_path})`).join(", ");
-    return `port ${port}: ${labels}`;
+  const registryIssues = appsResponse.port_registry_issues ?? [];
+  const moduleDrifts = appsResponse.module_listener_drifts ?? [];
+  const conflicts = overlaps.filter((overlap) => overlap.conflict !== false);
+  const compatible = overlaps.filter((overlap) => overlap.conflict === false);
+  const details = overlaps.map(({ host = "127.0.0.1", port, classification, claim_group: claimGroup, owners = [] }) => {
+    const labels = owners.map((owner) => {
+      const listener = owner.listener_id ? `#${owner.listener_id}` : "";
+      return `${owner.app_id}${listener} (${owner.package_path})`;
+    }).join(", ");
+    const claim = claimGroup ? ` group=${claimGroup}` : "";
+    return `${host}:${port} [${classification ?? "legacy-overlap"}${claim}]: ${labels}`;
   });
+  details.push(...registryIssues);
+  details.push(...moduleDrifts.map((drift) => {
+    const declarations = (drift.declarations ?? [])
+      .map(({ endpoint, owners = [] }) => `${endpoint} (${owners.map((owner) => owner.app_id).join(", ")})`)
+      .join("; ");
+    return `${drift.module_lease}: verze modulu deklarují rozdílné listenery: ${declarations}`;
+  }));
+  const status = conflicts.length > 0
+    || registryIssues.length > 0
+    || moduleDrifts.length > 0
+    ? "fail"
+    : "ok";
   return {
     id: "launchpad.port_ownership",
-    status: "ok",
+    status,
     severity: "runtime",
-    title: "App-owned porty",
-    message: overlaps.length === 0
-      ? "Deklarované app-owned porty nemají cross-Organization překryv."
-      : `${formatCount(overlaps.length, "cross-Organization sdílený port", "cross-Organization sdílené porty", "cross-Organization sdílených portů")}; poslední otevřená aplikace na každém portu vyhraje.`,
-    paths: ["organizations"],
+    title: "Runtime listener claims",
+    message: status === "ok"
+      ? compatible.length > 0
+        ? `${formatCount(compatible.length, "sdílený module-version lease", "sdílené module-version leases", "sdílených module-version leases")}; žádný konflikt.`
+        : "Deklarované runtime listenery nemají překryv ani odchylku od centrálního port registru."
+      : `${formatCount(conflicts.length, "kolizní listener", "kolizní listenery", "kolizních listenerů")}, ${formatCount(moduleDrifts.length, "drift mezi verzemi", "drifty mezi verzemi", "driftů mezi verzemi")} a ${formatCount(registryIssues.length, "chyba port registru", "chyby port registru", "chyb port registru")}; deklarace musí být opravena.`,
+    paths: ["lazurio.port-registry.json", "organizations"],
     links: [],
     details,
   };
@@ -2094,13 +2131,19 @@ function runtimeAppCheck(app) {
 export function runtimeAppStatus(app) {
   const runtime = app.runtime ?? {};
   const dependencyState = app.dependencies?.state ?? runtime.dependencies?.state;
-  // Port ownership is a safety boundary and must outrank dependency warnings.
-  // Otherwise a foreign checkout with local needs_install/stale_lockfile state
-  // would be downgraded from a hard failure to a warning.
-  if (runtime.owner === "unknown-port" || runtime.owner === "foreign-port") return "fail";
+  if (dependencyState === "missing_package" || dependencyState === "unknown_package_manager") return "fail";
+  // Live occupancy of a valid module-owned static lease is diagnostic only:
+  // Start/Open reclaims it under the OS-level module mutex. Legacy or otherwise
+  // non-authoritative apps still fail because they have no takeover authority.
+  if (runtime.owner === "unknown-port" || runtime.owner === "foreign-port") {
+    const ownerPid = runtime.port_owner?.pid;
+    const reclaimable = runtimeListenerHasStaticLease(app, app.entrypoint_listener)
+      && Number.isInteger(ownerPid)
+      && ownerPid > 0;
+    return reclaimable ? "warn" : "fail";
+  }
   // Nevalidní manifest je scoped attention stav (decision 0043), ne root fail.
   if (dependencyState === "invalid_manifest") return "warn";
-  if (dependencyState === "missing_package" || dependencyState === "unknown_package_manager") return "fail";
   if (dependencyState === "needs_install" || dependencyState === "stale_lockfile") return "warn";
   if (runtime.status === "unhealthy") return "warn";
   if (runtime.status === "starting" || runtime.status === "unknown") return "warn";

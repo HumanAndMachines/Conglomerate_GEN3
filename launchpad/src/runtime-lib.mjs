@@ -1,11 +1,12 @@
 import { existsSync } from "fs";
 import { appendFile, mkdir, readFile, realpath, stat, utimes, writeFile } from "fs/promises";
 import { randomUUID } from "crypto";
-import { createServer } from "net";
+import { createConnection } from "net";
 import { basename, dirname, isAbsolute, join, relative, resolve, win32 } from "path";
 import { discoverLaunchpadApps } from "./discovery-lib.mjs";
 import { recordAppOpen } from "./usage-lib.mjs";
 import { buildWorktreeIndex } from "./worktree-lib.mjs";
+import { acquireModuleRuntimeLock } from "./module-runtime-lock-lib.mjs";
 
 const healthTimeoutMs = 1_200;
 const startGraceMs = 30_000;
@@ -16,19 +17,109 @@ const startEarlyExitProbeMs = 1_000;
 const openHealthyWaitMs = 20_000;
 const openHealthyPollMs = 250;
 const openHealthyStabilityMs = 1_000;
+const listenerReconciliationCacheMs = 1_000;
 const windowsOwnerProofCaptureAttempts = 3;
 const windowsProcessIdentityTimeoutMs = 5_000;
 const stopTimeoutMs = 5_000;
-const stopPollMs = 100;
 const stopKillWaitMs = 2_000;
+const portReclaimTermWaitMs = 1_500;
+const portReclaimKillWaitMs = 1_500;
+const portReclaimAttempts = 4;
+const portOccupancyProbeTimeoutMs = 250;
 const logTailBytes = 40_000;
 const errorTailBytes = 4_000;
 const packageLockfileNames = ["bun.lock", "bun.lockb", "package-lock.json", "pnpm-lock.yaml", "yarn.lock"];
 const supportedInstallManagers = new Set(["bun"]);
 
 export function runtimeHostsShareListener(left, right) {
-  const normalize = (host) => host === "localhost" ? "127.0.0.1" : host;
-  return normalize(left) === normalize(right);
+  return canonicalRuntimeListenerHost(left) === canonicalRuntimeListenerHost(right);
+}
+
+export function canonicalRuntimeListenerHost(host) {
+  const value = String(host ?? "").replace(/^\[(.*)\]$/, "$1").toLowerCase();
+  return value === "localhost" ? "127.0.0.1" : value;
+}
+
+export function runtimeUrlHost(host) {
+  const value = String(host ?? "");
+  return value.includes(":") && !value.startsWith("[") ? `[${value}]` : value;
+}
+
+export function observedListenerMatchesDeclaration(observed, declared) {
+  return Number.isInteger(observed?.port)
+    && observed.port === declared?.port
+    && runtimeHostsShareListener(observed.host, declared?.host);
+}
+
+export function moduleRuntimeLeaseMatches(left, right) {
+  return typeof left?.company === "string"
+    && left.company !== ""
+    && left.company === right?.company
+    && typeof left?.module === "string"
+    && left.module !== ""
+    && left.module === right?.module;
+}
+
+export function runtimeListenerHasStaticLease(app, listener) {
+  return app?.runtime_contract?.schema_version === "lazurio.runtime.v1"
+    && app?.personal !== true
+    && app?.module_contract?.schema_version === "lazurio.module.v1"
+    && listener?.module_lease?.source === app.module_contract.module_path
+    && listener?.allocation === "static"
+    && Number.isInteger(listener?.port)
+    && listener?.claim?.mode === "exclusive";
+}
+
+export function runtimeListenerState(app) {
+  return (app?.listeners ?? []).map((listener) => ({
+    id: listener.id,
+    role: listener.role,
+    allocation: listener.allocation,
+    host: listener.host,
+    port: Number.isInteger(listener.port) ? listener.port : null,
+    protocol: listener.protocol,
+    health: listener.health,
+    claim: listener.claim,
+  }));
+}
+
+export function withRuntimeListenerPorts(app, portsById, { allocation = null } = {}) {
+  const listeners = (app?.listeners ?? []).map((listener) => {
+    const port = portsById instanceof Map ? portsById.get(listener.id) : portsById?.[listener.id];
+    return Number.isInteger(port)
+      ? { ...listener, ...(allocation ? { allocation } : {}), port }
+      : listener;
+  });
+  const entrypoint = listeners.find((listener) => listener.id === app?.entrypoint_listener?.id)
+    ?? app?.entrypoint_listener;
+  return {
+    ...app,
+    port: entrypoint?.port ?? null,
+    host: entrypoint?.host ?? app.host,
+    health_path: entrypoint?.health?.kind === "http" ? entrypoint.health.path : "/",
+    listeners,
+    entrypoint_listener: entrypoint,
+    ...(app.runtime_contract
+      ? { runtime_contract: { ...app.runtime_contract, listeners } }
+      : {}),
+  };
+}
+
+export function parseProcessGroupListeners(output) {
+  const listeners = [];
+  for (const line of String(output ?? "").split(/\r?\n/)) {
+    if (!line.startsWith("n")) continue;
+    const endpoint = line.slice(1).replace(/^TCP\s+/i, "").replace(/\s+\(LISTEN\)$/i, "");
+    const port = endpointPort(endpoint);
+    if (!Number.isInteger(port)) continue;
+    const host = endpoint.slice(0, endpoint.lastIndexOf(":"))
+      .replace(/^\[(.*)\]$/, "$1")
+      .toLowerCase();
+    listeners.push({ endpoint, host, port });
+  }
+  return listeners.filter((listener, index, all) =>
+    all.findIndex((candidate) => candidate.endpoint === listener.endpoint) === index,
+  );
 }
 
 export class RuntimeActionError extends Error {
@@ -54,29 +145,116 @@ export function createRuntimeManager({
   instanceId = randomUUID(),
   discover = discoverLaunchpadApps,
   resolvePortOwnerFn = resolvePortOwner,
+  probeNumericPortOccupiedFn = probeNumericPortOccupied,
+  resolveObservedPortBindingsFn = null,
   platform = process.platform,
   spawnProcess = Bun.spawn,
   runSystemCommandFn = runCommand,
   resolveProcessIdentityFn = null,
+  signalProcessGroupFn = null,
+  processGroupAliveFn = null,
+  signalPortOwnerFn = null,
+  resolvePortOwnerProcessGroupFn = null,
+  acquireModuleLockFn = acquireModuleRuntimeLock,
+  startedListenerOwnershipTimeoutMs = startGraceMs,
   writeRuntimeStateFile = writeFile,
   bunExecutable = null,
 }) {
   const runtimeBunExecutable = bunExecutable
     ?? (platform === process.platform ? resolveBunExecutable() : resolveBunExecutable({ platform }));
   const managedProcesses = new Map();
+  const moduleLeaseLocks = new Map();
   const runtimeRoot = join(launchpadRoot, "runtime");
   const appStateRoot = join(runtimeRoot, "apps");
+  const moduleLockRoot = join(runtimeRoot, "module-locks");
+  const takeoverAuditRoot = join(runtimeRoot, "audit");
+  const takeoverAuditPath = join(takeoverAuditRoot, "takeovers.jsonl");
   const logsRoot = join(launchpadRoot, "logs", "apps");
   const processIdentityResolver = resolveProcessIdentityFn
     ?? ((pid) => resolveProcessIdentity(pid, { platform, runCommandFn: runSystemCommandFn }));
+  const processGroupSignaler = signalProcessGroupFn
+    ?? ((processGroupId, signal, record) => spawnProcess === Bun.spawn
+      ? process.kill(-processGroupId, signal)
+      : record.child.kill(signal));
+  const processGroupAlive = processGroupAliveFn
+    ?? ((processGroupId) => {
+      try {
+        process.kill(-processGroupId, 0);
+        return true;
+      } catch (error) {
+        if (error?.code === "ESRCH") return false;
+        if (error?.code === "EPERM") return true;
+        throw error;
+      }
+    });
+  const portOwnerProcessGroupResolver = resolvePortOwnerProcessGroupFn
+    ?? ((pid) => resolvePosixProcessGroupId(pid, { runCommandFn: runSystemCommandFn }));
+  const observedPortBindingsResolver = resolveObservedPortBindingsFn
+    ?? ((port) => resolveObservedPortBindings(port, {
+      platform: process.platform,
+      runCommandFn: runSystemCommandFn,
+    }));
+  const portOwnerSignaler = signalPortOwnerFn
+    ?? (async (pid, signal, context = {}) => {
+      if (platform === "win32") {
+        const result = await runSystemCommandFn(windowsTaskkillCommand(pid, {
+          force: signal === "SIGKILL",
+        }));
+        if (!result.ok && !isMissingProcessResult(result)) {
+          if (signal === "SIGTERM") {
+            return { process_group_id: null, method: "taskkill-tree-grace-missed" };
+          }
+          throw new Error(result.stderr || result.error || `taskkill failed for PID ${pid}`);
+        }
+        return { process_group_id: null, method: "taskkill-tree" };
+      }
+      const processGroupId = context.owner?.process_group_id
+        ?? await portOwnerProcessGroupResolver(pid);
+      if (!Number.isInteger(processGroupId) || processGroupId <= 1) {
+        throw new Error(`process group nebyla pro PID ${pid} zjištěna`);
+      }
+      const launchpadProcessGroupId = await portOwnerProcessGroupResolver(process.pid);
+      if (processGroupId === launchpadProcessGroupId) {
+        throw new Error(`PID ${pid} sdílí process group ${processGroupId} s Launchpadem; group takeover by ukončil i Launchpad`);
+      }
+      try {
+        process.kill(-processGroupId, signal);
+      } catch (error) {
+        if (error?.code !== "ESRCH") throw error;
+      }
+      return { process_group_id: processGroupId, method: "posix-process-group" };
+    });
+  const requireTakeoverIdentity = signalPortOwnerFn == null;
+
+  async function portOwnerIdentity(pid) {
+    if (!requireTakeoverIdentity) return "injected-signaler";
+    if (platform === "win32") return processIdentityResolver(pid);
+    const result = await runSystemCommandFn(["ps", "-o", "lstart=", "-p", String(pid)]);
+    const startedAt = result.ok ? String(result.stdout ?? "").trim() : "";
+    return startedAt ? `posix:${startedAt}` : null;
+  }
+
+  function samePortOwnerIdentity(left, right) {
+    return left != null && right != null && JSON.stringify(left) === JSON.stringify(right);
+  }
 
   async function appsWithRuntime(apps) {
     return Promise.all(
       apps.map(async (app) => {
         const runtime = await healthForApp(app);
         const dependencies = runtime.dependencies;
+        const portsById = new Map(
+          (runtime.listeners ?? [])
+            .filter((listener) => typeof listener?.id === "string" && Number.isInteger(listener.port))
+            .map((listener) => [listener.id, listener.port]),
+        );
+        const materializedApp = withRuntimeListenerPorts(app, portsById);
         return {
-          ...app,
+          ...materializedApp,
+          host: runtime.host ?? materializedApp.host,
+          port: runtime.port ?? materializedApp.port,
+          url: runtime.url,
+          health_url: runtime.health_url,
           dependencies,
           dependency_status: dependencies.state,
           runtime,
@@ -92,15 +270,13 @@ export function createRuntimeManager({
   }
 
   async function start(appId, options = {}) {
-    const app = await runtimeAppForAction(appId, options);
+    const app = await runtimeAppForAction(appId, { ...options, enforcePortContract: true });
     return startRuntimeApp(app);
   }
 
-  // Dvě známé app surfaces různých Organizací smějí vlastnit stejný
-  // deklarovaný port, ale běžet může jen jedna. Switch vyžaduje explicitní
-  // intent (samostatné potvrzení nebo uživatelské Open), main runtime na obou
-  // stranách a před Stopem znovu sváže živý PID s pozitivně ověřeným checkoutem
-  // nahrazované aplikace. Foreign/unknown listenery se nikdy neukončují.
+  // Compatibility endpoint for older Launchpad clients. A switch is now only
+  // a named replacement between two versions of the same module lease. Normal
+  // Start/Open already performs the same replacement without a separate dialog.
   async function switchApp(appId, { replace_app_id: replaceAppId = null, confirmed = false, source = null } = {}) {
     if (confirmed !== true) {
       throw new RuntimeActionError(
@@ -117,21 +293,14 @@ export function createRuntimeManager({
       );
     }
 
-    const target = await runtimeAppForAction(appId, { source });
-    if (runtimeSourceForApp(target).type !== "main") {
-      throw new RuntimeActionError(
-        409,
-        "app_switch_main_only",
-        "Přepnutí sdíleného app-owned portu je povolené jen mezi main checkouty; worktree runtime používá vlastní DEV port.",
-      );
-    }
+    const target = await runtimeAppForAction(appId, { source, enforcePortContract: true });
     const replaced = await runtimeAppForAction(replaceAppId.trim(), { source: { type: "main" } });
-    if (target.company === replaced.company) {
+    if (!moduleRuntimeLeaseMatches(target, replaced)) {
       throw new RuntimeActionError(
         409,
-        "app_switch_same_organization",
-        "Přepnutí sdíleného portu je povolené jen mezi různými Organizacemi; uvnitř jedné Organizace musí být app-owned porty unikátní.",
-        [`organization: ${target.company}`, `target_app: ${target.id}`, `replace_app: ${replaced.id}`],
+        "app_switch_module_mismatch",
+        "Přepnutí portu je povolené jen mezi verzemi stejného modulu.",
+        [`target_app: ${target.id}`, `replace_app: ${replaced.id}`],
       );
     }
     if (target.port !== replaced.port) {
@@ -143,86 +312,29 @@ export function createRuntimeManager({
       );
     }
 
-    const [targetRuntime, replacedRuntime] = await Promise.all([
-      healthForApp(target),
-      healthForApp(replaced),
-    ]);
-    const targetPid = targetRuntime.port_owner?.pid ?? targetRuntime.pid;
-    const replacedExpectedCwd = join(companiesRoot, replaced.cwd ?? dirname(replaced.package_path ?? "package.json"));
-    const replacedOwner = await resolveVerifiedPortOwner(
-      replaced,
-      await readState(runtimeKeyForApp(replaced)),
-      replacedExpectedCwd,
-    );
-    if (
-      !["current-instance", "adopted-port"].includes(replacedRuntime.owner)
-      || targetRuntime.owner !== "foreign-port"
-      || !Number.isInteger(targetPid)
-      || replacedOwner?.cwd_matches !== true
-      || replacedOwner.pid !== targetPid
-    ) {
-      throw new RuntimeActionError(
-        409,
-        "app_switch_owner_unverified",
-        "Proces na sdíleném portu už nelze bezpečně přiřadit zvolené Launchpad aplikaci; obnov stav a zkontroluj Doctor.",
-        [
-          `target_owner: ${targetRuntime.owner}`,
-          `target_pid: ${targetPid ?? "unknown"}`,
-          `replace_owner: ${replacedRuntime.owner}`,
-          `replace_listener_pid: ${replacedOwner?.pid ?? "unknown"}`,
-          `replace_cwd_verified: ${replacedOwner?.cwd_matches === true}`,
-        ],
-        { failure_kind: "port_owner_unverified", port: target.port },
-      );
-    }
-
-    const stopped = await stop(replaced.id, { source: { type: "main" } });
     const started = await startRuntimeApp(target);
     return {
       action: "switch",
       app_id: target.id,
       replaced_app_id: replaced.id,
       port: target.port,
-      stopped,
+      stopped: started.reclaimed_listeners?.some((listener) => listener.method === "managed-stop") ?? false,
       started,
       runtime: started.runtime,
       url: started.runtime?.url ?? appUrl(target),
     };
   }
 
-  async function runningCrossOrganizationPortPeer(app) {
-    if (runtimeSourceForApp(app).type !== "main") return null;
-    const discovery = await discover(companiesRoot);
-    if (discovery.failures.length > 0) return null;
-    const candidates = discovery.apps.filter((candidate) =>
-      candidate.id !== app.id
-      && candidate.company !== app.company
-      && candidate.port === app.port
-      && runtimeHostsShareListener(candidate.host, app.host)
-    );
-    for (const candidate of candidates) {
-      const runtime = await healthForApp(candidate);
-      if (["current-instance", "adopted-port"].includes(runtime.owner)) return candidate;
-    }
-    return null;
+  async function startRuntimeApp(app) {
+    return withModuleLeaseLock(app, () => startRuntimeAppUnlocked(app));
   }
 
-  async function startRuntimeApp(app) {
+  async function startRuntimeAppUnlocked(app) {
     const runtimeKey = runtimeKeyForApp(app);
     const runtimeSource = runtimeSourceForApp(app);
-    const current = await healthForApp(app);
+    app = await materializeRuntimeListeners(app);
     if (managedProcesses.has(runtimeKey)) {
       throw new RuntimeActionError(409, "already_managed", "Aplikace už běží jako managed proces.");
-    }
-    if (current.status !== "stopped") {
-      const conflict = startConflictForRuntime(current);
-      throw new RuntimeActionError(
-        409,
-        conflict.code,
-        conflict.message,
-        conflict.details,
-        conflict.metadata,
-      );
     }
 
     const dependencies = await dependencyForApp(app);
@@ -241,9 +353,18 @@ export function createRuntimeManager({
     const logPath = logPathForApp(runtimeKey);
     const startedAt = new Date().toISOString();
     await appendLog(logPath, `\n[launchpad] ${startedAt} start ${app.id} source=${runtimeSource.type} key=${runtimeKey}\n`);
+    const reclaimedListeners = await prepareDeclaredListeners(app, {
+      runtimeKey,
+      logPath,
+    });
     const childEnv = runtimeProcessEnv(app, {
       PORT: String(app.port),
       HOST: app.host,
+      LAZURIO_RUNTIME_SCHEMA_VERSION: app.runtime_contract?.schema_version ?? "companyascode.launchpad_app.v1",
+      LAZURIO_RUNTIME_APP_ID: app.id,
+      LAZURIO_RUNTIME_ENTRYPOINT_ID: app.entrypoint_listener?.id ?? "entrypoint",
+      LAZURIO_RUNTIME_PORT: String(app.port),
+      LAZURIO_RUNTIME_HOST: app.host,
       COMPANIES_WORKSPACE_ROOT: companiesRoot,
       COMPANYASCODE_APP_ID: app.id,
       COMPANYASCODE_RUNTIME_KEY: runtimeKey,
@@ -259,6 +380,7 @@ export function createRuntimeManager({
         stdout: "pipe",
         stderr: "pipe",
         windowsHide: true,
+        detached: platform !== "win32",
       });
     } catch (error) {
       const failureKind = existsSync(join(companiesRoot, app.cwd)) ? "start_spawn_failed" : "bad_cwd";
@@ -290,6 +412,9 @@ export function createRuntimeManager({
       child,
       pid: child.pid,
       port: app.port,
+      runtimeApp: app,
+      listeners: app.listeners ?? [],
+      processGroupId: platform === "win32" ? null : child.pid,
       startedAt,
       logPath,
       stopping: false,
@@ -318,6 +443,8 @@ export function createRuntimeManager({
       runtime_source: runtimeSource,
       port: app.port,
       pid: child.pid,
+      process_group_id: record.processGroupId,
+      listeners: runtimeListenerState(app),
       instance_id: instanceId,
       started_at: startedAt,
       updated_at: new Date().toISOString(),
@@ -349,11 +476,7 @@ export function createRuntimeManager({
         record.stopExitConfirmed = true;
         record.stopExitCode = exitCode;
         if (record.finalizeStopOnExit) {
-          prepareStopFinalization(record, {
-            exitCode,
-            forced: record.finalizeStopForced,
-          });
-          await finalizeManagedStop(app, record, runtimeKey, runtimeSource, {
+          await finalizeDeferredManagedStop(app, record, runtimeKey, runtimeSource, {
             exitCode,
             forced: record.finalizeStopForced,
           });
@@ -361,20 +484,36 @@ export function createRuntimeManager({
         return { survivingListenerProof: null, failure: null, log_excerpt: "" };
       }
       record.exitFinalizing = true;
-      const survivingListenerProof = await windowsProofForSurvivingListener(app, record);
+      const survivingListenerProof = platform === "win32"
+        ? await windowsProofForSurvivingListener(app, record)
+        : await posixProofForSurvivingProcessGroup(app, record);
+      const retainsManagedProcessGroup = platform !== "win32" && Boolean(survivingListenerProof);
       const currentRecord = managedProcesses.get(runtimeKey);
-      if (currentRecord === record) {
+      if (currentRecord === record && !retainsManagedProcessGroup) {
         managedProcesses.delete(runtimeKey);
       }
       if (record.ownerProofWritePromise) {
         await Promise.allSettled([record.ownerProofWritePromise]);
       }
-      await Promise.allSettled(record.outputPipes);
+      if (!retainsManagedProcessGroup) {
+        await Promise.allSettled(record.outputPipes);
+      }
       await appendLog(logPath, `[launchpad] ${new Date().toISOString()} exit ${app.id} source=${runtimeSource.type} code=${exitCode}\n`);
       const log_excerpt = await logTail(logPath, errorTailBytes);
       const failure = early || exitCode !== 0 ? startFailure(app, exitCode, log_excerpt) : null;
       const updatedAt = new Date().toISOString();
+      const previousState = await readState(runtimeKey);
+      const preservedLazurioEvidence = app.module_contract?.schema_version === "lazurio.module.v1"
+        ? {
+            active_source: previousState?.active_source,
+            process_group_id: previousState?.process_group_id,
+            listeners: previousState?.listeners,
+            listener_ownership: previousState?.listener_ownership,
+            takeover_audit: previousState?.takeover_audit,
+          }
+        : {};
       await writeState(runtimeKey, survivingListenerProof ? {
+        ...preservedLazurioEvidence,
         status: "healthy",
         app_id: app.id,
         runtime_key: runtimeKey,
@@ -403,12 +542,20 @@ export function createRuntimeManager({
         log_path: relativeRuntimePath(logPath),
         ...(failure ? { last_error: failure.message, failure_kind: failure.kind, log_excerpt } : {}),
       });
+      if (retainsManagedProcessGroup) {
+        record.launcherExited = true;
+        record.stopExitConfirmed = true;
+        record.stopExitCode = exitCode;
+        record.exitFinalizing = false;
+      }
       return { survivingListenerProof, failure, log_excerpt };
     };
 
     const earlyExit = await waitForEarlyExit(child, startEarlyExitProbeMs);
+    let earlySurvivingListenerProof = null;
     if (earlyExit !== null) {
-      const finalization = await finalizeLauncherExit(earlyExit, { early: true });
+      record.exitFinalizationPromise = finalizeLauncherExit(earlyExit, { early: true });
+      const finalization = await record.exitFinalizationPromise;
       if (!finalization.survivingListenerProof) {
         throw new RuntimeActionError(500, "app_start_failed", finalization.failure.message, [
           finalization.log_excerpt,
@@ -419,6 +566,7 @@ export function createRuntimeManager({
           log_excerpt: finalization.log_excerpt,
         });
       }
+      earlySurvivingListenerProof = finalization.survivingListenerProof;
     } else {
       record.exitFinalizationPromise = child.exited
         .then((exitCode) => finalizeLauncherExit(exitCode))
@@ -428,12 +576,78 @@ export function createRuntimeManager({
         });
     }
 
+    let ownershipProof;
+    try {
+      ownershipProof = app.module_contract?.schema_version === "lazurio.module.v1"
+        ? await verifyStartedListenerOwnership(app, record, {
+            timeoutMs: startedListenerOwnershipTimeoutMs,
+          })
+        : [];
+    } catch (error) {
+      try {
+        await stop(app.id, { source: runtimeSource });
+      } catch {}
+      throw error;
+    }
+
+    if (app.module_contract?.schema_version === "lazurio.module.v1") {
+      if (managedProcesses.get(runtimeKey) !== record || record.stopping) {
+        throw new RuntimeActionError(
+          409,
+          "app_start_superseded",
+          `${app.title}: start transakce byla mezitím zastavena nebo nahrazena.`,
+          [`runtime_key: ${runtimeKey}`, `pid: ${record.pid}`],
+          { failure_kind: "start_superseded" },
+        );
+      }
+      const transactionAudit = {
+        schema_version: "lazurio.runtime_takeover_audit.v1",
+        transaction_id: randomUUID(),
+        company: app.company,
+        module: app.module,
+        app_id: app.id,
+        runtime_key: runtimeKey,
+        runtime_source: runtimeSource,
+        launcher_pid: child.pid,
+        process_group_id: record.processGroupId,
+        listeners: ownershipProof,
+        reclaimed_listeners: reclaimedListeners,
+        completed_at: new Date().toISOString(),
+      };
+      await writeState(runtimeKey, {
+        status: earlySurvivingListenerProof ? "healthy" : "starting",
+        app_id: app.id,
+        runtime_key: runtimeKey,
+        runtime_source: runtimeSource,
+        active_source: runtimeSource,
+        port: app.port,
+        pid: earlySurvivingListenerProof?.listener_pid ?? child.pid,
+        ...(earlySurvivingListenerProof ? {
+          launcher_pid: child.pid,
+          launcher_exit_code: earlyExit,
+          owner_proof: earlySurvivingListenerProof,
+        } : {}),
+        process_group_id: record.processGroupId,
+        listeners: runtimeListenerState(app),
+        listener_ownership: ownershipProof,
+        takeover_audit: reclaimedListeners,
+        instance_id: instanceId,
+        started_at: startedAt,
+        updated_at: transactionAudit.completed_at,
+        log_path: relativeRuntimePath(logPath),
+      });
+      if (reclaimedListeners.length > 0) {
+        await appendFile(takeoverAuditPath, `${JSON.stringify(transactionAudit)}\n`, "utf8");
+      }
+    }
+
     return {
       action: "start",
       app_id: app.id,
       runtime_key: runtimeKey,
       runtime_source: runtimeSource,
       pid: child.pid,
+      reclaimed_listeners: reclaimedListeners,
       runtime: await healthForApp(app),
     };
   }
@@ -543,10 +757,10 @@ export function createRuntimeManager({
   // One-click builder chain (CAC-0044, step-003): idempotentní řetěz
   // ensure install → ensure start → vrátit URL. Každý krok je idempotentní a
   // vlastní kroky (install/start) samy házejí RuntimeActionError s blokujícím
-  // stavem — port se nikdy tiše nepřemapuje. Open poslední aplikace smí převzít
-  // port jen od pozitivně ověřené známé aplikace jiné Organizace.
+  // stavem. Port se nikdy nepřemapuje: Start/Open převezme statický module lease
+  // a nahradí jakoukoli předchozí verzi, worktree nebo zaseklý proces.
   async function open(appId, { source = null } = {}) {
-    const app = await runtimeAppForAction(appId, { source });
+    const app = await runtimeAppForAction(appId, { source, enforcePortContract: true });
     const runtimeKey = runtimeKeyForApp(app);
     const runtimeSource = runtimeSourceForApp(app);
     const steps = [];
@@ -573,30 +787,26 @@ export function createRuntimeManager({
       });
     }
 
-    // 2) Ensure start — idempotentní. Když už appka běží (managed nebo
-    //    adopted-port healthy), start přeskočíme a jen vrátíme URL. Pokud port
-    //    drží známá appka jiné Organizace, poslední uživatelské Open ji bezpečně
-    //    vystřídá. Foreign/unknown proces propadne do blokujícího konfliktu.
+    // 2) Ensure start — idempotentní jen pro runtime vlastněný touto instancí.
+    // Cizí/adoptovaný proces na static lease se při explicitním Open reclaimne
+    // a nahradí deklarovaným modulem. Stejně se řízeně zastaví starší managed
+    // verze nebo worktree téhož modulu.
     let runtime = await healthForApp(app);
-    if (runtime.status === "healthy") {
+    const hasStaticModuleLease = runtimeListenerHasStaticLease(app, app.entrypoint_listener);
+    if (
+      runtime.status === "healthy"
+      && (runtime.owner === "current-instance" || !hasStaticModuleLease)
+    ) {
+      // A healthy legacy process remains read-compatible across Launchpad
+      // restarts. Legacy manifests grant no destructive reclaim authority, so
+      // Open reuses their verified URL while Start stays fail-closed.
       steps.push({ step: "reuse", status: runtime.status });
     } else if (managedProcesses.has(runtimeKey) && runtime.status === "starting") {
       steps.push({ step: "reuse", status: runtime.status });
       shouldConfirmStability = true;
     } else {
-      const sharedPortPeer = runtime.owner === "foreign-port"
-        ? await runningCrossOrganizationPortPeer(app)
-        : null;
-      const startResult = sharedPortPeer
-        ? await switchApp(app.id, {
-            replace_app_id: sharedPortPeer.id,
-            confirmed: true,
-            source: runtimeSource,
-          })
-        : await startRuntimeApp(app);
-      steps.push(sharedPortPeer
-        ? { step: "switch", replaced_app_id: sharedPortPeer.id, status: startResult.runtime?.status ?? "starting" }
-        : { step: "start", status: startResult.runtime?.status ?? "starting" });
+      const startResult = await startRuntimeApp(app);
+      steps.push({ step: "start", status: startResult.runtime?.status ?? "starting" });
       shouldConfirmStability = true;
       runtime = startResult.runtime ?? (await healthForApp(app));
     }
@@ -673,6 +883,13 @@ export function createRuntimeManager({
     ]);
     if (!result.exited) return healthForApp(app);
 
+    if (platform !== "win32" && await managedProcessGroupAlive(record)) {
+      if (record.exitFinalizationPromise) {
+        await record.exitFinalizationPromise;
+      }
+      return healthForApp(app);
+    }
+
     await Promise.allSettled(record.outputPipes);
     const log_excerpt = await logTail(record.logPath, errorTailBytes);
     const failure = startFailure(app, result.exitCode, log_excerpt);
@@ -687,15 +904,12 @@ export function createRuntimeManager({
   }
 
   async function stop(appId, { source = null } = {}) {
-    const app = await runtimeAppForAction(appId, { source });
+    let app = await runtimeAppForAction(appId, { source });
     const runtimeKey = runtimeKeyForApp(app);
     const runtimeSource = runtimeSourceForApp(app);
     const record = managedProcesses.get(runtimeKey);
     if (!record) {
       const current = await healthForApp(app);
-      if (current.owner === "adopted-port" && Number.isInteger(current.port_owner?.pid)) {
-        return stopAdoptedRuntimeApp(app, current);
-      }
       throw new RuntimeActionError(409, "app_not_managed", "Aplikace neběží jako managed proces tohoto Launchpadu.", [
         `app_id: ${app.id}`,
         `runtime_status: ${current.status}`,
@@ -705,6 +919,7 @@ export function createRuntimeManager({
         owner: current.owner,
       });
     }
+    app = record.runtimeApp ?? app;
 
     if (record.stopping || record.exitFinalizing) {
       if (record.stopping && record.stopFinalizationReady && record.stopFinalizationOptions) {
@@ -745,6 +960,8 @@ export function createRuntimeManager({
         runtime_source: runtimeSource,
         port: record.port ?? app.port,
         pid: record.pid,
+        process_group_id: record.processGroupId,
+        listeners: runtimeListenerState(app),
         instance_id: instanceId,
         started_at: record.startedAt,
         updated_at: new Date().toISOString(),
@@ -768,10 +985,12 @@ export function createRuntimeManager({
       throw error;
     }
 
-    const result = await Promise.race([
-      record.child.exited.then((exitCode) => ({ exitCode, timeout: false })),
-      sleep(stopTimeoutMs).then(() => ({ exitCode: null, timeout: true })),
-    ]);
+    const result = platform === "win32"
+      ? await Promise.race([
+          record.child.exited.then((exitCode) => ({ exitCode, timeout: false })),
+          sleep(stopTimeoutMs).then(() => ({ exitCode: null, timeout: true })),
+        ])
+      : await waitForPosixManagedExit(record, stopTimeoutMs);
     if (!result.timeout) {
       record.stopExitConfirmed = true;
       record.stopExitCode = result.exitCode;
@@ -782,7 +1001,8 @@ export function createRuntimeManager({
     // zasáhnout cizí proces. Identitu proto potvrzuje původní child handle:
     // timeout ponechá ownership, potvrzený exit dovolí uklidit managed záznam.
     let exitCode = result.exitCode;
-    if (result.timeout && platform !== "win32") {
+    const needsForcedGroupStop = platform !== "win32" && result.timeout;
+    if (needsForcedGroupStop) {
       try {
         await signalManagedProcess(record, runtimeKey, "SIGKILL");
       } catch (error) {
@@ -791,22 +1011,18 @@ export function createRuntimeManager({
         });
         throw error;
       }
-      const killResult = await Promise.race([
-        record.child.exited.then((confirmedExitCode) => ({
-          exitCode: confirmedExitCode,
-          timeout: false,
-        })),
-        sleep(stopKillWaitMs).then(() => ({ exitCode: null, timeout: true })),
-      ]);
+      const killResult = await waitForPosixManagedExit(record, stopKillWaitMs);
       if (killResult.timeout) {
-        enableStopFinalizationOnExit(app, record, runtimeKey, runtimeSource, {
-          forced: true,
-        });
+        const error = stopExitUnconfirmedError(app, record);
         await appendLog(
           record.logPath,
           `[launchpad] SIGKILL completed but child exit was not confirmed ${app.id} managed_pid=${record.pid}\n`,
         );
-        throw stopExitUnconfirmedError(app, record);
+        await recoverRetryableStopAttempt(app, record, runtimeKey, runtimeSource, error, {
+          failureKind: "stop_exit_unconfirmed",
+          forced: true,
+        });
+        throw error;
       }
       exitCode = killResult.exitCode;
       record.stopExitConfirmed = true;
@@ -824,7 +1040,7 @@ export function createRuntimeManager({
       throw stopExitUnconfirmedError(app, record);
     }
 
-    const forced = platform === "win32" || result.timeout;
+    const forced = platform === "win32" || needsForcedGroupStop;
     prepareStopFinalization(record, {
       exitCode,
       forced,
@@ -907,7 +1123,7 @@ export function createRuntimeManager({
     runtimeKey,
     runtimeSource,
     error,
-    { failureKind },
+    { failureKind, forced = false },
   ) {
     const updatedAt = new Date().toISOString();
     try {
@@ -918,6 +1134,8 @@ export function createRuntimeManager({
         runtime_source: runtimeSource,
         port: record.port ?? app.port,
         pid: record.pid,
+        process_group_id: record.processGroupId,
+        listeners: runtimeListenerState(record.runtimeApp ?? app),
         instance_id: instanceId,
         started_at: record.startedAt,
         updated_at: updatedAt,
@@ -933,7 +1151,7 @@ export function createRuntimeManager({
 
     if (record.stopExitConfirmed) {
       enableStopFinalizationOnExit(app, record, runtimeKey, runtimeSource, {
-        forced: false,
+        forced,
       });
       return;
     }
@@ -947,16 +1165,71 @@ export function createRuntimeManager({
     record.finalizeStopOnExit = true;
     record.finalizeStopForced = forced;
     if (!record.stopExitConfirmed) return;
-    prepareStopFinalization(record, {
-      exitCode: record.stopExitCode,
-      forced,
-    });
-    void finalizeManagedStop(app, record, runtimeKey, runtimeSource, {
+    void finalizeDeferredManagedStop(app, record, runtimeKey, runtimeSource, {
       exitCode: record.stopExitCode,
       forced,
     }).catch(async (error) => {
-      await appendLog(record.logPath, `[launchpad] deferred stop finalization failed ${app.id}: ${error.message}\n`);
+      try {
+        await appendLog(record.logPath, `[launchpad] deferred stop finalization failed ${app.id}: ${error.message}\n`);
+      } catch {}
     });
+  }
+
+  async function finalizeDeferredManagedStop(
+    app,
+    record,
+    runtimeKey,
+    runtimeSource,
+    { exitCode, forced },
+  ) {
+    if (platform !== "win32" && await managedProcessGroupAlive(record)) {
+      record.stopping = false;
+      record.finalizeStopOnExit = false;
+      record.finalizeStopForced = false;
+      await appendLog(
+        record.logPath,
+        `[launchpad] launcher exited but managed process group still survives ${app.id} process_group_id=${record.processGroupId}\n`,
+      );
+      return false;
+    }
+    prepareStopFinalization(record, { exitCode, forced });
+    await finalizeManagedStop(app, record, runtimeKey, runtimeSource, {
+      exitCode,
+      forced,
+    });
+    return true;
+  }
+
+  async function managedProcessGroupAlive(record) {
+    if (platform === "win32" || !Number.isInteger(record.processGroupId)) return false;
+    try {
+      return Boolean(await processGroupAlive(record.processGroupId, record));
+    } catch (error) {
+      await appendLog(
+        record.logPath,
+        `[launchpad] process group liveness probe failed pid=${record.processGroupId}: ${error.message}\n`,
+      );
+      return true;
+    }
+  }
+
+  async function waitForPosixManagedExit(record, timeoutMs) {
+    const deadline = Date.now() + timeoutMs;
+    const childExit = Promise.resolve(record.child.exited).then((exitCode) => {
+      record.stopExitConfirmed = true;
+      record.stopExitCode = exitCode;
+      return exitCode;
+    });
+    while (Date.now() < deadline) {
+      if (!record.stopExitConfirmed) {
+        await Promise.race([childExit, sleep(Math.min(50, deadline - Date.now()))]);
+      }
+      if (record.stopExitConfirmed && !(await managedProcessGroupAlive(record))) {
+        return { exitCode: record.stopExitCode, timeout: false };
+      }
+      await sleep(Math.min(50, Math.max(0, deadline - Date.now())));
+    }
+    return { exitCode: null, timeout: true };
   }
 
   function prepareStopFinalization(record, options) {
@@ -981,6 +1254,8 @@ export function createRuntimeManager({
         runtime_source: runtimeSource,
         port: record.port ?? app.port,
         pid: record.pid,
+        process_group_id: record.processGroupId,
+        listeners: runtimeListenerState(record.runtimeApp ?? app),
         instance_id: instanceId,
         started_at: record.startedAt,
         stopped_at: stoppedAt,
@@ -1037,175 +1312,28 @@ export function createRuntimeManager({
     }
 
     try {
-      record.child.kill(signal);
+      await processGroupSignaler(record.processGroupId, signal, record);
     } catch (error) {
       if (error?.code === "ESRCH") return;
       await appendLog(record.logPath, `[launchpad] stop signal failed: ${error.message}\n`);
       throw new RuntimeActionError(
         error?.code === "EPERM" ? 403 : 500,
         error?.code === "EPERM" ? "app_stop_forbidden" : "app_stop_failed",
-        `Managed procesu PID ${record.pid} nelze poslat ${signal}: ${error.message}`,
-        [`runtime_key: ${runtimeKey}`, `pid: ${record.pid}`, `signal: ${signal}`],
-        { failure_kind: "stop_signal_failed", owner: "current-instance", pid: record.pid, signal },
+        `Managed process group ${record.processGroupId} nelze poslat ${signal}: ${error.message}`,
+        [`runtime_key: ${runtimeKey}`, `pid: ${record.pid}`, `process_group_id: ${record.processGroupId}`, `signal: ${signal}`],
+        { failure_kind: "stop_signal_failed", owner: "current-instance", pid: record.pid, process_group_id: record.processGroupId, signal },
       );
     }
-  }
-
-  // App-owned port je source of truth i po restartu / paralelním spuštění
-  // Launchpadu. Před každým signálem znovu ověříme, že port pořád vlastní PID,
-  // který health snapshot adoptoval. Když se PID mezitím změní (např. supervisor
-  // proces appku respawnul), nový proces bez další explicitní akce nezabíjíme.
-  async function stopAdoptedRuntimeApp(app, current) {
-    const runtimeKey = runtimeKeyForApp(app);
-    const runtimeSource = runtimeSourceForApp(app);
-    const expectedPid = current.port_owner.pid;
-    const logPath = logPathForApp(runtimeKey);
-    const expectedCwd = join(companiesRoot, app.cwd ?? dirname(app.package_path ?? "package.json"));
-    const persistedState = await readState(runtimeKey);
-    const confirmedOwner = await resolveVerifiedPortOwner(app, persistedState, expectedCwd);
-
-    if (!confirmedOwner) {
-      return {
-        action: "stop",
-        app_id: app.id,
-        runtime_key: runtimeKey,
-        runtime_source: runtimeSource,
-        owner: "adopted-port",
-        pid: expectedPid,
-        forced: false,
-        already_stopped: true,
-        runtime: await healthForApp(app),
-      };
-    }
-    assertExpectedPortOwner(app, expectedPid, confirmedOwner);
-
-    await ensureRuntimeDirs();
-    await writeState(runtimeKey, {
-      status: "stopping",
-      app_id: app.id,
-      runtime_key: runtimeKey,
-      runtime_source: runtimeSource,
-      port: app.port,
-      pid: expectedPid,
-      owner: "adopted-port",
-      stop_instance_id: instanceId,
-      updated_at: new Date().toISOString(),
-      log_path: relativeRuntimePath(logPath),
-      ...windowsRuntimeOwnerProofState(persistedState?.owner_proof),
-    });
-    await appendLog(logPath, `[launchpad] ${new Date().toISOString()} stop adopted ${app.id} pid=${expectedPid} port=${app.port}\n`);
-
-    signalAdoptedProcess(app, expectedPid, "SIGTERM");
-    let outcome = await waitForPortOwnerChange(app.port, expectedPid, stopTimeoutMs, resolvePortOwnerFn);
-    let forced = false;
-
-    if (outcome.owner?.pid === expectedPid) {
-      // PID/port vazbu ověřujeme znovu těsně před nevratným SIGKILL.
-      const ownerBeforeKill = await resolveVerifiedPortOwner(app, persistedState, expectedCwd);
-      if (!ownerBeforeKill) {
-        outcome = { owner: null };
-      } else {
-        assertExpectedPortOwner(app, expectedPid, ownerBeforeKill);
-        signalAdoptedProcess(app, expectedPid, "SIGKILL");
-        forced = true;
-        outcome = await waitForPortOwnerChange(app.port, expectedPid, stopKillWaitMs, resolvePortOwnerFn);
-      }
-    }
-
-    if (outcome.owner?.pid && outcome.owner.pid !== expectedPid) {
-      await appendLog(logPath, `[launchpad] stop adopted owner changed ${app.id} expected=${expectedPid} actual=${outcome.owner.pid}\n`);
-      throw portOwnerChangedError(app, expectedPid, outcome.owner.pid);
-    }
-    if (outcome.owner?.pid === expectedPid) {
-      throw new RuntimeActionError(
-        500,
-        "app_stop_failed",
-        `${app.title} se nepodařilo zastavit; PID ${expectedPid} stále poslouchá na portu ${app.port}.`,
-        [`app_id: ${app.id}`, `pid: ${expectedPid}`, `port: ${app.port}`],
-        { failure_kind: "stop_failed", owner: "adopted-port", pid: expectedPid, port: app.port },
-      );
-    }
-
-    const stoppedAt = new Date().toISOString();
-    await appendLog(logPath, `[launchpad] ${stoppedAt} stopped adopted ${app.id} pid=${expectedPid} forced=${forced}\n`);
-    await writeState(runtimeKey, {
-      status: "stopped",
-      app_id: app.id,
-      runtime_key: runtimeKey,
-      runtime_source: runtimeSource,
-      port: app.port,
-      pid: expectedPid,
-      owner: "adopted-port",
-      stop_instance_id: instanceId,
-      stopped_at: stoppedAt,
-      updated_at: stoppedAt,
-      forced,
-      log_path: relativeRuntimePath(logPath),
-    });
-
-    return {
-      action: "stop",
-      app_id: app.id,
-      runtime_key: runtimeKey,
-      runtime_source: runtimeSource,
-      owner: "adopted-port",
-      pid: expectedPid,
-      forced,
-      runtime: await healthForApp(app),
-    };
-  }
-
-  function signalAdoptedProcess(app, pid, signal) {
-    try {
-      process.kill(pid, signal);
-    } catch (error) {
-      if (error?.code === "ESRCH") return;
-      throw new RuntimeActionError(
-        error?.code === "EPERM" ? 403 : 500,
-        error?.code === "EPERM" ? "app_stop_forbidden" : "app_stop_failed",
-        `${app.title}: procesu PID ${pid} nelze poslat ${signal}: ${error.message}`,
-        [`app_id: ${app.id}`, `pid: ${pid}`, `port: ${app.port}`, `signal: ${signal}`],
-        { failure_kind: "stop_signal_failed", owner: "adopted-port", pid, port: app.port, signal },
-      );
-    }
-  }
-
-  function assertExpectedPortOwner(app, expectedPid, owner) {
-    if (!owner) return;
-    if (owner.pid !== expectedPid) throw portOwnerChangedError(app, expectedPid, owner.pid);
-    if (owner.cwd_matches !== true) {
-      const cwdUnknown = owner.cwd_matches === null || owner.cwd_matches === undefined;
-      throw new RuntimeActionError(
-        409,
-        cwdUnknown ? "app_port_owner_cwd_unknown" : "app_port_owner_cwd_mismatch",
-        cwdUnknown
-          ? `${app.title}: Launchpad nedokázal ověřit checkout procesu na portu ${app.port}; proces neukončil.`
-          : `${app.title}: proces na portu ${app.port} běží z jiného checkoutu; Launchpad ho neukončil.`,
-        [`app_id: ${app.id}`, `pid: ${expectedPid}`, `port: ${app.port}`],
-        {
-          failure_kind: cwdUnknown ? "port_owner_cwd_unknown" : "port_owner_cwd_mismatch",
-          owner: cwdUnknown ? "unknown-port" : "foreign-port",
-          pid: expectedPid,
-          port: app.port,
-        },
-      );
-    }
-  }
-
-  function portOwnerChangedError(app, expectedPid, actualPid) {
-    return new RuntimeActionError(
-      409,
-      "app_port_owner_changed",
-      `${app.title}: vlastník portu ${app.port} se během zastavování změnil; nový proces nebyl ukončen.`,
-      [`app_id: ${app.id}`, `expected_pid: ${expectedPid}`, `actual_pid: ${actualPid}`, `port: ${app.port}`],
-      { failure_kind: "port_owner_changed", owner: "adopted-port", expected_pid: expectedPid, actual_pid: actualPid, port: app.port },
-    );
   }
 
   async function restart(appId, { source = null } = {}) {
-    const app = await runtimeAppForAction(appId, { source });
+    const app = await runtimeAppForAction(appId, { source, enforcePortContract: true });
     const runtimeSource = runtimeSourceForApp(app);
-    await stop(app.id, { source: runtimeSource });
+    try {
+      await stop(app.id, { source: runtimeSource });
+    } catch (error) {
+      if (error?.code !== "app_not_managed") throw error;
+    }
     return {
       action: "restart",
       app_id: app.id,
@@ -1262,18 +1390,22 @@ export function createRuntimeManager({
         throw new RuntimeActionError(
           409,
           "invalid_manifest",
-          `Aplikace ${appId} má nevalidní companyascode.app manifest; oprav manifest a spusť Synchronizovat.`,
+          `Aplikace ${appId} má nevalidní runtime manifest; oprav lazurio.runtime nebo legacy manifest a spusť Synchronizovat.`,
           invalidApp.manifest_issues ?? [],
           { failure_kind: "invalid_manifest", package_path: invalidApp.package_path },
         );
       }
       throw new RuntimeActionError(404, "app_not_found", `Aplikace ${appId} není v discovery výstupu.`);
     }
-    return app;
+    return { app, discovery };
   }
 
-  async function runtimeAppForAction(appId, { source = null, requireValidDiscovery = true } = {}) {
-    const app = await findApp(appId, { requireValidDiscovery });
+  async function runtimeAppForAction(
+    appId,
+    { source = null, requireValidDiscovery = true, enforcePortContract = false } = {},
+  ) {
+    const { app, discovery } = await findApp(appId, { requireValidDiscovery });
+    if (enforcePortContract) assertValidRuntimePortContract(app, discovery);
     const runtimeSource = normalizeRuntimeSource(source);
     if (runtimeSource.type === "main") {
       return {
@@ -1283,6 +1415,63 @@ export function createRuntimeManager({
       };
     }
     return worktreeRuntimeApp(app, runtimeSource);
+  }
+
+  function assertValidRuntimePortContract(app, discovery) {
+    const owns = (owner) => owner?.app_id === app.id && owner?.package_path === app.package_path;
+    const conflicts = (discovery.port_overlaps ?? [])
+      .filter((overlap) => overlap.conflict !== false && overlap.owners?.some(owns));
+
+    // Legacy manifests stay read-compatible during the coordinated migration,
+    // but a declared collision is never actionable. Otherwise a currently free
+    // duplicate port could bypass the Doctor gate and start two logical owners.
+    if (app.runtime_contract?.schema_version !== "lazurio.runtime.v1") {
+      if (conflicts.length === 0) return;
+      throw new RuntimeActionError(
+        409,
+        "invalid_runtime_port_contract",
+        `${app.title}: declared runtime port conflict blocks Start/Open until the module lease migration is complete.`,
+        conflicts.map((overlap) => `port ${overlap.port}: ${overlap.classification}`),
+        {
+          failure_kind: "invalid_runtime_port_contract",
+          conflict_count: conflicts.length,
+          module_listener_drift_count: 0,
+          port_registry_issue_count: discovery.port_registry_issues?.length ?? 0,
+        },
+      );
+    }
+
+    if (app.module_contract?.schema_version !== "lazurio.module.v1") {
+      throw new RuntimeActionError(
+        409,
+        "missing_module_lease",
+        `${app.title}: chybí platný lazurio.module.v1 lease; Doctor musí být před Start/Open zelený.`,
+        [],
+        { failure_kind: "missing_module_lease" },
+      );
+    }
+
+    const drifts = (discovery.module_listener_drifts ?? [])
+      .filter((drift) => drift.owners?.some(owns));
+    if (conflicts.length === 0
+      && drifts.length === 0) return;
+
+    const details = [
+      ...conflicts.map((overlap) => `port ${overlap.port}: ${overlap.classification}`),
+      ...drifts.map((drift) => `${drift.module_lease}: module listener drift`),
+    ];
+    throw new RuntimeActionError(
+      409,
+      "invalid_runtime_port_contract",
+      `${app.title}: runtime port contract is invalid; Doctor must be green before Start/Open.`,
+      details,
+      {
+        failure_kind: "invalid_runtime_port_contract",
+        conflict_count: conflicts.length,
+        module_listener_drift_count: drifts.length,
+        port_registry_issue_count: discovery.port_registry_issues?.length ?? 0,
+      },
+    );
   }
 
   function normalizeRuntimeSource(source) {
@@ -1305,8 +1494,24 @@ export function createRuntimeManager({
     return {
       ...env,
       ...organizationRuntimeEnv(app),
+      ...listenerRuntimeEnv(app),
       ...overrides,
     };
+  }
+
+  function listenerRuntimeEnv(app) {
+    const listeners = runtimeListenerState(app);
+    const values = {
+      LAZURIO_RUNTIME_LISTENERS_JSON: JSON.stringify(listeners),
+    };
+    for (const listener of listeners) {
+      const key = String(listener.id ?? "listener").toUpperCase().replace(/[^A-Z0-9]/g, "_");
+      values[`LAZURIO_RUNTIME_LISTENER_${key}_HOST`] = listener.host;
+      if (Number.isInteger(listener.port)) {
+        values[`LAZURIO_RUNTIME_LISTENER_${key}_PORT`] = String(listener.port);
+      }
+    }
+    return values;
   }
 
   function organizationRuntimeEnv(app) {
@@ -1362,10 +1567,6 @@ export function createRuntimeManager({
     }
 
     const runtimeKey = worktreeRuntimeKey(app, worktree.slug);
-    const existingPort = managedProcesses.get(runtimeKey)?.port ?? (await readState(runtimeKey))?.port;
-    const port = Number.isInteger(existingPort) && existingPort !== app.port
-      ? existingPort
-      : await allocateDevPort({ avoid: [app.port] });
     const modulePath = normalizeRelativePath(worktree.metadata?.module_path ?? `modules/${app.module}`);
     const mainModulePath = normalizeRelativePath(`${app.organization_path}/${modulePath}`);
     const worktreePath = normalizeRelativePath(worktree.path);
@@ -1374,7 +1575,6 @@ export function createRuntimeManager({
 
     return {
       ...app,
-      port,
       cwd,
       package_path: packagePath,
       runtime_key: runtimeKey,
@@ -1393,6 +1593,43 @@ export function createRuntimeManager({
 
   function runtimeKeyForApp(app) {
     return app.runtime_key ?? app.id;
+  }
+
+  function moduleLeaseKeyForApp(app) {
+    return typeof app?.company === "string" && app.company !== ""
+      && typeof app?.module === "string" && app.module !== ""
+      ? `${app.company}/${app.module}`
+      : `app/${app.id}`;
+  }
+
+  async function withModuleLeaseLock(app, action) {
+    const key = moduleLeaseKeyForApp(app);
+    const previous = moduleLeaseLocks.get(key) ?? Promise.resolve();
+    let release;
+    const current = new Promise((resolveCurrent) => {
+      release = resolveCurrent;
+    });
+    const tail = previous.catch(() => {}).then(() => current);
+    moduleLeaseLocks.set(key, tail);
+    await previous.catch(() => {});
+    let osLock = null;
+    try {
+      osLock = await acquireModuleLockFn({
+        root: moduleLockRoot,
+        key,
+        instanceId,
+      });
+      return await action();
+    } finally {
+      try {
+        if (osLock) await osLock.release();
+      } catch (error) {
+        console.warn(`[launchpad] Module lock ${key} could not be released cleanly: ${error?.message ?? error}`);
+      } finally {
+        release();
+        if (moduleLeaseLocks.get(key) === tail) moduleLeaseLocks.delete(key);
+      }
+    }
   }
 
   function runtimeSourceForApp(app) {
@@ -1417,13 +1654,401 @@ export function createRuntimeManager({
     return normalized;
   }
 
-  async function allocateDevPort({ avoid = [] } = {}) {
-    const blocked = new Set(avoid.filter(Number.isInteger));
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      const port = await allocateEphemeralPort();
-      if (!blocked.has(port)) return port;
+  async function materializeRuntimeListeners(app) {
+    const invalid = (app.listeners ?? []).filter(
+      (listener) => listener.allocation !== "static" || !Number.isInteger(listener.port),
+    );
+    if (invalid.length > 0) {
+      throw new RuntimeActionError(
+        409,
+        "runtime_listener_not_static",
+        `${app.title}: každý runtime listener musí mít pevný deklarovaný port; dynamické porty nejsou povolené.`,
+        invalid.map((listener) => `${listener.id}: allocation=${listener.allocation}, port=${listener.port ?? "missing"}`),
+        { failure_kind: "dynamic_runtime_listener_forbidden", listeners: invalid },
+      );
     }
-    throw new RuntimeActionError(500, "dev_port_allocation_failed", "Launchpad nenašel volný DEV port pro worktree runtime.");
+    return app;
+  }
+
+  async function verifyStartedListenerOwnership(app, record, { timeoutMs }) {
+    const expectedCwd = join(companiesRoot, app.cwd ?? dirname(app.package_path ?? "package.json"));
+    const deadline = Date.now() + timeoutMs;
+    let evidence = [];
+    do {
+      evidence = [];
+      for (const listener of app.listeners ?? []) {
+        const owner = await resolvePortOwnerFn(listener.port, {
+          expectedCwd,
+          host: listener.host,
+        });
+        let owned = false;
+        let processGroupId = null;
+        if (Number.isInteger(owner?.pid) && owner.pid > 0) {
+          if (platform === "win32") {
+            if (owner.pid === record.pid) {
+              owned = true;
+            } else {
+              const knownLauncherIdentity = await record.launcherIdentityPromise;
+              owned = Boolean(await captureWindowsProcessAncestry(
+                owner.pid,
+                record.pid,
+                processIdentityResolver,
+                knownLauncherIdentity,
+              ));
+            }
+          } else {
+            processGroupId = await portOwnerProcessGroupResolver(owner.pid);
+            owned = processGroupId === record.processGroupId;
+          }
+        }
+        let observedBindings = [];
+        if (owned) {
+          observedBindings = await observedPortBindingsResolver(listener.port);
+          owned = observedBindings.some((binding) =>
+            observedListenerMatchesDeclaration(binding, listener)
+          );
+        }
+        evidence.push({
+          listener_id: listener.id,
+          lease_id: listener.lease ?? null,
+          host: listener.host,
+          port: listener.port,
+          owner_pid: owner?.pid ?? null,
+          process_group_id: processGroupId,
+          observed_endpoints: observedBindings.map((binding) => binding.endpoint),
+          owned,
+        });
+      }
+      if (evidence.length > 0 && evidence.every((item) => item.owned)) return evidence;
+      await sleep(50);
+    } while (Date.now() < deadline);
+    throw new RuntimeActionError(
+      500,
+      "runtime_listener_ownership_unverified",
+      `${app.title}: nový managed proces nepřevzal všechny deklarované module leases.`,
+      evidence.map((item) =>
+        `${item.listener_id}: ${item.host}:${item.port}, owner_pid=${item.owner_pid ?? "none"}, process_group_id=${item.process_group_id ?? "unknown"}`,
+      ),
+      {
+        failure_kind: "started_listener_ownership_unverified",
+        launcher_pid: record.pid,
+        process_group_id: record.processGroupId,
+        listeners: evidence,
+      },
+    );
+  }
+
+  async function prepareDeclaredListeners(app, { runtimeKey, logPath }) {
+    const expectedCwd = join(companiesRoot, app.cwd ?? dirname(app.package_path ?? "package.json"));
+    const conflicts = [];
+    const reclaimed = [];
+    const declaredListeners = [...(app.listeners ?? [])];
+    const declaredPorts = new Set(declaredListeners.map((listener) => `${listener.host}:${listener.port}`));
+    for (const lease of app.module_contract?.port_leases ?? []) {
+      if (declaredPorts.has(`${lease.host}:${lease.port}`)) continue;
+      declaredListeners.push({
+        id: `reserved-${lease.id}`,
+        role: "auxiliary",
+        lease: lease.id,
+        protocol: "tcp",
+        health: { kind: "tcp" },
+        allocation: "static",
+        host: lease.host,
+        port: lease.port,
+        claim: { mode: "exclusive" },
+        module_lease: {
+          id: lease.id,
+          module_id: app.module_contract.id,
+          company: app.module_contract.company,
+          source: app.module_contract.module_path,
+        },
+      });
+    }
+    for (const listener of declaredListeners) {
+      if (!Number.isInteger(listener.port)) continue;
+      let owner = await resolveOccupiedPortOwner(listener, expectedCwd);
+      if (!owner) continue;
+      if (!runtimeListenerHasStaticLease(app, listener)) {
+        conflicts.push({ listener, owner });
+        continue;
+      }
+
+      const managedPeer = [...managedProcesses.values()].find((record) =>
+        record.runtimeKey !== runtimeKey
+        && (record.runtimeApp?.listeners ?? []).some((candidate) =>
+          candidate.port === listener.port
+          && runtimeHostsShareListener(candidate.host, listener.host)
+        )
+      );
+      if (managedPeer) {
+        try {
+          await stop(managedPeer.appId, { source: managedPeer.runtimeSource });
+        } catch (error) {
+          if (!["app_not_found", "worktree_not_found", "worktree_not_owned"].includes(error?.code)) {
+            throw error;
+          }
+          managedProcesses.delete(managedPeer.runtimeKey);
+          await appendLog(
+            logPath,
+            `[launchpad] managed peer ${managedPeer.runtimeKey} is no longer discoverable; reclaiming its declared listener directly\n`,
+          );
+        }
+        reclaimed.push({
+          listener_id: listener.id,
+          host: listener.host,
+          port: listener.port,
+          previous_pid: managedPeer.pid,
+          method: "managed-stop",
+        });
+        owner = await resolveOccupiedPortOwner(listener, expectedCwd);
+        if (!owner) continue;
+      }
+
+      const result = await reclaimReservedListener(app, listener, {
+        expectedCwd,
+        logPath,
+      });
+      reclaimed.push(...result);
+    }
+    if (conflicts.length === 0) return reclaimed;
+    throw new RuntimeActionError(
+      409,
+      "runtime_listener_preflight_failed",
+      `${app.title} nelze spustit: obsazený listener nemá Lazurio static lease, který by Launchpadu dovolil port reclaimnout.`,
+      conflicts.map(({ listener, owner }) =>
+        `${listener.id}: ${listener.host}:${listener.port}, pid=${owner.pid ?? "unknown"}, cwd_verified=${owner.cwd_matches === true}`,
+      ),
+      {
+        failure_kind: "listener_preflight_conflict",
+        listeners: conflicts.map(({ listener, owner }) => ({
+          listener_id: listener.id,
+          host: listener.host,
+          port: listener.port,
+          pid: owner.pid ?? null,
+          cwd_matches: owner.cwd_matches ?? null,
+        })),
+      },
+    );
+  }
+
+  async function reclaimReservedListener(app, listener, { expectedCwd, logPath }) {
+    const reclaimed = [];
+    for (let attempt = 1; attempt <= portReclaimAttempts; attempt += 1) {
+      const owner = await resolveOccupiedPortOwner(listener, expectedCwd);
+      if (!owner) return reclaimed;
+      if (!Number.isInteger(owner.pid) || owner.pid <= 0 || owner.pid === process.pid) {
+        throw new RuntimeActionError(
+          409,
+          "runtime_listener_reclaim_failed",
+          `${app.title}: vlastník rezervovaného portu ${listener.port} nemá bezpečně signalizovatelný PID.`,
+          [`listener: ${listener.id}`, `pid: ${owner.pid ?? "unknown"}`],
+          { failure_kind: "reserved_port_owner_unresolvable", listener, owner },
+        );
+      }
+      const initialIdentity = await portOwnerIdentity(owner.pid);
+      if (!initialIdentity) {
+        const currentOwner = await resolveOccupiedPortOwner(listener, expectedCwd);
+        if (!currentOwner || currentOwner.pid !== owner.pid) continue;
+        throw new RuntimeActionError(
+          409,
+          "runtime_listener_reclaim_failed",
+          `${app.title}: identitu PID ${owner.pid} na rezervovaném portu ${listener.port} nelze bezpečně svázat s takeover transakcí.`,
+          [`listener: ${listener.id}`, `pid: ${owner.pid}`],
+          { failure_kind: "reserved_port_owner_identity_unresolved", listener, owner },
+        );
+      }
+
+      await appendLog(
+        logPath,
+        `[launchpad] reclaim ${app.id} listener=${listener.id} endpoint=${listener.host}:${listener.port} pid=${owner.pid} signal=SIGTERM attempt=${attempt}\n`,
+      );
+      let signalTarget;
+      try {
+        const currentIdentity = await portOwnerIdentity(owner.pid);
+        if (!samePortOwnerIdentity(initialIdentity, currentIdentity)) continue;
+        signalTarget = await portOwnerSignaler(owner.pid, "SIGTERM", { app, listener, owner });
+      } catch (error) {
+        throw reservedPortSignalError(app, listener, owner, "SIGTERM", error);
+      }
+      let remainingOwner = await waitForReservedListenerChange(
+        listener,
+        expectedCwd,
+        owner.pid,
+        portReclaimTermWaitMs,
+      );
+      if (!remainingOwner) {
+        reclaimed.push({
+          listener_id: listener.id,
+          host: listener.host,
+          port: listener.port,
+          previous_pid: owner.pid,
+          previous_process_group_id: signalTarget?.process_group_id ?? null,
+          method: "SIGTERM",
+        });
+        return reclaimed;
+      }
+      if (remainingOwner.pid !== owner.pid) continue;
+
+      await appendLog(
+        logPath,
+        `[launchpad] reclaim ${app.id} listener=${listener.id} endpoint=${listener.host}:${listener.port} pid=${owner.pid} signal=SIGKILL attempt=${attempt}\n`,
+      );
+      try {
+        const currentIdentity = await portOwnerIdentity(owner.pid);
+        if (!samePortOwnerIdentity(initialIdentity, currentIdentity)) continue;
+        signalTarget = await portOwnerSignaler(owner.pid, "SIGKILL", { app, listener, owner });
+      } catch (error) {
+        throw reservedPortSignalError(app, listener, owner, "SIGKILL", error);
+      }
+      remainingOwner = await waitForReservedListenerChange(
+        listener,
+        expectedCwd,
+        owner.pid,
+        portReclaimKillWaitMs,
+      );
+      if (!remainingOwner) {
+        reclaimed.push({
+          listener_id: listener.id,
+          host: listener.host,
+          port: listener.port,
+          previous_pid: owner.pid,
+          previous_process_group_id: signalTarget?.process_group_id ?? null,
+          method: "SIGKILL",
+        });
+        return reclaimed;
+      }
+      if (remainingOwner.pid !== owner.pid) continue;
+    }
+    const owner = await resolveOccupiedPortOwner(listener, expectedCwd);
+    throw new RuntimeActionError(
+      500,
+      "runtime_listener_reclaim_failed",
+      `${app.title}: rezervovaný port ${listener.port} se nepodařilo uvolnit.`,
+      [`listener: ${listener.id}`, `pid: ${owner?.pid ?? "unknown"}`],
+      { failure_kind: "reserved_port_reclaim_failed", listener, owner },
+    );
+  }
+
+  async function waitForReservedListenerChange(listener, expectedCwd, previousPid, timeoutMs) {
+    const deadline = Date.now() + timeoutMs;
+    let owner = null;
+    do {
+      owner = await resolveOccupiedPortOwner(listener, expectedCwd);
+      if (!owner || owner.pid !== previousPid) return owner;
+      await sleep(50);
+    } while (Date.now() < deadline);
+    return owner;
+  }
+
+  async function resolveOccupiedPortOwner(listener, expectedCwd) {
+    const owner = await resolvePortOwnerFn(listener.port, {
+      expectedCwd,
+      host: listener.host,
+    });
+    if (owner) return owner;
+    const occupied = await probeNumericPortOccupiedFn(listener.port, { host: listener.host });
+    return occupied
+      ? { pid: null, cwd_matches: null, lookup_failed: true }
+      : null;
+  }
+
+  function reservedPortSignalError(app, listener, owner, signal, error) {
+    return new RuntimeActionError(
+      error?.code === "EPERM" ? 403 : 500,
+      error?.code === "EPERM" ? "runtime_listener_reclaim_forbidden" : "runtime_listener_reclaim_failed",
+      `${app.title}: PID ${owner.pid} na rezervovaném portu ${listener.port} se nepodařilo ukončit (${signal}).`,
+      [error?.message ?? String(error)],
+      {
+        failure_kind: "reserved_port_signal_failed",
+        listener,
+        pid: owner.pid,
+        signal,
+      },
+    );
+  }
+
+  async function reconcileRuntimeListeners(app, record, expectedCwd) {
+    if (!record || app.runtime_contract?.auxiliary_listeners_known !== true) return null;
+    const now = Date.now();
+    if (
+      record.listenerReconciliation
+      && Number.isFinite(record.listenerReconciledAt)
+      && now - record.listenerReconciledAt < listenerReconciliationCacheMs
+    ) {
+      return record.listenerReconciliation;
+    }
+    let observed = [];
+    let groupObservation = "unavailable";
+    if (platform !== "win32" && spawnProcess === Bun.spawn && Number.isInteger(record.processGroupId)) {
+      try {
+        const result = await runSystemCommandFn([
+          "lsof", "-nP", "-a", "-g", String(record.processGroupId), "-iTCP", "-sTCP:LISTEN", "-FnP",
+        ]);
+        if (result.ok) {
+          observed = parseProcessGroupListeners(result.stdout);
+          groupObservation = "available";
+        }
+      } catch {}
+    }
+    const declared = [];
+    for (const listener of app.listeners ?? []) {
+      if (!Number.isInteger(listener.port)) {
+        declared.push({ listener_id: listener.id, port: null, status: "unallocated" });
+        continue;
+      }
+      const healthProbe = await probeRuntimeListener(listener);
+      const observedOnPort = observed.filter((candidate) => candidate.port === listener.port);
+      const exactObserved = observedOnPort.some((candidate) =>
+        observedListenerMatchesDeclaration(candidate, listener)
+      );
+      let owner = null;
+      if (!exactObserved && observedOnPort.length === 0) {
+        try {
+          owner = await resolvePortOwnerFn(listener.port, { expectedCwd });
+        } catch {}
+      }
+      const ownershipStatus = exactObserved
+        ? "observed"
+        : observedOnPort.length > 0
+          ? "host-mismatch"
+          : owner?.cwd_matches === true
+            ? "observed"
+        : owner
+          ? "foreign-or-unverified"
+          : "missing";
+      const status = ownershipStatus === "observed" && !healthProbe.ok
+        ? "unhealthy"
+        : ownershipStatus;
+      declared.push({
+        listener_id: listener.id,
+        role: listener.role,
+        host: listener.host,
+        port: listener.port,
+        status,
+        pid: owner?.pid ?? null,
+        observed_endpoints: observedOnPort.map((candidate) => candidate.endpoint),
+        health: healthProbe,
+      });
+    }
+    const unannounced = groupObservation === "available"
+      ? observed.filter((candidate) => !(app.listeners ?? []).some((listener) =>
+        observedListenerMatchesDeclaration(candidate, listener)
+      ))
+      : [];
+    const deviations = declared.filter((listener) =>
+      ["missing", "host-mismatch", "foreign-or-unverified", "unhealthy"].includes(listener.status),
+    );
+    const reconciliation = {
+      status: deviations.length === 0 && unannounced.length === 0 ? "ok" : "warn",
+      group_observation: groupObservation,
+      process_group_id: record.processGroupId,
+      declared,
+      observed,
+      unannounced,
+    };
+    record.listenerReconciliation = reconciliation;
+    record.listenerReconciledAt = now;
+    return reconciliation;
   }
 
   async function healthForApp(app) {
@@ -1431,19 +2056,21 @@ export function createRuntimeManager({
     const runtimeSource = runtimeSourceForApp(app);
     const state = await readState(runtimeKey);
     const record = managedProcesses.get(runtimeKey);
+    app = record?.runtimeApp ?? await materializeRuntimeListeners(app);
     const dependencies = await dependencyForApp(app);
     const probe = await probeHealth(app);
     const expectedCwd = join(companiesRoot, app.cwd ?? dirname(app.package_path ?? "package.json"));
     const portOwner = record ? null : await resolveVerifiedPortOwner(app, state, expectedCwd);
-    // Adoption is destructive authority: only a positively verified canonical
-    // cwd match may become managed. Unknown lookup (including Windows) stays
-    // fail-closed and cannot expose Stop/Restart.
+    const listenerReconciliation = await reconcileRuntimeListeners(app, record, expectedCwd);
+    // Pozitivně ověřený canonical cwd zpřesní diagnostickou klasifikaci na
+    // adopted-port. Ani tak se ale proces nestane managed a Stop/Restart se mu
+    // nikdy nezpřístupní. Unknown lookup zůstává fail-closed.
     const adoptablePortOwner = portOwner?.cwd_matches === true ? portOwner : null;
     const now = Date.now();
     const startedAt = record?.startedAt ? Date.parse(record.startedAt) : null;
-    const logPath = logPathForApp(app.id);
+    const logPath = logPathForApp(runtimeKey);
     const base = {
-      schema_version: "companiesascode.launchpad.runtime.v1",
+      schema_version: "lazurio.launchpad.runtime_state.v1",
       app_id: app.id,
       runtime_key: runtimeKey,
       runtime_source: runtimeSource,
@@ -1451,7 +2078,8 @@ export function createRuntimeManager({
       port: app.port,
       url: appUrl(app),
       pid: record?.pid ?? portOwner?.pid ?? state?.pid ?? null,
-      managed: Boolean(record || adoptablePortOwner),
+      managed: Boolean(record),
+      controllable: Boolean(record),
       owner: record
         ? "current-instance"
         : adoptablePortOwner
@@ -1471,6 +2099,8 @@ export function createRuntimeManager({
       last_install: state?.last_install ?? null,
       probe,
       port_owner: portOwner,
+      listeners: runtimeListenerState(app),
+      listener_reconciliation: listenerReconciliation,
     };
 
     if (record) {
@@ -1564,7 +2194,11 @@ export function createRuntimeManager({
   }
 
   async function resolveVerifiedPortOwner(app, state, expectedCwd) {
-    const owner = await resolvePortOwnerFn(app.port, { expectedCwd });
+    if (!Number.isInteger(app.port)) return null;
+    const owner = await resolvePortOwnerFn(app.port, {
+      expectedCwd,
+      host: app.entrypoint_listener?.host ?? app.host,
+    });
     if (!owner || owner.cwd_matches === true || owner.cwd_matches === false || platform !== "win32") {
       return owner;
     }
@@ -1647,6 +2281,60 @@ export function createRuntimeManager({
     return finalProbe.reachable && finalProbe.ok ? record.ownerProof : null;
   }
 
+  async function posixProofForSurvivingProcessGroup(app, record) {
+    if (
+      platform === "win32"
+      || record.stopping
+      || managedProcesses.get(record.runtimeKey) !== record
+      || !(await managedProcessGroupAlive(record))
+    ) {
+      return null;
+    }
+    const initialProbe = await probeHealth(app);
+    if (!initialProbe.reachable || !initialProbe.ok) return null;
+
+    const expectedCwd = join(
+      companiesRoot,
+      app.cwd ?? dirname(app.package_path ?? "package.json"),
+    );
+    const listeners = [];
+    for (const listener of app.listeners ?? []) {
+      const owner = await resolvePortOwnerFn(listener.port, {
+        expectedCwd,
+        host: listener.host,
+      });
+      if (!Number.isInteger(owner?.pid) || owner.pid <= 0 || owner.cwd_matches !== true) return null;
+      const processGroupId = await portOwnerProcessGroupResolver(owner.pid);
+      if (processGroupId !== record.processGroupId) return null;
+      const observedBindings = await observedPortBindingsResolver(listener.port);
+      if (!observedBindings.some((binding) => observedListenerMatchesDeclaration(binding, listener))) {
+        return null;
+      }
+      listeners.push({
+        listener_id: listener.id,
+        lease_id: listener.lease ?? null,
+        listener_pid: owner.pid,
+        process_group_id: processGroupId,
+        host: listener.host,
+        port: listener.port,
+      });
+    }
+    if (listeners.length === 0) return null;
+    const finalProbe = await probeHealth(app);
+    if (!finalProbe.reachable || !finalProbe.ok || !(await managedProcessGroupAlive(record))) {
+      return null;
+    }
+    return {
+      schema_version: "lazurio.posix_process_group_owner_proof.v1",
+      platform,
+      launcher_pid: record.pid,
+      listener_pid: listeners[0].listener_pid,
+      process_group_id: record.processGroupId,
+      listeners,
+      captured_at: new Date().toISOString(),
+    };
+  }
+
   async function persistWindowsRuntimeOwnerProofWhenHealthy(app, record) {
     const deadline = Date.now() + startGraceMs;
     let captureAttempts = 0;
@@ -1684,7 +2372,10 @@ export function createRuntimeManager({
 
     const appExpectedCwd = expectedCwd
       ?? join(companiesRoot, app.cwd ?? dirname(app.package_path ?? "package.json"));
-    const owner = await resolvePortOwnerFn(app.port, { expectedCwd: appExpectedCwd });
+    const owner = await resolvePortOwnerFn(app.port, {
+      expectedCwd: appExpectedCwd,
+      host: app.entrypoint_listener?.host ?? app.host,
+    });
     if (
       !Number.isInteger(owner?.pid)
       || owner.pid <= 0
@@ -1874,6 +2565,7 @@ export function createRuntimeManager({
   async function ensureRuntimeDirs() {
     await mkdir(appStateRoot, { recursive: true });
     await mkdir(logsRoot, { recursive: true });
+    await mkdir(takeoverAuditRoot, { recursive: true });
   }
 
   function statePathForApp(appId) {
@@ -2413,6 +3105,39 @@ export function parseWindowsListeningPid(output, port) {
   return null;
 }
 
+export function parseWindowsListeningBindings(output, port) {
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) return [];
+  const bindings = [];
+  for (const line of String(output ?? "").split(/\r?\n/)) {
+    const fields = line.trim().split(/\s+/);
+    if (fields.length !== 5 || fields[0].toUpperCase() !== "TCP") continue;
+    if (endpointPort(fields[1]) !== port || endpointPort(fields[2]) !== 0) continue;
+    const endpoint = fields[1];
+    const host = endpoint.slice(0, endpoint.lastIndexOf(":"))
+      .replace(/^\[(.*)\]$/, "$1")
+      .toLowerCase();
+    bindings.push({ endpoint, host, port });
+  }
+  return bindings.filter((binding, index, all) =>
+    all.findIndex((candidate) => candidate.endpoint === binding.endpoint) === index
+  );
+}
+
+export async function resolveObservedPortBindings(
+  port,
+  { platform = process.platform, runCommandFn = runCommand } = {},
+) {
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) return [];
+  if (platform === "win32") {
+    const result = await runCommandFn(windowsNetstatCommand());
+    return result?.ok ? parseWindowsListeningBindings(result.stdout, port) : [];
+  }
+  const result = await runCommandFn(["lsof", "-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-FnP"]);
+  return result?.ok
+    ? parseProcessGroupListeners(result.stdout).filter((binding) => binding.port === port)
+    : [];
+}
+
 function runtimePackageCommand(command, bunExecutable) {
   if (!Array.isArray(command) || command.length === 0) return command;
   return command[0] === "bun" || command[0] === "bun.exe"
@@ -2447,7 +3172,10 @@ function isMissingProcessResult(result) {
   return /not found|no running instance|nenalezena|nebyla nalezena/i.test(text);
 }
 
-async function resolvePortOwner(port, { expectedCwd = null } = {}) {
+export async function resolvePortOwner(port, { expectedCwd = null } = {}) {
+  // Port leases are global by numeric TCP port, not by a particular loopback
+  // address. Always resolve the OS listener first: a successful bind on ::1
+  // must not hide an existing owner on 127.0.0.1 (or vice versa).
   const pid = process.platform === "win32" ? await resolvePortOwnerWindows(port) : await resolvePortOwnerUnix(port);
   if (!pid || pid === process.pid) return null;
   if (!expectedCwd) return { pid };
@@ -2456,6 +3184,30 @@ async function resolvePortOwner(port, { expectedCwd = null } = {}) {
   if (!processCwd) return { pid, cwd_matches: null };
   const [actual, expected] = await Promise.all([canonicalPath(processCwd), canonicalPath(expectedCwd)]);
   return { pid, cwd_matches: actual === expected };
+}
+
+export async function probeNumericPortOccupied(port, { host = null } = {}) {
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) return false;
+  const hosts = [...new Set([
+    host ? canonicalRuntimeListenerHost(host) : null,
+    "127.0.0.1",
+    "::1",
+  ].filter(Boolean))];
+  const results = await Promise.all(hosts.map((candidateHost) => new Promise((resolveOccupied) => {
+    const socket = createConnection({ host: candidateHost, port });
+    let settled = false;
+    const finish = (occupied) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolveOccupied(occupied);
+    };
+    socket.setTimeout(portOccupancyProbeTimeoutMs);
+    socket.once("connect", () => finish(true));
+    socket.once("timeout", () => finish(false));
+    socket.once("error", () => finish(false));
+  })));
+  return results.some(Boolean);
 }
 
 async function resolveProcessCwd(pid) {
@@ -2482,16 +3234,6 @@ async function canonicalPath(path) {
   }
 }
 
-async function waitForPortOwnerChange(port, expectedPid, timeoutMs, resolveOwner = resolvePortOwner) {
-  const deadline = Date.now() + timeoutMs;
-  let owner = await resolveOwner(port);
-  while (owner?.pid === expectedPid && Date.now() < deadline) {
-    await sleep(stopPollMs);
-    owner = await resolveOwner(port);
-  }
-  return { owner };
-}
-
 async function resolvePortOwnerUnix(port) {
   const lsof = await runCommand(["lsof", "-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"]);
   if (lsof.ok) return parsePid(lsof.stdout);
@@ -2505,6 +3247,13 @@ async function resolvePortOwnerUnix(port) {
 async function resolvePortOwnerWindows(port) {
   const result = await runCommand(windowsNetstatCommand());
   return result.ok ? parseWindowsListeningPid(result.stdout, port) : null;
+}
+
+export async function resolvePosixProcessGroupId(pid, { runCommandFn = runCommand } = {}) {
+  if (!Number.isInteger(pid) || pid <= 0) return null;
+  const result = await runCommandFn(["ps", "-o", "pgid=", "-p", String(pid)]);
+  if (!result?.ok) return null;
+  return parsePid(result.stdout);
 }
 
 async function runCommand(command, { timeoutMs = null } = {}) {
@@ -2581,10 +3330,28 @@ async function appendLog(logPath, content) {
 }
 
 async function probeHealth(app) {
+  const listener = app?.entrypoint_listener
+    ? { ...app.entrypoint_listener, port: app.port }
+    : {
+        host: app?.host,
+        port: app?.port,
+        protocol: "http",
+        health: { kind: "http", path: app?.health_path },
+      };
+  return probeRuntimeListener(listener);
+}
+
+export async function probeRuntimeListener(listener) {
+  if (!Number.isInteger(listener?.port)) {
+    return { reachable: false, ok: false, error: "module port lease is missing" };
+  }
+  if (listener.health?.kind === "tcp") {
+    return probeTcpListener(listener);
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), healthTimeoutMs);
   try {
-    const response = await fetch(healthUrl(app), {
+    const response = await fetch(listenerHealthUrl(listener), {
       cache: "no-store",
       signal: controller.signal,
     });
@@ -2604,28 +3371,43 @@ async function probeHealth(app) {
   }
 }
 
+function probeTcpListener(listener) {
+  return new Promise((resolve) => {
+    const socket = createConnection({ host: listener.host, port: listener.port });
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(result);
+    };
+    socket.setTimeout(healthTimeoutMs);
+    socket.once("connect", () => finish({ reachable: true, ok: true }));
+    socket.once("timeout", () => finish({ reachable: false, ok: false, error: "timeout" }));
+    socket.once("error", (error) => finish({ reachable: false, ok: false, error: error.message }));
+  });
+}
+
+function listenerHealthUrl(listener) {
+  if (!Number.isInteger(listener?.port)) return null;
+  const protocol = listener.protocol === "https" ? "https" : "http";
+  return `${protocol}://${runtimeUrlHost(listener.host)}:${listener.port}${listener.health?.path ?? "/"}`;
+}
+
 function healthUrl(app) {
-  return `http://${app.host}:${app.port}${app.health_path}`;
+  if (!Number.isInteger(app?.port)) return null;
+  return listenerHealthUrl({
+    ...(app.entrypoint_listener ?? {}),
+    host: app.host,
+    port: app.port,
+    health: app.entrypoint_listener?.health ?? { kind: "http", path: app.health_path },
+  });
 }
 
 function appUrl(app) {
-  return `http://${app.host}:${app.port}`;
-}
-
-async function allocateEphemeralPort() {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.unref();
-    server.on("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      const port = typeof address === "object" && address ? address.port : null;
-      server.close(() => {
-        if (Number.isInteger(port)) resolve(port);
-        else reject(new Error("ephemeral port allocation failed"));
-      });
-    });
-  });
+  if (!Number.isInteger(app?.port)) return null;
+  const protocol = app.entrypoint_listener?.protocol === "https" ? "https" : "http";
+  return `${protocol}://${runtimeUrlHost(app.host)}:${app.port}`;
 }
 
 function sleep(ms) {

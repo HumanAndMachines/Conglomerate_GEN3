@@ -429,14 +429,14 @@ test("Launchpad server forwards runtime source from POST body to worktree open",
     });
 
     expect(opened.runtime_source).toMatchObject({ type: "worktree", slug: worktreeSlug, plan_code: "CAC-0042" });
-    expect(opened.url).not.toBe(`http://127.0.0.1:${mainPort}`);
+    expect(opened.url).toBe(`http://127.0.0.1:${mainPort}`);
 
     const health = await postJson(port, "/api/apps/betaco-deals-v1/health", {
       source: { type: "worktree", slug: worktreeSlug },
     });
 
     expect(health.runtime_source).toMatchObject({ type: "worktree", slug: worktreeSlug, plan_code: "CAC-0042" });
-    expect(health.port).toBe(opened.runtime.port);
+    expect(health.port).toBe(mainPort);
   } finally {
     await postJson(port, "/api/apps/betaco-deals-v1/stop", { source: { type: "worktree", slug: worktreeSlug } }).catch(() => null);
     await postJson(port, "/api/apps/betaco-deals-v1/stop", {}).catch(() => null);

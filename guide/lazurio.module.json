@@ -1,0 +1,15 @@
+{
+  "schema_version": "lazurio.module.v1",
+  "id": "guide",
+  "company": "conglomerate",
+  "tcp_port_policy": {
+    "mode": "single"
+  },
+  "port_leases": [
+    {
+      "id": "main",
+      "host": "127.0.0.1",
+      "port": 23901
+    }
+  ]
+}

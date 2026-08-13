@@ -11,7 +11,9 @@
 // Kontrakty (source of truth v HumanAndMachines, decision 0051):
 //   - personal.gen3.json  → schemas/personal.gen3.schema.json (kopie identická)
 //   - modules.manifest.json → identický module-slot kontrakt jako Organizace
-//   - workspace/<modul>/ … → osobní aplikace přes companyascode.app manifesty
+//   - workspace/<modul>/lazurio.module.json → module-owned port lease
+//   - workspace/<modul>/ … → osobní aplikace přes lazurio.runtime.v1; legacy
+//     companyascode.app zůstává jen read-compatible během migrace
 //
 // Slot readiness uvnitř ownerova prostoru: available (mount existuje) /
 // missing_access (deklarované repo bez lokálního checkoutu) / planned_slot
@@ -22,6 +24,8 @@ import { existsSync } from "fs";
 import { readdir } from "fs/promises";
 import { dirname, join, relative, resolve, sep } from "path";
 import { readJson, readLocalOverrideConfig, validateAppManifest } from "./discovery-lib.mjs";
+import { normalizePackageRuntime } from "./runtime-contract-lib.mjs";
+import { materializeRuntimeFromModule, normalizeModuleManifest } from "./module-contract-lib.mjs";
 
 const launchpadRoot = join(import.meta.dirname, "..");
 const appSchemaPath = join(launchpadRoot, "schemas", "launchpad-app.schema.json");
@@ -471,7 +475,8 @@ async function readPersonalManifest(spaceRoot) {
   }
 }
 
-// Projde workspace/<modul>/**/package.json a najde companyascode.app manifesty.
+// Projde workspace/<modul>/**/package.json a najde lazurio.runtime.v1 nebo
+// read-compatible legacy companyascode.app manifesty.
 // Vrací syrové {packagePath, app, packageJson} — validace probíhá výš, aby
 // nevalidní osobní appka izolovala jen sebe (stejně jako org lane, decision 0043).
 async function walkPersonalPackageJson(spaceRoot, current, output) {
@@ -736,6 +741,14 @@ export async function discoverPersonalspace(
   }
 
   const appIds = new Set();
+  const personalPortOwners = new Map();
+  let organizationBlocks = [];
+  try {
+    const registry = await readJson(join(companiesRoot, "lazurio.port-registry.json"));
+    organizationBlocks = Array.isArray(registry?.organization_blocks)
+      ? registry.organization_blocks.filter((block) => Number.isInteger(block?.start) && Number.isInteger(block?.end))
+      : [];
+  } catch {}
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     if (!entry.isDirectory()) continue;
     if (entry.name.startsWith(".") || ignoredSpaceDirs.has(entry.name)) continue;
@@ -869,16 +882,48 @@ export async function discoverPersonalspace(
         warnings.push(`${relative(companiesRoot, absolutePackagePath)}: package.json nejde přečíst: ${error.message}`);
         continue;
       }
-      const app = packageJson.companyascode?.app;
-      if (!app) continue;
       const packagePath = relative(companiesRoot, absolutePackagePath).split("\\").join("/");
-      const manifestIssues = [];
-      if (appSchema) {
-        validateAppManifest({ app, packageJson, packagePath, schema: appSchema, failures: manifestIssues });
+      const normalizedRuntime = normalizePackageRuntime({ packageJson, packagePath });
+      if (!normalizedRuntime) continue;
+      let app = normalizedRuntime.app;
+      const manifestIssues = [...normalizedRuntime.issues];
+      if (app.runtime_contract?.legacy === true && appSchema) {
+        validateAppManifest({
+          app: packageJson.companyascode.app,
+          packageJson,
+          packagePath,
+          schema: appSchema,
+          failures: manifestIssues,
+        });
+      } else if (app.runtime_contract?.schema_version === "lazurio.runtime.v1") {
+        const relativePackagePath = relative(workspaceRoot, absolutePackagePath);
+        const moduleFolder = relativePackagePath.split(sep)[0];
+        const moduleManifestPath = join(workspaceRoot, moduleFolder, "lazurio.module.json");
+        const modulePath = relative(companiesRoot, moduleManifestPath).split("\\").join("/");
+        if (!existsSync(moduleManifestPath)) {
+          manifestIssues.push(`${packagePath}: chybí module-owned lease ${modulePath}`);
+        } else {
+          try {
+            const normalizedModule = normalizeModuleManifest({
+              manifest: await readJson(moduleManifestPath),
+              modulePath,
+            });
+            manifestIssues.push(...normalizedModule.issues);
+            const materialized = materializeRuntimeFromModule({
+              runtime: app,
+              module: normalizedModule.module,
+              packagePath,
+            });
+            app = materialized.app;
+            manifestIssues.push(...materialized.issues);
+          } catch (error) {
+            manifestIssues.push(`${modulePath}: lazurio.module.json nejde přečíst: ${error.message}`);
+          }
+        }
       }
       // Osobní aplikace deklaruje company = owner (osobní GitHub účet).
       if (typeof app.company === "string" && app.company !== owner) {
-        manifestIssues.push(`${packagePath}: companyascode.app.company musí být ${owner} (osobní prostor ${dirName})`);
+        manifestIssues.push(`${packagePath}: ${app.runtime_contract?.source ?? "runtime manifest"}.company musí být ${owner} (osobní prostor ${dirName})`);
       }
       const runtimeId = personalAppRuntimeId(dirName, typeof app.id === "string" ? app.id : `invalid:${packagePath}`);
       const base = {
@@ -893,6 +938,12 @@ export async function discoverPersonalspace(
         host: typeof app.host === "string" ? app.host : null,
         health_path: typeof app.health_path === "string" ? app.health_path : null,
         dev_script: typeof app.dev_script === "string" ? app.dev_script : null,
+        preview_script: typeof app.preview_script === "string" ? app.preview_script : null,
+        build_script: typeof app.build_script === "string" ? app.build_script : null,
+        listeners: app.listeners ?? [],
+        entrypoint_listener: app.entrypoint_listener ?? null,
+        module_contract: app.module_contract ?? null,
+        runtime_contract: app.runtime_contract ?? null,
         package_path: packagePath,
         cwd: dirname(packagePath),
         tags: Array.isArray(app.tags) ? app.tags.filter((tag) => typeof tag === "string") : [],
@@ -904,6 +955,25 @@ export async function discoverPersonalspace(
         space_mount_path: mountPath,
         space_owner: owner,
       };
+      for (const listener of base.listeners) {
+        if (!Number.isInteger(listener?.port)) continue;
+        const reservedBlock = organizationBlocks.find(
+          (block) => listener.port >= block.start && listener.port <= block.end,
+        );
+        if (reservedBlock) {
+          manifestIssues.push(
+            `${packagePath}: personal lease port ${listener.port} leží v rezervovaném bloku Organizace ${reservedBlock.company} ${reservedBlock.start}-${reservedBlock.end}`,
+          );
+        }
+        const prior = personalPortOwners.get(listener.port);
+        if (prior && prior.runtimeId !== runtimeId) {
+          const issue = `personal lease port ${listener.port} vlastní dvě aplikace: ${prior.packagePath} a ${packagePath}`;
+          manifestIssues.push(issue);
+          failures.push(issue);
+        } else {
+          personalPortOwners.set(listener.port, { packagePath, runtimeId });
+        }
+      }
       // App id kolize (i napříč prostory) → izolace jako invalid (decision 0043).
       if (base.app_id && appIds.has(runtimeId)) {
         manifestIssues.push(`${packagePath}: personalspace app id ${base.app_id} koliduje v runtime namespace`);

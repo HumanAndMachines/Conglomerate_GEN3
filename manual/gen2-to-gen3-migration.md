@@ -542,7 +542,7 @@ Pro každý Organization `guide/` soubor rozhodni:
 - organization-specific onboarding → `manual/`, knowledgebase, role/colleague
   docs nebo owner modul;
 - skutečně organization-specific interaktivní Guide app → smí zůstat jen s
-  jasným ownerem, neduplicitním obsahem a vlastním `companyascode.app`
+  jasným ownerem, neduplicitním obsahem a vlastním `lazurio.runtime.v1`
   manifestem.
 
 Samotná existence starého GEN2 `guide/` není důvod jej zachovat. README/MAP
@@ -663,45 +663,77 @@ Platí:
   nejsou tím automaticky běžné workspace moduly;
 - manifest deklaruje repo/materialization, ne druhou app/port autoritu.
 
-### `package.json` je jediná app autorita
+### Module lease a package runtime mají oddělenou autoritu
 
-Každá spustitelná appka deklaruje `companyascode.app` ve svém vlastním
-`package.json`. Port, id, title, host, health a scripts se neduplikují do
-`company.gen3.json`, `modules.manifest.json` ani hardcoded Launchpad mapy.
+Kořen modulu deklaruje `lazurio.module.v1` jako jedinou autoritu přesného portu.
+Každá spustitelná appka deklaruje `lazurio.runtime.v1` ve svém `package.json`
+jako autoritu příkazu, protokolu a health checku; na module lease pouze
+odkazuje. Organization blok vlastní `Conglomerate/lazurio.port-registry.json`.
+Žádná z těchto hodnot se neduplikuje do `company.gen3.json` ani
+`modules.manifest.json`.
+
+```json
+{
+  "schema_version": "lazurio.module.v1",
+  "id": "deals",
+  "company": "ExampleOrg",
+  "tcp_port_policy": { "mode": "single" },
+  "port_leases": [{ "id": "main", "host": "127.0.0.1", "port": 24001 }]
+}
+```
 
 ```json
 {
   "scripts": {
     "dev": "bun run src/server.ts"
   },
-  "companyascode": {
-    "app": {
-      "schema_version": "companyascode.launchpad_app.v1",
+  "lazurio": {
+    "runtime": {
+      "schema_version": "lazurio.runtime.v1",
       "id": "exampleorg-deals-v2",
       "title": "Deals",
       "company": "ExampleOrg",
       "module": "deals",
       "surface": "internal",
-      "port": 5277,
-      "host": "127.0.0.1",
-      "health_path": "/health",
       "dev_script": "dev",
-      "tags": ["sales"]
+      "tags": ["sales"],
+      "listeners": [{
+        "id": "web",
+        "role": "entrypoint",
+        "lease": "main",
+        "protocol": "http",
+        "health": { "kind": "http", "path": "/health" }
+      }]
     }
   }
 }
 ```
 
-`companyascode.app.company` se musí case-sensitive rovnat čistému proper-case
+`lazurio.runtime.company` se musí case-sensitive rovnat čistému proper-case
 `company.slug`; app id je globálně unikátní lowercase kebab identifikátor
 s povinným lowercase Organization prefixem odvozeným z `company.slug`.
-Team, brand ani GitHub repository owner tento prefix neurčují. Main port je unikátní uvnitř jedné
-Organizace; mezi Organizacemi se smí opakovat. `dev_script` musí existovat
-v témže package souboru.
+Team, brand ani GitHub repository owner tento prefix neurčují. Runtime má právě
+jeden `entrypoint` a může mít pomocné listenery. Listenery popisují topologii
+`dev_script`, který Launchpad spouští; jiné package lifecycle skripty nejsou
+samostatnou runtime autoritou. Každý listener povinně odkazuje na lease
+nejbližšího module manifestu; inline nebo dynamický port je nevalidní.
+`dev_script` musí existovat v témže package souboru.
+Legacy `companyascode.app` zůstává pouze read-compatible vstupem během migrace.
 Workspace grouping pochází z module deklarace, nikoli z package cesty.
-Worktree DEV runtime dostává ephemeral `PORT` od Launchpadu a nesmí obsadit
-main port. Productionspace app manifest se tímto automaticky nestává
-spustitelným Launchpad lifecycle povrchem.
+Module lease je kanonický main/direct-run/worktree port. Worktree DEV runtime
+používá beze změny stejný materializovaný listener set přes
+`LAZURIO_RUNTIME_LISTENERS_JSON` a per-listener
+`LAZURIO_RUNTIME_LISTENER_<ID>_PORT`; v jednu chvíli smí běžet jen jedna
+verze/worktree modulu. Živé manifesty lze převést pomocí
+`bun scripts/lazurio-runtime-migrate.mjs --write <cesta>`; migrátor vytvoří
+module lease, kontroluje drift verzí a ignoruje historii i generated output.
+Doctor také zakáže číselnou kopii lease v živém runtime source. Kontrola
+záměrně vynechává testy, fixtures, migrace, archivy, data, build output a
+generované soubory, aby neměnila auditní historii ani odvozené artefakty.
+Split web/API zůstává explicitní zdůvodněná výjimka, nový modul má jeden TCP
+listener pro UI i API. Productionspace app
+manifest se tímto automaticky nestává spustitelným Launchpad lifecycle
+povrchem.
 
 Pro každou zděděnou `app/vN` udělej census: `wire`, `defer` nebo `retire` s
 ownerem a důvodem. Required daily app bez validního manifestu blokuje cohort
@@ -1129,9 +1161,11 @@ Migrace Organizace je hotová teprve když:
 - `.agents/skills` je canonical a `.claude/skills` správný symlink;
 - všichni cohort colleagues mají schválené `company/colleagues/<os-user>`
   mapování bez privátních dat;
-- každá required app má právě jednu autoritu v package `companyascode.app`,
-  bez globální app id kolize a bez intra-Organization port kolize;
-  cross-Organization overlapy mají owner-aware Doctor evidenci;
+- každá required app má reference-only package `lazurio.runtime.v1` a její
+  modul právě jeden module-root `lazurio.module.v1` port lease kontrakt;
+  inline/dynamický runtime port, jiné než same-module-version lease overlapy,
+  drift referencí, port mimo centrální Organization blok a překryv bloků jsou
+  hard Doctor failure;
 - Mission Control má jednu app-code a jednu data autoritu, legacy fallback je
   vypnutý pouze po decision-0036 gates;
 - DEV kódy jsou unikátní nebo sémanticky remapované s provenance;
