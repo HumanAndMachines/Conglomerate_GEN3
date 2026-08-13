@@ -1,9 +1,10 @@
 import { randomBytes } from "node:crypto";
-import { existsSync, lstatSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { constants, existsSync, lstatSync, readdirSync, realpathSync, statSync } from "node:fs";
 import {
   chmod,
   lstat,
   mkdir,
+  open,
   readFile,
   realpath,
   readdir,
@@ -516,7 +517,22 @@ export async function inspectProfileDirectory(profileDirectory, maxDepth = 4) {
   const rootStat = await stat(resolved).catch(() => null);
   if (!rootStat?.isDirectory()) return { ok: false, reason: "BUDDY_PROFILE_DIR is not a directory" };
   for (const file of PROFILE_FILES) {
-    const content = await readFile(join(resolved, file), "utf8").catch(() => null);
+    const contractPath = join(resolved, file);
+    const contractStat = await lstat(contractPath).catch(() => null);
+    if (!contractStat?.isFile() || contractStat.isSymbolicLink()) {
+      return { ok: false, reason: `${file} must be a regular non-symlink file` };
+    }
+    const handle = await open(
+      contractPath,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+    ).catch(() => null);
+    if (!handle) return { ok: false, reason: `${file} is missing, unreadable or empty` };
+    let content = null;
+    try {
+      if ((await handle.stat()).isFile()) content = await handle.readFile("utf8");
+    } finally {
+      await handle.close();
+    }
     if (!content?.trim()) return { ok: false, reason: `${file} is missing, unreadable or empty` };
   }
   const offenders = [];

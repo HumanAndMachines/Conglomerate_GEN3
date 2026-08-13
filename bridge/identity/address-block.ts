@@ -35,8 +35,7 @@
 // the Principal's language" as a verified host check until such a probe exists;
 // what is verified today is that the declaration reaches the request.
 
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readProfileContractDocument } from "./profile-mount.ts";
 
 export type GrammaticalGender = "masculine" | "feminine" | "neuter" | "none";
 
@@ -181,13 +180,9 @@ export interface ProfileReadResult {
 export function readProfileDirective(profileDir: string | undefined): ProfileReadResult {
   const dir = profileDir?.trim();
   if (!dir) return { directive: null, reason: "no BUDDY_PROFILE_DIR declared" };
-  const file = join(dir, "CONSTITUTION.md");
-  if (!existsSync(file)) {
-    return { directive: null, reason: `no CONSTITUTION.md under ${dir}` };
-  }
   let body: string;
   try {
-    body = readFileSync(file, "utf8");
+    body = readProfileContractDocument(dir, "CONSTITUTION.md");
   } catch {
     return { directive: null, reason: `CONSTITUTION.md under ${dir} is unreadable` };
   }

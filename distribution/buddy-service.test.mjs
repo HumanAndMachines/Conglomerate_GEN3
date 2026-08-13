@@ -275,6 +275,20 @@ test("profile inspection follows a directory symlink and catches secret-shaped e
   expect(result.reason).not.toContain("PRIVATE=value");
 });
 
+test("service preflight refuses contract files symlinked outside the profile", async () => {
+  const paths = await fixture();
+  const outside = await scratch("lazurio-private-contract-target-");
+  const privateContract = join(outside, "principal-memory.md");
+  await writeFile(privateContract, "PRIVATE profile memory\n");
+  await rm(join(paths.profileDirectory, "CONSTITUTION.md"));
+  await symlink(privateContract, join(paths.profileDirectory, "CONSTITUTION.md"));
+
+  const result = await inspectProfileDirectory(paths.profileDirectory);
+  expect(result.ok).toBe(false);
+  expect(result.reason).toContain("regular non-symlink file");
+  expect(result.reason).not.toContain("PRIVATE profile memory");
+});
+
 linuxHostTest("Buddy service preflight refuses Organization data on a Personalspace host", async () => {
   const paths = await fixture();
   await writeFile(join(paths.installRoot, "state", "organizations", "foreign-org"), "must stay absent\n");

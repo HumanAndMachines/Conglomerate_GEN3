@@ -25,6 +25,8 @@ import {
   assertProfileMountIsSafe,
   inspectProfileMount,
 } from "../../bridge/identity/profile-mount.ts";
+import { readAgencyProfile } from "../../bridge/agency/system-message.ts";
+import { readProfileDirective } from "../../bridge/identity/address-block.ts";
 import { startupExitCode } from "../../bridge/run.ts";
 import { zulipConfigFromEnv } from "../../bridge/outbound/zulip.ts";
 import { createRuntimeReplyProvider } from "../../bridge/runtime-adapter/http-client.ts";
@@ -99,6 +101,19 @@ describe("the refusals, each for a failure somebody actually made", () => {
     expect(verdict.offenders).toContain(join("secrets", "id_ed25519"));
     // Names only. The gate never reads a byte of what it refuses.
     expect(verdict.reason).not.toContain("PRIVATE KEY");
+  });
+
+  test("contract documents cannot be symlinks into a private store", () => {
+    const privateStore = tree({ "principal-memory.md": "private memory marker\n" });
+    const dir = tree({ "MANDATES.md": "# Buddy standing mandates\n" });
+    symlinkSync(join(privateStore, "principal-memory.md"), join(dir, "CONSTITUTION.md"));
+
+    const verdict = inspectProfileMount(dir);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.reason).toContain("symlink or non-regular file");
+    expect(verdict.reason).not.toContain("private memory marker");
+    expect(readAgencyProfile(dir).constitution).toBeNull();
+    expect(readProfileDirective(dir).directive).toBeNull();
   });
 
   test("NOTHING DECLARED is a refusal, not a default", () => {

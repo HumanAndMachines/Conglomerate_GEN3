@@ -40,7 +40,18 @@
 // filled the block in yet — the operator would have no reason to look, while the
 // person's memory sits open to the process that parses untrusted text.
 
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  existsSync,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+} from "node:fs";
 import { join, relative } from "node:path";
 
 /** Names that must never appear inside a `<login>-buddy` profile checkout. */
@@ -72,6 +83,38 @@ export interface ProfileMountVerdict {
   reason?: string;
   /** Offending paths, relative to the mount. Names only; contents are never read. */
   offenders?: string[];
+}
+
+export type ProfileContractName = "CONSTITUTION.md" | "MANDATES.md";
+
+/**
+ * Read one contract through a descriptor opened with O_NOFOLLOW.
+ *
+ * The lstat is the operator-facing shape check; O_NOFOLLOW is the actual
+ * read-time guard against swapping the entry to a symlink between that check
+ * and open. The descriptor is fstat'd as a final regular-file assertion.
+ */
+export function readProfileContractDocument(
+  profileDir: string,
+  name: ProfileContractName,
+): string {
+  const file = join(profileDir, name);
+  const entry = lstatSync(file);
+  if (entry.isSymbolicLink() || !entry.isFile()) {
+    throw new Error(`${name} is a symlink or non-regular file`);
+  }
+  const descriptor = openSync(
+    file,
+    constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+  );
+  try {
+    if (!fstatSync(descriptor).isFile()) {
+      throw new Error(`${name} is not a regular file`);
+    }
+    return readFileSync(descriptor, "utf8");
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 /**
@@ -148,7 +191,12 @@ export function inspectProfileMount(
   // happened, not a Principal with nothing to say.
   for (const name of ["CONSTITUTION.md", "MANDATES.md"] as const) {
     const file = join(dir, name);
-    if (!existsSync(file)) {
+    let fileStat;
+    try {
+      // Judge the directory entry itself. `stat`/`readFile` would follow a
+      // symlink and could put arbitrary private content in front of every turn.
+      fileStat = lstatSync(file);
+    } catch {
       return {
         ok: false,
         reason:
@@ -157,9 +205,18 @@ export function inspectProfileMount(
           "every turn at runtime instead of refusing to start here",
       };
     }
+    if (fileStat.isSymbolicLink() || !fileStat.isFile()) {
+      return {
+        ok: false,
+        reason:
+          `${dir} carries ${name} as a symlink or non-regular file. Contract ` +
+          "documents must be regular files inside the profile checkout so they " +
+          "cannot redirect the bridge into gbrain, secrets, or another private store",
+      };
+    }
     let body: string;
     try {
-      body = readFileSync(file, "utf8");
+      body = readProfileContractDocument(dir, name);
     } catch {
       return { ok: false, reason: `${dir} carries a ${name} this uid cannot read` };
     }

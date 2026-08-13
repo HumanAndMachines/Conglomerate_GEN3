@@ -37,9 +37,8 @@
 // editorial — and `system-message.test.ts` re-asserts it against a body large
 // enough that a truncating logger would still leak a recognizable fragment.
 
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { addressDirective, parseAddressBlock } from "../identity/address-block.ts";
+import { readProfileContractDocument } from "../identity/profile-mount.ts";
 
 export interface AgencyProfile {
   /** CONSTITUTION.md, verbatim, or null when the profile does not carry one. */
@@ -72,14 +71,9 @@ export function readAgencyProfile(
     };
   }
   const notes: string[] = [];
-  const readDocument = (name: string): string | null => {
-    const file = join(dir, name);
-    if (!existsSync(file)) {
-      notes.push(`no ${name} under ${dir}`);
-      return null;
-    }
+  const readDocument = (name: "CONSTITUTION.md" | "MANDATES.md"): string | null => {
     try {
-      const body = readFileSync(file, "utf8");
+      const body = readProfileContractDocument(dir, name);
       if (!body.trim()) {
         notes.push(`${name} under ${dir} is empty`);
         return null;
