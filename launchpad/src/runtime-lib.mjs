@@ -3172,12 +3172,14 @@ function isMissingProcessResult(result) {
   return /not found|no running instance|nenalezena|nebyla nalezena/i.test(text);
 }
 
-export async function resolvePortOwner(port, { expectedCwd = null } = {}) {
+export async function resolvePortOwner(port, { expectedCwd = null, includeSelf = false } = {}) {
+  // Test-only escape hatch: production callers must keep self ownership
+  // excluded so a runtime lifecycle can never target the Launchpad process.
   // Port leases are global by numeric TCP port, not by a particular loopback
   // address. Always resolve the OS listener first: a successful bind on ::1
   // must not hide an existing owner on 127.0.0.1 (or vice versa).
   const pid = process.platform === "win32" ? await resolvePortOwnerWindows(port) : await resolvePortOwnerUnix(port);
-  if (!pid || pid === process.pid) return null;
+  if (!pid || (!includeSelf && pid === process.pid)) return null;
   if (!expectedCwd) return { pid };
 
   const processCwd = await resolveProcessCwd(pid);
