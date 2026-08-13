@@ -40,8 +40,8 @@ Hermes sandbox určuje, co smí běžící Agent dělat. Jedna nenahrazuje druho
   systemd sandboxem.
 - Hermes checkout a Bun může měnit Principál nebo jím řízená maintenance
   identita, která nespouští agentní relaci. Účty `buddy` a `buddy-bridge` je
-  nesmí vlastnit, přepsat ani nahradit přes parent: sandbox nesmí přepsat sám
-  sebe. Toto běžné oddělení runtime identity není ACL proti Principálovi.
+  nesmí vlastnit, přepsat ani nahradit přes parent: sandbox nesmí přepsat sám sebe.
+  Toto běžné oddělení runtime identity není ACL proti Principálovi.
 - Manifest, Doctor, service oddělení a rollback jsou pojistky proti omylu a
   pro obnovu. Neudělují přístup a netvoří druhý autorizační model.
 
