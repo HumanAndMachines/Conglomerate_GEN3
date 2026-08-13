@@ -7,6 +7,13 @@ import { discoverLaunchpadApps } from "./discovery-lib.mjs";
 import { recordAppOpen } from "./usage-lib.mjs";
 import { buildWorktreeIndex } from "./worktree-lib.mjs";
 import { acquireModuleRuntimeLock } from "./module-runtime-lock-lib.mjs";
+import {
+  buildDesiredModuleState,
+  listDesiredModuleStates,
+  normalizeDesiredSource,
+  readDesiredModuleState,
+  writeDesiredModuleState,
+} from "./desired-module-state-lib.mjs";
 
 const healthTimeoutMs = 1_200;
 const startGraceMs = 30_000;
@@ -159,13 +166,19 @@ export function createRuntimeManager({
   startedListenerOwnershipTimeoutMs = startGraceMs,
   writeRuntimeStateFile = writeFile,
   bunExecutable = null,
+  desiredRestartDelaysMs = [250, 1_000, 5_000],
+  desiredRestartStableMs = 30_000,
+  sleepFn = sleep,
+  writeDesiredModuleStateFn = writeDesiredModuleState,
 }) {
   const runtimeBunExecutable = bunExecutable
     ?? (platform === process.platform ? resolveBunExecutable() : resolveBunExecutable({ platform }));
   const managedProcesses = new Map();
   const moduleLeaseLocks = new Map();
+  const desiredRestartTrackers = new Map();
   const runtimeRoot = join(launchpadRoot, "runtime");
   const appStateRoot = join(runtimeRoot, "apps");
+  const desiredStateRoot = join(runtimeRoot, "desired-modules");
   const moduleLockRoot = join(runtimeRoot, "module-locks");
   const takeoverAuditRoot = join(runtimeRoot, "audit");
   const takeoverAuditPath = join(takeoverAuditRoot, "takeovers.jsonl");
@@ -326,10 +339,21 @@ export function createRuntimeManager({
   }
 
   async function startRuntimeApp(app) {
-    return withModuleLeaseLock(app, () => startRuntimeAppUnlocked(app));
+    return withModuleLeaseLock(app, async () => {
+      const result = await startRuntimeAppUnlocked(app, { trigger: "user" });
+      let desired;
+      try {
+        desired = await acceptDesiredRuntime(app);
+      } catch (error) {
+        await stopRuntimeAppUnlocked(app).catch(() => {});
+        throw desiredPersistenceError(app, error);
+      }
+      resetDesiredRestartTracker(app);
+      return { ...result, desired };
+    });
   }
 
-  async function startRuntimeAppUnlocked(app) {
+  async function startRuntimeAppUnlocked(app, { trigger = "user" } = {}) {
     const runtimeKey = runtimeKeyForApp(app);
     const runtimeSource = runtimeSourceForApp(app);
     app = await materializeRuntimeListeners(app);
@@ -428,6 +452,7 @@ export function createRuntimeManager({
       stopFinalizationPromise: null,
       ownerProofCaptured: false,
       ownerProof: null,
+      startTrigger: trigger,
       outputPipes: [],
     };
     managedProcesses.set(runtimeKey, record);
@@ -547,6 +572,8 @@ export function createRuntimeManager({
         record.stopExitConfirmed = true;
         record.stopExitCode = exitCode;
         record.exitFinalizing = false;
+      } else {
+        queueDesiredRuntimeRestart(app, record, exitCode);
       }
       return { survivingListenerProof, failure, log_excerpt };
     };
@@ -585,7 +612,7 @@ export function createRuntimeManager({
         : [];
     } catch (error) {
       try {
-        await stop(app.id, { source: runtimeSource });
+        await stopRuntimeAppUnlocked(app);
       } catch {}
       throw error;
     }
@@ -761,6 +788,10 @@ export function createRuntimeManager({
   // a nahradí jakoukoli předchozí verzi, worktree nebo zaseklý proces.
   async function open(appId, { source = null } = {}) {
     const app = await runtimeAppForAction(appId, { source, enforcePortContract: true });
+    return withModuleLeaseLock(app, () => openRuntimeAppUnlocked(app));
+  }
+
+  async function openRuntimeAppUnlocked(app) {
     const runtimeKey = runtimeKeyForApp(app);
     const runtimeSource = runtimeSourceForApp(app);
     const steps = [];
@@ -805,7 +836,7 @@ export function createRuntimeManager({
       steps.push({ step: "reuse", status: runtime.status });
       shouldConfirmStability = true;
     } else {
-      const startResult = await startRuntimeApp(app);
+      const startResult = await startRuntimeAppUnlocked(app, { trigger: "user" });
       steps.push({ step: "start", status: startResult.runtime?.status ?? "starting" });
       shouldConfirmStability = true;
       runtime = startResult.runtime ?? (await healthForApp(app));
@@ -827,7 +858,7 @@ export function createRuntimeManager({
       runtime = await confirmStableHealthy(app, runtimeKey, runtime);
     }
 
-    if (runtime.status === "unhealthy" || runtime.status === "stopped") {
+    if (["unhealthy", "stopped", "degraded"].includes(runtime.status)) {
       throw new RuntimeActionError(
         500,
         "app_start_failed",
@@ -839,6 +870,17 @@ export function createRuntimeManager({
         },
       );
     }
+
+    let desired;
+    try {
+      desired = await acceptDesiredRuntime(app);
+    } catch (error) {
+      if (steps.some((step) => step.step === "start")) {
+        await stopRuntimeAppUnlocked(app).catch(() => {});
+      }
+      throw desiredPersistenceError(app, error);
+    }
+    resetDesiredRestartTracker(app);
 
     // Lokální usage tracking pro panel „Nejčastější" (step-007) — best-effort,
     // nikdy neblokuje otevření a nezapisuje žádnou PII (jen app id + agregát).
@@ -859,6 +901,7 @@ export function createRuntimeManager({
       status: runtime.status,
       steps,
       runtime,
+      desired,
     };
   }
 
@@ -904,20 +947,42 @@ export function createRuntimeManager({
   }
 
   async function stop(appId, { source = null } = {}) {
-    let app = await runtimeAppForAction(appId, { source });
+    const app = await runtimeAppForAction(appId, { source });
+    if (!supportsDurableDesiredRuntime(app)) return stopRuntimeAppUnlocked(app);
+    const recordAtRequest = managedProcesses.get(runtimeKeyForApp(app));
+    try {
+      return await withModuleLeaseLock(app, async () => {
+        const record = managedProcesses.get(runtimeKeyForApp(app));
+        if (!record) {
+          const current = await healthForApp(app);
+          throw appNotManagedError(app, current);
+        }
+        // Stop is fail-safe: persistence is the commit point. If this atomic
+        // write fails no signal is sent. Once it succeeds, every later stop
+        // failure leaves desired disabled, so boot reconcile cannot resurrect
+        // a process the user explicitly stopped.
+        const desired = await disableDesiredRuntime(app);
+        resetDesiredRestartTracker(app);
+        const result = await stopRuntimeAppUnlocked(app);
+        return { ...result, desired };
+      }, { timeoutMs: recordAtRequest ? null : 100 });
+    } catch (error) {
+      if (!recordAtRequest && isModuleLockTimeout(error)) {
+        const current = await healthForApp(app);
+        throw appNotManagedError(app, current);
+      }
+      throw error;
+    }
+  }
+
+  async function stopRuntimeAppUnlocked(inputApp) {
+    let app = inputApp;
     const runtimeKey = runtimeKeyForApp(app);
     const runtimeSource = runtimeSourceForApp(app);
     const record = managedProcesses.get(runtimeKey);
     if (!record) {
       const current = await healthForApp(app);
-      throw new RuntimeActionError(409, "app_not_managed", "Aplikace neběží jako managed proces tohoto Launchpadu.", [
-        `app_id: ${app.id}`,
-        `runtime_status: ${current.status}`,
-        `owner: ${current.owner}`,
-      ], {
-        failure_kind: "not_managed",
-        owner: current.owner,
-      });
+      throw appNotManagedError(app, current);
     }
     app = record.runtimeApp ?? app;
 
@@ -1329,18 +1394,30 @@ export function createRuntimeManager({
   async function restart(appId, { source = null } = {}) {
     const app = await runtimeAppForAction(appId, { source, enforcePortContract: true });
     const runtimeSource = runtimeSourceForApp(app);
-    try {
-      await stop(app.id, { source: runtimeSource });
-    } catch (error) {
-      if (error?.code !== "app_not_managed") throw error;
-    }
-    return {
-      action: "restart",
-      app_id: app.id,
-      runtime_key: runtimeKeyForApp(app),
-      runtime_source: runtimeSource,
-      start: await startRuntimeApp(app),
-    };
+    return withModuleLeaseLock(app, async () => {
+      try {
+        await stopRuntimeAppUnlocked(app);
+      } catch (error) {
+        if (error?.code !== "app_not_managed") throw error;
+      }
+      const startResult = await startRuntimeAppUnlocked(app, { trigger: "user" });
+      let desired;
+      try {
+        desired = await acceptDesiredRuntime(app);
+      } catch (error) {
+        await stopRuntimeAppUnlocked(app).catch(() => {});
+        throw desiredPersistenceError(app, error);
+      }
+      resetDesiredRestartTracker(app);
+      return {
+        action: "restart",
+        app_id: app.id,
+        runtime_key: runtimeKeyForApp(app),
+        runtime_source: runtimeSource,
+        start: startResult,
+        desired,
+      };
+    });
   }
 
   async function logs(appId, { source = null } = {}) {
@@ -1475,14 +1552,11 @@ export function createRuntimeManager({
   }
 
   function normalizeRuntimeSource(source) {
-    if (!source || source.type === undefined || source.type === "main") return { type: "main" };
-    if (source.type !== "worktree") {
-      throw new RuntimeActionError(400, "invalid_runtime_source", `Neznámý runtime source: ${source.type}`);
+    try {
+      return normalizeDesiredSource(source);
+    } catch (error) {
+      throw new RuntimeActionError(400, "invalid_runtime_source", error.message);
     }
-    if (typeof source.slug !== "string" || source.slug.trim() === "") {
-      throw new RuntimeActionError(400, "invalid_runtime_source", "Worktree runtime source vyžaduje slug.");
-    }
-    return { type: "worktree", slug: source.slug.trim() };
   }
 
   function runtimeProcessEnv(app, overrides) {
@@ -1602,7 +1676,7 @@ export function createRuntimeManager({
       : `app/${app.id}`;
   }
 
-  async function withModuleLeaseLock(app, action) {
+  async function withModuleLeaseLock(app, action, { timeoutMs = null } = {}) {
     const key = moduleLeaseKeyForApp(app);
     const previous = moduleLeaseLocks.get(key) ?? Promise.resolve();
     let release;
@@ -1618,6 +1692,7 @@ export function createRuntimeManager({
         root: moduleLockRoot,
         key,
         instanceId,
+        ...(Number.isFinite(timeoutMs) ? { timeoutMs } : {}),
       });
       return await action();
     } finally {
@@ -1630,6 +1705,385 @@ export function createRuntimeManager({
         if (moduleLeaseLocks.get(key) === tail) moduleLeaseLocks.delete(key);
       }
     }
+  }
+
+  function appNotManagedError(app, current) {
+    return new RuntimeActionError(409, "app_not_managed", "Aplikace neběží jako managed proces tohoto Launchpadu.", [
+      `app_id: ${app.id}`,
+      `runtime_status: ${current.status}`,
+      `owner: ${current.owner}`,
+    ], {
+      failure_kind: "not_managed",
+      owner: current.owner,
+    });
+  }
+
+  function isModuleLockTimeout(error) {
+    return String(error?.message ?? "").includes("nebyl získán do");
+  }
+
+  function desiredPersistenceError(app, error) {
+    return new RuntimeActionError(
+      500,
+      "desired_state_persist_failed",
+      `${app.title}: lifecycle transition was not accepted because desired state could not be persisted.`,
+      [error?.message ?? String(error)],
+      { failure_kind: "desired_state_persist_failed" },
+    );
+  }
+
+  function supportsDurableDesiredRuntime(app) {
+    return app?.personal !== true
+      && app?.module_contract?.schema_version === "lazurio.module.v1"
+      && typeof app?.company === "string"
+      && typeof app?.module === "string";
+  }
+
+  async function readDesiredRuntime(app) {
+    if (!supportsDurableDesiredRuntime(app)) return null;
+    return readDesiredModuleState({
+      root: desiredStateRoot,
+      company: app.company,
+      module: app.module,
+    });
+  }
+
+  async function readDesiredRuntimeForHealth(app) {
+    try {
+      return await readDesiredRuntime(app);
+    } catch (error) {
+      return {
+        schema_version: "lazurio.launchpad.desired_module.v1",
+        company: app.company,
+        module: app.module,
+        module_lease_key: moduleLeaseKeyForApp(app),
+        app_id: app.id,
+        enabled: true,
+        source: runtimeSourceForApp(app),
+        status: "degraded",
+        last_error: error.message,
+        failure_kind: "invalid_desired_state",
+      };
+    }
+  }
+
+  async function acceptDesiredRuntime(app, { reconciled = false } = {}) {
+    if (!supportsDurableDesiredRuntime(app)) return null;
+    const state = buildDesiredModuleState({
+      app,
+      source: runtimeSourceForApp(app),
+      enabled: true,
+      status: "active",
+      reconciled,
+    });
+    await writeDesiredModuleStateFn({ root: desiredStateRoot, state });
+    return state;
+  }
+
+  async function disableDesiredRuntime(app) {
+    if (!supportsDurableDesiredRuntime(app)) return null;
+    let previous = null;
+    try {
+      previous = await readDesiredRuntime(app);
+    } catch {}
+    const state = buildDesiredModuleState({
+      app: previous ? { ...app, id: previous.app_id } : app,
+      source: previous?.source ?? runtimeSourceForApp(app),
+      enabled: false,
+      status: "disabled",
+    });
+    await writeDesiredModuleStateFn({ root: desiredStateRoot, state });
+    return state;
+  }
+
+  async function updateDesiredRuntimeReconciliation(state, {
+    status,
+    error = null,
+    failureKind = null,
+  }) {
+    const next = buildDesiredModuleState({
+      app: { id: state.app_id, company: state.company, module: state.module },
+      source: state.source,
+      enabled: state.enabled,
+      status,
+      previous: state,
+      reconciled: true,
+      error,
+      failureKind,
+    });
+    await writeDesiredModuleStateFn({ root: desiredStateRoot, state: next });
+    return next;
+  }
+
+  function resetDesiredRestartTracker(app) {
+    const key = moduleLeaseKeyForApp(app);
+    const tracker = desiredRestartTrackers.get(key);
+    if (tracker) {
+      tracker.generation += 1;
+      tracker.running = false;
+    }
+    desiredRestartTrackers.delete(key);
+  }
+
+  function queueDesiredRuntimeRestart(app, record, exitCode) {
+    if (!supportsDurableDesiredRuntime(app)) return;
+    const key = moduleLeaseKeyForApp(app);
+    const existing = desiredRestartTrackers.get(key);
+    if (existing?.running) return;
+    const tracker = existing ?? { attempts: 0, generation: 0, running: false };
+    tracker.running = true;
+    tracker.generation += 1;
+    desiredRestartTrackers.set(key, tracker);
+    const generation = tracker.generation;
+    void runDesiredRestartSeries(app, record, exitCode, tracker, generation).catch(async (error) => {
+      tracker.running = false;
+      try {
+        await appendLog(record.logPath, `[launchpad] desired restart coordinator failed ${app.id}: ${error.message}\n`);
+      } catch {}
+    });
+  }
+
+  async function runDesiredRestartSeries(app, record, exitCode, tracker, generation) {
+    const expectedAppId = app.id;
+    const expectedSource = runtimeSourceForApp(app);
+    while (tracker.attempts < desiredRestartDelaysMs.length && tracker.generation === generation) {
+      const delayMs = desiredRestartDelaysMs[tracker.attempts];
+      tracker.attempts += 1;
+      await appendLog(
+        record.logPath,
+        `[launchpad] desired child exit ${app.id} code=${exitCode} restart_attempt=${tracker.attempts} backoff_ms=${delayMs}\n`,
+      );
+      await sleepFn(delayMs);
+      let outcome;
+      try {
+        outcome = await withModuleLeaseLock(app, async () => {
+          const desired = await readDesiredRuntime(app);
+          if (!desired?.enabled || desired.status === "disabled") return { state: "cancelled" };
+          if (desired.app_id !== expectedAppId || !runtimeSourcesEqual(desired.source, expectedSource)) {
+            return { state: "superseded" };
+          }
+          let desiredApp;
+          try {
+            desiredApp = await runtimeAppForAction(desired.app_id, {
+              source: desired.source,
+              enforcePortContract: true,
+            });
+          } catch (error) {
+            await updateDesiredRuntimeReconciliation(desired, {
+              status: "degraded",
+              error: error.message,
+              failureKind: error.code ?? "desired_source_invalid",
+            });
+            return { state: "permanent-failure" };
+          }
+          const activeRecord = managedRecordForModule(desiredApp);
+          if (activeRecord
+            && activeRecord.appId === desiredApp.id
+            && runtimeSourcesEqual(activeRecord.runtimeSource, runtimeSourceForApp(desiredApp))) {
+            let activeRuntime = await healthForApp(desiredApp);
+            if (activeRuntime.status === "starting") {
+              activeRuntime = await waitForHealthy(desiredApp, activeRuntime);
+            }
+            if (activeRuntime.status === "healthy") {
+              return { state: "already-running", app: desiredApp };
+            }
+            await stopRuntimeAppUnlocked(desiredApp);
+          }
+          const started = await startRuntimeAppUnlocked(desiredApp, { trigger: "desired-restart" });
+          let runtime = started.runtime ?? await healthForApp(desiredApp);
+          if (runtime.status === "starting") runtime = await waitForHealthy(desiredApp, runtime);
+          if (runtime.status !== "healthy") {
+            await stopRuntimeAppUnlocked(desiredApp).catch(() => {});
+            throw new RuntimeActionError(
+              500,
+              "desired_restart_unhealthy",
+              `${desiredApp.title}: desired restart did not become healthy.`,
+              [],
+              { failure_kind: runtime.failure_kind ?? "desired_restart_unhealthy", runtime },
+            );
+          }
+          await updateDesiredRuntimeReconciliation(desired, { status: "active" });
+          return { state: "started", app: desiredApp };
+        });
+      } catch (error) {
+        outcome = { state: "retry", error };
+        try {
+          await withModuleLeaseLock(app, async () => {
+            const desired = await readDesiredRuntime(app);
+            if (desired?.enabled
+              && desired.app_id === expectedAppId
+              && runtimeSourcesEqual(desired.source, expectedSource)) {
+              await updateDesiredRuntimeReconciliation(desired, {
+                status: "degraded",
+                error: error.message,
+                failureKind: error.code ?? error.metadata?.failure_kind ?? "desired_restart_failed",
+              });
+            }
+          });
+        } catch {}
+      }
+
+      if (["cancelled", "superseded", "permanent-failure"].includes(outcome.state)) {
+        tracker.running = false;
+        return;
+      }
+      if (["started", "already-running"].includes(outcome.state)) {
+        tracker.running = false;
+        scheduleDesiredRestartReset(outcome.app, tracker, generation);
+        return;
+      }
+    }
+
+    if (tracker.generation !== generation) return;
+    tracker.running = false;
+    try {
+      await withModuleLeaseLock(app, async () => {
+        const desired = await readDesiredRuntime(app);
+        if (desired?.enabled
+          && desired.app_id === expectedAppId
+          && runtimeSourcesEqual(desired.source, expectedSource)) {
+          await updateDesiredRuntimeReconciliation(desired, {
+            status: "degraded",
+            error: `Desired child exited repeatedly; ${tracker.attempts} bounded restart attempts were exhausted.`,
+            failureKind: "desired_restart_exhausted",
+          });
+          await appendLog(
+            record.logPath,
+            `[launchpad] desired restart exhausted ${app.id} attempts=${tracker.attempts}; no further restart scheduled\n`,
+          );
+        }
+      });
+    } catch {}
+  }
+
+  function scheduleDesiredRestartReset(app, tracker, generation) {
+    void sleepFn(desiredRestartStableMs).then(() => {
+      if (tracker.generation !== generation || tracker.running) return;
+      const active = managedRecordForModule(app);
+      if (!active || active.appId !== app.id || !runtimeSourcesEqual(active.runtimeSource, runtimeSourceForApp(app))) return;
+      desiredRestartTrackers.delete(moduleLeaseKeyForApp(app));
+    });
+  }
+
+  function managedRecordForModule(app) {
+    return [...managedProcesses.values()].find((record) =>
+      moduleRuntimeLeaseMatches(record.runtimeApp, app)
+    ) ?? null;
+  }
+
+  function runtimeSourcesEqual(left, right) {
+    return left?.type === right?.type
+      && (left?.type !== "worktree" || left.slug === right?.slug);
+  }
+
+  async function reconcileDesiredState() {
+    const entries = await listDesiredModuleStates({ root: desiredStateRoot });
+    const results = [];
+    for (const entry of entries) {
+      if (!entry.ok) {
+        results.push({ status: "degraded", file: entry.file, failure_kind: "invalid_desired_state", error: entry.error });
+        continue;
+      }
+      const desired = entry.state;
+      if (!desired.enabled) {
+        results.push({
+          status: "disabled",
+          module_lease_key: desired.module_lease_key,
+          app_id: desired.app_id,
+          source: desired.source,
+        });
+        continue;
+      }
+      const lockApp = { id: desired.app_id, company: desired.company, module: desired.module };
+      try {
+        const result = await withModuleLeaseLock(lockApp, async () => {
+          const current = await readDesiredModuleState({
+            root: desiredStateRoot,
+            company: desired.company,
+            module: desired.module,
+          });
+          if (!current?.enabled || current.revision !== desired.revision) {
+            return { status: "superseded", desired: current };
+          }
+          const app = await runtimeAppForAction(current.app_id, {
+            source: current.source,
+            enforcePortContract: true,
+          });
+          if (!moduleRuntimeLeaseMatches(app, lockApp)) {
+            throw new RuntimeActionError(
+              409,
+              "desired_module_mismatch",
+              `Desired app ${current.app_id} no longer belongs to ${current.module_lease_key}.`,
+            );
+          }
+          const activeRecord = managedRecordForModule(app);
+          let runtime;
+          if (activeRecord
+            && activeRecord.appId === app.id
+            && runtimeSourcesEqual(activeRecord.runtimeSource, runtimeSourceForApp(app))) {
+            runtime = await healthForApp(app);
+          } else {
+            const started = await startRuntimeAppUnlocked(app, { trigger: "boot-reconcile" });
+            runtime = started.runtime ?? await healthForApp(app);
+          }
+          if (runtime.status === "starting") runtime = await waitForHealthy(app, runtime);
+          if (runtime.status !== "healthy") {
+            throw new RuntimeActionError(
+              500,
+              "desired_reconcile_unhealthy",
+              `${app.title}: boot reconcile did not establish a healthy listener.`,
+              [],
+              { failure_kind: runtime.failure_kind ?? "desired_reconcile_unhealthy", runtime },
+            );
+          }
+          const reconciled = await updateDesiredRuntimeReconciliation(current, { status: "active" });
+          resetDesiredRestartTracker(app);
+          return { status: "active", desired: reconciled, runtime };
+        });
+        results.push({
+          status: result.status,
+          module_lease_key: desired.module_lease_key,
+          app_id: desired.app_id,
+          source: desired.source,
+          ...(result.runtime ? { runtime_status: result.runtime.status } : {}),
+        });
+      } catch (error) {
+        let degraded = desired;
+        try {
+          await withModuleLeaseLock(lockApp, async () => {
+            const latest = await readDesiredModuleState({
+              root: desiredStateRoot,
+              company: desired.company,
+              module: desired.module,
+            });
+            if (latest?.enabled && latest.revision === desired.revision) {
+              degraded = await updateDesiredRuntimeReconciliation(latest, {
+                status: "degraded",
+                error: error.message,
+                failureKind: error.code ?? error.metadata?.failure_kind ?? "desired_reconcile_failed",
+              });
+            }
+          });
+        } catch {}
+        results.push({
+          status: "degraded",
+          module_lease_key: desired.module_lease_key,
+          app_id: desired.app_id,
+          source: desired.source,
+          failure_kind: degraded.failure_kind ?? error.code ?? "desired_reconcile_failed",
+          error: degraded.last_error ?? error.message,
+        });
+      }
+    }
+    return {
+      schema_version: "lazurio.launchpad.boot_reconcile.v1",
+      reconciled_at: new Date().toISOString(),
+      total: results.length,
+      active: results.filter((result) => result.status === "active").length,
+      disabled: results.filter((result) => result.status === "disabled").length,
+      degraded: results.filter((result) => result.status === "degraded").length,
+      results,
+    };
   }
 
   function runtimeSourceForApp(app) {
@@ -1782,7 +2236,7 @@ export function createRuntimeManager({
       );
       if (managedPeer) {
         try {
-          await stop(managedPeer.appId, { source: managedPeer.runtimeSource });
+          await stopRuntimeAppUnlocked(managedPeer.runtimeApp);
         } catch (error) {
           if (!["app_not_found", "worktree_not_found", "worktree_not_owned"].includes(error?.code)) {
             throw error;
@@ -2055,6 +2509,7 @@ export function createRuntimeManager({
     const runtimeKey = runtimeKeyForApp(app);
     const runtimeSource = runtimeSourceForApp(app);
     const state = await readState(runtimeKey);
+    const desired = await readDesiredRuntimeForHealth(app);
     const record = managedProcesses.get(runtimeKey);
     app = record?.runtimeApp ?? await materializeRuntimeListeners(app);
     const dependencies = await dependencyForApp(app);
@@ -2101,6 +2556,14 @@ export function createRuntimeManager({
       port_owner: portOwner,
       listeners: runtimeListenerState(app),
       listener_reconciliation: listenerReconciliation,
+      desired,
+      desired_alignment: record && desired?.enabled === false
+        ? "managed-but-disabled"
+        : desired?.enabled === true && desired.app_id === app.id && runtimeSourcesEqual(desired.source, runtimeSource)
+          ? "matches"
+          : desired
+            ? "different-source"
+            : "not-declared",
     };
 
     if (record) {
@@ -2180,6 +2643,15 @@ export function createRuntimeManager({
         status: "unhealthy",
         owner: "unknown-port",
         message: "Port odpovídá, ale Launchpad nedokázal zjistit PID procesu pro převzetí kontroly.",
+      };
+    }
+
+    if (desired?.enabled && desired.status === "degraded") {
+      return {
+        ...base,
+        status: "degraded",
+        failure_kind: desired.failure_kind ?? "desired_reconcile_failed",
+        message: desired.last_error ?? "Desired module runtime is degraded and was not replaced with main.",
       };
     }
 
@@ -2564,6 +3036,7 @@ export function createRuntimeManager({
 
   async function ensureRuntimeDirs() {
     await mkdir(appStateRoot, { recursive: true });
+    await mkdir(desiredStateRoot, { recursive: true });
     await mkdir(logsRoot, { recursive: true });
     await mkdir(takeoverAuditRoot, { recursive: true });
   }
@@ -2593,6 +3066,7 @@ export function createRuntimeManager({
     stop,
     restart,
     logs,
+    reconcileDesiredState,
   };
 }
 

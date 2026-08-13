@@ -105,21 +105,23 @@ machines), or **hosted** with us on a Workspace Host VPS for a monthly
 subscription (Launchpad behind a login, the same per-Organization pattern as
 Solo/Team).
 
-Remote/hosted builder work runs BYOS ("bring your own subscription", decisions
-0061/0063). The officially supported Solo/Team mode is a **local Codex/Claude
-agent on the builder's machine that works in the remote Workspace over SSH** —
-the tree, runtime and dev servers live on the Workspace Host, while the agent and
-its subscription stay on the builder's machine. Installing an agent harness
-(T3 Code and similar) directly on a hosted Workspace is only an **optional
-add-on**, and only with server-safe credentials (organization API key, corporate
-Claude Team/Enterprise license), never a personal consumer login. Agents work
-**under supervision**: a closed laptop means the agent is not working — by
-design, not a limitation. Unattended, asynchronous work goes exclusively through
-**AI Kolegové** (AI colleagues), who do it on their own seat, machine (Workspace
-Host) and audit trail on the organization's LLM credentials; every agent-produced
-draft is approved by a human (worktree → PR → merge). Session continuity for
-Solo/Team therefore rests on worktree + Mission Control plan ownership
-(decision 0049), not on a live agent session on the server.
+The supported hosted Builder topology is **one non-root, builder-visible work
+container per Team Workspace**. T3 Code, Codex CLI, the always-available
+Launchpad, `~/Lazurio`, Organization checkouts, plan-owned worktrees and all
+allowed module child processes share one user, `$HOME`, filesystem, PID and
+network namespace. T3 is therefore part of the target hosted surface, not an
+optional add-on, and does not receive another working container. Module apps are
+ordinary Launchpad-managed child processes, never per-module Compose services.
+
+Outside this work container are infrastructure-only sidecars such as Tailscale
+and authenticated HTTPS ingress. Their control-plane sockets, Caddy admin,
+host mounts, sudo, unnecessary capabilities and GitHub App private key are not
+mounted into the Workspace. SSH may remain an operator/recovery transport, but
+it is not the canonical hosted agent topology and must not create a second
+filesystem or runtime procedure. Local and hosted profiles expose the same
+builder-visible `~/Lazurio` structure, discovery/manifests, module-owned leases,
+worktree lifecycle and Doctor/Install/Start/Stop/Open operations; only the
+hosted authentication, ingress and network envelope differs.
 
 The redesign must preserve the current root behavior:
 
@@ -199,7 +201,7 @@ pipeline and is reported as `binary: { state: "not_available" }`.
 
 ## 1b. Builder Bridge API — versioning, transport adapters, CORS/LNA, pairing token, headless mode [PROPOSAL — pending founder ratification of decision 0077]
 
-**Canonical term (founder 2026-07-12).** The **Builder Bridge** is the **headless daemon + versioned API layer of the Launchpad**. It lives HERE — inside the Launchpad app in the source-available Conglomerate core — not as a separate service. The local HTTP API is no longer an internal same-origin surface: it is the Bridge, one versioned API a browser served from another origin (the hosted Dashboard) can reach directly. The existing **agent-over-SSH remote work (decisions 0059/0060/0061) is ONE TRANSPORT under the Bridge umbrella**: remote builder agents keep using plain SSH into the Workspace Host, and the Launchpad/Bridge manages and exposes that access — it does not replace SSH. Canonical contract: `HumanAndMachines/docs/builder-bridge-contract.md`.
+**Canonical term (founder 2026-07-12).** The **Builder Bridge** is the **headless daemon + versioned API layer of the Launchpad**. It lives HERE — inside the Launchpad app in the source-available Conglomerate core — not as a separate service. The local HTTP API is no longer an internal same-origin surface: it is the Bridge, one versioned API a browser served from another origin (the hosted Dashboard) can reach directly. In hosted Team Workspaces the Bridge runs in the same builder-visible work container as T3, Codex, checkout/worktrees and module children. SSH is only an optional operator/recovery transport; it does not define a second agent runtime or filesystem topology. Canonical contract: `HumanAndMachines/docs/builder-bridge-contract.md`.
 
 - **Foundation is the contract + shared Builder UI + transport/auth adapters — not routes on localhost.** Browser-to-loopback is one transport, not the architecture.
 - **One contract, two deployments, two security profiles.** `/bridge/v1/...` on the builder's `127.0.0.1` daemon (pairing token over CORS + LNA), or on the Workspace Host VPS as **normal HTTPS behind organization login** (same-origin reverse proxy; platform session CAC-0055; real organization authorization and audit on every request). Identical routes/shapes; transport binding, auth adapter and security profile differ. Maps 1:1 to the localhost-vs-Workspace-Host placement in section 1.
@@ -364,25 +366,24 @@ precondition is false.
 
 | Action | Workspace app policy | Productionspace policy | Response must show |
 | --- | --- | --- | --- |
-| Open | Allowed when `url` exists; never starts anything | Allowed as read-only | target URL |
+| Open | Ensure install/start for the selected main/worktree source, prove health and accept desired state; local returns loopback, hosted returns the exact catalog origin | Allowed as read-only | target URL, runtime, desired source |
 | Install | Allowed only when `dependencies.can_install=true`; app-cwd scoped | Disabled until explicit production policy exists | action, command, cwd, exit_code, log_path, log_excerpt |
 | Repair | Same mechanism as Install for `ready`/`stale_lockfile` states | Disabled until explicit production policy exists | action, command, cwd, exit_code, log_path, log_excerpt |
-| Start | Allowed only when `dependencies.can_start=true` and no runtime conflict | Disabled or confirmation-gated until policy exists | runtime, pid, health, failure_kind on error |
-| Stop | Allowed only for app-owned/adopted local process | confirmation-gated | pid/owner/result |
+| Start | Allowed when `dependencies.can_start=true`; a valid static module lease replaces its current occupant under the module mutex | Disabled or confirmation-gated until policy exists | runtime, pid, health, desired source, failure_kind on error |
+| Stop | Allowed only for the active current-instance managed process; persist disabled desired state before signaling | confirmation-gated | desired state, pid/owner/result |
 | Restart | Stop + Start; never bypasses dependency/policy guards | confirmation-gated | both action results |
 | Logs | Always allowed for visible app | Always allowed | log_path and tail |
 | Pull | Organization root or Workspace module; clean expected branch; fresh remote check; `--ff-only` | Read-only / disabled | before/after status, new head |
 | Pull + autostash | Explicit confirmation; incoming > 0, outgoing = 0; stash tracked + untracked; restore staged state; preserve stash on conflict | Disabled | before/after, conflict or preserved-stash state |
 | Pull all | All mounted Organization roots + Workspace modules; clean pull or guarded autostash per repo; isolated result | Productionspace skipped | per-repo outcome + aggregate counts |
 
-For main Workspace runtimes, the manifest-owned port is only a discovery key,
-not proof of process ownership. A listener is `adopted-port` only when Launchpad
-resolves its PID and positively verifies that its canonical CWD matches the
-manifested app CWD. An explicit mismatch is `foreign-port`; an unavailable or
-inconclusive CWD lookup is `unknown-port`. Neither untrusted state may expose
-Stop/Restart or receive a signal. Stop re-resolves both PID and the positive CWD
-match immediately before `SIGTERM` and again before any bounded-timeout
-`SIGKILL`; an unknown, changed, or mismatched result fails closed.
+For legacy runtimes, the manifest-owned port is only a discovery key and never
+grants destructive authority. For a valid static `lazurio.module.v1` lease,
+Start/Open may reclaim any safely signalable occupant under the module mutex and
+immediately replace it with the declared module. Explicit Stop is intentionally
+narrower: it first persists disabled desired state and then signals only the
+active record managed by the current Launchpad instance. It never adopts or
+kills an unrelated process without performing that replacement lifecycle.
 
 Productionspace systems must not look like normal office apps. The first
 productionspace release should ship with read-only Open/Logs/Doctor and explicit

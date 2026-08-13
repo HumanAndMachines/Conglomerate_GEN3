@@ -31,18 +31,54 @@ aplikaci na operátorem určeném originu. Runtime, health a port ownership dál
 pracují výhradně s lokálním `127.0.0.1:<port>`; přepisuje se pouze URL vrácená
 pro otevření nového tabu.
 
-Deployment může dodat `LAUNCHPAD_HOSTED_APP_URLS_JSON` jako JSON mapu přesných
-`companyascode.app.id` na čisté HTTP(S) originy, například:
+Lokální profil je výchozí a zachovává loopback URL. Hosted profil se zapíná
+`LAZURIO_WORKSPACE_PROFILE=hosted`, vyžaduje exact Team binding v
+`LAZURIO_TEAM_ID` a přijímá jedinou generovanou autoritu:
+`LAZURIO_TEAM_SERVICE_CATALOG_JSON` se schématem
+`lazurio.team_service_catalog.v1`, například:
 
 ```json
 {
-  "exampleorg-knowledgebase-v2": "https://knowledgebase.team.example.com/"
+  "schema_version": "lazurio.team_service_catalog.v1",
+  "team_id": "example-builders",
+  "generated_at": "2026-08-13T10:00:00Z",
+  "services": [
+    {
+      "app_id": "exampleorg-knowledgebase-v2",
+      "module_lease_key": "exampleorg/knowledgebase",
+      "external_origin": "https://knowledgebase.team.example.com/"
+    }
+  ]
 }
 ```
 
-Neznámé app id zůstane lokální. Nevalidní JSON, URL s credentials, query,
-fragmentem nebo cestou způsobí fail-closed start. Mapa je navigační metadata,
-nikoli ACL: síťový ingress a app-owned autorizace musí přístup ověřit samy.
+`team_id` musí přesně odpovídat `LAZURIO_TEAM_ID` a každý
+`module_lease_key` discovery identitě `company/module` dané aplikace. Hosted
+origin musí být čisté HTTPS origin bez credentials, cesty, query, fragmentu
+nebo loopback hostname/adresy. Chybějící app id je fail-closed: `Open` vrátí
+`hosted_app_url_missing` a nikdy nepropustí `127.0.0.1` vzdálenému klientovi.
+`LAUNCHPAD_HOSTED_APP_URLS_JSON` z PR #104 zůstává pouze dočasný injected
+compatibility seam, použije se jen když katalog chybí; přítomnost obou vstupů
+je chyba. Katalog je navigační projekce, nikoli ACL ani portová autorita:
+generátor ingressu a brokeru jej spojuje s module lease registry a síťový
+obal dál vynucuje autentizaci i Team boundary.
+
+## Durable desired runtime
+
+Úspěšný `Start` nebo `Open` atomicky přijme přesný module-owned desired source
+`main` nebo `worktree/<canonical slug>` do
+`launchpad/runtime/desired-modules/`. Zápis je schema-validní, bez secrets a
+publikuje se atomickým rename pod stejným module mutexem jako takeover.
+Explicitní `Stop` nejdřív commitne `enabled=false` a až potom signalizuje známý
+managed proces: selhání persistence neposílá signál, selhání signálu už nikdy
+nezpůsobí boot resurrection.
+
+Po startu Launchpadu proběhne jednorázový idempotentní boot reconcile. Přesný
+desired source znovu projde discovery, takeoverem, listener proof a health;
+chybějící nebo již nevlastněný worktree skončí `degraded` bez fallbacku na
+main. Neočekávaný child exit spouští event-driven bounded restart/backoff v
+tomtéž runtime manageru. Není zde externí `/open` polling loop ani druhý
+supervisor modulových aplikací.
 
 ## Stabilní odkazy na prostor
 
@@ -475,20 +511,13 @@ Web shell v1 je pracovní dashboard nad discovery a runtime daty. Poskytuje:
 - `/api/apps/:id/restart` pro bezpečný restart procesu na module-owned lease
 - `/api/apps/:id/logs` pro log tail z lokálních runtime logů
 
-Při adopci procesu, který už poslouchá na module-owned lease, Launchpad vyžaduje
-pozitivní důkaz, že jeho pracovní adresář odpovídá manifestovanému `cwd`.
-Explicitní mismatch je `foreign-port`; neověřitelný CWD je `unknown-port`.
-Ani jeden stav Launchpad nepřevezme, nenabídne mu Stop/Restart a automaticky
-jej neukončí. Tím se například legacy GEN2 proces na stejném portu nemůže
-vydávat za GEN3 aplikaci ani na OS s omezeným CWD lookupem.
-
-Výjimkou není „kill cizího procesu“, ale bezpečný switch mezi dvěma známými
-appkami různých Organizací. Cílová appka musí mít main runtime a stejný
-deklarovaný port; nahrazovaná appka musí být `current-instance` nebo
-`adopted-port`. Uživatelské `Otevřít` cíle je explicitní intent: backend znovu
-ověří PID i CWD živého listeneru proti nahrazované appce, teprve potom ji
-zastaví a spustí cíl. Samostatný `/switch` endpoint navíc vyžaduje `confirmed`.
-Pokud se evidence mezitím změní, switch selže bez signálu.
+U legacy manifestu zůstává adopce diagnostická: Launchpad vyžaduje pozitivní
+důkaz CWD a neověřený proces nesignalizuje. Platný `lazurio.module.v1` static
+lease je naopak explicitní destruktivní autorita modulu. `Start`/`Open` pod
+module mutexem zjistí aktuální PID a identitu, pošle celé process group
+SIGTERM, po timeoutu SIGKILL, ověří volný port a teprve potom spustí cílový
+main/worktree source. `Stop` zůstává užší a signalizuje pouze managed aktivní
+instanci této Launchpad instance. Port ani hostname se při takeoveru nemění.
 
 Web shell nemění konfiguraci a nezapisuje business data. Runtime stav drží
 mimo Git v `launchpad/runtime/` a `launchpad/logs/`. Výjimka k riziku side
@@ -548,13 +577,10 @@ jasný mechanismus:
   guardrails. Ověření: install/repair na již připravené appce má skončit
   `exit_code=0` a nezanechat package/lockfile diff; pokud diff vznikne, je to
   app-local dependency side effect k explicitnímu review.
-- `Stop` zastaví managed proces na module-owned lease; pokud proces přežil restart nebo ho
-  spustila jiná instance Launchpadu, Launchpad ho adoptuje jen tam, kde může
-  pozitivně ověřit PID i CWD vlastníka portu. PID ověří znovu před `SIGTERM`
-  i případným `SIGKILL`; neznámý nebo mezitím změněný PID se fail-closed
-  nezabíjí. Windows tuto cross-instance CWD kontrolu zatím nemá: po restartu
-  Launchpadu zůstane listener `unknown-port` a musí se uvolnit mimo Launchpad.
-  Na Windows používá current-instance managed proces cílený
+- `Stop` zastaví pouze current-instance managed proces na module-owned lease;
+  proces přeživší restart ani proces jiné instance pro samotný Stop neadoptuje
+  a nesignalizuje. Nejdřív atomicky uloží disabled desired stav, potom nad
+  známým recordem ověří PID a pošle signál. Na Windows používá managed proces cílený
   `taskkill /PID <pid> /T /F` nad PID uloženým v runtime recordu a po ukončení
   čeká na potvrzení původního child handle. Pokud handle exit nepotvrdí,
   Launchpad ponechá managed ownership a selže bezpečně bez druhého signálu;
@@ -566,7 +592,7 @@ jasný mechanismus:
   Stejný child-handle kontrakt platí na POSIX po eskalaci `SIGTERM` → `SIGKILL`.
   Po potvrzeném exitu je každý nový listener na module-owned lease samostatný
   proces i při numericky shodném reused PID; Launchpad starý record uklidí.
-  Samotný `Stop` dál signalizuje jen managed record. Následující explicitní
+  Následující explicitní
   `Start`/`Restart`/`Otevřít` však u validního `lazurio.module.v1` lease
   vyhledá pod OS-level mutexem aktuální process group na deklarovaném portu,
   pošle `SIGTERM` a při potřebě `SIGKILL`, ověří uvolnění portu, spustí zvolený

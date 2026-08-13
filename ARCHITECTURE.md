@@ -67,6 +67,29 @@ Více Residentů může sdílet jednu Mašinu pouze tehdy, když Owner vědomě 
 že kompromitace jednoho může kompromitovat všechny. Pokud mají mít oddělený
 blast radius, potřebují oddělené Mašiny.
 
+### Hosted Team Workspace jako Mašina
+
+Builder-visible Hosted Team Workspace má právě jeden non-root pracovní
+kontejner. Ve stejném user, `$HOME`, filesystem, PID a network namespace běží
+T3 Code, Codex CLI, Launchpad, `~/Lazurio`, checkouty, worktrees a
+Launchpadem spravované modulové child procesy. Uvnitř Team Workspace nejde o
+bezpečnostní hranice mezi jednotlivými členy; tvrdá access hranice je mezi
+Team Workspaces. Individuální izolaci poskytuje jednočlenný Team Workspace.
+
+Vně pracovního kontejneru zůstává jen infrastrukturní obal, například
+Tailscale sidecar a autentizovaný HTTPS ingress. Jejich control-plane sockety,
+host mounts, Caddy admin, sudo, zbytečné capabilities a provider private keys
+se do Workspace nemountují. Tenký init/supervisor obnovuje T3 a Launchpad;
+Launchpad je jediný owner modulových procesů a z durable desired state obnoví
+přesný main/worktree source. Per-module kontejnery, Docker-in-Docker ani další
+runtime orchestrátor do tohoto modelu nepatří.
+
+Lokální a hosted profil mají shodnou builder-visible strukturu a lifecycle
+postupy. Liší se pouze bezpečnostním a síťovým obalem: lokální `Open` vrací
+loopback, hosted `Open` exact autentizovaný HTTPS origin z Team service
+katalogu. Interní module leases nejsou VPN allowlist; externí hranicí je Team
+HTTPS/WSS ingress na 443.
+
 ### Resident
 
 Resident je dlouhodobá digitální identita, která na Mašině žije. Má jméno,

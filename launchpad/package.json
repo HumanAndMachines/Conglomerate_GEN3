@@ -11,6 +11,7 @@
     "update": "bun src/update-cli.mjs",
     "dev": "bun src/server.mjs",
     "discover": "bun src/discover-apps.mjs --allow-missing-organizations",
+    "parity:workspace": "bun src/workspace-parity-runner.mjs",
     "launch": "bun src/server.mjs --open",
     "serve": "bun src/server.mjs --reuse",
     "test": "bun src/run-tests.mjs"
