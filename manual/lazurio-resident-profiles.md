@@ -57,6 +57,20 @@ Mašině také není Buddy. Transakčně citlivé kroky — přístupy, secrets,
 destruktivní operace, billing, ownership a publish/release mimo trvalý mandát
 — vyžadují přesný souhlas lidského Principála.
 
+### Trust model Buddyho
+
+Skutečnou vstupní hranicí Buddyho je jeho privátní komunikační surface.
+Zulip realm, membership, credentials a síťový access plane musí být určené
+právě jednomu lidskému Principálovi a technické identitě jeho Buddy botu. Jiný
+člověk nebo služba v této konverzaci znamená porušené nasazení, ne novou roli.
+
+Principál vlastní svou Mašinu a systém předpokládá, že to se sebou myslí dobře.
+Lazurio proti němu nestaví vlastní ACL, ownership gate ani permission zámek.
+Agentní přístup k souborům a nástrojům omezuje existující sandbox runtime —
+dnes Hermes Agent. Manifest, Doctor, service oddělení a rollback pouze
+zviditelňují odchylky, omezují náhodnou self-mutaci procesu a umožňují obnovu;
+nejsou druhou autorizační hranicí.
+
 Veřejný Buddy runtime obsahuje komunikační bridge mezi privátním Zulipem a
 agentním runtime. Bridge sám nevlastní identitu ani mandáty: před prvním
 síťovým krokem ověří mount privátního profilu, vloží jeho ústavu a mandáty do
@@ -77,9 +91,13 @@ deklarovaný Buddy profil skutečně leží uvnitř `active/personalspace`.
 Produkční příkaz `buddy-rollout` skládá aktivaci rootu a service cutover do
 jedné kompenzované operace. Selže-li service gate, novou aktivaci odstraní nebo
 vrátí last-known-good a znovu zprovozní předchozí service vstupy.
-Privilegovaná unit přijme pouze Bun binárku pod plně root-owned parent chainem
-bez group/world write bitů; host ji dodá jako spravovanou dependency přes
-`--bun PATH`, ne jako měnitelnou instalaci z domovského adresáře operatora.
+Bun binárku pro unit volí Principál explicitně přes `--bun PATH`; preflight ji
+resolveuje a ověří její spustitelnost runtime účtem, ale nevyžaduje root-owned
+instalaci. Sanitizované privileged subprocessy chrání instalační krok před
+ambientním `PATH` a Git hooky, ne Lazurio před Principálem.
+Privátní Buddy profil zůstává mutable a služba jej čte přes běžná host
+oprávnění. Další sandbox pro Personalspace tu nevzniká; přístup agentních
+nástrojů omezuje existující Hermes sandbox.
 
 ## Profil AI Kolega a Steward overlay
 
@@ -122,13 +140,17 @@ branch a PR.
 
 ## Když je potřeba vlastní oprava Launchpadu
 
-Nainstalovaný root se ručně nepatchuje. Běžná oprava vznikne v odděleném
-Lazurio source checkoutu, projde PR a vytvoří nový artefakt. Urgentní chyba
-jedné platformy může dostat exact-SHA candidate build jen na vybranou Mašinu,
-ale stále se známým digestem, health gatem a návratem na last-known-good.
+Principál může nainstalovaný Lazurio Root na své Mašině upravit, například kvůli
+urgentní platformní chybě. Resident mu v tom nestaví vlastnický ani permission
+zámek. Taková oprava pouze přestává být kanonickým release: Doctor ji ukáže
+jako lokální drift a updater se zastaví, aby ji další verzí potichu nepřepsal.
 
-Tím zůstává nouzová oprava rychlá a zároveň dohledatelná. Lokální změna, kterou
-další update potichu přepíše, není podporovaný hotfix.
+Má-li oprava zůstat, nejčistší další krok je přenést ji do odděleného Lazurio
+source checkoutu, nechat projít PR a postavit nový artefakt. Do té doby může
+lokální hotfix dál sloužit svému účelu; operátor jen vědomě rozhodne, zda jej
+před příštím update zachová, přenese do release, nebo vrátí na kanonickou
+verzi. Systém zde Principálovi pomáhá odchylku vidět, nepředpokládá proti němu
+nepřátelský model.
 
 ## Když něco nefunguje
 

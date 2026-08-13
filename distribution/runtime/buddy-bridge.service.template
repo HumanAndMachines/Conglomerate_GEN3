@@ -20,7 +20,6 @@ TimeoutStopSec=30s
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ProtectHome=true
 ReadOnlyPaths=@@ACTIVE_ROOT@@
 ReadWritePaths=@@QUEUE_ROOT@@
 ProtectKernelTunables=true

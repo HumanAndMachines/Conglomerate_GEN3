@@ -221,6 +221,25 @@ Model stojí na ramenou providerů, kteří už řeší identity a přístup:
 - **VPS nebo hardware provider** drží vlastnictví infrastruktury a poslední
   recovery cestu.
 
+### Trust model Buddyho
+
+Buddyho komunikační surface patří právě jednomu lidskému Principálovi. Privátní
+Zulip realm, jeho membership, credentials a síťový access plane musí zajistit,
+že do Buddyho konverzace nevstoupí jiný člověk ani služba; technická identita
+Buddy botu není druhý Principál. To je primární bezpečnostní hranice Buddyho.
+
+Principál vlastní svou Mašinu a v tomto modelu není protivník. Lazurio mu proto
+nebrání měnit lokální soubory ownership triky, vlastní ACL vrstvou ani
+permission zámkem. Manifest, Doctor a verzovaný lifecycle slouží k tomu, aby
+byla odchylka vidět, oprava byla přenositelná a návrat vratný.
+
+Omezení souborů a nástrojů uvnitř agentní relace drží sandbox agentního
+runtime — dnes Hermes Agent. Pokud je tato hranice nedostatečná, opravuje se
+nebo konfiguruje tam; Lazurio kolem ní nestaví paralelní sandbox. Běžné
+systemd oddělení procesu, sanitizované spouštění instalačních příkazů a
+integrity kontroly jsou provozní a recovery pojistky, ne druhý autorizační
+model proti Principálovi.
+
 Uvnitř autorizované trust domény se nestaví druhý interní IAM jen proto, aby
 napodoboval providerové granty. Nevznikají vlastní auth proxy, relaye, obecné
 permission brokery ani softwarové zdi bez konkrétně změřeného problému.

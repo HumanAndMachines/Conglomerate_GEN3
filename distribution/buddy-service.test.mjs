@@ -20,7 +20,6 @@ import {
   BUDDY_SERVICE_UNIT,
   HERMES_CONTEXT_DROPIN,
   HERMES_SERVICE_UNIT,
-  assertRootOwnedImmutableTree,
   inspectBridgeEnvironment,
   inspectProfileDirectory,
   isTrustedResidentExecutablePath,
@@ -524,45 +523,6 @@ linuxHostTest("Hermes verification ignores poisoned PATH Git and checkout-local 
   })).resolves.toMatchObject({ commit });
   expect(existsSync(fakeGitMarker)).toBe(false);
   expect(existsSync(fsmonitorMarker)).toBe(false);
-
-  await expect(verifyHermesRuntime({
-    activeRoot,
-    hermesRoot,
-    requireRootOwnership: true,
-    platform: "linux",
-    processRunner: () => {
-      throw new Error("Git must not run before the ownership gate");
-    },
-  })).rejects.toThrow("root-owned non-writable path");
-});
-
-test("privileged Hermes immutable-tree gate rejects a writable nested runtime file", () => {
-  const root = "/trusted/hermes";
-  const runtime = join(root, "runtime");
-  const agent = join(runtime, "agent.py");
-  const directory = (mode = 0o755) => ({
-    uid: 0,
-    mode,
-    isSymbolicLink: () => false,
-    isDirectory: () => true,
-    isFile: () => false,
-  });
-  const file = (mode) => ({
-    uid: 0,
-    mode,
-    isSymbolicLink: () => false,
-    isDirectory: () => false,
-    isFile: () => true,
-  });
-  const entries = new Map([
-    [root, directory()],
-    [runtime, directory()],
-    [agent, file(0o664)],
-  ]);
-  expect(() => assertRootOwnedImmutableTree(root, {
-    lstatEntry: (path) => entries.get(path),
-    listEntries: (path) => path === root ? ["runtime"] : ["agent.py"],
-  })).toThrow(/writable entry: runtime[\\/]agent\.py/u);
 });
 
 linuxHostTest("resident runtime rejects an executable below a user-writable path", async () => {
@@ -571,23 +531,6 @@ linuxHostTest("resident runtime rejects an executable below a user-writable path
   await writeFile(executable, "#!/bin/sh\nexit 0\n");
   await chmod(executable, 0o755);
   expect(isTrustedResidentExecutablePath(executable)).toBe(false);
-});
-
-linuxHostTest("privileged Buddy service refuses a replaceable Bun executable", async () => {
-  const paths = await fixture();
-  const root = await scratch("lazurio-untrusted-bun-");
-  const executable = join(root, "bun");
-  await writeFile(executable, "#!/bin/sh\nexit 0\n");
-  await chmod(executable, 0o755);
-
-  await expect(preflightBuddyBridgeService({
-    ...options(paths),
-    bunPath: executable,
-    requireRootOwnership: true,
-    runtimeAccessProbe: () => {
-      throw new Error("runtime probe must not run before the Bun ownership gate");
-    },
-  })).rejects.toThrow(/Bun executable must be below a root-owned path/u);
 });
 
 test("privileged Hermes Git verification uses runuser with no privileged buddy groups", () => {

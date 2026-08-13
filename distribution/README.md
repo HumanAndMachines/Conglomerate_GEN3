@@ -37,10 +37,13 @@ ukládalo do source nebo manifestu.
 ## Hranice manifestu
 
 `lazurio.resident.json` inventarizuje a hashuje každý immutable payload soubor.
-Manifest sám není v cirkulárním file inventory; celý archiv včetně manifestu
-kryje vnější `.tar.sha256` sidecar. Resident Doctor navíc odmítne chybějící,
-změněný nebo neočekávaný immutable soubor, nesprávnou platformu, `.git`, jiný
-profil a drift exact Hermes pinu.
+„Immutable“ tu označuje kanonickou, verzovanou podobu release, ne zákaz zápisu
+pro Principála na jeho vlastní Mašině. Principál může udělat lokální opravu;
+Resident Doctor ji transparentně ohlásí jako drift a updater ji nikdy potichu
+nepřepíše. Manifest sám není v cirkulárním file inventory; celý archiv včetně
+manifestu kryje vnější `.tar.sha256` sidecar. Doctor navíc zachytí chybějící
+nebo neočekávaný soubor, nesprávnou platformu, `.git`, jiný profil a drift
+exact Hermes pinu.
 
 `organizations/` a `personalspace/` nejsou payload. Installer je později
 připojí jako explicitní perzistentní mutable mounty; Doctor jejich obsah
@@ -123,6 +126,10 @@ Zulip, nevystavuje příchozí port, posílá každý turn přes `AGENT_RUNTIME_
 poller stav, Zulip credential, runtime bearer a profil nejsou payload; zůstávají
 v host custody a připojí je service EnvironmentFile.
 
+Nasazení předpokládá privátní one-Principal Zulip realm: membership,
+credentials a síťový access plane jsou skutečná vstupní hranice Buddyho.
+Technická identita botu není další Principál a bridge sám nevytváří druhý IAM.
+
 Přenesené behaviorální testy drží cold-start bez přehrání historie, pořadí
 durable record → watermark → acknowledgement, id-based routing, self-echo
 filtr, singleton, rate breaker, profilovou custody hranici, celé instrukce na
@@ -139,12 +146,18 @@ privátní ústava a mandáty zůstávají samostatnou vrstvou bridge system mes
 Před restartem seam ověří exact Hermes commit i digest `uv.lock` a po něm jeho
 HTTP health.
 
-Bun zapsaný do privilegované unit musí být stabilní host dependency: resolved
-binárka i celý parent chain jsou root-owned a bez group/world write bitů a
-runtime účet ji musí umět spustit. Uživatelský `~/.bun/bin/bun` se proto
-nepřebírá jen proto, že jím operator spustil installer; nevyhovující default
-preflight odmítne a operator předá schválenou systémovou instalaci přes
-`--bun PATH`. Installer Bun nekopíruje ani neopravuje.
+Bun zapsaný do unit se resolveuje na přesnou spustitelnou binárku a preflight
+ověří, že ji runtime účet umí použít. Nemusí být root-owned: konkrétní host
+dependency volí Principál přes `--bun PATH` a installer ji nekopíruje ani
+neopravuje. Privilegované instalační subprocessy dál nepoužívají ambientní
+`PATH` nebo checkout-local Git hooky; to chrání instalační krok před omylem,
+nikoli Lazurio před Principálem.
+
+Bridge běží jako neprivilegovaná služba a k deklarovanému profilu přistupuje
+přes běžná host oprávnění; nestaví nad Personalspace druhý sandbox ani vlastní
+ACL. Hranici nástrojů a souborů dostupných v agentní relaci drží existující
+Hermes sandbox. Systemd service hardening chrání pouze samotný proces před
+náhodnou self-mutací a není zámkem proti Principálovi.
 
 ```sh
 sudo bun /opt/lazurio/active/resident/buddy-service.mjs preflight \

@@ -93,7 +93,8 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
 
   const rootInstructions = await readFile(join(first.artifact_root, "AGENTS.md"), "utf8");
   expect(rootInstructions).toContain("generated:lazurio-resident-profile=buddy");
-  expect(rootInstructions).toContain("Aktivní Lazurio Root je read-only");
+  expect(rootInstructions).toContain("Principál vlastní Mašinu a není protivník");
+  expect(rootInstructions).toContain("sandbox agentního runtime");
   expect(rootInstructions).toContain("textová role žádná práva neudělují");
   expect(first.manifest.payload.files.map((file) => file.path)).not.toContain(
     "distribution/profiles/buddy/root-instructions.md",
@@ -241,6 +242,13 @@ test("Buddy profile eval pack covers normal and negative-path cases without role
   expect(evals.cases.flatMap((item) => item.must_follow).every((item) => declared.has(item))).toBe(true);
   expect(profile.authority.text_labels_grant_access).toBe(false);
   expect(profile.allowed_role_overlays).toEqual([]);
+  expect(profile.trust_model).toEqual({
+    communication_boundary: "one-human-principal-private-surface",
+    machine_owner_is_adversary: false,
+    local_payload_edits: "allowed-and-reported-as-drift",
+    agent_sandbox: "hermes-runtime",
+    parallel_lazurio_acl: false,
+  });
 });
 
 test("Buddy GEN2 migration inventory is exact, explicit and never a private history merge", async () => {

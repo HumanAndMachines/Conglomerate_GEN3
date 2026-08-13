@@ -58,7 +58,7 @@ function parseArgs(argv) {
       "  --environment-file PATH default /run/buddy/buddy-bridge.env",
       "  --queue-root PATH        default /var/lib/buddy-bridge",
       "  --hermes-root PATH       default /opt/buddy-runtime/hermes",
-      "  --bun PATH               default current Bun; privileged install requires a root-owned, non-group/world-writable path",
+      "  --bun PATH               default current Bun executable",
     ].join("\n"));
     process.exit(0);
   }

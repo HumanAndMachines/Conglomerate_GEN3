@@ -7,6 +7,13 @@
   "root_instructions": "distribution/profiles/buddy/root-instructions.md",
   "public_manual": "manual/lazurio-resident-profiles.md",
   "allowed_role_overlays": [],
+  "trust_model": {
+    "communication_boundary": "one-human-principal-private-surface",
+    "machine_owner_is_adversary": false,
+    "local_payload_edits": "allowed-and-reported-as-drift",
+    "agent_sandbox": "hermes-runtime",
+    "parallel_lazurio_acl": false
+  },
   "authority": {
     "provider": "live-github-rights",
     "text_labels_grant_access": false,
@@ -38,13 +45,19 @@
     "do-not-export-private-content",
     "live-github-rights",
     "draft-and-escalate",
-    "stop-mutation",
+    "principal-owns-machine",
+    "report-local-drift",
     "preserve-last-known-good",
-    "separate-source-fix",
+    "offer-separate-source-fix",
     "non-git-root",
     "separate-source-checkout",
     "buddy-is-not-ai-colleague",
     "root-instructions-every-runtime-session",
-    "text-labels-grant-no-access"
+    "text-labels-grant-no-access",
+    "one-human-principal",
+    "private-communication-surface",
+    "do-not-invent-second-role",
+    "reuse-hermes-sandbox",
+    "no-parallel-authorization-layer"
   ]
 }

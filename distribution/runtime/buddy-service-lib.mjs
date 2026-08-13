@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { constants, existsSync, lstatSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { constants, existsSync, realpathSync, statSync } from "node:fs";
 import {
   chmod,
   lstat,
@@ -99,12 +99,6 @@ export async function preflightBuddyBridgeService({
     throw new Error("Bun executable is not an executable regular file");
   }
   assertSystemdSafeAbsolutePath("resolved Bun", resolvedBun);
-  if (requireRootOwnership && !isTrustedResidentExecutablePath(resolvedBun, platform)) {
-    throw new Error(
-      "Bun executable must be below a root-owned path and must not be group- or world-writable",
-    );
-  }
-
   const environment = await inspectBridgeEnvironment(environmentFile, {
     queueRoot,
     requireRootOwnership,
@@ -468,7 +462,6 @@ export async function verifyHermesRuntime({
   );
   const resolvedHermesRoot = await realpath(hermesRoot).catch(() => null);
   if (!resolvedHermesRoot) throw new Error("Hermes runtime root cannot be resolved");
-  if (requireRootOwnership) assertTrustedHermesCheckout(resolvedHermesRoot, platform);
   const gitExecutable = trustedGitExecutable(platform);
   if (!gitExecutable) {
     throw new Error("Hermes verification requires Git from a trusted system-owned path");
@@ -911,39 +904,6 @@ export function isTrustedResidentExecutablePath(canonicalPath, platform = proces
   }
   if ((executable.mode & 0o111) === 0) return false;
   return isRootOwnedNonWritablePath(canonicalPath, { requireFile: true });
-}
-
-function assertTrustedHermesCheckout(hermesRoot, platform) {
-  if (platform !== "linux" || !isRootOwnedNonWritablePath(hermesRoot, { requireDirectory: true })) {
-    throw new Error("Hermes runtime checkout must be below a root-owned non-writable path");
-  }
-  assertRootOwnedImmutableTree(hermesRoot);
-  if (!lstatSync(join(hermesRoot, ".git")).isDirectory()) {
-    throw new Error("Hermes Git metadata must be a root-owned immutable directory");
-  }
-}
-
-export function assertRootOwnedImmutableTree(root, {
-  lstatEntry = lstatSync,
-  listEntries = readdirSync,
-} = {}) {
-  const walk = (path) => {
-    const entry = lstatEntry(path);
-    if (entry.isSymbolicLink()) {
-      throw new Error(`Hermes immutable checkout contains a symlink: ${relative(root, path) || "."}`);
-    }
-    if (entry.uid !== 0 || (entry.mode & 0o022) !== 0) {
-      throw new Error(`Hermes immutable checkout has a non-root or writable entry: ${relative(root, path) || "."}`);
-    }
-    if (entry.isDirectory()) {
-      for (const child of listEntries(path)) walk(join(path, child));
-      return;
-    }
-    if (!entry.isFile()) {
-      throw new Error(`Hermes immutable checkout has an unsupported entry: ${relative(root, path) || "."}`);
-    }
-  };
-  walk(root);
 }
 
 function isRootOwnedNonWritablePath(canonicalPath, { requireDirectory = false, requireFile = false } = {}) {

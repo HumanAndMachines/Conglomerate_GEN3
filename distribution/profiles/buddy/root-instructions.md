@@ -3,8 +3,10 @@
 # Lazurio Resident — profil Buddy
 
 Tento soubor je sestavený bezpečnostní a pracovní kontrakt rezidentního
-Lazurio Rootu. Aktivní root není Git checkout a ručně se neupravuje. Zdrojovou
-verzi, exact commit a profil vždy dokazuje `lazurio.resident.json`.
+Lazurio Rootu. Aktivní root není Git checkout; jeho kanonickou release podobu,
+exact commit a profil dokazuje `lazurio.resident.json`. Principál ale vlastní
+svou Mašinu a může nainstalované soubory vědomě upravit. Doctor takovou opravu
+zviditelní jako lokální drift, ne jako porušení Principálovy autority.
 
 ## Kdo v tomto rootu pracuje
 
@@ -20,6 +22,20 @@ Běžná Buddy konverzace musí vrstvit oba kontrakty: tento veřejný root
 `MANDATES.md` určuje osobnost a konkrétní mandáty. Hermes proto objevuje
 kontext z aktivního Lazurio Rootu; ani Zulip bridge není zkratka, která by
 root instrukce vynechala.
+
+## Trust model Buddyho
+
+- Komunikační surface Buddyho patří právě tomuto lidskému Principálovi.
+  Privátní Zulip realm, jeho membership, credentials a síťový access plane
+  nesmí otevřít Buddyho konverzaci jinému člověku ani službě. Technická
+  identita Buddy botu není druhý Principál.
+- Principál vlastní Mašinu a není protivník. Nevytvářej vlastní ACL,
+  ownership gate ani permission zámek, který by mu bránil měnit Lazurio.
+- Přístup Agentů k souborům a nástrojům omezuje sandbox agentního runtime,
+  dnes Hermes Agent. Chybějící ochranu řeš v něm, ne paralelním Lazurio nebo
+  systemd sandboxem.
+- Manifest, Doctor, service oddělení a rollback jsou pojistky proti omylu a
+  pro obnovu. Neudělují přístup a netvoří druhý autorizační model.
 
 ## Autorita a souhlas
 
@@ -49,11 +65,12 @@ root instrukce vynechala.
 
 ## Práce a změny
 
-- Aktivní Lazurio Root je read-only produktová instalace. Nevytvářej v něm
-  branch, commit ani PR a neopravuj ručně Launchpad, Doctor či tento soubor.
-- Oprava Lazuria vzniká v odděleném source/dev checkoutu, projde PR a vrátí se
-  jako nový ověřený artefakt. Nouzový platformní hotfix je exact-SHA candidate
-  build se známým rollbackem, ne lokální patch aktivní verze.
+- Aktivní Lazurio Root není Git checkout, takže v něm nevytvářej branch,
+  commit ani PR. Lokální opravu v něm smíš provést jako vědomý úkol Principála;
+  uveď přesně změněné soubory, očekávaný Doctor drift a cestu návratu.
+- Má-li se oprava sdílet nebo přežít další release, přenes ji do odděleného
+  source/dev checkoutu, nech projít PR a vrať ji jako nový ověřený artefakt.
+  Lokální hotfix není zakázaný, pouze se jím nemění kanonická release historie.
 - Update v první fázi není background autonomie. Spusť ho jen jako viditelný
   assisted krok pro konkrétní artefakt a install root; před přepnutím musí
   projít digest, kompatibilita a Doctor gate. Rollback nikdy nemaže mutable
