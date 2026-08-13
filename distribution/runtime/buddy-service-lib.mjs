@@ -207,9 +207,12 @@ export async function preflightBuddyBridgeService({
 export async function installBuddyBridgeService({
   commandRunner = runCommand,
   preTransitionProbe = assertExistingBuddyBridgeReady,
+  legacyPreTransitionProbe = assertLegacyBuddyBridgeReady,
   hermesReadinessProbe = waitForHermesGatewayReadiness,
   rollbackHermesReadinessProbe = waitForHermesGatewayReadiness,
   readinessProbe = waitForBuddyBridgeReadiness,
+  rollbackReadinessProbe = waitForBuddyBridgeReadiness,
+  legacyRollbackReadinessProbe = assertLegacyBuddyBridgeReady,
   now = () => Date.now(),
   ...options
 } = {}) {
@@ -218,11 +221,12 @@ export async function installBuddyBridgeService({
     && options.requireRootOwnership !== false) {
     throw new Error("Buddy service install must run as root");
   }
-  if (preflight.current_unit) {
-    await preTransitionProbe({ queueRoot: preflight.queue_root, commandRunner });
-  }
   const priorBytes = preflight.current_unit?.bytes ?? null;
   const currentManaged = priorBytes?.includes(Buffer.from(BUDDY_SERVICE_MARKER)) ?? false;
+  if (preflight.current_unit) {
+    const probe = currentManaged ? preTransitionProbe : legacyPreTransitionProbe;
+    await probe({ queueRoot: preflight.queue_root, commandRunner });
+  }
   if (!preflight.existing_backup && priorBytes && !currentManaged) {
     await atomicWrite(preflight.backup_path, priorBytes, 0o600, { replace: false });
   }
@@ -271,8 +275,14 @@ export async function installBuddyBridgeService({
         commandRunner,
       });
       if (priorBytes) {
+        const rollbackStartedAt = now();
         assertCommand(commandRunner, ["restart", BUDDY_SERVICE_UNIT]);
-        assertCommand(commandRunner, ["is-active", "--quiet", BUDDY_SERVICE_UNIT]);
+        const probe = currentManaged ? rollbackReadinessProbe : legacyRollbackReadinessProbe;
+        await probe({
+          queueRoot: preflight.queue_root,
+          notBefore: rollbackStartedAt,
+          commandRunner,
+        });
       } else {
         commandRunner(["disable", "--now", BUDDY_SERVICE_UNIT], { allowFailure: true });
       }
@@ -309,9 +319,8 @@ export async function restorePreResidentBuddyService({
   queueRoot = "/var/lib/buddy-bridge",
   commandRunner = runCommand,
   hermesReadinessProbe = waitForHermesGatewayReadiness,
-  bridgeReadinessProbe = waitForBuddyBridgeReadiness,
+  bridgeReadinessProbe = assertLegacyBuddyBridgeReady,
   runtimeHealthUrl,
-  now = () => Date.now(),
   requireRootOwnership = true,
   platform = process.platform,
 } = {}) {
@@ -348,9 +357,8 @@ export async function restorePreResidentBuddyService({
     healthUrl: runtimeHealthUrl ?? environment.runtimeHealthUrl,
     commandRunner,
   });
-  const bridgeRestartedAt = now();
   assertCommand(commandRunner, ["restart", BUDDY_SERVICE_UNIT]);
-  await bridgeReadinessProbe({ queueRoot, notBefore: bridgeRestartedAt, commandRunner });
+  await bridgeReadinessProbe({ commandRunner });
   return {
     schema_version: "lazurio.buddy-service.result.v1",
     action: "restored_pre_resident_unit",
@@ -634,6 +642,21 @@ export async function assertExistingBuddyBridgeReady({
     throw new Error("existing Buddy bridge is not demonstrably registered; refusing a transition without a rollback baseline");
   }
   return { bridge_queue_registered: true, at: state.at };
+}
+
+export async function assertLegacyBuddyBridgeReady({
+  commandRunner = runCommand,
+} = {}) {
+  // An unmanaged predecessor may be the outgoing-webhook bridge, which has no
+  // resident poller state by design. Its honest portable baseline is the state
+  // systemd owned before Lazurio touched the unit; requiring poller.json here
+  // would make the very first migration impossible and would also make the
+  // explicit restore command report failure after a successful legacy restore.
+  assertCommand(commandRunner, ["is-enabled", "--quiet", HERMES_SERVICE_UNIT]);
+  assertCommand(commandRunner, ["is-active", "--quiet", HERMES_SERVICE_UNIT]);
+  assertCommand(commandRunner, ["is-enabled", "--quiet", BUDDY_SERVICE_UNIT]);
+  assertCommand(commandRunner, ["is-active", "--quiet", BUDDY_SERVICE_UNIT]);
+  return { legacy_bridge_service_active: true };
 }
 
 function parseEnvironmentFile(text) {

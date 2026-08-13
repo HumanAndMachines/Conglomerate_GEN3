@@ -64,7 +64,10 @@ každého turnu a odmítne běh bez úplného kontraktu. Běží pod odděleným
 nevystavuje příchozí port a trvanlivou frontu drží mimo immutable root.
 Přechodová služba používá již existující host custody soubor; jeho secrets
 nekopíruje ani nevypisuje. Cutover je vratný přes uchovanou původní systemd
-unit a úspěch dokazuje nová registrace polleru, nikoli jen stav procesu.
+unit a úspěch nového residenta dokazuje registrace polleru, nikoli jen stav
+procesu. Unmanaged pre-resident unit se před migrací i po explicitním restore
+ověřuje svým legacy enabled/active systemd kontraktem; nový `poller.json` po ní
+se nedá vyžadovat.
 Hermes dostává aktivní Lazurio Root jako `TERMINAL_CWD`, aby jeho context-file
 discovery vložilo veřejný profilový `AGENTS.md` i do Zulip session. Ten se
 vrství s privátní ústavou a mandáty; žádná z těchto vrstev nenahrazuje druhou.

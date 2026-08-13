@@ -99,7 +99,7 @@
         "distribution/buddy-rollout.test.mjs"
       ],
       "public_safe_review": "pass",
-      "reason": "The unit targets the atomic active Lazurio root and retains the separate bridge UID, configuration refusal and durable queue. The service seam also binds pinned Hermes context discovery to that root through TERMINAL_CWD, preserves both previous systemd inputs, verifies the existing listening baseline, performs an atomic cutover, requires Hermes health plus fresh poller registration and restores the old inputs on failure without copying secret values."
+      "reason": "The unit targets the atomic active Lazurio root and retains the separate bridge UID, configuration refusal and durable queue. The service seam also binds pinned Hermes context discovery to that root through TERMINAL_CWD, preserves both previous systemd inputs, verifies a type-aware predecessor baseline (durable poller state for a resident unit, enabled/active state for an unmanaged legacy unit), performs an atomic cutover, requires Hermes health plus fresh poller registration and restores the old inputs on failure without copying secret values."
     },
     {
       "id": "hermes-runtime-materialization",

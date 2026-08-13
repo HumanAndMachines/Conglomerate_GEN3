@@ -16,6 +16,7 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
   BUDDY_SERVICE_BACKUP_SUFFIX,
+  BUDDY_SERVICE_MARKER,
   BUDDY_SERVICE_UNIT,
   HERMES_CONTEXT_DROPIN,
   HERMES_SERVICE_UNIT,
@@ -160,7 +161,7 @@ linuxHostTest("Buddy service cutover preserves the old unit and installs only th
   const result = await installBuddyBridgeService({
     ...options(paths),
     commandRunner: successfulSystemctl(commands),
-    preTransitionProbe: async () => ({ bridge_queue_registered: true }),
+    legacyPreTransitionProbe: async () => ({ legacy_bridge_service_active: true }),
     hermesReadinessProbe: async () => ({ hermes_gateway_healthy: true }),
     readinessProbe: async () => ({ bridge_queue_registered: true }),
   });
@@ -189,13 +190,46 @@ linuxHostTest("Buddy service cutover preserves the old unit and installs only th
   ]);
 });
 
+linuxHostTest("first cutover accepts an active legacy unit without resident poller state", async () => {
+  const paths = await fixture();
+  await rm(join(paths.queueRoot, "queue", "state", "poller.json"));
+  const commands = [];
+
+  await expect(installBuddyBridgeService({
+    ...options(paths),
+    commandRunner: successfulSystemctl(commands),
+    hermesReadinessProbe: async () => ({ hermes_gateway_healthy: true }),
+    readinessProbe: async () => ({ bridge_queue_registered: true }),
+  })).resolves.toMatchObject({ action: "installed" });
+  expect(commands.slice(0, 4)).toEqual([
+    `is-enabled --quiet ${HERMES_SERVICE_UNIT}`,
+    `is-active --quiet ${HERMES_SERVICE_UNIT}`,
+    `is-enabled --quiet ${BUDDY_SERVICE_UNIT}`,
+    `is-active --quiet ${BUDDY_SERVICE_UNIT}`,
+  ]);
+});
+
+linuxHostTest("a managed predecessor still requires its durable poller baseline", async () => {
+  const paths = await fixture({
+    currentUnit: `${BUDDY_SERVICE_MARKER}\n[Service]\nExecStart=/opt/lazurio/active/bridge/run.ts\n`,
+  });
+  await rm(join(paths.queueRoot, "queue", "state", "poller.json"));
+
+  await expect(installBuddyBridgeService({
+    ...options(paths),
+    commandRunner: successfulSystemctl([]),
+    hermesReadinessProbe: async () => ({ hermes_gateway_healthy: true }),
+    readinessProbe: async () => ({ bridge_queue_registered: true }),
+  })).rejects.toThrow(/not demonstrably registered/u);
+});
+
 linuxHostTest("a failed post-restart hearing gate restores the exact previous unit", async () => {
   const paths = await fixture();
   const commands = [];
   await expect(installBuddyBridgeService({
     ...options(paths),
     commandRunner: successfulSystemctl(commands),
-    preTransitionProbe: async () => ({ bridge_queue_registered: true }),
+    legacyPreTransitionProbe: async () => ({ legacy_bridge_service_active: true }),
     hermesReadinessProbe: async () => ({ hermes_gateway_healthy: true }),
     rollbackHermesReadinessProbe: async () => ({ hermes_gateway_healthy: true }),
     readinessProbe: async () => {
@@ -211,6 +245,9 @@ linuxHostTest("a failed post-restart hearing gate restores the exact previous un
     "daemon-reload",
     `restart ${HERMES_SERVICE_UNIT}`,
     `restart ${BUDDY_SERVICE_UNIT}`,
+    `is-enabled --quiet ${HERMES_SERVICE_UNIT}`,
+    `is-active --quiet ${HERMES_SERVICE_UNIT}`,
+    `is-enabled --quiet ${BUDDY_SERVICE_UNIT}`,
     `is-active --quiet ${BUDDY_SERVICE_UNIT}`,
   ]);
 });
@@ -221,21 +258,30 @@ linuxHostTest("the preserved unit remains an explicit operator rollback after a 
   await installBuddyBridgeService({
     ...options(paths),
     commandRunner: successfulSystemctl(commands),
-    preTransitionProbe: async () => ({ bridge_queue_registered: true }),
+    legacyPreTransitionProbe: async () => ({ legacy_bridge_service_active: true }),
     hermesReadinessProbe: async () => ({ hermes_gateway_healthy: true }),
     readinessProbe: async () => ({ bridge_queue_registered: true }),
   });
+  await rm(join(paths.queueRoot, "queue", "state", "poller.json"));
   await restorePreResidentBuddyService({
     unitDirectory: paths.unitDirectory,
     environmentFile: paths.environmentFile,
     queueRoot: paths.queueRoot,
     commandRunner: successfulSystemctl(commands),
     hermesReadinessProbe: async () => ({ hermes_gateway_healthy: true }),
-    bridgeReadinessProbe: async () => ({ bridge_queue_registered: true }),
     requireRootOwnership: false,
     platform: "linux",
   });
   expect(await readFile(paths.unitPath, "utf8")).toBe(paths.currentUnit);
+  expect(commands.slice(-7)).toEqual([
+    "daemon-reload",
+    `restart ${HERMES_SERVICE_UNIT}`,
+    `restart ${BUDDY_SERVICE_UNIT}`,
+    `is-enabled --quiet ${HERMES_SERVICE_UNIT}`,
+    `is-active --quiet ${HERMES_SERVICE_UNIT}`,
+    `is-enabled --quiet ${BUDDY_SERVICE_UNIT}`,
+    `is-active --quiet ${BUDDY_SERVICE_UNIT}`,
+  ]);
 });
 
 linuxHostTest("EnvironmentFile validation names conflicting keys but never their secret values", async () => {
@@ -324,7 +370,7 @@ linuxHostTest("Buddy service preflight refuses Organization data on a Personalsp
   await expect(installBuddyBridgeService({
     ...options(paths),
     commandRunner: successfulSystemctl([]),
-    preTransitionProbe: async () => ({ bridge_queue_registered: true }),
+    legacyPreTransitionProbe: async () => ({ legacy_bridge_service_active: true }),
     hermesReadinessProbe: async () => ({ hermes_gateway_healthy: true }),
     readinessProbe: async () => ({ bridge_queue_registered: true }),
   })).rejects.toThrow("empty organizations mount");

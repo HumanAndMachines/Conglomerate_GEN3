@@ -128,7 +128,10 @@ durable record → watermark → acknowledgement, id-based routing, self-echo
 filtr, singleton, rate breaker, profilovou custody hranici, celé instrukce na
 wire a session recovery. Host service seam znovu nepřenáší secrets: ověří
 existující root-owned `EnvironmentFile`, profil a runtime UID, uchová přesnou
-původní unit, atomicky nasadí unit mířící na `active`, restartuje ji a za
+původní unit a ověří její typově správný baseline. Už resident predecessor
+musí mít durable poller stav; unmanaged legacy unit dokládá svůj původní
+enabled/active systemd stav a nový poller se po ní nevyžaduje. Seam pak atomicky
+nasadí unit mířící na `active`, restartuje ji a za
 úspěch považuje až čerstvou registraci polleru. Při chybě vrátí původní unit.
 Stejná transakce přidá Hermes gatewayi `TERMINAL_CWD=<active-root>`, takže
 pinned Hermes načte profilový root `AGENTS.md` do každé nově sestavené session;
