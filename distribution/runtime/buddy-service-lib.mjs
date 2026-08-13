@@ -15,7 +15,16 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep, win32 as pathWin32 } from "node:path";
+import {
+  dirname,
+  isAbsolute,
+  join,
+  posix as pathPosix,
+  relative,
+  resolve,
+  sep,
+  win32 as pathWin32,
+} from "node:path";
 import { spawnSync } from "node:child_process";
 import { sha256, verifyArtifactTree } from "./integrity.mjs";
 
@@ -837,8 +846,8 @@ export function probeBuddyRuntimeAccess({
   // service identities must not be able to replace the sandbox beneath
   // themselves, including through a writable ancestor directory.
   const replacementBoundaries = [...new Set([
-    ...pathAndAncestors(bunPath),
-    ...pathAndAncestors(dirname(hermesRoot)),
+    ...linuxPathAndAncestors(bunPath),
+    ...linuxPathAndAncestors(pathPosix.dirname(hermesRoot)),
   ])];
   for (const username of ["buddy", "buddy-bridge"]) {
     for (const path of replacementBoundaries) {
@@ -867,12 +876,12 @@ export function probeBuddyRuntimeAccess({
   }
 }
 
-function pathAndAncestors(path) {
+function linuxPathAndAncestors(path) {
   const paths = [];
-  let current = resolve(path);
+  let current = pathPosix.resolve(path);
   while (true) {
     paths.push(current);
-    const parent = dirname(current);
+    const parent = pathPosix.dirname(current);
     if (parent === current) return paths;
     current = parent;
   }
