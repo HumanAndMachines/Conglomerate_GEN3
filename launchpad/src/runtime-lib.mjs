@@ -233,7 +233,11 @@ export function createRuntimeManager({
     ?? ((pid) => resolvePosixProcessGroupId(pid, { runCommandFn: runSystemCommandFn }));
   const observedPortBindingsResolver = resolveObservedPortBindingsFn
     ?? ((port) => resolveObservedPortBindings(port, {
-      platform,
+      // Listener observation runs on the actual host OS. `platform` above is
+      // injectable for lifecycle semantics in cross-platform contract tests;
+      // using that simulated value here would try Windows netstat on Linux or
+      // macOS instead of observing the real fixture socket.
+      platform: process.platform,
       runCommandFn: runSystemCommandFn,
       env: systemEnvironment,
     }));
