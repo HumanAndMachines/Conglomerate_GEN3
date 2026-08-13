@@ -156,66 +156,122 @@ může znamenat SAML, omezený token, rename i chybu manifestu. Doctor ji proto
 nesmí použít k neutralizaci blokátoru. `organization_roles` mění pouze
 závažnost diagnostiky; nepřiděluje přístup a GitHub zůstává access autoritou.
 
-Nevalidní `companyascode.app` manifest izoluje jen dotčenou appku (decision
+Nevalidní `lazurio.runtime.v1` nebo read-compatible legacy manifest izoluje jen dotčenou appku (decision
 0043): appka je viditelná ve stavu `invalid_manifest`, runtime akce jsou pro ni
 zamčené a zbytek rootu běží. Duplicitní app id je také scoped: druhý manifest
 (deterministicky podle cesty) se izoluje jako `invalid_manifest`, první platí.
-Bezpečnostní invarianty (živý cizí/neověřitelný listener, plugin read-only
-violation, únik plugin cesty mimo Organizaci) zůstávají hard failure pro
-registry i auto-discovered Organizace (decision 0042 bezpečnostní parita).
-Deklarovaný překryv mezi různými Organizacemi chyba není. Duplicita uvnitř
-jedné Organizace je hard failure, protože její moduly musí mít unikátní porty.
+Bezpečnostní invarianty (plugin read-only violation, únik plugin cesty mimo
+Organizaci) zůstávají hard failure pro registry i auto-discovered Organizace
+(decision 0042 bezpečnostní parita). Deklarovaný překryv žádný modul neschová:
+Doctor ho hlásí jako hard failure a Start/Open zablokuje. Stejný port smí
+deklarovat jen více `app/vN` verzí stejného module listener lease.
 
-Aplikace deklaruje vlastní port ve svém `package.json`:
+Port vlastní kořen modulu v `lazurio.module.json`:
 
 ```json
 {
-  "companyascode": {
-    "app": {
-      "schema_version": "companyascode.launchpad_app.v1",
+  "schema_version": "lazurio.module.v1",
+  "id": "deals",
+  "company": "ExampleOrg",
+  "tcp_port_policy": { "mode": "single" },
+  "port_leases": [{
+    "id": "main",
+    "host": "127.0.0.1",
+    "port": 24001
+  }]
+}
+```
+
+Konkrétní app verze deklaruje runnable shape ve svém `package.json`, ale na
+číselný port pouze odkazuje:
+
+```json
+{
+  "lazurio": {
+    "runtime": {
+      "schema_version": "lazurio.runtime.v1",
       "id": "exampleorg-deals-v2",
       "title": "Deals",
       "company": "ExampleOrg",
       "module": "deals",
       "surface": "internal",
-      "port": 4301,
-      "host": "127.0.0.1",
-      "health_path": "/health",
       "dev_script": "dev",
       "tags": ["deals", "git-database"],
-      "plugin": "./launchpad.plugin.json"
+      "plugin": "./launchpad.plugin.json",
+      "listeners": [{
+        "id": "web",
+        "role": "entrypoint",
+        "lease": "main",
+        "protocol": "http",
+        "health": { "kind": "http", "path": "/health" }
+      }]
     }
   }
 }
 ```
 
-Launchpad port nepřiděluje. Port jen čte, validuje a použije při startu.
+Runtime má právě jeden `entrypoint` listener a libovolný počet `auxiliary`
+listenerů. Jejich topologie popisuje procesy spuštěné přes `dev_script`,
+jediný lifecycle skript, který Launchpad skutečně spouští. `preview_script`
+a `build_script` jsou volitelná metadata a nesmějí předstírat další
+Launchpad runtime.
+
+Každý listener odkazuje na module-owned lease. Main, všechny `app/vN` verze i
+worktrees stejného modulu tím používají přesně stejný port; číselný port,
+`allocation`, `host` ani `claim` do runtime kontraktu nepatří. Dynamické porty
+ani worktree remap nejsou povolené. V jednu chvíli běží jen jedna
+verze/worktree modulu. Legacy `companyascode.app` se jen čte jako
+jeden známý entrypoint a neprohlašuje, že modul nemá skryté pomocné listenery.
+Runtime `dev_script` je implementační vstup Launchpadu, ne samostatné
+operátorské API: podporovaný Start/Open vždy vede přes sdílený Launchpad daemon
+a jeho module lock. Ruční `bun run dev` může sloužit jen k izolovanému
+debugování po vědomém zastavení Launchpadu; nesmí zavádět náhradní port ani být
+uváděný jako běžná provozní cesta.
+
+Pro audit/migraci použij
+`bun scripts/lazurio-runtime-migrate.mjs [--write] <package.json|adresář>`.
+Automatika migruje živé package manifesty, vytvoří kořenový module lease a
+ověří shodu všech app verzí. Historické changelogy, dokončené tasky a generované
+soubory neprochází. Split web/API appky zachová jako zdůvodněnou výjimku; nový
+modul standardně používá jeden TCP listener pro `/` a `/api`.
+Doctor navíc prohledá živý runtime source příslušného package a odmítne jako
+hard error jak číselnou kopii module lease, tak jiný číselný fallback napojený
+na `PORT` nebo listener env. Build, testy, fixtures, migrace, archivy, data a
+generované výstupy z této kontroly záměrně vynechává.
 
 V multi-company rootu platí:
 
-- `companyascode.app.company` musí odpovídat čistému `organizations[].slug`, pod
+- `lazurio.runtime.company` musí odpovídat čistému Organization slugu, pod
   kterým aplikace leží. Fyzická cesta smí mít přechodový generační suffix,
   například `organizations/ExampleOrg_GEN3`, ale app manifest dál používá
   čistou proper-case identitu `ExampleOrg`; shoda je case-sensitive.
-- `companyascode.app.id` musí být unikátní v celém Launchpad GEN3 rootu a
+- `lazurio.runtime.id` musí být unikátní v celém Launchpad GEN3 rootu a
   používat lowercase kebab tvar.
 - povinný Organization-owned tvar ID je
   `<lowercase-company-slug>-<module-or-app>-<version>`.
   Pole `company` ve v1 vždy nese přesný Organization slug; Team, brand ani
   GitHub repository owner se do této osy nepromítají.
-- app surfaces jedné Organizace musí mít unikátní porty; duplicita je hard
-  discovery failure s oběma package cestami.
-- app surfaces různých Organizací smějí deklarovat stejný stabilní port.
-  Současně na něm může běžet jen jedna aplikace.
-- discovery vrací computed owner-aware `port_overlaps` pouze pro různé
-  Organizace; Doctor překryv ukáže informačně a nic nepřemapuje.
-- živý konflikt je fail-closed invariant: runtime nikdy tiše nepřepne aplikaci
-  na jiný port. Je-li listener pozitivně ověřená známá Launchpad appka jiné
-  Organizace, poslední uživatelské `Otevřít` ji zastaví a převezme port pro
-  zvolenou appku. Listener bez známé ověřené vazby zůstane blokující.
-- shared root nesmí držet hardcoded mapu portů konkrétních Organizací. Budoucí
-  rezervace pro nemountnuté/planned appky musí být owner-declared metadata, ne
-  centrální root tabulka.
+- každý materializovaný module lease vstupuje do owner-aware indexu bez ohledu na
+  Organization hranici; cross-module kolize je hard failure. Více verzí
+  stejného modulu musí deklarovat shodný port a současně běží nejvýše jedna.
+- `lazurio.port-registry.json` v Conglomerate rootu je jediná autorita
+  nepřekrývajících se Organization bloků. Creator pod OS-level lockem jednou
+  přidělí volný module port; Organization manifest blok neduplikuje.
+- chybějící module lease, inline/dynamický runtime port, port mimo centrální
+  blok, odlišný module ID na stejném portu nebo drift referencí je hard failure.
+- Start/Open preflightuje všechny listenery. Když deklarovaný modulový port
+  poslouchá, Launchpad ukončí jeho aktuálního vlastníka (SIGTERM, po timeoutu
+  SIGKILL) a spustí vybranou verzi modulu. Port se nikdy nepřemapuje. Samotný
+  Stop dál ukončuje jen proces spravovaný aktuální instancí Launchpadu.
+- Start/Open je pod OS-level company/module mutexem napříč instancemi
+  Launchpadu. Znovu zjistí vlastníka, ukončí celou process group SIGTERM →
+  SIGKILL, ověří uvolnění, spustí variantu, ověří novou process group na všech
+  listenerech a zapíše source/PID/takeover audit. Stop cílí jen managed instanci.
+- POSIX runtime běží v samostatné process group a Stop cílí celou skupinu;
+  Windows cílí jen známý managed process tree. Runtime po startu porovná
+  deklarované a pozorované listenery a neohlášené/missing porty varuje.
+- centrální registry drží jen Organization bloky; přesné porty vlastní vždy
+  `lazurio.module.v1` v module rootu, nikoli duplicitní root tabulka.
 
 ## Personalspace (decision 0051, CAC-0048)
 
@@ -236,7 +292,7 @@ Lane skenuje výhradně:
 ```text
 personalspace/*/personal.gen3.json
 personalspace/*/modules.manifest.json
-personalspace/*/workspace/*/**/package.json   (companyascode.app manifesty)
+personalspace/*/workspace/*/**/package.json   (lazurio.runtime; legacy companyascode.app je pouze čtecí fallback)
 personalspace/*/gbrain/                        (Obsidian-compatible markdown vault)
 ```
 
@@ -324,21 +380,24 @@ rootu a pouze otevře existující instanci. Launchpad z jiného rootu ani cizí
 server se nepřevezme.
 `discover` vypíše nalezené aplikace. Discovery nejdřív načte registry metadata
 z `launchpad.gen3.json`, potom automaticky proskenuje lokální
-`organizations/*/company.gen3.json`. `check` validuje `companyascode.app`
-podle `launchpad/schemas/launchpad-app.schema.json`. Nevalidní app manifest
+`organizations/*/company.gen3.json`. `check` validuje `lazurio.runtime.v1`
+podle `launchpad/schemas/lazurio-runtime.schema.json`; legacy
+`companyascode.app` zůstává jen čtecí migrační fallback. Nevalidní app manifest
 uvnitř konkrétní Organization se přeskočí a reportuje jako warning, aby jeden
 stale modul neshodil celý Launchpad. `check` dál selže, pokud chybí Launchpad
 GEN3 root struktura, registry Organization mountpoint, povinné Organization
-soubory, plugin deklarace poruší read-only bezpečnost, nebo dvě validní
-aplikace uvnitř jedné Organizace používají stejný port. Shoda portu mezi
-různými Organizacemi je informační překryv, ne chyba discovery.
+soubory, plugin deklarace poruší read-only bezpečnost, nebo validní aplikace
+různých modulů používají stejný číselný port, některé verze stejného modulu
+driftují v listener setu, port leží mimo organizační blok nebo se organizační
+bloky překrývají. Sdílený lease je přípustný pouze mezi verzemi a worktrees
+stejného `company/module#lease`.
 
 V template repozitáři `check` toleruje chybějící ukázkové organizace. V
 reálném Launchpad GEN3 root používej `check:strict`, aby chybějící organization
 neprošel potichu.
 
 `doctor` vrací read-only diagnostiku pro Launchpad discovery i runtime
-stav aplikací. Runtime checks říkají, jestli app-owned port stojí, startuje,
+stav aplikací. Runtime checks říkají, jestli module-owned lease stojí, startuje,
 odpovídá, je adoptovaný po restartu Launchpadu nebo je v problému. Doctor
 nikdy aplikace nespouští ani nezastavuje.
 
@@ -392,11 +451,11 @@ Web shell v1 je pracovní dashboard nad discovery a runtime daty. Poskytuje:
   cwd
 - `/api/apps/:id/repair` pro stejný app-scoped install mechanismus v repair
   intentu, typicky pro `stale_lockfile` nebo opakované ověření dependencies
-- `/api/apps/:id/stop` pro zastavení procesu na app-owned portu
-- `/api/apps/:id/restart` pro bezpečný restart procesu na app-owned portu
+- `/api/apps/:id/stop` pro zastavení managed procesu na module-owned lease
+- `/api/apps/:id/restart` pro bezpečný restart procesu na module-owned lease
 - `/api/apps/:id/logs` pro log tail z lokálních runtime logů
 
-Při adopci procesu, který už poslouchá na app-owned portu, Launchpad vyžaduje
+Při adopci procesu, který už poslouchá na module-owned lease, Launchpad vyžaduje
 pozitivní důkaz, že jeho pracovní adresář odpovídá manifestovanému `cwd`.
 Explicitní mismatch je `foreign-port`; neověřitelný CWD je `unknown-port`.
 Ani jeden stav Launchpad nepřevezme, nenabídne mu Stop/Restart a automaticky
@@ -431,7 +490,8 @@ vědomý app-local side effect k review, ne Launchpad business-data zápis.
 - `missing_package` — manifest ukazuje na chybějící nebo nečitelný package;
 - `unknown_package_manager` — Launchpad neumí bezpečně spustit package manager,
   takže Install/Start patří přes Doctor nebo terminál;
-- `invalid_manifest` — `companyascode.app` manifest není validní; appka je
+- `invalid_manifest` — `lazurio.runtime` (nebo čtený legacy
+  `companyascode.app`) manifest není validní; appka je
   viditelná, runtime akce jsou zamčené, oprava patří do app manifestu
   (decision 0043).
 
@@ -468,7 +528,7 @@ jasný mechanismus:
   guardrails. Ověření: install/repair na již připravené appce má skončit
   `exit_code=0` a nezanechat package/lockfile diff; pokud diff vznikne, je to
   app-local dependency side effect k explicitnímu review.
-- `Stop` zastaví proces na app-owned portu; pokud proces přežil restart nebo ho
+- `Stop` zastaví managed proces na module-owned lease; pokud proces přežil restart nebo ho
   spustila jiná instance Launchpadu, Launchpad ho adoptuje jen tam, kde může
   pozitivně ověřit PID i CWD vlastníka portu. PID ověří znovu před `SIGTERM`
   i případným `SIGKILL`; neznámý nebo mezitím změněný PID se fail-closed
@@ -484,15 +544,19 @@ jasný mechanismus:
   nebo potvrzená chyba `taskkill` vrátí živý managed proces do retryable stavu;
   po potvrzeném exitu opakuje další `Stop` už jen zápis finalizace, nikdy signál.
   Stejný child-handle kontrakt platí na POSIX po eskalaci `SIGTERM` → `SIGKILL`.
-  Po potvrzeném exitu je každý nový listener na app-owned portu samostatný
-  proces i při numericky shodném reused PID; Launchpad starý record uklidí,
-  listener nezabije a `Start`/`Restart` ho klasifikuje standardním port-conflict
-  guardem. Nikdy nepoužije `taskkill` jen podle obsazeného portu; neověřený
-  nebo cizí listener zůstává nedotčený.
-- `Restart` je `Stop` + `Start` nad app-owned portem.
-- `Otevřít` je u cross-Organization overlapu bezpečný `Stop` známé pozitivně
-  ověřené appky se stejným portem + `Start` cíle; poslední otevřený modul
-  vyhraje. Listener bez známé vazby se neukončí.
+  Po potvrzeném exitu je každý nový listener na module-owned lease samostatný
+  proces i při numericky shodném reused PID; Launchpad starý record uklidí.
+  Samotný `Stop` dál signalizuje jen managed record. Následující explicitní
+  `Start`/`Restart`/`Otevřít` však u validního `lazurio.module.v1` lease
+  vyhledá pod OS-level mutexem aktuální process group na deklarovaném portu,
+  pošle `SIGTERM` a při potřebě `SIGKILL`, ověří uvolnění portu, spustí zvolený
+  modul a ověří jeho nové vlastnictví před uvolněním mutexu. CWD ani původ
+  procesu nejsou veto: vyhrazený port patří modulu.
+- `Restart` je `Stop` + `Start` nad module-owned lease.
+- `Otevřít` serializuje lifecycle podle `company/module`. Main, jiná
+  `app/vN` verze i worktree stejného modulu sdílejí přesný listener set;
+  poslední explicitně otevřená varianta nahradí předchozí. Jiný modul nesmí
+  stejný číselný port deklarovat ani v jiné Organizaci.
 - `Logs` čte lokální log mimo Git.
 - `Stáhnout novější verzi` nejdřív ověří, že lokální `origin` a upstream
   odpovídají repozitáři a větvi deklarovaným v Organization manifestu. Potom
@@ -598,9 +662,10 @@ Doctor musí hlídat:
 
 - povinné Launchpad GEN3 root složky
 - existenci firem uvedených v `launchpad.gen3.json`
-- validitu `companyascode.app` manifestů jako warnings pro jednotlivé stale appky
+- validitu `lazurio.runtime.v1` a read-compatible legacy manifestů jako warnings pro jednotlivé stale appky
   a jako hard failure jen pro root/security/konfliktní validní runtime případy
-- duplicity portů mezi validními aplikacemi
+- owner-aware kolize materializovaných lease, chybějící module manifesty a
+  odchylky od centrálního Conglomerate port registru
 - existenci `dev_script`
 - existenci a validitu read-only plugin manifestu, pokud je uvedený
 - u Organizací, které přijaly agent-skills entrypoint kontrakt, že

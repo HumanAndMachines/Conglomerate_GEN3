@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lazurio.ai/schemas/lazurio-port-registry.v1.json",
+  "title": "Conglomerate Organization port block registry",
+  "type": "object",
+  "required": ["schema_version", "allocation_strategy", "organization_blocks"],
+  "properties": {
+    "schema_version": { "const": "lazurio.port_registry.v1" },
+    "allocation_strategy": { "const": "organization-blocks" },
+    "organization_blocks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["company", "start", "end"],
+        "properties": {
+          "company": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*$" },
+          "start": { "type": "integer", "minimum": 1024, "maximum": 65535 },
+          "end": { "type": "integer", "minimum": 1024, "maximum": 65535 }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

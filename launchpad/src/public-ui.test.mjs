@@ -145,13 +145,15 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(js).toContain("stale_lockfile");
   expect(js).toContain("missing_access");
   expect(js).toContain("planned_slot");
-  expect(js).toContain('["current-instance", "adopted-port"].includes(app.runtime?.owner)');
+  expect(js).toContain('app.runtime?.owner === "current-instance"');
+  expect(js).toContain("app.runtime?.controllable === true");
   expect(js).toContain('return ["foreign-port", "unknown-port"].includes(app.runtime?.owner)');
   expect(js).toContain("function runningSharedPortPeer");
+  expect(js).toContain("if (declaredOwners.size === 0) return null;");
   expect(js).toContain("runtimeHostsShareListener(candidate.host, app.host)");
   expect(js).toContain('host === "localhost" ? "127.0.0.1" : host');
   expect(js).toContain('actionLabel: "Otevřít a převzít port"');
-  expect(js).toContain('candidate.company !== app.company');
+  expect(js).not.toContain('candidate.company !== app.company');
   expect(js).toContain("function switchRuntimeApp");
   expect(js).toContain("replace_app_id: peer.id");
   expect(js).toContain("confirmed: true");
@@ -1138,7 +1140,8 @@ test("Owner 2026-07-05: karta modulu je GEN2-minimal dlaždice bez velkých tla�
   expect(js).toContain("cardHasMenu(app, others)");
   expect(js).toContain("Zobrazit detail a logy");
   const canStop = js.slice(js.indexOf("function canStop"), js.indexOf("function canRestart"));
-  expect(canStop).toContain('\"current-instance\", \"adopted-port\"');
+  expect(canStop).toContain('app.runtime?.owner === "current-instance"');
+  expect(canStop).toContain("app.runtime?.controllable === true");
   expect(canStop).toContain("Number.isInteger(app.runtime?.pid)");
 
   // Multi-org „Vše" pohled si drží nenápadnou org značku na kartě (kontext se

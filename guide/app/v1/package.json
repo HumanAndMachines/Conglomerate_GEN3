@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "astro dev --host 127.0.0.1 --port 5281 --strictPort",
+    "dev": "bun -e \"process.exit(process.env.HOST && process.env.PORT ? 0 : 1)\" && astro dev --host \"$HOST\" --port \"$PORT\"",
     "build": "astro check && astro build",
-    "preview": "astro preview --host 127.0.0.1 --port 5281"
+    "preview": "bun -e \"process.exit(process.env.HOST && process.env.PORT ? 0 : 1)\" && astro preview --host \"$HOST\" --port \"$PORT\""
   },
   "dependencies": {
     "@astrojs/node": "^9.2.0",
@@ -22,23 +22,32 @@
     "@types/node": "^24.10.1",
     "typescript": "~5.9.3"
   },
-  "companyascode": {
-    "app": {
-      "schema_version": "companyascode.launchpad_app.v1",
+  "lazurio": {
+    "runtime": {
+      "schema_version": "lazurio.runtime.v1",
       "id": "conglomerate-guide-v1",
       "title": "Guide GEN3",
       "company": "conglomerate",
       "module": "guide",
       "surface": "manual",
-      "port": 5281,
-      "host": "127.0.0.1",
-      "health_path": "/",
       "dev_script": "dev",
       "tags": [
         "guide",
         "onboarding",
         "first-client",
         "gen3"
+      ],
+      "listeners": [
+        {
+          "id": "web",
+          "role": "entrypoint",
+          "lease": "main",
+          "protocol": "http",
+          "health": {
+            "kind": "http",
+            "path": "/"
+          }
+        }
       ]
     }
   }

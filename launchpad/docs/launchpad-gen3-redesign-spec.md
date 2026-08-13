@@ -289,7 +289,7 @@ ever public.
 (`public/app-state.js`) returns the four ordered runs; the card renders them via
 `renderRuntimeStages` (`public/app.js`) as a stage row under the tile. PROD is a
 real new-tab link when the module declares `production_url` (optional,
-warning-first manifest field, `schemas/launchpad-app.schema.json`), otherwise an
+warning-first manifest field, `schemas/lazurio-runtime.schema.json`), otherwise an
 honest disabled stub. MAIN and DEV remote are honest **"via tailnet — not wired
 yet"** affordances (transport is [OPEN]); disabled runs always state **why** in
 plain language. DEV local **reuses** the existing one-click open
@@ -431,7 +431,9 @@ For `runtime_failed` or `app_start_failed`, the panel should show the exact
 - `missing_dependencies` → Install/Repair
 - `missing_script` → fix `dev_script` or package scripts
 - `bad_cwd` → Doctor sync / fix package path
-- `port_conflict` → Stop conflicting owner or free port
+- `reserved_port_owner_unresolvable` → inspect PID/process-group lookup; a
+  valid `lazurio.module.v1` lease otherwise reclaims the occupied port
+  automatically
 - `unknown_early_exit` → open Logs and inspect app error
 
 ## 8. Přepínač prostorů v záhlaví
@@ -573,9 +575,10 @@ lives in the private `Rozjedeme-ai/HumanAndMachines` repo):
 - The app card/detail offers a runtime source selector: `main` or an eligible
   worktree (owned by a plan, dependencies ready). A worktree run carries a
   prominent `WORKTREE · <PLAN-code> · <branch>` badge.
-- DEV instances get their port from Launchpad via the `PORT` env contract; an
-  app manifest declares support. A DEV instance never takes the main runtime's
-  port — collision is a blocking state.
+- Main i každý DEV worktree používají stejný přesný module-owned lease.
+  Launchpad pod OS-level module lockem zastaví předchozí variantu a spustí
+  zvolený source; v jednu chvíli proto běží nejvýše jedna verze modulu.
+  Dynamický worktree port ani remap mimo `lazurio.module.v1` není povolený.
 - Main i worktree runtime dostává absolutní
   `COMPANYASCODE_ORGANIZATION_ROOT`. Appka používá tento kontrakt pro
   Organization-level manifesty, `infra/`, shared compatibility soubory a
@@ -600,7 +603,7 @@ sdíleného GEN3, **bez org-specific hardcodů**.
 GEN2 UX stál na hardcodech jedné firmy (`APP_COPY`, `APP_ICON_STYLES`,
 `APP_GROUPS`, `QUICK_APP_IDS`). Sdílený Launchpad je nesmí obsahovat — žádná
 org-specific pravda v shared kódu (decisions 0040/0042). Builder metadata proto
-patří do **app manifestu** (`companyascode.app`), ne do shared kódu:
+patří do **app manifestu** (`lazurio.runtime`), ne do shared kódu:
 
 | Pole | Typ | Význam | Fallback když chybí |
 | --- | --- | --- | --- |
@@ -617,7 +620,7 @@ sdíleném Launchpadu.
 
 Validace je **warning-first**: vadná hodnota volitelného pole appku
 nezneplatní — jen se zaloguje varování (`… (builder metadata)`) a karta spadne
-na fallback. Schema: `schemas/launchpad-app.schema.json`; validace +
+na fallback. Schema: `schemas/lazurio-runtime.schema.json`; validace +
 normalizace: `src/discovery-lib.mjs` (`validateBuilderMetadata`,
 `builderMetadataString`). Pole se propisují na app objekt jako `string|null`,
 ať UI nemusí řešit prázdné hodnoty.
@@ -653,14 +656,23 @@ ani názvy jejich modulů.
 `POST /api/apps/:id/open` (`src/runtime-lib.mjs` → `open`) je idempotentní řetěz:
 ensure install (jen když dependency stav vyžaduje a jde bezpečně) → ensure start
 (běžící appka se reuse-ne, nespouští znovu) → vrátit URL. Každý krok je
-idempotentní a přerušitelný; **živá port kolize je blokující stav** (decision
-0049), žádný tichý fallback — konflikt propadne do srozumitelné chyby.
-Deklarovaný overlap je povolený pouze mezi různými Organizacemi; uvnitř jedné
-Organizace je hard discovery failure. Pokud port živě vlastní známá a pozitivně
-ověřená aplikace jiné Organizace, uživatelské `POST /api/apps/:id/open` ji
-bezpečně zastaví a spustí cíl — poslední otevřený modul vyhraje. Listener bez
-známé vazby nikdy automaticky neukončí. Samostatný
-`POST /api/apps/:id/switch` dál vyžaduje potvrzení. UI rezervuje tab
+idempotentní a přerušitelný; žádný tichý port fallback ani remap neexistuje.
+Validní `lazurio.module.v1` lease referencovaný z `lazurio.runtime.v1` dává explicitnímu
+`POST /api/apps/:id/open` autoritu obsazené deklarované porty reclaimnout:
+pod OS-level company/module mutexem znovu zjistí vlastníka, celé jeho process
+group pošle `SIGTERM`, při potřebě `SIGKILL`, ověří uvolnění, spustí zvolenou
+variantu a před uvolněním mutexu ověří novou process group na všech listenerech.
+Původ ani CWD procesu nejsou důvod port ponechat obsazený. Neznámá nebo
+nesignalizovatelná process group je vysvětlitelný hard failure. Stop dál cílí
+jen managed aktivní instanci.
+
+Deklarovaný overlap je přípustný pouze mezi verzemi a worktrees téhož
+`company/module#lease`; všechny ostatní shody číselného portu napříč
+Organizacemi jsou hard discovery/Doctor failure. Lifecycle stejného modulu je
+serializovaný OS-level mutexem i mezi více Launchpad procesy a v jednu chvíli
+běží jen jedna jeho varianta. Samostatný
+`POST /api/apps/:id/switch` dál vyžaduje potvrzení, běžný Start/Open ale
+nahrazuje jinou variantu stejného modulu bez portového dialogu. UI rezervuje tab
 před akcí (aby ho prohlížeč nezablokoval), ukazuje průběh „Otevírám…", toasty a
 klasifikaci chyb do lidského jazyka (`classifyOpenError`).
 

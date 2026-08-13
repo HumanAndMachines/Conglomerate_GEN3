@@ -394,7 +394,22 @@ Nesmí vzniknout:
 
 ### 3. Manifest a port pravidla
 
-Launchpad nesmí držet app porty jedné Organizace v rootu. Každá aplikace deklaruje svůj vlastní manifest ve svém app package souboru. Minimální copy-paste validní package tvar je:
+Conglomerate root drží jediný registry nepřekrývajících se Organization bloků,
+nikoli přesné app porty. Přesný port vlastní kořen modulu:
+
+```json
+{
+  "schema_version": "lazurio.module.v1",
+  "id": "example",
+  "company": "ClientX",
+  "tcp_port_policy": { "mode": "single" },
+  "port_leases": [{ "id": "main", "host": "127.0.0.1", "port": 24901 }]
+}
+```
+
+Creator přidělí port jednou z centrálního blocku pod OS-level lockem. Každá
+aplikace pak deklaruje runnable kontrakt ve svém package souboru a na lease
+jen odkazuje. Minimální copy-paste validní package tvar je:
 
 ```json
 {
@@ -404,19 +419,23 @@ Launchpad nesmí držet app porty jedné Organizace v rootu. Každá aplikace de
   "scripts": {
     "dev": "bun server.mjs"
   },
-  "companyascode": {
-    "app": {
-      "schema_version": "companyascode.launchpad_app.v1",
+  "lazurio": {
+    "runtime": {
+      "schema_version": "lazurio.runtime.v1",
       "id": "clientx-example-v1",
       "title": "ClientX Example",
       "company": "ClientX",
       "module": "example",
       "surface": "internal",
-      "port": 5500,
-      "host": "127.0.0.1",
-      "health_path": "/",
       "dev_script": "dev",
-      "tags": ["first-client", "workspace"]
+      "tags": ["first-client", "workspace"],
+      "listeners": [{
+        "id": "web",
+        "role": "entrypoint",
+        "lease": "main",
+        "protocol": "http",
+        "health": { "kind": "http", "path": "/" }
+      }]
     }
   }
 }
@@ -426,7 +445,7 @@ Kontrolní pravidla:
 
 - `company` je přesná čistá Organization identity / `company.slug`, ne
   `workspace`, ne display název s diakritikou a ne filesystem slug s `_GEN3`.
-  Display jméno patří do copy/UI polí; `companyascode.app.company` musí projít
+  Display jméno patří do copy/UI polí; `lazurio.runtime.company` musí projít
   stejným strojovým patternem jako Organization slug.
 - `module` je modul/app surface identita; příslušnost k Teamům patří do `company.gen3.json` / `modules.manifest.json`, ne do app manifestu.
 - Slot se stavem `planned` / `planned_slot` před skutečným založením repozitáře
@@ -434,18 +453,19 @@ Kontrolní pravidla:
   už je očekávaný; jeho absence je proto `missing_access`, ne plán. URL doplň až
   po klientském založení repozitáře a ve stejném rollout kroku slot aktivuj a
   materializuj.
-- `companyascode.app.port` patří konkrétní Launchpad app surface. Interní
-  proces nebo služba modulu — například klientské Mission Control API — smí
-  mít vlastní app-owned port ve své konfiguraci nebo env; tento API port se
-  nekopíruje do Launchpad app manifestu a nemusí se rovnat UI portu.
-- App surface drží stabilní port ve svém manifestu. Moduly jedné Organizace
-  musí mít porty unikátní. Různé Organizace smějí deklarovat stejný port;
-  v jednom lokálním rootu pak současně běží poslední otevřená z nich.
-  Cross-Organization overlap ověř přes Launchpad `/api/apps` a Doctor.
-- Launchpad `/api/apps` ověří manifestové app porty. Modul s dalším interním
-  API portem odpovídá i za jeho collision/readiness kontrolu; root kvůli němu
-  nezavádí druhý port registry.
-- Po přejmenování package nebo změně `companyascode` metadat spusť
+- Výchozí modul má jeden externí TCP listener: UI na `/`, API na `/api`.
+  Oddělený backend proces používá Unix socket nebo Windows named pipe. Druhý
+  TCP port je explicitní `tcp_port_policy.mode=exception` se zdůvodněním.
+- Každý runtime listener odkazuje na stabilní module lease. Main, verze i
+  worktrees stejného modulu používají shodný materializovaný port; dynamické
+  i inline runtime porty jsou nevalidní.
+- Organization blok deklaruje jedině centrální `lazurio.port-registry.json`.
+  Chybějící module lease, port mimo blok, dvě module ID na stejném portu a
+  cross-module překryv jsou hard Doctor failure a blokují Start/Open.
+- Na portu modulu běží nejvýše jedna jeho verze. Start/Open případného živého
+  vlastníka deklarovaného portu ukončí a nahradí vybranou aplikací; kdo tento
+  lifecycle nechce, musí modulu přidělit jiný unikátní port.
+- Po přejmenování package nebo změně `lazurio.runtime` metadat spusť
   `bun install`/Repair v app cwd a zkontroluj lockfile diff. Bun 1.3 může
   ponechat původní workspace name v `bun.lock`; ruční lockfile diff je pak
   validní součást opravy, ne důvod měnit template architekturu.
@@ -468,7 +488,7 @@ Povinný výsledek pro klientský handoff:
 | Git root | čistý root checkout, žádné Organization submoduly |
 | Mounts | Organization mountpoint je Git checkout |
 | Discovery | klientská Organization je objevená; nezaložený modul je `planned_slot` bez repo URL, zatímco `missing_access` má vždy vlastní next action |
-| Runtime | žádné `invalid_manifest`, intra-Organization duplicitní porty, živý foreign/unknown port conflict nebo dependency warning bez next action; deklarovaný cross-Organization overlap má známé vlastníky |
+| Runtime | žádný chybějící `lazurio.module.v1`, `invalid_manifest`, inline/dynamický port, cross-module konflikt, drift lease referencí, port mimo centrální Organization blok ani překryv bloků; živý vlastník rezervovaného portu musí mít signalizovatelnou procesní skupinu |
 | Support loop | Doctor/Launchpad hlášky jsou `ok` nebo explicitně akceptované planned/stopped stavy |
 
 Template gate pro první instalaci:
@@ -477,7 +497,7 @@ Template gate pro první instalaci:
 |---|---|
 | OrganizationTemplate_GEN3 | explicitní absolutní `ORGANIZATION_TEMPLATE_ROOT` na `organizations/<AdminOrganization>/productionspace/OrganizationTemplate_GEN3` (decision 0127), clean, na `main` |
 | MissionControlTemplate | GitHub `is_template=true`; lokální Git checkout pod `templates/TemplatesRozjedeme-ai/MissionControlTemplate`, clean, `bun run check && bun test` OK; klientský `mission-control/app/v1/package.json` vychází z `templates/launchpad-app/package.json.template` |
-| KnowledgebaseTemplate | lokální Git checkout pod `templates/TemplatesRozjedeme-ai/KnowledgebaseTemplate`, clean, `app/v1/package.json` obsahuje `companyascode.app`; `dev`/`preview` runtime čte Launchpad `PORT`/`HOST` env; `cd app/v1 && bun run check && bun run build` OK |
+| KnowledgebaseTemplate | lokální Git checkout pod `templates/TemplatesRozjedeme-ai/KnowledgebaseTemplate`, clean, module root obsahuje `lazurio.module.v1` a `app/v1/package.json` obsahuje reference-only `lazurio.runtime.v1`; `dev`/`preview` runtime čte `LAZURIO_RUNTIME_LISTENER_<ID>_PORT/HOST` bez druhého číselného fallbacku; `cd app/v1 && bun run check && bun run build` OK |
 | DesignSystemTemplate | GitHub `is_template=true`; lokální Git checkout pod `templates/TemplatesRozjedeme-ai/DesignSystemTemplate`, clean, na `main`; je required provisioning input i tehdy, když klientský Design System zůstává neobjednaný `planned_slot` |
 
 Organization manifest gate:
@@ -537,13 +557,19 @@ Pro každou viditelnou aplikaci ověř:
 
 Po změně `package.json` metadat v klientském modulu může Launchpad oprávněně hlásit `stale_lockfile`, i když dependency tree zůstává stejný. Standardní krok je `Repair` / `bun install` v app cwd, zkontrolovat lockfile diff a teprve potom `Start`.
 
-U Knowledgebase ověř, že manifest port a skutečný Astro port nemohou driftovat: `companyascode.app.port` je autorita pro Launchpad a template runtime musí respektovat `PORT`/`HOST` env. Pokud appka běží na jiném portu než manifest, je to template/module bug, ne Launchpad workaround.
+U Knowledgebase ověř, že manifest port a skutečný Astro port nemohou driftovat:
+`lazurio.runtime.listeners[]` je autorita pro Launchpad a template runtime
+musí respektovat odpovídající
+`LAZURIO_RUNTIME_LISTENER_<ID>_PORT/HOST` env. Main, všechny verze a worktrees
+modulu deklarují tentýž port. Pokud appka běží jinde, je to template/module bug,
+ne Launchpad workaround.
 
-Adopted-port runtime jde ovládat stejně jako proces spuštěný aktuálním
-Launchpadem: manifestový app port je lifecycle autorita a UI/API nabídne `Stop`
-i `Restart`, pokud Launchpad umí zjistit PID listeneru. Backend PID znovu ověří
-před `SIGTERM` i případným `SIGKILL`; neznámý nebo mezitím změněný vlastník se
-fail-closed nezabíjí a akce vrátí vysvětlitelný konflikt.
+Samotný `Stop` ovládá jen proces spuštěný aktuálním Launchpadem. Explicitní
+`Start`, `Restart` nebo `Otevřít` nad validním static module lease naopak
+obsazený deklarovaný port reclaimne bez ohledu na CWD či původ procesu:
+`SIGTERM`, bounded čekání, případně `SIGKILL`, kontrola uvolnění a nový start.
+Pokud vlastníka nelze převést na signalizovatelný PID nebo se port ani po
+eskalaci neuvolní, akce selže s přesnou diagnostikou.
 
 Minimální API smoke proti běžícímu Launchpadu:
 

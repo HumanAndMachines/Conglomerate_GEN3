@@ -55,14 +55,44 @@ test("update.channel check je read-only anti-stuck guard kanálu", async () => {
   expect(wrongBranch.message).toContain("main");
 });
 
-test("Doctor drží foreign-port jako hard failure i při dependency warningu", () => {
+test("Doctor warns for reclaimable module occupancy but fails legacy foreign ports", () => {
   expect(runtimeAppStatus({
     dependencies: { state: "needs_install" },
     runtime: { owner: "foreign-port", status: "unhealthy" },
   })).toBe("fail");
-  expect(runtimeAppStatus({
+  const modulePath = "organizations/TestCompany/workspace/demo/lazurio.module.json";
+  const moduleApp = {
     dependencies: { state: "stale_lockfile" },
-    runtime: { owner: "unknown-port", status: "unhealthy" },
+    runtime: {
+      owner: "unknown-port",
+      status: "unhealthy",
+      port_owner: { pid: 42123 },
+    },
+    runtime_contract: { schema_version: "lazurio.runtime.v1" },
+    module_contract: { schema_version: "lazurio.module.v1", module_path: modulePath },
+    entrypoint_listener: {
+      allocation: "static",
+      port: 24101,
+      claim: { mode: "exclusive" },
+      module_lease: { source: modulePath },
+    },
+  };
+  expect(runtimeAppStatus(moduleApp)).toBe("warn");
+  expect(runtimeAppStatus({
+    ...moduleApp,
+    runtime: {
+      owner: "foreign-port",
+      status: "unhealthy",
+      port_owner: { pid: 42124 },
+    },
+  })).toBe("warn");
+  expect(runtimeAppStatus({
+    ...moduleApp,
+    runtime: { owner: "unknown-port", status: "unhealthy", port_owner: null },
+  })).toBe("fail");
+  expect(runtimeAppStatus({
+    ...moduleApp,
+    dependencies: { state: "unknown_package_manager" },
   })).toBe("fail");
 });
 
@@ -84,7 +114,97 @@ test("first-paint apps response can skip the global Git census", async () => {
   expect(response.warnings.some((warning) => warning.startsWith("git:"))).toBe(false);
 });
 
-test("Doctor reportuje deklarovaný port overlap owner-aware bez konfiguračního failure", () => {
+test("apps response materializes HTTPS endpoints from the module-owned lease", async () => {
+  const root = await createCompaniesWorkspaceFixture();
+  const companyRoot = join(root, "organizations", "SecureCo_GEN3");
+  const appRoot = join(companyRoot, "workspace", "secure", "app", "v1");
+  await mkdir(join(companyRoot, "manual"), { recursive: true });
+  await mkdir(join(companyRoot, "company", "colleagues"), { recursive: true });
+  await mkdir(appRoot, { recursive: true });
+  await writeJson(join(companyRoot, "company.gen3.json"), {
+    organization_generation: "gen3",
+    company: { slug: "SecureCo", display_name: "Secure Co", github_org: "SecureCo" },
+    teams: [{ slug: "workspace", display_name: "Workspace", default: true }],
+  });
+  await writeJson(join(companyRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "SecureCo",
+    github_org: "SecureCo",
+    module_slots: [{
+      path: "workspace/secure",
+      teams: ["workspace"],
+      git: { url: "git@github.com:SecureCo/secure.git", branch: "main" },
+    }],
+  });
+  await writeJson(join(appRoot, "package.json"), {
+    name: "@secureco/secure",
+    private: true,
+    scripts: { dev: "bun server.mjs" },
+    lazurio: {
+      runtime: {
+        schema_version: "lazurio.runtime.v1",
+        id: "secureco-secure",
+        title: "Secure",
+        company: "SecureCo",
+        module: "secure",
+        surface: "internal",
+        dev_script: "dev",
+        tags: ["secure"],
+        listeners: [{
+          id: "web",
+          role: "entrypoint",
+          lease: "main",
+          protocol: "https",
+          health: { kind: "http", path: "/health" },
+        }],
+      },
+    },
+  });
+  await writeJson(join(root, "lazurio.port-registry.json"), {
+    schema_version: "lazurio.port_registry.v1",
+    allocation_strategy: "organization-blocks",
+    organization_blocks: [{ company: "SecureCo", start: 5400, end: 5499 }],
+  });
+  await writeJson(join(companyRoot, "workspace", "secure", "lazurio.module.json"), {
+    schema_version: "lazurio.module.v1",
+    id: "secure",
+    company: "SecureCo",
+    tcp_port_policy: { mode: "single" },
+    port_leases: [{ id: "main", host: "127.0.0.1", port: 5450 }],
+  });
+
+  const response = await buildLaunchpadAppsResponse({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+    includeGit: false,
+  });
+  expect(response.apps[0]).toMatchObject({
+    url: "https://127.0.0.1:5450",
+    health_url: "https://127.0.0.1:5450/health",
+  });
+  expect(response.port_registry_issues).toEqual([]);
+  const report = buildDoctorReportFromAppsResponse(response);
+  const check = report.checks.find((item) => item.id === "launchpad.port_ownership");
+  expect(check?.status).toBe("ok");
+});
+
+test("Doctor treats central registry violations as hard errors", () => {
+  const report = buildDoctorReportFromAppsResponse({
+    launchpad_root: { display_name: "Test root" },
+    root: "/tmp/test-root",
+    failures: [],
+    warnings: [],
+    apps: [],
+    organizations: [],
+    port_registry_issues: ["module/lazurio.module.json: lease main port 5600 leží mimo block 5400-5499"],
+  });
+  const check = report.checks.find((item) => item.id === "launchpad.port_ownership");
+  expect(check?.status).toBe("fail");
+  expect(check?.details.join("\n")).toContain("mimo block");
+});
+
+test("Doctor reportuje deklarovaný port overlap jako hard failure", () => {
   const report = buildDoctorReportFromAppsResponse({
     launchpad_root: { display_name: "Test root" },
     root: "/tmp/test-root",
@@ -93,21 +213,44 @@ test("Doctor reportuje deklarovaný port overlap owner-aware bez konfiguračníh
     apps: [],
     organizations: [],
     port_overlaps: [{
+      host: "127.0.0.1",
       port: 5392,
+      classification: "declared-conflict",
+      conflict: true,
       owners: [
-        { app_id: "alpha-app", package_path: "organizations/Alpha/workspace/app/package.json" },
-        { app_id: "beta-app", package_path: "organizations/Beta/workspace/app/package.json" },
+        { app_id: "alpha-app", listener_id: "web", package_path: "organizations/Alpha/workspace/app/package.json" },
+        { app_id: "beta-app", listener_id: "web", package_path: "organizations/Beta/workspace/app/package.json" },
       ],
     }],
   });
   const check = report.checks.find((item) => item.id === "launchpad.port_ownership");
 
-  expect(check?.status).toBe("ok");
-  expect(check?.message).toContain("1 cross-Organization sdílený port");
-  expect(check?.message).toContain("poslední otevřená aplikace");
+  expect(check?.status).toBe("fail");
+  expect(check?.message).toContain("1 kolizní listener");
+  expect(check?.message).toContain("deklarace musí být opravena");
   expect(check?.details).toEqual([
-    "port 5392: alpha-app (organizations/Alpha/workspace/app/package.json), beta-app (organizations/Beta/workspace/app/package.json)",
+    "127.0.0.1:5392 [declared-conflict]: alpha-app#web (organizations/Alpha/workspace/app/package.json), beta-app#web (organizations/Beta/workspace/app/package.json)",
   ]);
+});
+
+test("Doctor accepts one shared module-version lease", () => {
+  const report = buildDoctorReportFromAppsResponse({
+    launchpad_root: {}, root: "/tmp/test-root", failures: [], warnings: [], apps: [], organizations: [],
+    port_overlaps: [{
+      host: "127.0.0.1",
+      port: 5287,
+      classification: "module-version-lease",
+      conflict: false,
+      module_lease: "one/design-system#entrypoint",
+      owners: [
+        { app_id: "one-design-system", listener_id: "web", package_path: "organizations/One/package.json" },
+        { app_id: "two-design-system", listener_id: "web", package_path: "organizations/Two/package.json" },
+      ],
+    }],
+  });
+  const check = report.checks.find((item) => item.id === "launchpad.port_ownership");
+  expect(check?.status).toBe("ok");
+  expect(check?.message).toContain("module-version lease");
 });
 
 test("doctor report obsahuje platform, git a gitignore checks", async () => {
@@ -1551,6 +1694,13 @@ async function createCompaniesWorkspaceFixture() {
       display_name: "Test Companies",
       root_role: "companies-root",
     },
+  });
+  await writeJson(join(root, "lazurio.port-registry.json"), {
+    schema_version: "lazurio.port_registry.v1",
+    allocation_strategy: "organization-blocks",
+    organization_blocks: [
+      { company: "test-company", start: 24000, end: 24099 },
+    ],
   });
   await writeFile(
     join(root, ".gitignore"),

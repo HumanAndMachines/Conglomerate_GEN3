@@ -149,6 +149,34 @@ function personalAppManifest(username, { id, port, module = "notes", title = "Os
   };
 }
 
+function lazurioPersonalAppManifest(username, { id, module = "notes", title = "Osobní poznámky" } = {}) {
+  return {
+    name: `${username}-${id}`,
+    version: "1.0.0",
+    packageManager: "bun@1.0.0",
+    scripts: { dev: "bun run server.mjs" },
+    lazurio: {
+      runtime: {
+        schema_version: "lazurio.runtime.v1",
+        id,
+        title,
+        company: username,
+        module,
+        surface: "internal",
+        dev_script: "dev",
+        tags: ["personal"],
+        listeners: [{
+          id: "web",
+          role: "entrypoint",
+          lease: "main",
+          protocol: "http",
+          health: { kind: "http", path: "/health" },
+        }],
+      },
+    },
+  };
+}
+
 // Root fixture s launchpad.gen3.json + personalspace mountpointem. Vrací root path.
 // Scan-first (decision 0042): trackovaný config vlastníka NEnese a sken ho nikdy
 // neodvozuje (fail-closed privacy hranice). Prostor Principála určuje jen
@@ -187,9 +215,13 @@ async function createPersonalspaceFixture({ spaces = [], localOwner = null } = {
       }
     }
     for (const app of space.apps ?? []) {
-      const appDir = join(dir, "workspace", app.module ?? "notes", "app", "v1");
+      const moduleDir = join(dir, "workspace", app.module ?? "notes");
+      const appDir = join(moduleDir, "app", "v1");
       await mkdir(appDir, { recursive: true });
       await writeJson(join(appDir, "package.json"), app.manifest);
+      if (app.moduleManifest) {
+        await writeJson(join(moduleDir, "lazurio.module.json"), app.moduleManifest);
+      }
     }
     // Materializuj "available" moduly (jejich složka existuje).
     for (const materialized of space.materializedModules ?? []) {
@@ -227,6 +259,58 @@ test("personalspace lane objeví validní osobní prostor s aplikací a Private 
   expect(app.surface_scope).toBe("private");
   expect(app.space).toBe("exampleuser_GEN3");
   expect(app.id).toBe(personalAppRuntimeId("exampleuser_GEN3", "notes-v1"));
+});
+
+test("Personalspace materializes lazurio.runtime.v1 from the module-owned lease", async () => {
+  const root = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
+    spaces: [{
+      dirName: "exampleuser_GEN3",
+      owner: "exampleuser",
+      config: personalConfig("exampleuser"),
+      apps: [{
+        module: "notes",
+        manifest: lazurioPersonalAppManifest("exampleuser", { id: "notes-v2" }),
+        moduleManifest: {
+          schema_version: "lazurio.module.v1",
+          id: "notes",
+          company: "exampleuser",
+          tcp_port_policy: { mode: "single" },
+          port_leases: [{ id: "main", host: "127.0.0.1", port: 41_120 }],
+        },
+      }],
+    }],
+  });
+
+  const result = await discoverPersonalspace(root);
+  expect(result.apps).toHaveLength(1);
+  expect(result.invalid_apps).toHaveLength(0);
+  expect(result.apps[0]).toMatchObject({
+    port: 41_120,
+    host: "127.0.0.1",
+    module_contract: { schema_version: "lazurio.module.v1", id: "notes" },
+    listeners: [{ lease: "main", allocation: "static", port: 41_120 }],
+  });
+});
+
+test("Personalspace isolates a lazurio runtime without its module lease", async () => {
+  const root = await createPersonalspaceFixture({
+    localOwner: "exampleuser",
+    spaces: [{
+      dirName: "exampleuser_GEN3",
+      owner: "exampleuser",
+      config: personalConfig("exampleuser"),
+      apps: [{
+        module: "notes",
+        manifest: lazurioPersonalAppManifest("exampleuser", { id: "notes-v2" }),
+      }],
+    }],
+  });
+
+  const result = await discoverPersonalspace(root);
+  expect(result.apps).toHaveLength(0);
+  expect(result.invalid_apps).toHaveLength(1);
+  expect(result.invalid_apps[0].manifest_issues.join(" ")).toContain("chybí module-owned lease");
 });
 
 test("Personalspace bez Buddyho je validní a materializuje osobní aplikace i gbrain", async () => {
