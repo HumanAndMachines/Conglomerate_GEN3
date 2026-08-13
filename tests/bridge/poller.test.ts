@@ -432,6 +432,26 @@ posixDurabilityDescribe("the durability ordering — record, then watermark, the
     expect(realm.sent).toHaveLength(1);
   });
 
+  test("the deliberate catch-up overlap does not consume turn-breaker budget", async () => {
+    const realm = new FakeRealm();
+    const { bridge, queue } = await harness({
+      realm,
+      breaker: new TurnBreaker({ limitPerHour: 2 }),
+    });
+    await bridge.recover();
+    realm.post({ to: { kind: "dm" }, text: "prvni skutecny turn" });
+    await bridge.pumpOnce();
+
+    // Re-present the first message from the inclusive watermark. It already has
+    // a durable record, so this liveness overlap must cost zero turns.
+    await bridge.catchUp();
+    realm.post({ to: { kind: "dm" }, text: "druhy skutecny turn" });
+    await bridge.pumpOnce();
+    await queue.drainOnce();
+
+    expect(realm.sent).toHaveLength(2);
+  });
+
   test("a message that is not for Buddy advances the watermark and records nothing", async () => {
     const realm = new FakeRealm();
     const { bridge, queue, watermark, root } = await harness({ realm });

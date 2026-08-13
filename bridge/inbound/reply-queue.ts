@@ -28,6 +28,7 @@ import { randomUUID } from "node:crypto";
 import {
   chmod,
   link,
+  lstat,
   mkdir,
   open,
   readFile,
@@ -232,6 +233,24 @@ export class FileReplyQueue {
       at: new Date().toISOString(),
       reason,
     });
+  }
+
+  /**
+   * Content-free replay probe. The event bridge calls this before spending a
+   * turn-breaker slot, so the deliberate catch-up/live overlap stays free.
+   */
+  async hasRecordedMessageId(messageId: number): Promise<boolean> {
+    await this.ensureDirectories();
+    try {
+      const record = await lstat(this.pathFor(messageId));
+      if (!record.isFile() || record.isSymbolicLink()) {
+        throw new Error("Reply queue record is not a regular non-symlink file");
+      }
+      return true;
+    } catch (error) {
+      if (errorCode(error) === "ENOENT") return false;
+      throw error;
+    }
   }
 
   /**

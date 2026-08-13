@@ -93,7 +93,10 @@ export function createZulipEventsApi(cfg: ZulipConfig): ZulipEventsApi {
 
 export interface EventBridgeOptions {
   api: ZulipEventsApi;
-  inbox: Pick<FileReplyQueue, "accept" | "refuse" | "highestRecordedMessageId">;
+  inbox: Pick<
+    FileReplyQueue,
+    "accept" | "refuse" | "hasRecordedMessageId" | "highestRecordedMessageId"
+  >;
   watermark: DurableWatermark;
   bot: BotIdentity;
   breaker: TurnBreaker;
@@ -436,6 +439,13 @@ export class EventBridge {
     }
 
     const baseSessionId = input.sessionId;
+    // Catch-up deliberately overlaps the live queue at the durable watermark.
+    // Detect that content-free record before asking the breaker to spend a
+    // turn; replays are not new runtime work and must not consume quota.
+    if (await this.options.inbox.hasRecordedMessageId(messageId)) {
+      await this.options.watermark.advanceTo(messageId);
+      return;
+    }
     if (this.options.sessionRotations && isSessionResetCommand(input.text)) {
       // The reset generation is the Zulip message id itself, so replay after a
       // crash is idempotent rather than rotating twice.
