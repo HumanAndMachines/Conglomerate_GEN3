@@ -7,13 +7,14 @@ import { buildLaunchpadDoctorReport } from "./diagnostics-lib.mjs";
 import { discoverLaunchpadApps } from "./discovery-lib.mjs";
 
 const schemaVersion = "lazurio.workspace_machine_parity.v1";
-const externalAssertions = [
+export const externalAssertions = Object.freeze([
   "authenticated Team HTTPS/WSS ingress on 443 reaches only the expected app origin",
+  "generated Team service-catalog origin is a private development preview reachable only through the approved Tailscale/VPN access plane, never a public production endpoint",
   "internal module-owned ports are unreachable directly from Tailnet/VPN clients",
   "another Team Workspace cannot reach this Workspace filesystem, processes or ingress",
   "server-side broker denies repositories outside the generated Team allowlist",
   "host reboot restores the work container before the post-restart phase runs",
-];
+]);
 
 if (import.meta.main) {
   const options = parseArgs(Bun.argv.slice(2));

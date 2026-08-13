@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   bootReconcileProofAccepted,
+  externalAssertions,
   explicitStopResponseAccepted,
   noResurrectionProofAccepted,
   parityLoopbackProbeHosts,
@@ -62,6 +63,12 @@ test("hosted parity runner fails closed without exact external origin", () => {
     "--worktree-slug", "DEV-6439-parity",
     "--expected-worktree-created-by", expectedCreator,
   ])).toThrow("--expected-origin is required");
+});
+
+test("hosted evidence requests proof that the catalog origin is private development preview", () => {
+  expect(externalAssertions).toContain(
+    "generated Team service-catalog origin is a private development preview reachable only through the approved Tailscale/VPN access plane, never a public production endpoint",
+  );
 });
 
 test("hosted parity runner requires T3, Codex and Launchpad process identities", () => {

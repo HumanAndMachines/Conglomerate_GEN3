@@ -5,6 +5,12 @@ Workspace lane. Nemění provider, Compose, DNS ani přístupy. Stejný verzovan
 runner pouze sbírá důkaz, že lokální a hosted profil používají tutéž
 builder-visible filesystem/process topologii a Launchpad lifecycle.
 
+Jde o parity kontrakt sdílené vývojové dílny, nikoli produkční deployment.
+Modulový source zůstává editovatelný bez běžící aplikace; Launchpad-managed dev
+proces vzniká jen pro UI/API/MCP preview, testování a debugging. Hosted
+service-catalog origin je privátní preview dostupné pouze přes schválený
+Tailscale/VPN access plane, nikdy public production surface.
+
 ## Cílová topologie
 
 Jeden Team Workspace obsahuje právě jeden non-root pracovní kontejner se
@@ -19,6 +25,15 @@ Tenký init/supervisor smí obnovovat T3 a Launchpad. Nesmí obsahovat app id,
 source selection, URL mapping ani reconcile logiku. Launchpad zůstává jediným
 ownerem modulových procesů. Tailscale a autentizovaný HTTPS ingress jsou
 infrastrukturní sidecary mimo pracovní kontejner.
+
+`lazurio.runtime.v1` v tomto kontraktu popisuje pouze runnable listenery a
+lifecycle pro Launchpad a Doctor. Není úplným produkčním deployment, ingress,
+identity ani MCP kontraktem. Produkční lane začíná chráněným source/tagem,
+vytváří reprodukovatelný immutable artefakt a nasazuje jej do izolovaného
+produkčního runtime s explicitním `public | authenticated | internal`
+ingressem, app authn/authz, secrets/data/backup/rollback, observability a
+stateless remote MCP; neobsahuje T3, Codex, Launchpad, dev checkouty ani
+worktrees a zůstává mimo scope tohoto PR.
 
 ## Runner
 
@@ -96,6 +111,8 @@ Následující důkazy vznikají výhradně v Iotor infra lane zvenku a runner j
 výstupu uvádí v `external_assertions_required`:
 
 - autentizovaný Team HTTPS/WSS ingress na 443;
+- důkaz, že catalog origin je privátní dev preview uvnitř schváleného
+  Tailscale/VPN access plane, nikoli veřejný produkční endpoint;
 - interní module port není přímo dosažitelný přes Tailnet/VPN;
 - jiný Team Workspace nevidí filesystem, procesy ani ingress;
 - server-side broker odmítá repo mimo vygenerovaný Team allowlist;

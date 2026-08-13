@@ -123,6 +123,23 @@ builder-visible `~/Lazurio` structure, discovery/manifests, module-owned leases,
 worktree lifecycle and Doctor/Install/Start/Stop/Open operations; only the
 hosted authentication, ingress and network envelope differs.
 
+This Hosted Team Workspace is a shared development workshop, not a production
+deployment. Module source remains editable while no app is running; Launchpad
+starts module dev children only for private UI/API/MCP preview, testing and
+debugging. Service-catalog origins are private preview endpoints inside the
+approved Tailscale/VPN access plane, never public production surfaces.
+`lazurio.runtime.v1` describes runnable listeners and lifecycle for Launchpad
+and Doctor only; it is not a complete production deployment, ingress, identity
+or MCP contract.
+
+Production delivery is a separate follow-up contract: protected source/tag →
+reproducible immutable artifact → isolated production runtime with explicit
+`public | authenticated | internal` ingress, app authentication/authorization,
+secrets/data/backup/rollback, observability and stateless remote MCP. That
+runtime contains no T3, Codex, Launchpad, development checkouts or worktrees.
+No per-module production container is introduced into the Hosted Workspace by
+this scope.
+
 The redesign must preserve the current root behavior:
 
 - `launchpad.gen3.json` is metadata/override, not an exhaustive allowlist.
@@ -241,6 +258,12 @@ Dashboard (§1).
 module — one module = one card everywhere; surfaces differ only in **which runs
 they offer**. The canonical names are the vocabulary (users never see git jargon
 like "worktree" or "branch"):
+
+This future run vocabulary does not turn the current hosted service-catalog
+origin into PROD. In the current Hosted Workspace contract that origin exposes
+only private MAIN/worktree development preview over the approved access plane;
+`production_url` and the separate production release/runtime contract remain
+independent.
 
 | Run | What it is | Where it lives | Who opens it |
 | --- | --- | --- | --- |
