@@ -124,7 +124,9 @@ je akt, kterým se Draft stává těžko vratným nebo viditelným navenek — m
 odeslání emailu, nasazení; v datových aplikacích (repository-db) je Publikací
 dat už commit + push tlačítkem „Publikovat změny". Publikace patří
 Principálovi: provedeš ji jen na jeho explicitní pokyn, který platí
-v aktuálním threadu a nepřenáší se do dalších konverzací. **Release** —
+v aktuálním threadu a nepřenáší se do dalších konverzací. Principálem může být
+Kolega i AI Kolega; způsobilost Publikaci schválit neurčuje lidskost, ale jeho
+živá práva k přesné operaci. **Release** —
 vydání označené verze ven přes GitHub Release — není Publikace; smí ho
 spustit jen ten, komu to GitHub práva dovolují (typicky Steward nebo Admin),
 a pro tebe u něj platí stejný explicitní pokyn Principála jako u Publikace.
@@ -135,19 +137,27 @@ lokálně: od prvního pushe je viditelná jako GitHub Draft PR, a jakmile je
 hotová a ověřená, přepneš PR na Ready for review sám — Ready není Publikace,
 říká jen „připraveno ke kontrole"; hotová práce nezůstává viset jako Draft.
 
-**Handoff je průvodcovský.** Kolega nemusí rozumět Gitu ani GitHubu — ty jsi
+**Handoff je průvodcovský.** Principál nemusí rozumět Gitu ani GitHubu — ty jsi
 jeho průvodce tímhle světem. Závěrečná zpráva začíná handoffem: odkaz na
-Ready PR, lidské shrnutí změn, výsledek ověření, odkaz na aplikaci běžící
-z worktree — a standardizovaná dvojotázka „Mám změny Publikovat tvým jménem?
-Nebo mám požádat jiného Kolegu o kontrolu a Publikaci?". Volbu vždy nabídneš,
+Ready PR, lidské a praktické shrnutí toho, co Publikace zavede, výsledek
+ověření, odkaz na aplikaci běžící z worktree — a standardizovaná dvojotázka
+„Mám změny Publikovat tvým jménem?
+Nebo mám požádat jiného oprávněného Principála o kontrolu a Publikaci?". Volbu
+vždy nabídneš,
 nikdy ji nedomýšlíš za Principála. Před otázkou zjistíš živá GitHub práva
 svého Principála a řídíš se jimi: smí-li merge a řekne-li v threadu
 „Publikuj", PR mergneš metodou, kterou repozitář povoluje, aktualizuješ
-`main` a uklidíš worktree; zvolí-li předání, vyžádáš review zvoleného Kolegy
-(reviewer request + @zmínka), vyřídíš případný vzkaz a řekneš, kdo teď
-rozhoduje. Když GitHub merge Principálovi nedovoluje, řekneš to rovnou
+`main` a uklidíš worktree; zvolí-li předání, vyžádáš review zvoleného
+oprávněného Principála (reviewer request + @zmínka), vyřídíš případný vzkaz
+a řekneš, kdo teď rozhoduje. Když GitHub merge Principálovi nedovoluje, řekneš to rovnou
 v handoffu — merge neobcházíš, GitHub ho fyzicky blokuje. Bez zelené PR
 zůstává otevřený a nic se neděje (decision 0103).
+
+Publikační shrnutí musí být srozumitelné i bez otevření PR: pojmenuje hlavní
+směr a praktický dopad na lidi nebo systém, co se záměrně nemění, a podstatný
+rollout či migrační dopad, rizika a otevřené otázky. Není to seznam souborů,
+commitů ani testů; je to podklad pro informované rozhodnutí Principála.
+Technické detaily a důkazy zůstávají v PR.
 
 **Popis PR nese kontext k rozhodnutí.** Kdo o merge rozhoduje, nesmí „proč"
 odvozovat z diffu: popis pravdivě vysvětlí motivaci, cílový stav a přínos,
@@ -403,6 +413,9 @@ Před handoffem uveď:
 - zda zůstaly změny v rootu nebo nested checkoutu;
 - přesnou PR URL, target base branch a exact pushed HEAD každého editovaného
   repa; obecné „push/PR hotovo" nestačí;
+- lidské a praktické shrnutí toho, co Publikace zavede, jaký má dopad, co
+  záměrně nemění a jaká nese podstatná rizika, rollout důsledky nebo otevřené
+  otázky;
 - kam je zapsaný případný blocker nebo next action (`ISSUES.open.json`,
   Organization Mission Control, TODO ledger apod.).
 
@@ -413,18 +426,19 @@ v manual/decision-register.md):
 ```
 ## Handoff
 Připravil jsem ti pull request: <URL> (base: <branch>, HEAD: <sha>)
-Co obsahuje: <1–3 lidské věty>
+Co Publikace zavede: <lidské a praktické shrnutí hlavního směru, dopadu,
+záměrných non-goals, podstatných rollout/rizik a otevřených otázek>
 Ověřeno: <checks/testy a výsledek>
 Zkontroluj si to v aplikaci: <URL běžící z worktree, pokud existuje>
 Lokálně nezůstává nic mimo PR.
 
-Mám změny Publikovat tvým jménem? Nebo mám požádat jiného Kolegu
-o kontrolu a Publikaci?
+Mám změny Publikovat tvým jménem? Nebo mám požádat jiného oprávněného
+Principála o kontrolu a Publikaci?
 ```
 
 Co po dvojotázce následuje — merge na explicitní „Publikuj", nebo předání
-zvolenému Kolegovi — říká kanonický blok výš; přesný merge, pull a cleanup
-postup drží skill `worktree-development-discipline`.
+zvolenému oprávněnému Principálovi — říká kanonický blok výš; přesný merge,
+pull a cleanup postup drží skill `worktree-development-discipline`.
 
 Před handoffem po změně root configu, Launchpadu, Guide nebo mountpointů spusť:
 
