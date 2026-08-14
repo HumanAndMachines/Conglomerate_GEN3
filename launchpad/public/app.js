@@ -32,7 +32,9 @@ import { focusMenuTriggerAfterRender } from "./focus-restoration.js";
 import {
   isCodexPortConflict,
   openCodexPortConflictDialog,
+  openCodexRuntimeIssueDialog,
 } from "./codex-handoff.js";
+import { runtimeRecoveryModel } from "./runtime-recovery.js";
 import {
   organizationHash,
   personalspaceHash,
@@ -3422,9 +3424,14 @@ async function openAppChain(app, { feedback } = {}) {
     }
   } catch (error) {
     closeReservedTab(reservedTab);
-    const message = error instanceof Error ? error.message : String(error);
-    writeCardProgress(feedback, classifyOpenError(message));
-    toast(`${appBaseTitle(app)}: ${classifyOpenError(message)}`, "error", 6000);
+    const recovery = runtimeRecoveryModel(error);
+    state.runtimeActionErrors.set(app.id, recovery);
+    state.selectedReadonlyDetail = null;
+    state.selectedAppId = app.id;
+    state.drawerView = "detail";
+    setDrawer(true, { restoreFocus: false });
+    writeCardProgress(feedback, classifyOpenError(error));
+    toast(`${appBaseTitle(app)}: ${recovery.title}. Nabízím rovnou další krok.`, "error", 8000);
   } finally {
     await loadData({ quiet: true, fresh: true });
     state.openingApps.delete(app.id);
@@ -3581,24 +3588,8 @@ function translateOpenStatus(payload) {
 
 // Klasifikace chyb one-click chainu do lidského jazyka (port GEN2 vzoru).
 // Port kolize je blokující stav — žádný tichý fallback (decision 0049).
-function classifyOpenError(message) {
-  const text = String(message ?? "");
-  if (/port/i.test(text) && /(obsazen|conflict|kolize|PID|EADDRINUSE|in use)/i.test(text)) {
-    return "Port aplikace je obsazený jiným procesem. Zavři starou instanci nebo uvolni port.";
-  }
-  if (/already[_ ]?running|už běží/i.test(text)) {
-    return "Aplikace už běží. Zkus ji jen otevřít nebo restartovat z menu.";
-  }
-  if (/install|balíč|dependency|needs_install/i.test(text)) {
-    return "Nepodařilo se doinstalovat balíčky. Otevři detail a zkontroluj logy.";
-  }
-  if (/pořád startuje|ještě startuje|health endpoint|start timeout/i.test(text)) {
-    return "Aplikace startuje moc dlouho. Launchpad ji dál neumí potvrdit přes health endpoint; otevři detail a logy.";
-  }
-  if (/not[_ ]?ready|app_not_ready|restricted|missing_access/i.test(text)) {
-    return "Modul zatím není připravený ke spuštění. Otevři detail pro další krok.";
-  }
-  return "Spuštění se nepovedlo. Otevři detail aplikace a podívej se na logy.";
+function classifyOpenError(error) {
+  return runtimeRecoveryModel(error).message;
 }
 
 function badgeNode(label) {
@@ -4221,11 +4212,7 @@ function detailSummaryModel(app, git) {
       tone: "warn",
       title: runtimeActionError.title,
       message: runtimeActionError.message,
-      action: summaryButton(
-        "Obnovit stav",
-        () => refreshRuntimeActionState(app.id),
-        `${app.id}:refresh-runtime-state`,
-      ),
+      action: runtimeRecoveryActionNode(app, runtimeActionError),
     };
   }
 
@@ -5588,6 +5575,7 @@ async function runRuntimeAction(app, action) {
       const runtimeError = new Error(payload.message ?? `${action} selhal`);
       runtimeError.code = payload.error ?? "runtime_action_failed";
       runtimeError.details = payload.details ?? [];
+      runtimeError.payload = payload;
       throw runtimeError;
     }
     state.runtimeActionErrors.delete(app.id);
@@ -5612,18 +5600,29 @@ async function runRuntimeAction(app, action) {
 }
 
 function humanRuntimeActionError(error) {
-  if (error?.code === "invalid_discovery" || String(error?.message).includes("validní Launchpad discovery")) {
-    return {
-      title: "Nejdřív je potřeba obnovit stav",
-      message: "Launchpad teď nemá spolehlivý přehled aplikací, proto změnu bezpečně neprovedl.",
-      technical: error?.message ?? null,
-    };
+  return runtimeRecoveryModel(error);
+}
+
+function runtimeRecoveryActionNode(app, recovery) {
+  if (recovery.action === "repair") {
+    return summaryButton(
+      recovery.actionLabel,
+      () => runRuntimeAction(app, "repair"),
+      `${app.id}:repair`,
+    );
   }
-  return {
-    title: "Akci se nepodařilo dokončit",
-    message: "Stav aplikace se mohl změnit. Obnovte přehled a potom akci zkuste znovu.",
-    technical: error?.message ?? null,
-  };
+  if (recovery.action === "retry") {
+    return summaryButton(
+      recovery.actionLabel,
+      () => openAppChain(app),
+      `${app.id}:open`,
+    );
+  }
+  return summaryButton(
+    recovery.actionLabel ?? "Vyřešit s Codexem",
+    () => openCodexRuntimeIssueDialog(app, recovery),
+    `${app.id}:codex-runtime-handoff`,
+  );
 }
 
 async function refreshRuntimeActionState(appId) {

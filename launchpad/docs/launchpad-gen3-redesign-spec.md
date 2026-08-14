@@ -389,6 +389,11 @@ Use one vocabulary across cards, detail panel and Doctor.
 | `planned_slot` | planned app/space not locally installed yet | follow roadmap/Doctor | no | ghost/planned |
 | `runtime_failed` | last start/install exited or health is failing | read logs, install/repair/fix script | no until resolved | red log-linked badge |
 
+Runtime readiness is Organization-scoped. A hard discovery failure in one
+mounted Organization must remain visible in the global Doctor, but it must not
+block Start/Open for an app whose own Organization passes scoped discovery.
+Root/schema failures and failures in the target Organization still fail closed.
+
 ## 5. Action policy
 
 Actions are local and scoped. Buttons must be disabled with explanation when the
@@ -457,7 +462,10 @@ The detail panel is the explainability surface. It must include:
 - source links: package manifest, logs, Doctor check, Organization manifest
 
 For `runtime_failed` or `app_start_failed`, the panel should show the exact
-`failure_kind` and a next action. Examples:
+`failure_kind` and a next action. A transient toast or a logs-only dead end is
+not a valid recovery surface: the detail opens automatically and offers either
+a safe local Repair/Retry or a prepared Codex handoff with the app scope and
+diagnostic payload. Examples:
 
 - `missing_dependencies` → Install/Repair
 - `missing_script` → fix `dev_script` or package scripts
@@ -465,7 +473,7 @@ For `runtime_failed` or `app_start_failed`, the panel should show the exact
 - `reserved_port_owner_unresolvable` → inspect PID/process-group lookup; a
   valid `lazurio.module.v1` lease otherwise reclaims the occupied port
   automatically
-- `unknown_early_exit` → open Logs and inspect app error
+- `unknown_early_exit` → prepared Codex handoff with log path and error excerpt
 
 ## 8. Přepínač prostorů v záhlaví
 

@@ -1562,16 +1562,9 @@ export function createRuntimeManager({
   }
 
   async function findApp(appId, { requireValidDiscovery = false } = {}) {
-    const discovery = await discover(companiesRoot);
-    if (requireValidDiscovery && discovery.failures.length > 0) {
-      throw new RuntimeActionError(
-        409,
-        "invalid_discovery",
-        "Runtime akce vyžaduje validní Launchpad discovery.",
-        discovery.failures,
-      );
-    }
-    const app = discovery.apps.find((item) => item.id === appId);
+    const globalDiscovery = await discover(companiesRoot);
+    let discovery = globalDiscovery;
+    let app = discovery.apps.find((item) => item.id === appId);
     if (!app) {
       // Decision 0043: appka s nevalidním manifestem je viditelná, ale runtime
       // akce jsou pro ni zamčené, dokud se manifest neopraví.
@@ -1586,6 +1579,47 @@ export function createRuntimeManager({
         );
       }
       throw new RuntimeActionError(404, "app_not_found", `Aplikace ${appId} není v discovery výstupu.`);
+    }
+
+    if (requireValidDiscovery && discovery.failures.length > 0) {
+      // Runtime jedné validní Organizace nesmí zablokovat nevalidní mount jiné
+      // Organizace. Globální discovery zůstává autoritou pro cross-org listener
+      // konflikty, ale bezpečnostní gate cílové aplikace ověříme znovu pouze v
+      // jejím Organization scope. Root/schema failure se promítne i do scoped
+      // výsledku a dál failne zavřeně.
+      if (app.organization_kind === "organization" && typeof app.company === "string") {
+        const scopedDiscovery = await discover(companiesRoot, {
+          organization: app.company,
+          organization_path: app.organization_path,
+        });
+        const scopedApp = scopedDiscovery.apps.find((item) => item.id === appId);
+        if (scopedApp && scopedDiscovery.failures.length === 0) {
+          app = scopedApp;
+          discovery = {
+            ...scopedDiscovery,
+            port_overlaps: globalDiscovery.port_overlaps ?? scopedDiscovery.port_overlaps ?? [],
+            listener_overlaps: globalDiscovery.listener_overlaps ?? scopedDiscovery.listener_overlaps ?? [],
+            listener_owners: globalDiscovery.listener_owners ?? scopedDiscovery.listener_owners ?? [],
+            module_listener_drifts: globalDiscovery.module_listener_drifts ?? scopedDiscovery.module_listener_drifts ?? [],
+          };
+        } else {
+          throw new RuntimeActionError(
+            409,
+            "invalid_discovery",
+            `Organizace ${app.company} potřebuje opravit nastavení, než lze aplikaci bezpečně spustit.`,
+            scopedDiscovery.failures.length > 0 ? scopedDiscovery.failures : discovery.failures,
+            { failure_kind: "invalid_discovery", organization: app.company },
+          );
+        }
+      } else {
+        throw new RuntimeActionError(
+          409,
+          "invalid_discovery",
+          "Runtime akce vyžaduje validní Launchpad discovery.",
+          discovery.failures,
+          { failure_kind: "invalid_discovery" },
+        );
+      }
     }
     return { app, discovery };
   }

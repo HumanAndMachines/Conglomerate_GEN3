@@ -456,6 +456,70 @@ test("dynamic auxiliary listener is rejected before Launchpad starts a process",
   });
 });
 
+test("runtime action isolates a discovery failure from another Organization", async () => {
+  const fixturePort = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port: fixturePort });
+  const app = withStaticEntrypoint(fixtureDiscoveryApp({ port: fixturePort }));
+  const discoveryScopes = [];
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    discover: async (_root, options = {}) => {
+      discoveryScopes.push({
+        organization: options.organization ?? null,
+        organizationPath: options.organization_path ?? null,
+      });
+      return {
+        apps: [app],
+        invalid_apps: [],
+        failures: options.organization === app.company
+          ? []
+          : ["organizations/OtherCompany: rozbitá deklarace nesouvisející Organizace"],
+        warnings: [],
+        port_overlaps: [],
+      };
+    },
+    spawnProcess: () => {
+      throw new Error("scoped discovery passed");
+    },
+  });
+
+  await expect(runtime.start(app.id)).rejects.toMatchObject({
+    code: "app_start_failed",
+    metadata: { failure_kind: "start_spawn_failed" },
+  });
+  expect(discoveryScopes).toContainEqual({ organization: null, organizationPath: null });
+  expect(discoveryScopes).toContainEqual({
+    organization: app.company,
+    organizationPath: app.organization_path,
+  });
+});
+
+test("runtime action remains blocked when the target Organization discovery is invalid", async () => {
+  const fixturePort = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port: fixturePort });
+  const app = withStaticEntrypoint(fixtureDiscoveryApp({ port: fixturePort }));
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    discover: async () => ({
+      apps: [app],
+      invalid_apps: [],
+      failures: ["organizations/TestCompany: nevalidní runtime deklarace"],
+      warnings: [],
+      port_overlaps: [],
+    }),
+  });
+
+  await expect(runtime.start(app.id)).rejects.toMatchObject({
+    code: "invalid_discovery",
+    metadata: {
+      failure_kind: "invalid_discovery",
+      organization: app.company,
+    },
+  });
+});
+
 test("Lazurio runtime app cannot start with a cross-module port conflict", async () => {
   const port = await findFreePort();
   const root = await createCompaniesWorkspaceFixture({ port });

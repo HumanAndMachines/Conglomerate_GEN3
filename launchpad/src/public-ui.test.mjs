@@ -528,10 +528,11 @@ test("Version families render as one card with a default version and a more-menu
 });
 
 test("CAC-0044: karty jsou celé klikatelné a spouští one-click open s guardem", async () => {
-  const [html, js, css] = await Promise.all([
+  const [html, js, css, recovery] = await Promise.all([
     readFile(join(publicRoot, "index.html"), "utf8"),
     readFile(join(publicRoot, "app.js"), "utf8"),
     readFile(join(publicRoot, "styles.css"), "utf8"),
+    readFile(join(publicRoot, "runtime-recovery.js"), "utf8"),
   ]);
 
   // Guard na vnitřní ovládací prvky + one-click open chain (port GEN2).
@@ -548,8 +549,9 @@ test("CAC-0044: karty jsou celé klikatelné a spouští one-click open s guarde
   expect(js).toContain("Launchpad nedostal URL běžící aplikace");
   expect(js).toContain(`/health`);
   expect(js).toContain("function classifyOpenError");
-  expect(js).toContain("Aplikace startuje moc dlouho");
-  expect(js).toContain("EADDRINUSE");
+  expect(js).toContain("runtimeRecoveryModel(error)");
+  expect(recovery).toContain("Aplikace startuje příliš dlouho");
+  expect(recovery).toContain('actionLabel: "Vyřešit s Codexem"');
   expect(js).toContain("function writeCardProgress");
   expect(js).toContain("function completedRuntimeActionLabel");
   expect(js).toContain('repair: "oprava dokončena"');
