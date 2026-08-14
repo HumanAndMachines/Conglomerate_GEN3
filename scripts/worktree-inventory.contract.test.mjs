@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   auditRepository,
-  resolveAuthorityRoot,
   resolveAuthorityPlanPath,
 } from "../.agents/skills/worktree-development-discipline/scripts/worktree-inventory.mjs";
 
@@ -172,38 +171,172 @@ test.each([
   });
   expect(canonicalWorktree(report)).toMatchObject({
     sidecar_valid: false,
-    sidecar_error: "Mission Control plan is outside the HumanAndMachine-ai authority",
+    sidecar_error: "Mission Control plan is outside the declared authority",
   });
 });
 
-test("ignores environment overrides and keeps one local authority", () => {
-  expect(resolveAuthorityRoot("/workspace/Conglomerate", {
-    LAZURIO_MISSION_CONTROL_ROOT: "/fixtures/HumanAndMachine-ai_GEN3",
-    HUMANANDMACHINES_ROOT: "/retired/HumanAndMachines",
-  })).toBe(join("/workspace/Conglomerate", "organizations", "HumanAndMachine-ai_GEN3"));
+test("accepts an Organization-scoped repository-db Mission Control authority", async () => {
+  const authorityPath = "organizations/HumanAndMachine-ai_GEN3/mission-control/db";
+  const fixture = await createFixture({
+    authorityAvailable: true,
+    planAvailable: true,
+    sidecarOverrides: {
+      mission_control_authority_path: authorityPath,
+      mission_control_plan_path:
+        "data/mission-control/plans/2026/07/CAC-0007-contract.yaml",
+    },
+  });
+  await createOrganizationAuthority(fixture.root);
+
+  const report = await auditRepository(fixture.root, {
+    authorityRoot: fixture.authorityRoot,
+  });
+  expect(canonicalWorktree(report)).toMatchObject({
+    sidecar_valid: true,
+    sidecar_error: null,
+  });
 });
 
-test("legacy sidecar locator fails toward repository-db when only a retired plan exists", async () => {
-  const authorityRoot = await mkdtemp(join(tmpdir(), "worktree authority retired "));
-  cleanupPaths.push(authorityRoot);
-  const locator = "mission-control/plans/2026/08/DEV-6439-runtime.yaml";
-  const legacyPlan = join(authorityRoot, ...locator.split("/"));
-  const canonicalPlan = join(
-    authorityRoot,
-    "mission-control",
-    "db",
-    "data",
-    "mission-control",
-    "plans",
-    "2026",
-    "08",
-    "DEV-6439-runtime.yaml",
+test("normalizes the generic authority env from Organization root to repository-db", async () => {
+  const fixture = await createFixture({
+    authorityAvailable: false,
+    planAvailable: false,
+    sidecarOverrides: {
+      mission_control_plan_path:
+        "data/mission-control/plans/2026/07/CAC-0007-contract.yaml",
+    },
+  });
+  await createOrganizationAuthority(fixture.root);
+  const env = sanitizedEnv();
+  env.MISSION_CONTROL_AUTHORITY_ROOT = join(
+    fixture.root,
+    "organizations",
+    "HumanAndMachine-ai_GEN3",
   );
-  await mkdir(join(legacyPlan, ".."), { recursive: true });
-  await writeFile(legacyPlan, validPlanContents.replaceAll("CAC-0007", "DEV-6439"));
-
-  expect(resolveAuthorityPlanPath("/unused", locator, authorityRoot)).toBe(canonicalPlan);
+  const result = Bun.spawnSync([
+    process.execPath,
+    auditScript,
+    "--json",
+    "--root",
+    fixture.root,
+  ], {
+    stdout: "pipe",
+    stderr: "pipe",
+    env,
+    windowsHide: true,
+  });
+  expect(result.exitCode).toBe(0);
+  const report = JSON.parse(result.stdout.toString());
+  expect(canonicalWorktree(report)).toMatchObject({
+    sidecar_valid: true,
+    sidecar_error: null,
+  });
 });
+
+test.each([
+  "/tmp/mission-control/db",
+  "../HumanAndMachine-ai_GEN3/mission-control/db",
+  "organizations/HumanAndMachine-ai_GEN3/mission-control/../db",
+  "organizations/HumanAndMachine-ai_GEN3/mission-control/db/extra",
+  "C:\\MissionControl\\db",
+])("rejects unsafe Mission Control authority path %s", async (authorityPath) => {
+  const fixture = await createFixture({
+    authorityAvailable: true,
+    planAvailable: true,
+    sidecarOverrides: {
+      mission_control_authority_path: authorityPath,
+      mission_control_plan_path:
+        "data/mission-control/plans/2026/07/CAC-0007-contract.yaml",
+    },
+  });
+  const report = await auditRepository(fixture.root, {
+    authorityRoot: fixture.authorityRoot,
+  });
+  expect(canonicalWorktree(report)).toMatchObject({
+    sidecar_valid: false,
+    sidecar_error: expect.stringContaining("mission_control_authority_path"),
+  });
+});
+
+test("rejects a plan outside the Organization-scoped authority plan root", async () => {
+  const fixture = await createFixture({
+    authorityAvailable: true,
+    planAvailable: true,
+    sidecarOverrides: {
+      mission_control_authority_path:
+        "organizations/HumanAndMachine-ai_GEN3/mission-control/db",
+      mission_control_plan_path: "../../../outside/CAC-0007-contract.yaml",
+    },
+  });
+  await createOrganizationAuthority(fixture.root);
+  const report = await auditRepository(fixture.root, {
+    authorityRoot: fixture.authorityRoot,
+  });
+  expect(canonicalWorktree(report)).toMatchObject({
+    sidecar_valid: false,
+    sidecar_error: "Mission Control plan is outside the declared authority",
+  });
+});
+
+test("rejects an Organization authority whose canonical validator fails", async () => {
+  const fixture = await createFixture({
+    authorityAvailable: true,
+    planAvailable: true,
+    sidecarOverrides: {
+      mission_control_authority_path:
+        "organizations/HumanAndMachine-ai_GEN3/mission-control/db",
+      mission_control_plan_path:
+        "data/mission-control/plans/2026/07/CAC-0007-contract.yaml",
+    },
+  });
+  await createOrganizationAuthority(fixture.root, {
+    validatorFailures: ["fixture authority rejected its data"],
+  });
+  const report = await auditRepository(fixture.root, {
+    authorityRoot: fixture.authorityRoot,
+  });
+  expect(canonicalWorktree(report)).toMatchObject({
+    sidecar_valid: false,
+    sidecar_error: expect.stringContaining("fixture authority rejected its data"),
+  });
+});
+
+test.skipIf(process.platform === "win32")(
+  "rejects a symlink in an Organization authority path",
+  async () => {
+    const fixture = await createFixture({
+      authorityAvailable: true,
+      planAvailable: true,
+      sidecarOverrides: {
+        mission_control_authority_path:
+          "organizations/HumanAndMachine-ai_GEN3/mission-control/db",
+        mission_control_plan_path:
+          "data/mission-control/plans/2026/07/CAC-0007-contract.yaml",
+      },
+    });
+    const organizationRoot = join(
+      fixture.root,
+      "organizations",
+      "HumanAndMachine-ai_GEN3",
+    );
+    const outside = join(fixture.root, "outside-authority");
+    await mkdir(outside, { recursive: true });
+    await mkdir(organizationRoot, { recursive: true });
+    await writeFile(
+      join(organizationRoot, "company.gen3.json"),
+      '{"organization_kind":"organization"}\n',
+    );
+    await symlink(outside, join(organizationRoot, "mission-control"));
+
+    const report = await auditRepository(fixture.root, {
+      authorityRoot: fixture.authorityRoot,
+    });
+    expect(canonicalWorktree(report)).toMatchObject({
+      sidecar_valid: false,
+      sidecar_error: expect.stringContaining("symlink"),
+    });
+  },
+);
 
 test("rejects a repository-db plans root redirected to retired legacy plans", async () => {
   const fixture = await createFixture({
@@ -450,7 +583,7 @@ test("fails closed when the authority exists but the exact plan is missing", asy
   );
 });
 
-test("fails worktrees:check when the HumanAndMachines authority is unavailable", async () => {
+test("fails worktrees:check when the external Mission Control authority is unavailable", async () => {
   const fixture = await createFixture({
     authorityAvailable: false,
     planAvailable: false,
@@ -564,6 +697,51 @@ test("fails closed when the live remote branch advanced without a local fetch", 
   );
 });
 
+async function createOrganizationAuthority(root, { validatorFailures = [] } = {}) {
+  const organizationRoot = join(
+    root,
+    "organizations",
+    "HumanAndMachine-ai_GEN3",
+  );
+  const authorityRoot = join(organizationRoot, "mission-control", "db");
+  const planPath = join(
+    authorityRoot,
+    "data",
+    "mission-control",
+    "plans",
+    "2026",
+    "07",
+    "CAC-0007-contract.yaml",
+  );
+  await mkdir(join(authorityRoot, "schemas"), { recursive: true });
+  await mkdir(join(authorityRoot, "scripts"), { recursive: true });
+  await mkdir(join(authorityRoot, "data", "mission-control", "plans", "2026", "07"), {
+    recursive: true,
+  });
+  await writeFile(
+    join(organizationRoot, "company.gen3.json"),
+    '{"organization_kind":"organization"}\n',
+  );
+  await writeFile(
+    join(authorityRoot, "repository-db.manifest.json"),
+    `${JSON.stringify({
+      schema_version: "companiesascode.repository_db.manifest.v1",
+      data_mode: "repository-db",
+      data_root: "data/mission-control",
+    }, null, 2)}\n`,
+  );
+  await writeFile(
+    join(authorityRoot, "schemas", "mission-control-plan.schema.json"),
+    `${JSON.stringify(fixturePlanSchema, null, 2)}\n`,
+  );
+  await writeFile(
+    join(authorityRoot, "scripts", "validate-mission-control-data.mjs"),
+    `export function validateMissionControlData() { return ${JSON.stringify(validatorFailures)}; }\n`,
+  );
+  await writeFile(planPath, validPlanContents);
+  return authorityRoot;
+}
+
 async function createFixture({
   authorityAvailable,
   planAvailable,
@@ -575,8 +753,8 @@ async function createFixture({
   const sandbox = await mkdtemp(join(tmpdir(), "worktree contract "));
   cleanupPaths.push(sandbox);
   const root = join(sandbox, "Dashboard");
-  const authorityRoot = join(sandbox, "HumanAndMachines");
-  const remote = join(sandbox, "remotes", "HumanAndMachines", "Dashboard.git");
+  const authorityRoot = join(sandbox, "external-mission-control-authority");
+  const remote = join(sandbox, "remotes", "TestProvider", "Dashboard.git");
   const planRelativePath =
     "mission-control/plans/2026/07/CAC-0007-contract.yaml";
   const repositoryDbRoot = join(authorityRoot, "mission-control", "db");
@@ -602,6 +780,14 @@ async function createFixture({
     await mkdir(join(repositoryDbRoot, "schemas"), { recursive: true });
     await mkdir(join(semanticValidatorPath, ".."), { recursive: true });
     await writeFile(
+      join(repositoryDbRoot, "repository-db.manifest.json"),
+      `${JSON.stringify({
+        schema_version: "companiesascode.repository_db.manifest.v1",
+        data_mode: "repository-db",
+        data_root: "data/mission-control",
+      }, null, 2)}\n`,
+    );
+    await writeFile(
       join(repositoryDbRoot, "schemas", "mission-control-plan.schema.json"),
       `${JSON.stringify(fixturePlanSchema, null, 2)}\n`,
     );
@@ -622,7 +808,7 @@ async function createFixture({
   git(root, ["config", "user.email", "audit@example.test"]);
   git(root, ["config", "user.name", "Worktree Audit"]);
   await writeFile(join(root, "README.md"), "fixture\n");
-  await writeFile(join(root, ".gitignore"), ".worktrees/\n");
+  await writeFile(join(root, ".gitignore"), ".worktrees/\norganizations/\n");
   git(root, ["add", "."]);
   git(root, ["commit", "-m", "fixture"]);
   git(root, ["remote", "add", "origin", remote]);
@@ -638,7 +824,7 @@ async function createFixture({
     join(root, ".worktrees", "root", `${basename}.worktree.json`),
     `${JSON.stringify({
       schema_version: "companiesascode.worktree.v1",
-      organization: "HumanAndMachines",
+      organization: "TestProvider",
       organization_path: ".",
       workspace: "root",
       module: "Dashboard",
@@ -683,8 +869,8 @@ function sanitizedEnv() {
     "GIT_OBJECT_DIRECTORY",
     "GIT_PREFIX",
     "GIT_WORK_TREE",
+    "MISSION_CONTROL_AUTHORITY_ROOT",
     "LAZURIO_MISSION_CONTROL_ROOT",
-    "HUMANANDMACHINES_ROOT",
   ]) {
     delete env[key];
   }

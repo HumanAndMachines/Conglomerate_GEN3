@@ -38,15 +38,15 @@ hádání.
 Conglomerate GEN3; „Conglomerate GEN3“ dnes označuje jen produkt pro pracovní
 záležitosti (decision 0039 v manual/decision-register.md). GitHub
 organization je `HumanAndMachines` (singulární `HumanAndMachine` bylo
-zabrané); canonical repo rootu je `HumanAndMachines/Conglomerate_GEN3`.
+zabrané); canonical repo rootu je `HumanAndMachines/Lazurio`.
 
 ## Model spolupráce: Principál a Agenti
 
-<!-- Kanonický blok Modelu spolupráce. Zdroj pravdy: HumanAndMachines/AGENTS.md.
-Do Conglomerate se propaguje přímým root PR; mechanismus per cíl drží
-docs/principle-propagation-contract.md v authority repu. Tento soubor edituj
-normálně přes PR na Conglomerate; změnu znění kanonického bloku navrhni
-v HumanAndMachines. -->
+<!-- Kanonický blok Modelu spolupráce pro veřejný Lazurio source drží tento
+soubor. Měň ho reviewovaným PR v Lazurio source a do generovaných rezidentních
+rootů ho propaguj pouze verzovaným profile buildem. Organization-specific
+plánování a know-how patří do Mission Controlu a Knowledgebase dané Organizace,
+ne do skryté externí autority tohoto veřejného repa. -->
 
 Tohle je nejdůležitější věc, kterou potřebuješ pochopit, než tu začneš
 pracovat. Není to seznam příkazů — je to vysvětlení, jak tahle firma funguje,
@@ -173,7 +173,8 @@ a promítáš ho do pravidel a zvyklostí, aby Agenti dělali čím dál lepší
 ## Security hranice Personalspace
 
 Personalspace je výhradní intimní prostor právě jednoho Principála a jeho
-volitelného Buddyho (HumanAndMachines decision 0091). Cizí Personalspace se na
+volitelného Buddyho (decision 0091 v `manual/decision-register.md`). Cizí
+Personalspace se na
 mašinu nemountuje, Launchpad ho nematerializuje a Worker Agent ho nečte.
 Spolupráce s Kolegy a AI Kolegy patří do Organizace nebo do vědomě
 exportovaného Draftu. Principál má na své mašině plná práva; procesní hranici
@@ -233,8 +234,9 @@ neinteraktivní běhy bez přímého App chatu s Kolegou.
    o personalspace podle `personalspace/<owner>_GEN3/AGENTS.md`. Root
    pravidla platí jen pro root. **Čtvrtý scope není lokální:** běh
    hostovaného Buddyho (instalace, runtime, paměť, zálohy, incidenty) žije
-   na dedikované per-owner VPS pod instrukcemi repa
-   `HumanAndMachines/Buddy_GEN2`, ne pod root pravidly; lokální mount
+   na dedikované per-owner VPS pod vygenerovaným `AGENTS.md` aktivního Buddy
+   resident rootu a privátním profilem jeho Principála, ne pod pravidly source
+   checkoutu; lokální mount
    `personalspace/<owner>_GEN3/buddy/` drží jen Git konfiguraci profilu
    (`local_execution: forbidden`). Hranici i zjištění, jestli Principál
    Buddyho má, drží [`manual/hosted-buddy-vps.md`](manual/hosted-buddy-vps.md).

@@ -28,11 +28,11 @@ Tenhle lifecycle je primárně určený pro:
 
 Tento kontrakt syntetizuje ověřené v2/v3 migrace reálných modulů (Deals,
 Warehouse, Pricebook) ve flagship Organizaci a engine kontrakt repository-db.
-Interní reference (module ARCHITECTURE dokumenty, Mission Control DEV plány
-migrací a golden-path kontrakty) drží privátní engine repo
-`Rozjedeme-ai/HumanAndMachines`; veřejný kánon mechanismu je
-`HumanAndMachines/docs/git-filesystem-database.md` a
-`HumanAndMachines/docs/template-promotion-workflow.md`.
+Veřejný kánon mechanismu je tento dokument spolu s
+`manual/template-promotion-and-sync.md`; konkrétní migrační plány a evidence
+zůstávají v Mission Controlu a repozitářích příslušné Organizace. Práce podle
+tohoto manuálu nevyžaduje žádnou skrytou externí Knowledgebase ani Mission
+Control autoritu.
 
 ## Univerzální invarianty pro všechny verze
 
@@ -45,7 +45,8 @@ Tyto věci platí bez ohledu na generaci:
 5. **Migrace má parity gate.** Každý přechod musí pojmenovat old SOT, new SOT, transform, parity check, cutover, rollback/archive a downstream dopad.
 6. **Write path je jedna pravda.** U record-native modulu UI, CLI, MCP a
    agentní migrace používají společný validovaný writer. U document-native
-   modulu podle HumanAndMachines decision 0124 je jedinou write/publish cestou
+   modulu podle decision 0124 v `manual/decision-register.md` je jedinou
+   write/publish cestou
    Git branch + PR; druhý writer ve v2 nevzniká a samostatně doložený a
    schválený non-Git authoring use case aktivuje níže uvedený v3 gate. Povrchy
    se mohou lišit oprávněním, ne doménovou pravdou.
@@ -108,7 +109,8 @@ diff a jedna explicitní write/publish cesta.
 
 V2 má dva profily. **Record-native** je standard pro strukturované business
 entity a používá YAML, schema a společný writer. **Document-native** podle
-HumanAndMachines decision 0124 je úzký profil pro doménu, jejíž kanonický
+decision 0124 v `manual/decision-register.md` je úzký profil pro doménu, jejíž
+kanonický
 záznam je samotný Markdown/MDX dokument; app jej čte přímo a authoring probíhá
 přes Git branch + PR. Document-native profil se nesmí použít jako zkratka pro
 doménu se strukturovanými entitami, pro UI/CLI/MCP vyžadující jeden společný
@@ -343,7 +345,7 @@ Standardní cesta je **flagship Organizace → template → klientský fork**.
 1. **Ověřit ve flagship Organizaci.** Nový v3 pattern se nejdřív prokáže na reálném modulu, protože tam je celý lifecycle, data objem, hosted Steward i produkční QA.
 2. **Zobecnit bez dat.** Z patternu se odstraní firemní názvy, reálná data, secrets, lokální paths a organization-only taxonomie.
 3. **Promovat do template vrstvy.** Obecný Organization/runtime contract jde do `TemplatesRozjedeme-ai/OrganizationTemplate_GEN3`; modulově specifická app/data kostra patří do budoucího `<Module>Template` repa nebo do schválené module template vrstvy, ne do konkrétního klientského workspace.
-4. **Aktualizovat HumanAndMachines/Conglomerate_GEN3 manuál.** Root agenti musí vidět novou verzi a upgrade flow v `manual/`.
+4. **Aktualizovat Lazurio manuál.** Root agenti musí vidět novou verzi a upgrade flow v `manual/`.
 5. **Spustit template sync review.** Downstream Organization fork nejdřív udělá `git fetch template` a `template-sync-report`; managed/override/manual diff se reviewuje.
 6. **Aplikovat do další Organizace.** Ta přijímá pattern s vlastními business daty, ne s daty flagship Organizace. Pricebook je první dogfood kandidát.
 7. **Aplikovat do klientských forků.** Klient přijímá template pattern a vlastní data/fixtures; žádná reálná data nejdou do upstream template.

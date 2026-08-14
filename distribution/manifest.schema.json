@@ -1,0 +1,226 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lazurio.resident.manifest.v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "artifact_id",
+    "artifact_version",
+    "channel",
+    "profile",
+    "role_overlays",
+    "target",
+    "source",
+    "build_contract",
+    "compatibility",
+    "dependencies",
+    "mutable_mounts",
+    "payload"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "lazurio.resident.manifest.v1"
+    },
+    "artifact_id": {
+      "type": "string",
+      "pattern": "^lazurio-resident-[a-z0-9-]+-[A-Za-z0-9.+-]+-(linux|darwin|windows)-(x64|arm64)$"
+    },
+    "artifact_version": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9.+-]*$"
+    },
+    "channel": {
+      "enum": [
+        "candidate",
+        "stable"
+      ]
+    },
+    "profile": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "role_overlays": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
+      "uniqueItems": true
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "os",
+        "arch"
+      ],
+      "properties": {
+        "os": {
+          "enum": [
+            "linux",
+            "darwin",
+            "windows"
+          ]
+        },
+        "arch": {
+          "enum": [
+            "x64",
+            "arm64"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "repository",
+        "commit",
+        "commit_epoch"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,38}/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40,64}$"
+        },
+        "commit_epoch": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "build_contract": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "compatibility": {
+      "type": "object",
+      "required": [
+        "resident_root",
+        "rollback_from"
+      ],
+      "properties": {
+        "resident_root": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "rollback_from": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "dependencies": {
+      "type": "object",
+      "required": [
+        "hermes"
+      ],
+      "properties": {
+        "hermes": {
+          "type": "object",
+          "required": [
+            "repository",
+            "release_tag",
+            "commit",
+            "lock_sha256"
+          ],
+          "properties": {
+            "repository": {
+              "const": "Lazurio/hermes-agent"
+            },
+            "release_tag": {
+              "type": "string",
+              "minLength": 1
+            },
+            "commit": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            },
+            "lock_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "mutable_mounts": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "organizations",
+          "personalspace"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "hash_algorithm",
+        "digest",
+        "manifest_excluded_from_inventory",
+        "files"
+      ],
+      "properties": {
+        "hash_algorithm": {
+          "const": "sha256"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "manifest_excluded_from_inventory": {
+          "const": true
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "mode",
+              "size",
+              "sha256"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "mode": {
+                "enum": [
+                  "0644",
+                  "0755"
+                ]
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

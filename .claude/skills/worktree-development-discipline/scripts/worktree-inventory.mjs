@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { access, lstat, opendir, readFile, readdir, realpath } from "node:fs/promises";
-import { constants } from "node:fs";
+import { constants, existsSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
@@ -403,26 +403,28 @@ async function validateSidecar(
   if (declaredWorktree !== resolve(record.path)) {
     return { valid: false, error: "worktree_path does not match Git registry", planPath: null };
   }
-  if (isAbsolute(data.mission_control_plan_path)) {
+  if (isPortableAbsolutePath(data.mission_control_plan_path)) {
     return { valid: false, error: "mission_control_plan_path must be relative", planPath: null };
   }
+  const authority = await resolveSidecarAuthority(
+    primaryRoot,
+    authorityRoot,
+    data.mission_control_authority_path,
+  );
+  if (!authority.valid) {
+    return { valid: false, error: authority.error, planPath: null };
+  }
+  const effectiveAuthorityRoot = authority.root;
   const planPath = resolveAuthorityPlanPath(
     primaryRoot,
     data.mission_control_plan_path,
-    authorityRoot,
+    effectiveAuthorityRoot,
   );
-  const acceptedPlanRoot = join(
-    authorityRoot,
-    "mission-control",
-    "db",
-    "data",
-    "mission-control",
-    "plans",
-  );
-  if (!isWithin(acceptedPlanRoot, planPath)) {
+  const acceptedPlanRoots = await missionControlPlanRoots(effectiveAuthorityRoot);
+  if (!acceptedPlanRoots.some((root) => isWithin(root, planPath))) {
     return {
       valid: false,
-      error: "Mission Control plan is outside the HumanAndMachine-ai authority",
+      error: "Mission Control plan is outside the declared authority",
       planPath,
     };
   }
@@ -504,9 +506,9 @@ async function validateSidecar(
   ]
     .filter((field) => !Object.hasOwn(data, field))
     .map((field) => `recommended operational field is missing: ${field}`);
-  const authorityAvailable = await pathExists(authorityRoot);
+  const authorityAvailable = await pathExists(effectiveAuthorityRoot);
   if (!authorityAvailable) {
-    const error = "HumanAndMachine-ai authority checkout is unavailable; plan ownership was not verified";
+    const error = "Mission Control authority checkout is unavailable; plan ownership was not verified";
     advisories.push(error);
     return { valid: false, error, planPath, advisories };
   }
@@ -541,8 +543,9 @@ async function validateSidecar(
     };
   }
   const schemaValidation = await validateCanonicalMissionControlPlan(
-    authorityRoot,
+    effectiveAuthorityRoot,
     planPath,
+    planSource,
     plan,
   );
   if (!schemaValidation.valid) {
@@ -580,6 +583,98 @@ async function validateSidecar(
     conversationOrigin: data.conversation_origin ?? null,
     recoveryHandoff: data.recovery_handoff ?? null,
   };
+}
+
+async function resolveSidecarAuthority(primaryRoot, defaultAuthorityRoot, declaredPath) {
+  if (declaredPath === undefined) {
+    return { valid: true, error: null, root: defaultAuthorityRoot };
+  }
+  if (typeof declaredPath !== "string" || declaredPath.trim() === "") {
+    return {
+      valid: false,
+      error: "mission_control_authority_path must be a non-empty relative path",
+      root: null,
+    };
+  }
+  if (isPortableAbsolutePath(declaredPath) || declaredPath.includes("\\")) {
+    return {
+      valid: false,
+      error: "mission_control_authority_path must use a portable relative path",
+      root: null,
+    };
+  }
+  const segments = declaredPath.split("/");
+  if (
+    segments.some((segment) => segment === "" || segment === "." || segment === "..")
+    || !/^organizations\/[^/]+\/mission-control\/db$/.test(declaredPath)
+  ) {
+    return {
+      valid: false,
+      error: "mission_control_authority_path must be organizations/<organization>/mission-control/db",
+      root: null,
+    };
+  }
+
+  let cursor = resolve(primaryRoot);
+  try {
+    for (const segment of segments) {
+      cursor = join(cursor, segment);
+      const stat = await lstat(cursor);
+      if (!stat.isDirectory() || stat.isSymbolicLink()) {
+        throw new Error("authority path contains a symlink or non-directory component");
+      }
+    }
+    const realPrimary = await realpath(primaryRoot);
+    const realAuthority = await realpath(cursor);
+    if (!isWithin(realPrimary, realAuthority)) {
+      throw new Error("authority path escapes the Lazurio root");
+    }
+
+    const organizationRoot = join(primaryRoot, segments[0], segments[1]);
+    const markerPath = join(organizationRoot, "company.gen3.json");
+    const markerStat = await lstat(markerPath);
+    if (!markerStat.isFile() || markerStat.isSymbolicLink()) {
+      throw new Error("Organization marker is not a regular file");
+    }
+    const marker = JSON.parse(await readFile(markerPath, "utf8"));
+    if (marker?.organization_kind !== "organization") {
+      throw new Error("authority owner is not a runtime Organization");
+    }
+
+    const manifestPath = join(cursor, "repository-db.manifest.json");
+    const manifestStat = await lstat(manifestPath);
+    if (!manifestStat.isFile() || manifestStat.isSymbolicLink()) {
+      throw new Error("repository-db manifest is not a regular file");
+    }
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    if (
+      manifest?.schema_version !== "companiesascode.repository_db.manifest.v1"
+      || manifest?.data_mode !== "repository-db"
+      || manifest?.data_root !== "data/mission-control"
+    ) {
+      throw new Error("repository-db manifest is not a canonical Mission Control authority");
+    }
+    return { valid: true, error: null, root: cursor };
+  } catch (error) {
+    return {
+      valid: false,
+      error: `Mission Control authority is invalid: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      root: null,
+    };
+  }
+}
+
+async function missionControlPlanRoots(authorityRoot) {
+  const repositoryDbRoot = repositoryDbRootFromAuthority(authorityRoot);
+  return [join(repositoryDbRoot, "data", "mission-control", "plans")];
+}
+
+function isPortableAbsolutePath(path) {
+  return isAbsolute(path)
+    || /^[A-Za-z]:[\\/]/.test(path)
+    || path.startsWith("\\\\");
 }
 
 function validateConversationOrigin(value) {
@@ -669,9 +764,10 @@ async function resolveRepositoryIdentity(primaryRoot) {
 export async function validateCanonicalMissionControlPlan(
   authorityRoot,
   planPath,
+  planSource,
   plan,
 ) {
-  const repositoryDbRoot = join(authorityRoot, "mission-control", "db");
+  const repositoryDbRoot = repositoryDbRootFromAuthority(authorityRoot);
   const repositoryDbPlansRoot = join(
     repositoryDbRoot,
     "data",
@@ -684,31 +780,33 @@ export async function validateCanonicalMissionControlPlan(
       error: "Mission Control plan is outside the canonical repository-db plan root",
     };
   }
-  const validationRoot = repositoryDbRoot;
+
+  const manifestPath = join(repositoryDbRoot, "repository-db.manifest.json");
   const schemaPath = join(repositoryDbRoot, "schemas", "mission-control-plan.schema.json");
   const semanticValidatorPath = join(
     repositoryDbRoot,
     "scripts",
     "validate-mission-control-data.mjs",
   );
+
   try {
-    const realAuthorityRoot = await realpath(authorityRoot);
     const realRepositoryDbRoot = await realpath(repositoryDbRoot);
     const realRepositoryDbPlansRoot = await realpath(repositoryDbPlansRoot);
-    const expectedRepositoryDbRoot = join(realAuthorityRoot, "mission-control", "db");
     const expectedRepositoryDbPlansRoot = join(
       realRepositoryDbRoot,
       "data",
       "mission-control",
       "plans",
     );
-    if (
-      realRepositoryDbRoot !== expectedRepositoryDbRoot
-      || realRepositoryDbPlansRoot !== expectedRepositoryDbPlansRoot
-    ) {
+    if (realRepositoryDbPlansRoot !== expectedRepositoryDbPlansRoot) {
       throw new Error("canonical repository-db plan root resolves through a redirected path");
     }
+
     const expectedRealPaths = new Map([
+      [
+        manifestPath,
+        join(realRepositoryDbRoot, "repository-db.manifest.json"),
+      ],
       [
         planPath,
         resolve(
@@ -735,27 +833,35 @@ export async function validateCanonicalMissionControlPlan(
       if (
         !stat.isFile()
         || stat.isSymbolicLink()
-        || !isWithin(realAuthorityRoot, realPath)
+        || !isWithin(realRepositoryDbRoot, realPath)
         || realPath !== expectedRealPath
       ) {
-        throw new Error("canonical validator path is redirected or outside authority root");
+        throw new Error("canonical repository-db path is redirected or outside authority root");
       }
     }
-    const schema = JSON.parse(await readFile(schemaPath, "utf8"));
-    const failures = validateAgainstSchema(
-      plan,
-      schema,
-      "Mission Control plan",
-    );
-    if (!Array.isArray(failures)) {
-      throw new Error("canonical schema validator returned an invalid result");
+
+    if (await readFile(planPath, "utf8") !== planSource) {
+      throw new Error("validated plan source does not match the authority checkout");
     }
+
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    if (
+      manifest?.schema_version !== "companiesascode.repository_db.manifest.v1"
+      || manifest?.data_mode !== "repository-db"
+      || manifest?.data_root !== "data/mission-control"
+    ) {
+      throw new Error("repository-db manifest contract is invalid");
+    }
+
+    const schema = JSON.parse(await readFile(schemaPath, "utf8"));
+    const failures = validateAgainstSchema(plan, schema, "Mission Control plan");
     if (failures.length > 0) {
       return {
         valid: false,
         error: `Mission Control plan schema validation failed: ${failures.slice(0, 3).join("; ")}`,
       };
     }
+
     const expectedPlanId = typeof plan.dev_code === "string"
       ? `mcplan-${plan.dev_code.toLowerCase()}`
       : null;
@@ -765,6 +871,7 @@ export async function validateCanonicalMissionControlPlan(
         error: "Mission Control plan id must match dev_code",
       };
     }
+
     const semanticValidator = await import(
       pathToFileURL(semanticValidatorPath).href
     );
@@ -773,7 +880,7 @@ export async function validateCanonicalMissionControlPlan(
         "canonical semantic validator export is unavailable: validateMissionControlData",
       );
     }
-    const semanticFailures = semanticValidator.validateMissionControlData(validationRoot);
+    const semanticFailures = semanticValidator.validateMissionControlData(repositoryDbRoot);
     if (!Array.isArray(semanticFailures)) {
       throw new Error("canonical semantic validator returned an invalid result");
     }
@@ -787,13 +894,12 @@ export async function validateCanonicalMissionControlPlan(
   } catch (error) {
     return {
       valid: false,
-      error: `cannot validate Mission Control plan schema: ${
+      error: `cannot validate Mission Control repository data: ${
         error instanceof Error ? error.message : String(error)
       }`,
     };
   }
 }
-
 async function scanLocalOrphans(primaryRoot, commonDir, records, options = {}) {
   const registered = new Set(records.map((record) => resolve(record.path)));
   const found = [];
@@ -1183,6 +1289,24 @@ function isWithin(parent, child) {
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 }
 
+function repositoryDbRootFromAuthority(authorityRoot) {
+  const candidate = resolve(authorityRoot);
+  if (existsSync(join(candidate, "repository-db.manifest.json"))) return candidate;
+  return join(candidate, "mission-control", "db");
+}
+
+export function resolveAuthorityRoot(primaryRoot) {
+  if (process.env.MISSION_CONTROL_AUTHORITY_ROOT) {
+    const candidate = resolve(process.env.MISSION_CONTROL_AUTHORITY_ROOT);
+    const repositoryDbRoot = repositoryDbRootFromAuthority(candidate);
+    if (existsSync(join(repositoryDbRoot, "repository-db.manifest.json"))) {
+      return repositoryDbRoot;
+    }
+    return candidate;
+  }
+  return join(primaryRoot, ".mission-control-authority-unconfigured");
+}
+
 function validateAgainstSchema(value, schema, label) {
   const failures = validateSchemaVocabulary(schema, "schema");
   if (failures.length > 0) return failures;
@@ -1199,6 +1323,7 @@ function validateSchemaVocabulary(node, path) {
     "$schema",
     "additionalProperties",
     "const",
+    "description",
     "enum",
     "items",
     "maxItems",
@@ -1312,36 +1437,31 @@ function stableStringify(value) {
   return JSON.stringify(value);
 }
 
-export function resolveAuthorityRoot(primaryRoot) {
-  if (basename(primaryRoot) === "HumanAndMachine-ai_GEN3") return primaryRoot;
-  return join(primaryRoot, "organizations", "HumanAndMachine-ai_GEN3");
-}
-
 export function resolveAuthorityPlanPath(primaryRoot, planPath, authorityRoot) {
   const resolvedAuthority = authorityRoot
     ? resolve(authorityRoot)
     : resolveAuthorityRoot(primaryRoot);
+  const repositoryDbRoot = repositoryDbRootFromAuthority(resolvedAuthority);
   const normalized = planPath.replaceAll("\\", "/");
   if (normalized.split("/").some((segment) => segment === "." || segment === "..")) {
-    return join(resolvedAuthority, ".invalid-mission-control-plan-locator");
+    return join(repositoryDbRoot, ".invalid-mission-control-plan-locator");
   }
   const legacyPrefixes = [
+    "mission-control/db/data/mission-control/plans/",
     "mission-control/plans/",
     "data/mission-control/plans/",
   ];
   const prefix = legacyPrefixes.find((candidate) => normalized.startsWith(candidate));
   if (prefix) {
     return join(
-      resolvedAuthority,
-      "mission-control",
-      "db",
+      repositoryDbRoot,
       "data",
       "mission-control",
       "plans",
       normalized.slice(prefix.length),
     );
   }
-  return resolve(resolvedAuthority, planPath);
+  return resolve(repositoryDbRoot, normalized);
 }
 
 async function gitText(cwd, args) {

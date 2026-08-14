@@ -36,7 +36,7 @@ Port je `5281` a manifest žije v `guide/app/v1/package.json` pod `companyascode
 
 ## Vztah k Organizacím
 
-Guide není součást Organization repozitáře. V GEN3 patří obecný Guide do `HumanAndMachines/Conglomerate_GEN3/guide`. Organization-local onboarding může existovat pouze jako organization-specific obsah v příslušné Organization vrstvě.
+Guide není součást Organization repozitáře. V GEN3 patří obecný Guide do `HumanAndMachines/Lazurio/guide`. Organization-local onboarding může existovat pouze jako organization-specific obsah v příslušné Organization vrstvě.
 
 Při migraci z GEN2 se obecný Organization-local `guide/` odstraňuje, aby nevznikla duplicitní pedagogická pravda.
 

@@ -1,0 +1,10 @@
+---
+- name: Converge a Buddy Linux Resident host
+  hosts: buddy_hosts
+  gather_facts: true
+  become: true
+  vars:
+    lazurio_resident_profile: buddy
+  roles:
+    - role: resident_host_base
+    - role: lazurio_resident

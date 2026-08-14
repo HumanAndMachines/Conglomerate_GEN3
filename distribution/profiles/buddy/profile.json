@@ -1,0 +1,67 @@
+{
+  "schema_version": "lazurio.resident.profile.v1",
+  "id": "buddy",
+  "status": "pilot",
+  "principal_contract": "human-principal-represented-by-buddy",
+  "identity_source": "private-personalspace-profile",
+  "root_instructions": "distribution/profiles/buddy/root-instructions.md",
+  "public_manual": "manual/lazurio-resident-profiles.md",
+  "allowed_role_overlays": [],
+  "trust_model": {
+    "communication_boundary": "one-human-principal-private-surface",
+    "machine_owner_is_adversary": false,
+    "local_payload_edits": "allowed-and-reported-as-drift",
+    "agent_sandbox": "hermes-runtime",
+    "sandbox_substrate_mutability": "principal-controlled-runtime-identities-non-owning-read-only",
+    "parallel_lazurio_acl": false
+  },
+  "authority": {
+    "provider": "live-github-rights",
+    "text_labels_grant_access": false,
+    "transaction_specific_consent_required": true
+  },
+  "runtime": {
+    "root_mode": "installed-non-git",
+    "source_contribution": "separate-source-checkout-only",
+    "communication_bridge": "zulip-events-to-agent-runtime",
+    "bridge_service_identity": "buddy-bridge",
+    "mutable_mounts": [
+      "organizations",
+      "personalspace"
+    ]
+  },
+  "health_checks": [
+    "artifact-integrity",
+    "profile-boundary",
+    "platform-compatibility",
+    "no-git-root",
+    "buddy-bridge-contract",
+    "hermes-context-root"
+  ],
+  "behavior_invariants": [
+    "human-principal",
+    "scoped-mandate",
+    "completion-evidence",
+    "deny-foreign-personalspace",
+    "do-not-export-private-content",
+    "live-github-rights",
+    "draft-and-escalate",
+    "principal-owns-machine",
+    "report-local-drift",
+    "preserve-last-known-good",
+    "offer-separate-source-fix",
+    "non-git-root",
+    "separate-source-checkout",
+    "buddy-is-not-ai-colleague",
+    "root-instructions-every-runtime-session",
+    "text-labels-grant-no-access",
+    "one-human-principal",
+    "private-communication-surface",
+    "do-not-invent-second-role",
+    "reuse-hermes-sandbox",
+    "sandbox-substrate-not-runtime-writable",
+    "no-parallel-authorization-layer",
+    "separate-machine-provisioning-from-resident-update",
+    "operator-plane-not-resident-autonomy"
+  ]
+}

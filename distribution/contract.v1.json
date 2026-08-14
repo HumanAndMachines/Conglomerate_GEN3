@@ -1,0 +1,101 @@
+{
+  "schema_version": "lazurio.resident.build-contract.v1",
+  "source_repository": "HumanAndMachines/Lazurio",
+  "artifact_contract_version": 1,
+  "compatibility_version": 1,
+  "supported_targets": [
+    "linux-x64",
+    "linux-arm64",
+    "darwin-x64",
+    "darwin-arm64",
+    "windows-x64",
+    "windows-arm64"
+  ],
+  "channels": [
+    "candidate",
+    "stable"
+  ],
+  "profiles": {
+    "buddy": {
+      "descriptor": "distribution/profiles/buddy/profile.json",
+      "root_instructions": "distribution/profiles/buddy/root-instructions.md",
+      "evals": "distribution/profile-evals/buddy.json"
+    }
+  },
+  "source_includes": [
+    "LICENSE.md",
+    "Launchpad.cmd",
+    "Launchpad.command",
+    "Launchpad.ps1",
+    "Install-LaunchpadShortcut.ps1",
+    "launchpad.sh",
+    "launchpad.gen3.json",
+    "launchpad.gen3.local.example.json",
+    "assets/",
+    "guide/README.md",
+    "guide/CHANGELOG.md",
+    "guide/content/",
+    "launchpad/package.json",
+    "launchpad/plugins/",
+    "launchpad/public/",
+    "launchpad/schemas/",
+    "launchpad/src/",
+    "lazurio/cli.mjs",
+    "lazurio/context-v0.schema.json",
+    "lazurio/lib.mjs",
+    "lazurio/search-lib.mjs",
+    "manual/lazurio-resident-profiles.md",
+    "manual/update-installed-resident.md",
+    "bridge/"
+  ],
+  "source_excludes": {
+    "basenames": [
+      ".DS_Store",
+      ".gitignore",
+      "AGENTS.md",
+      "CLAUDE.md"
+    ],
+    "suffixes": [
+      ".test.js",
+      ".test.mjs",
+      ".test.ts"
+    ],
+    "exact_paths": [
+      "launchpad/src/run-tests.mjs",
+      "launchpad/src/test-platform-setup.mjs"
+    ]
+  },
+  "generated_paths": [
+    "AGENTS.md",
+    "package.json",
+    "lazurio.resident.json",
+    "resident/doctor.mjs",
+    "resident/integrity.mjs",
+    "resident/manifest.schema.json",
+    "resident/profile.json",
+    "resident/dependencies/hermes.json",
+    "resident/updater-lib.mjs",
+    "resident/updater.mjs",
+    "resident/buddy-service-lib.mjs",
+    "resident/buddy-service.mjs",
+    "resident/buddy-rollout-lib.mjs",
+    "resident/buddy-rollout.mjs",
+    "resident/services/buddy-bridge.service.template",
+    "resident/services/hermes-lazurio-root.conf.template",
+    "lazurio/search-scopes.v1.json"
+  ],
+  "mutable_mounts": [
+    "organizations",
+    "personalspace"
+  ],
+  "forbidden_path_segments": [
+    ".git",
+    ".worktrees",
+    "node_modules",
+    ".cache",
+    "drafts",
+    "private",
+    "secrets",
+    "logs"
+  ]
+}

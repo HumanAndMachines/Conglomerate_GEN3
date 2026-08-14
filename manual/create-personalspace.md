@@ -70,6 +70,7 @@ upstream
 Pro Personalspace bez Buddyho může být tato lokální aktivace záměrná. Buddy
 varianta dnes není live: parser odmítá už samotný `--with-buddy`, nevytváří
 třetí repo a negeneruje VPS handoff. Cílový `CAC-0072` kontrakt bude vyžadovat
+`buddy.runtime.github_repo: HumanAndMachines/Lazurio`,
 `buddy.runtime.deployment_target: owner-dedicated-personalspace-vps` a
 `buddy.runtime.local_execution: forbidden`; reálný cloud/DNS/access/provider
 krok zůstane explicitním human-action gatem.

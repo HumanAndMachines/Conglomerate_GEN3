@@ -373,8 +373,8 @@ personalspace/*/workspace/*/**/package.json   (lazurio.runtime; legacy companyas
 personalspace/*/gbrain/                        (Obsidian-compatible markdown vault)
 ```
 
-- `personal.gen3.json` má vlastní schema (`launchpad/schemas/personal.gen3.schema.json`
-  — kopie identická s upstream `HumanAndMachines/schemas/personal.gen3.schema.json`),
+- `personal.gen3.json` má vlastní lokální schema
+  (`launchpad/schemas/personal.gen3.schema.json`),
   aby se osobní prostor NIKDY nesmíchal do org auto-discovery.
 - **Identity invariant** (fail-closed): `owner.github_username` ↔ mount
   `personalspace/<username>_GEN3` ↔ repo `<username>/<username>_GEN3` musí

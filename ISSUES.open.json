@@ -2,7 +2,7 @@
   "schema_version": "companiesascode.open_issues.v1",
   "scope": {
     "id": "conglomerate-root",
-    "name": "HumanAndMachines/Conglomerate_GEN3 root",
+    "name": "HumanAndMachines/Lazurio root",
     "path": "Conglomerate_GEN3",
     "owner": "founder"
   },
@@ -52,7 +52,7 @@
         "bun run check",
         "bun run doctor"
       ],
-      "next_action": "Steward review koordinovaného HumanAndMachines decision refinement PR a Conglomerate implementation PR; po merge přesunout issue do ISSUES.resolved.json.",
+      "next_action": "Steward review koordinovaného authority refinementu v HumanAndMachine-ai a Lazurio implementation PR; po merge přesunout issue do ISSUES.resolved.json.",
       "links": [
         {
           "label": "Launchpad README port contract",
@@ -95,7 +95,7 @@
       "links": [
         {
           "label": "Implementation PR #23",
-          "url": "https://github.com/HumanAndMachines/Conglomerate_GEN3/pull/23"
+          "url": "https://github.com/HumanAndMachines/Lazurio/pull/23"
         },
         {
           "label": "Launchpad read-model",
@@ -127,7 +127,7 @@
         "migration",
         "CAC-0015"
       ],
-      "question": "Mají se čtyři Filmbase workspace moduly z dočasného statusu in_tree_transition převést na samostatné Filmbase Git repozitáře, nebo má HumanAndMachines formálně zavést a bezpečnostně ohraničit podporovaný embedded/in-tree modulový kontrakt?",
+      "question": "Mají se čtyři Filmbase workspace moduly z dočasného statusu in_tree_transition převést na samostatné Filmbase Git repozitáře, nebo má Lazurio formálně zavést a bezpečnostně ohraničit podporovaný embedded/in-tree modulový kontrakt?",
       "impact": "Filmbase strict Organization check a compiler procházejí bez warningů a hlásí changed: 0, ale aktuální Conglomerate discovery po zavedení CAC-0015 materializace správně vyžaduje u každého aktivního materializovaného workspace slotu konkrétní Git URL. Čtyři starší in_tree_transition sloty ji nemají, takže discovery, root Doctor a runtime diagnostika jsou fail-closed zablokované pro celý lokální Launchpad. Doplnit vymyšlené URL nebo oslabit gate bez rozhodnutí by vytvořilo nepravdivý access a ownership kontrakt.",
       "options": [
         {
@@ -137,7 +137,7 @@
         },
         {
           "label": "Formální embedded modul",
-          "summary": "Novelizovat HumanAndMachines kontrakt a zavést explicitní, testovaný a read-only-safe status pro modul vlastněný Organization root repem.",
+          "summary": "Novelizovat Lazurio kontrakt a zavést explicitní, testovaný a read-only-safe status pro modul vlastněný Organization root repem.",
           "tradeoff": "Zachová dnešní Filmbase layout bez přesunu dat, ale přidává druhý podporovaný ownership model a musí přesně vymezit materializaci, sync, worktrees a access hranice."
         },
         {
@@ -166,10 +166,6 @@
         {
           "label": "Launchpad discovery contract",
           "path": "launchpad/README.md"
-        },
-        {
-          "label": "CAC-0015 authority plan",
-          "path": "../HumanAndMachines/mission-control/plans/2026/06/CAC-0015-doctor-managed-nested-repos.yaml"
         },
         {
           "label": "Filmbase FB-0002 transition decision",
@@ -230,7 +226,7 @@
       "links": [
         {
           "label": "Exact-head GitHub Actions run",
-          "url": "https://github.com/HumanAndMachines/Conglomerate_GEN3/actions/runs/31203983028"
+          "url": "https://github.com/HumanAndMachines/Lazurio/actions/runs/31203983028"
         },
         {
           "label": "Current CI matrix",
@@ -247,10 +243,6 @@
         {
           "label": "GEN2 to GEN3 migration gate",
           "path": "manual/gen2-to-gen3-migration.md"
-        },
-        {
-          "label": "Spectoda migration dogfood authority",
-          "path": "../HumanAndMachines/mission-control/plans/2026/06/CAC-0035-spectoda-gen3-migration-dogfood.yaml"
         }
       ]
     },
@@ -299,10 +291,6 @@
         {
           "label": "Server mutation wrapper",
           "path": "launchpad/src/apps-response-cache-lib.mjs"
-        },
-        {
-          "label": "Spectoda GEN2 to GEN3 migration authority",
-          "path": "../HumanAndMachines/mission-control/plans/2026/06/CAC-0035-spectoda-gen3-migration-dogfood.yaml"
         }
       ]
     }

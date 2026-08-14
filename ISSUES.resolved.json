@@ -31,7 +31,7 @@
         "bun run check",
         "bun run doctor"
       ],
-      "next_action": "Steward review root PR + template PRs; po merge přesunout do ISSUES.resolved.json. Follow-up: navrhnout HumanAndMachines decision record pro kanonizaci pravidla, adopce katalogu v reálných Organizacích (Spectoda první) a org-side admin kroky (Slack app approval, Atlassian allowlist, Canva AI Connector).",
+      "next_action": "Steward review root PR + template PRs; po merge přesunout do ISSUES.resolved.json. Follow-up: kanonizovat pravidlo v aktuální vlastnické autoritě, adoptovat katalog v reálných Organizacích (Spectoda první) a provést org-side admin kroky (Slack app approval, Atlassian allowlist, Canva AI Connector).",
       "links": [
         {
           "label": "Kanonický standard",
@@ -44,10 +44,6 @@
         {
           "label": "Codex runbook",
           "path": "manual/codex-manual-mcp-integrations.md"
-        },
-        {
-          "label": "Mission Control plán CAC-0082",
-          "path": "../HumanAndMachines/mission-control/db/data/mission-control/plans/2026/07/CAC-0082-external-app-integrations.yaml"
         }
       ],
       "resolved_at": "2026-07-24",

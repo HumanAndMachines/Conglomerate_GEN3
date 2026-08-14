@@ -2,7 +2,7 @@
 
 Tento manuál je source of truth pro maintenance agenty, kteří udržují **HumanAndMachine GEN3 / Conglomerate root**.
 
-HumanAndMachine GEN3 je současný název systému dříve označovaného jako Conglomerate GEN3. Tento root (`HumanAndMachines/Conglomerate_GEN3`) není jedna firma ani klientská organizace; je to sdílený framework pro Launchpad, Guide, templates, manuály, privátní `personalspace/` a lokální mountpointy GitHub-like organizací v `organizations/`.
+HumanAndMachine GEN3 je současný název systému dříve označovaného jako Conglomerate GEN3. Tento root (`HumanAndMachines/Lazurio`) není jedna firma ani klientská organizace; je to sdílený framework pro Launchpad, Guide, templates, manuály, privátní `personalspace/` a lokální mountpointy GitHub-like organizací v `organizations/`.
 
 ## Maintenance účel
 
@@ -47,7 +47,10 @@ Maintenance agent před zásahem ověřuje:
   0118): root doctor svolává vlastní doctory namountovaných rep podle deklarace
   v manifestu, agreguje z vnořených reportů a rozbitého potomka hlásí nahlas.
   Nese i slovník `not_applicable` / `blocked` / `incomplete`.
-- `manual/hosted-buddy-vps.md` — pro agenty v rootu: jak zjistit, jestli Principál má hostovaného Buddyho, co s hostem smíš a nesmíš dělat, a pravidlo, že na VPS platí `HumanAndMachines/Buddy_GEN2` místo root pravidel.
+- `manual/hosted-buddy-vps.md` — pro agenty v source checkoutu: jak zjistit, jestli Principál má hostovaného Buddyho, co s hostem smíš a nesmíš dělat, a pravidlo, že na VPS platí vygenerovaný Buddy resident root a privátní profil místo source pravidel.
+- `manual/lazurio-resident-profiles.md` — public-safe a offline dostupné
+  vysvětlení Buddyho, AI Kolegy, instalovaného non-Git Lazurio Rootu,
+  aktualizací, incidentů a odděleného source checkoutu.
 - `manual/personalspace-modules-and-hosted-gbrain.md` — seed koncept pro personalspace privátní moduly, per-user/per-colleague aplikace, hosted GBrain a Obsidian-compatible sync/reader model.
 - `manual/app/v1/` — statická read-only aplikace technického manuálu (`index.html`); nesmí držet pravidla, která nejsou zapsaná v manuálu nebo root dokumentech.
 

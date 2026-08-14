@@ -1,0 +1,125 @@
+---
+- name: Refuse an unsupported or ambiguous host baseline
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.system == "Linux"
+      - ansible_facts.os_family == "Debian"
+      - ansible_facts.architecture in ["x86_64", "aarch64"]
+      - lazurio_resident_profile == "buddy"
+      - lazurio_owner_user | length > 0
+      - lazurio_owner_user not in [lazurio_runtime_user, lazurio_bridge_user]
+      - lazurio_runtime_user != lazurio_bridge_user
+      - lazurio_install_root is match('^/')
+      - lazurio_runtime_root is match('^/')
+      - lazurio_personalspace_source is match('^/')
+      - lazurio_custody_root is match('^/')
+    fail_msg: >-
+      Phase one supports only an explicitly named Buddy owner on Debian-family
+      Linux x86_64/aarch64 with absolute custody paths.
+
+- name: Install the reviewed Buddy Linux base package set
+  ansible.builtin.apt:
+    name: "{{ lazurio_base_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Read the declared Principal account
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ lazurio_owner_user }}"
+
+- name: Create the Personalspace sharing group
+  ansible.builtin.group:
+    name: "{{ lazurio_shared_group }}"
+    system: true
+    state: present
+
+- name: Create runtime primary groups
+  ansible.builtin.group:
+    name: "{{ item }}"
+    system: true
+    state: present
+  loop:
+    - "{{ lazurio_runtime_user }}"
+    - "{{ lazurio_bridge_user }}"
+
+- name: Converge the Resident runtime identity
+  ansible.builtin.user:
+    name: "{{ lazurio_runtime_user }}"
+    group: "{{ lazurio_runtime_user }}"
+    groups: "{{ lazurio_runtime_groups | join(',') }}"
+    append: false
+    system: true
+    create_home: true
+    home: "/var/lib/{{ lazurio_runtime_user }}"
+    shell: /usr/sbin/nologin
+    state: present
+
+- name: Keep the bridge identity outside supplementary groups
+  ansible.builtin.user:
+    name: "{{ lazurio_bridge_user }}"
+    group: "{{ lazurio_bridge_user }}"
+    groups: ""
+    append: false
+    system: true
+    create_home: true
+    home: "/var/lib/{{ lazurio_bridge_user }}"
+    shell: /usr/sbin/nologin
+    state: present
+
+- name: Add the Principal to the Personalspace sharing group
+  ansible.builtin.user:
+    name: "{{ lazurio_owner_user }}"
+    groups: "{{ lazurio_shared_group }}"
+    append: true
+    state: present
+
+- name: Converge private runtime home modes
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ item | basename }}"
+    group: "{{ item | basename }}"
+    mode: "0700"
+  loop:
+    - "/var/lib/{{ lazurio_runtime_user }}"
+    - "/var/lib/{{ lazurio_bridge_user }}"
+
+- name: Converge operator-owned Resident directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ lazurio_install_root }}"
+      group: root
+      mode: "0755"
+    - path: "{{ lazurio_runtime_root }}"
+      group: root
+      mode: "0755"
+    - path: "{{ lazurio_custody_root }}"
+      group: root
+      mode: "0700"
+    - path: "{{ lazurio_bridge_state_root }}"
+      group: "{{ lazurio_bridge_user }}"
+      mode: "0700"
+    - path: "{{ lazurio_personalspace_source }}"
+      group: "{{ lazurio_shared_group }}"
+      mode: "2775"
+
+- name: Materialize empty custody files without replacing existing values
+  ansible.builtin.copy:
+    content: ""
+    dest: "{{ item }}"
+    owner: root
+    group: root
+    mode: "0600"
+    force: false
+  loop:
+    - "{{ lazurio_bridge_environment_file }}"
+    - "{{ lazurio_custody_root }}/hermes-gateway.env"
+    - "{{ lazurio_custody_root }}/gbrain.env"
+    - "{{ lazurio_custody_root }}/backup.env"

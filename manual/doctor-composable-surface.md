@@ -1,9 +1,9 @@
 # Doctory se skládají — společný surface a root-side lane
 
 Status: **aktivní mechanismus v tomhle repu.** Root doctor podřízené doctory
-najde, spustí a agreguje. Zdroj pravidla: HumanAndMachines decision **0118**
-(founder ruling 2026-07-29), navazuje na 0018 (doctor per Organizace) a 0031
-(org mounty jsou Doctor-managed vnořená repa).
+najde, spustí a agreguje. Zdroj pravidla: decision **0118** v lokálním
+`manual/decision-register.md` (founder ruling 2026-07-29), navazuje na 0018
+(doctor per Organizace) a 0031 (org mounty jsou Doctor-managed vnořená repa).
 
 ## Pravidlo
 
@@ -25,13 +25,13 @@ existovat nebude.
 ## Kontrakt
 
 Surface je `launchpad/schemas/doctor-report.schema.json` (verze **v3**; v1 a v2
-zůstávají čitelné). Je to **vendorovaná kopie** — zdroj pravdy je
-`Rozjedeme-ai/HumanAndMachines` → `schemas/doctor-report.schema.json` a
-`scripts/doctor-surface-lib.mjs`. Změna surfacu se dělá nejdřív tam a teprve pak
-se sem překopíruje, stejně jako u `schemas/personal.gen3.schema.json`. Kopie je
-**bajt na bajt** a `launchpad/schemas/doctor-surface-vendor.json` to drží
-otiskem; co potřebuje root navíc, patří do `doctor-children-lib.mjs`, ne do
-kopie.
+zůstávají čitelné). Jeho veřejnou autoritou je tento Lazurio source spolu s
+`launchpad/src/doctor-surface-lib.mjs` a `launchpad/src/json-schema-mini.mjs`.
+Změna vzniká přímo tady reviewovaným PR. Historický název
+`launchpad/schemas/doctor-surface-vendor.json` dnes drží immutable adoption
+baseline a otisky těchto tří souborů; není pointerem na jiný checkout. Co
+potřebuje pouze root navíc, patří do `doctor-children-lib.mjs`, ne do sdíleného
+surfacu.
 
 ### Slovník stavů
 
@@ -112,14 +112,14 @@ nespuštěný doctor není zelený doctor.
 
 | Soubor | Co drží |
 | --- | --- |
-| `launchpad/schemas/doctor-report.schema.json` | surface v3 (vendorovaná kopie z HumanAndMachines) |
-| `launchpad/src/doctor-surface-lib.mjs` | slovník stavů, odvození souhrnu, exit kódy, validace, invokace, agregace (vendorovaná kopie) |
-| `launchpad/src/json-schema-mini.mjs` | draft-07 subset validátor (vendorovaná kopie) |
+| `launchpad/schemas/doctor-report.schema.json` | kanonický veřejný surface v3 |
+| `launchpad/src/doctor-surface-lib.mjs` | kanonický slovník stavů, odvození souhrnu, exit kódy, validace, invokace a agregace |
+| `launchpad/src/json-schema-mini.mjs` | lokální draft-07 subset validátor surfacu |
 | `launchpad/src/doctor-children-lib.mjs` | root-side lane: discovery deklarací, spuštění, **svázání identity dítěte s mountem**, kontrola `doctor.children` |
 | `launchpad/src/doctor-children-lib.test.mjs` | root-side test: rozbitý potomek shodí agregát |
 | `launchpad/src/doctor-surface-conformance.test.mjs` | konformní test producenta: root doctor je sám na surfacu |
-| `launchpad/schemas/doctor-surface-vendor.json` | provenience kopie: upstream repo/ref/commit, otisky a **pojmenované** odchylky |
-| `launchpad/src/doctor-surface-vendor.test.mjs` | test provenience: tichá editace vendorovaného souboru i nepřiznaná odchylka spadnou |
+| `launchpad/schemas/doctor-surface-vendor.json` | adoption baseline veřejného Lazuria: repo/ref/commit, otisky a **pojmenované** odchylky |
+| `launchpad/src/doctor-surface-vendor.test.mjs` | integrity test: tichá editace souboru i nepřiznaná odchylka od baseline spadnou |
 
 ## Jak se váže identita dítěte
 
@@ -138,12 +138,12 @@ zdraví úplně jiné mašiny. Dnes je to `scope_mismatch`, vlastní `doctor.chi
 s `fail` a exit 1.
 
 Kde ta vazba **žije**, je vlastnická otázka, ne stylová. Povinné svázání dělá
-`launchpad/src/doctor-children-lib.mjs` (`runBoundChildDoctor`), ne vendorovaný
+`launchpad/src/doctor-children-lib.mjs` (`runBoundChildDoctor`), ne sdílený
 surface. Surface povinně porovnává jen to, co dítě samo nabídlo — a pro
 samostatně běžícího doctora je to správně, protože na Buddy VPS nad ním žádný
 rodič není a nemá koho přesvědčovat. Root si tu povinnost přidává, protože dítě
-spustil kvůli konkrétnímu mountu; kdyby si ji přidal uvnitř kopie, byl by to fork
-kontraktu v konzumentovi.
+spustil kvůli konkrétnímu mountu; kdyby si ji přidal uvnitř sdíleného surfacu,
+byl by to fork kontraktu v konzumentovi.
 
 Stejnou logikou se soudí konec běhu: dítě ukončené signálem (OOM killer,
 `kill -9`) **nedoběhlo**, i kdyby na stdout stihlo vypsat konformní JSON. Má
@@ -185,7 +185,7 @@ s velkými písmeny. **Změřeno 2026-07-30** proti reálnému Conglomerate root
 `checks[].id` dnes pattern `^[a-z0-9]+([._-][a-z0-9]+)*$` neporušuje a
 `self_conformance` je `ok`. Nic se tím ale neopravilo a nic se tu neuvolnilo:
 
-- pattern v surfacu je nezměněný — je to bajt na bajt kopie upstreamu, takže
+- pattern v surfacu je nezměněný proti uložené adoption baseline, takže
   první app id s velkým písmenem znamená znovu hlasitý `fail`;
 - `bun run doctor` proti tomu rootu je i tak `fail`, ale ze dvou úplně jiných,
   **předchozích** důvodů (`launchpad.workspace_declarations` s 27 blokátory a
@@ -200,17 +200,17 @@ páruje) a `checks[].id` má `additionalProperties: false`, takže se app id ned
 poslat vedle jako pole. Dokud o tom nerozhodne vlastník, je správný stav hlasitá
 vada, ne uvolněný pattern.
 
-**Vendorovaná kopie je bajt na bajt.** Po mergi HumanAndMachines PR #262 a #261
-se surface re-vendoroval z `main` (`c60e2699`) a **nemá jedinou odchylku**:
-`doctor-report.schema.json`, `doctor-surface-lib.mjs` i `json-schema-mini.mjs`
-mají otisk shodný s upstreamem. Odchylky, které tu dřív byly (mez na `cwd`,
-klasifikace běhu ukončeného signálem), upstream mezitím vyřešil sám — a lépe:
-`cwd` se kontroluje přes `realpath` a nerozložitelná cesta je odmítnutí, běh
-ukončený signálem má vlastní outcome `signalled` místo `spawn_failed`. Zbylé dvě
-odchylky nebyly kontrakt všech doctorů, ale politika rootu, a přestěhovaly se do
-`doctor-children-lib.mjs`. Hlídá to `doctor-surface-vendor.test.mjs`: otisky,
-nulové odchylky, a kontrolní test, který schválně rozbije záznam.
+**Adoption baseline je bajt na bajt.** Veřejné Lazurio převzalo surface na
+`main` jako tři přesně otisknuté soubory bez lokální odchylky:
+`doctor-report.schema.json`, `doctor-surface-lib.mjs` a
+`json-schema-mini.mjs`. Dvě root-only povinnosti — svázání identity dítěte s
+mountem a přepočet exit kódu z celého reportu — nejsou kontrakt všech doctorů,
+proto zůstávají v `doctor-children-lib.mjs`. Hlídá to
+`doctor-surface-vendor.test.mjs`: otisky, nulové odchylky a kontrolní test,
+který záznam schválně rozbije. Další změna sdíleného surfacu se autoruje přímo
+v Lazuriu a v témže PR aktualizuje baseline receipt.
 
 Co ten test **neumí** a co je napsané i v samotném záznamu: nechodí na síť.
-Pozná drift proti záznamu, ne drift proti živému HumanAndMachines. Že tenhle
-repo drží aktuální surface, hlídá pořadí merge, ne mechanismus.
+Pozná drift proti záznamu, ne to, zda je navržená změna kompatibilní. Aktuálnost
+a kompatibilitu drží review a CI stejného Lazurio PR; žádná další živá autorita
+vedle tohoto repa neexistuje.

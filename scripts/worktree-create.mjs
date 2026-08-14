@@ -8,7 +8,7 @@
 //     [--purpose "..."] [--surface claude-code] [--agent-label "Claude Code"]
 //     [--created-by <id>] [--dry-run]
 
-import { existsSync, lstatSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import { mkdir, readFile, readdir } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -33,7 +33,6 @@ import {
   releaseCreateLock,
 } from "./worktree-create-lock.mjs";
 import {
-  resolveAuthorityRoot,
   validateCanonicalMissionControlPlan,
 } from "../.agents/skills/worktree-development-discipline/scripts/worktree-inventory.mjs";
 
@@ -69,6 +68,130 @@ function git(cwd, args, { allowFail = false, useSafetyConfig = true } = {}) {
     stdout: (result.stdout || "").trim(),
     stderr: (result.stderr || "").trim(),
   };
+}
+
+function normalizeExplicitAuthorityRoot(rawCandidate) {
+  const candidate = resolve(rawCandidate);
+  const repositoryDb = join(candidate, "mission-control", "db");
+  if (existsSync(join(candidate, "repository-db.manifest.json"))) {
+    return realpathSync(candidate);
+  }
+  if (existsSync(join(repositoryDb, "repository-db.manifest.json"))) {
+    return realpathSync(repositoryDb);
+  }
+  return existsSync(candidate) ? realpathSync(candidate) : candidate;
+}
+
+async function resolveAuthorityRoot(primaryRoot, planCode) {
+  if (process.env.MISSION_CONTROL_AUTHORITY_ROOT) {
+    return normalizeExplicitAuthorityRoot(process.env.MISSION_CONTROL_AUTHORITY_ROOT);
+  }
+
+  const organizationsRoot = join(primaryRoot, "organizations");
+  let entries = [];
+  try {
+    entries = await readdir(organizationsRoot, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+
+  const matches = [];
+  entries.sort((left, right) => left.name.localeCompare(right.name));
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const candidate = join(organizationsRoot, entry.name, "mission-control", "db");
+    let manifest;
+    try {
+      manifest = lstatSync(join(candidate, "repository-db.manifest.json"));
+    } catch {
+      continue;
+    }
+    if (!manifest.isFile() || manifest.isSymbolicLink()) continue;
+    const plan = await findPlanFile(candidate, planCode);
+    if (!plan) continue;
+    const authorityPath = organizationAuthorityPath(primaryRoot, candidate);
+    if (!authorityPath) continue;
+    matches.push(candidate);
+  }
+
+  if (matches.length === 1) return realpathSync(matches[0]);
+  if (matches.length > 1) {
+    fail(
+      `plán ${planCode} byl nalezen ve více Organization Mission Control autoritách: `
+      + matches.join(", "),
+    );
+  }
+  fail(
+    `plán ${planCode} nebyl nalezen v žádné připojené Organization Mission Control autoritě; `
+    + "připoj vlastnickou Organizaci nebo nastav MISSION_CONTROL_AUTHORITY_ROOT na její Organization root či mission-control/db.",
+  );
+}
+
+function organizationAuthorityPath(primaryRoot, authorityRoot) {
+  if (!existsSync(join(authorityRoot, "repository-db.manifest.json"))) return null;
+  const databaseRoot = resolve(authorityRoot);
+  const missionControlRoot = dirname(databaseRoot);
+  const organizationRoot = dirname(missionControlRoot);
+  const organizationsRoot = dirname(organizationRoot);
+  const owningRoot = dirname(organizationsRoot);
+  const organizationName = basename(organizationRoot);
+  if (!sameFilesystemEntry(primaryRoot, owningRoot)) return null;
+  if (
+    basename(databaseRoot) !== "db"
+    || basename(missionControlRoot) !== "mission-control"
+    || basename(organizationsRoot) !== "organizations"
+    || !organizationName
+    || organizationName === "."
+    || organizationName === ".."
+  ) {
+    fail(
+      `repository-db Mission Control authority ${authorityRoot} musí ležet v `
+      + "organizations/<organization>/mission-control/db pod tímto Lazurio rootem.",
+    );
+  }
+  const relativePath = `organizations/${organizationName}/mission-control/db`;
+  let cursor = primaryRoot;
+  for (const segment of relativePath.split("/")) {
+    cursor = join(cursor, segment);
+    const stat = lstatSync(cursor);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      fail("repository-db Mission Control authority obsahuje symlink nebo neadresářovou komponentu.");
+    }
+  }
+  const canonicalOrganizationRoot = join(primaryRoot, "organizations", organizationName);
+  const markerPath = join(canonicalOrganizationRoot, "company.gen3.json");
+  const marker = lstatSync(markerPath);
+  if (!marker.isFile() || marker.isSymbolicLink()) {
+    fail(`Mission Control authority nemá regulární Organization marker: ${markerPath}`);
+  }
+  let markerData;
+  try {
+    markerData = JSON.parse(readFileSync(markerPath, "utf8"));
+  } catch (error) {
+    fail(`Organization marker nejde načíst: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (markerData?.organization_kind !== "organization") {
+    fail("Mission Control authority musí vlastnit runtime Organization.");
+  }
+  return relativePath;
+}
+
+function sameFilesystemEntry(left, right) {
+  try {
+    const leftStat = lstatSync(left);
+    const rightStat = lstatSync(right);
+    if (leftStat.dev === rightStat.dev && leftStat.ino !== 0 && leftStat.ino === rightStat.ino) {
+      return true;
+    }
+    const canonical = realpathSync.native ?? realpathSync;
+    const leftPath = canonical(left);
+    const rightPath = canonical(right);
+    return process.platform === "win32"
+      ? leftPath.toLocaleLowerCase("en-US") === rightPath.toLocaleLowerCase("en-US")
+      : leftPath === rightPath;
+  } catch {
+    return false;
+  }
 }
 
 function resolveRepositoryIdentity(primaryRoot) {
@@ -114,7 +237,7 @@ function checkoutTransportOverrideKeys(primaryRoot) {
 
 async function findPlanFile(authorityRoot, planCode) {
   const planRoots = [
-    join(authorityRoot, "mission-control", "db", "data", "mission-control", "plans"),
+    join(authorityRoot, "data", "mission-control", "plans"),
   ];
   const matches = [];
   for (const planRoot of planRoots) {
@@ -170,7 +293,15 @@ async function main() {
     fail("spouštěj z primárního checkoutu, ne z linked worktree.");
   }
 
-  const authorityRoot = resolveAuthorityRoot(primaryRoot);
+  const authorityRoot = await resolveAuthorityRoot(primaryRoot, planCode);
+  const authorityPath = organizationAuthorityPath(primaryRoot, authorityRoot);
+  if (!authorityPath) {
+    fail(
+      "nový worktree vyžaduje Mission Control authority v "
+      + "organizations/<organization>/mission-control/db pod tímto Lazurio rootem; "
+      + "externí authority je podporovaná jen jako explicitní compatibility vstup inventury legacy sidecarů.",
+    );
+  }
   let plan;
   try {
     plan = await findPlanFile(authorityRoot, planCode);
@@ -179,7 +310,7 @@ async function main() {
   }
   if (!plan) {
     fail(
-      `plán ${planCode} nebyl nalezen v HumanAndMachine-ai authority checkoutu ${authorityRoot}; `
+      `plán ${planCode} nebyl nalezen ve zvolené Organization Mission Control autoritě ${authorityRoot}; `
       + "worktree bez vlastnického Mission Control plánu je orphan/invalid (decision 0049).",
     );
   }
@@ -197,6 +328,7 @@ async function main() {
   const planValidation = await validateCanonicalMissionControlPlan(
     authorityRoot,
     plan.path,
+    planSource,
     planData,
   );
   if (!planValidation.valid) {
@@ -261,6 +393,7 @@ async function main() {
     base_branch: "main",
     branch,
     mission_control_plan_code: planCode,
+    ...(authorityPath ? { mission_control_authority_path: authorityPath } : {}),
     mission_control_plan_path: plan.relative,
     worktree_path: `.worktrees/root/${planBasename}`,
     created_at: now,

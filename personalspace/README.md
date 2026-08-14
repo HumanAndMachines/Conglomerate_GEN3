@@ -3,8 +3,8 @@
 Mountpoint pro privátní prostory lidí a AI kolegů podle
 `launchpad.gen3.json` (`personalspace_mountpoint`) a CompaniesAsCode
 decisions 0013 a 0021; strukturu definuje decision 0051
-(revidovaná pro self-service decision 0079 a VPS-only Buddy decision 0080,
-HumanAndMachines/docs/decisions/).
+(revidovaná pro self-service decision 0079 a VPS-only Buddy decision 0080;
+shrnutí drží `../manual/decision-register.md`).
 
 `personalspace/` je integrální privátní vrstva Conglomerate GEN3 a mountpoint
 **jediného osobního prostoru Principála této mašiny**. Není to Organizace ani
@@ -22,8 +22,9 @@ VPS; tento lokální mount drží jeho Git konfiguraci, ne Hermes/Buddy runtime.
 **Agentům:** jestli tvůj Principál hostovaného Buddyho má, se nepozná
 z manifestu — deklarace není důkaz a kohortové instalace v něm nemusí být
 vidět vůbec. Postup zjištění, hranice toho, co s hostem smíš dělat, a pravidlo,
-že **na VPS platí instrukce repa `HumanAndMachines/Buddy_GEN2`** a ne pravidla
-tohohle rootu, drží [`../manual/hosted-buddy-vps.md`](../manual/hosted-buddy-vps.md).
+že **na VPS platí vygenerované instrukce aktivního Buddy resident rootu spolu
+s privátním profilem Principála** a ne pravidla source checkoutu, drží
+[`../manual/hosted-buddy-vps.md`](../manual/hosted-buddy-vps.md).
 
 Owner identifikátor je GitHub username vlastníka, například `exampleowner` — jeho prostor je
 `personalspace/exampleowner_GEN3/` a repo `exampleowner/exampleowner_GEN3`.
@@ -67,7 +68,7 @@ repo a data repo se nesmějí zaměnit.
 
 ## Vytvoření vlastního Personalspace
 
-`HumanAndMachines/Conglomerate_GEN3` je direct-pull repo a není GitHub
+`HumanAndMachines/Lazurio` je direct-pull repo a není GitHub
 template. Pro self-service založení prostoru vlastníka bude po public-readiness
 gate `CAC-0071` sloužit veřejný
 `HumanAndMachines/PersonalspaceTemplate_GEN3`; do té doby zůstává template

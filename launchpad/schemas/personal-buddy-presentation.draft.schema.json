@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://humanandmachines.dev/schemas/launchpad/personal-buddy-presentation.draft.schema.json",
-  "$comment": "Neautoritativní Launchpad-local prezentační overlay pro UX prototyp. Nesmí rozhodovat o validitě personal.gen3.json, aplikací ani gbrainu a před produkčním přijetím se nesmí vydávat za HnM upstream model.",
+  "$comment": "Neautoritativní Launchpad-local prezentační overlay pro UX prototyp. Nesmí rozhodovat o validitě personal.gen3.json, aplikací ani gbrainu a před produkčním přijetím se nesmí vydávat za kanonický runtime model.",
   "title": "Launchpad Buddy presentation draft",
   "type": "object",
   "properties": {

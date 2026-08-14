@@ -1,7 +1,7 @@
 # HumanAndMachine GEN3 / Conglomerate root mapa
 
 HumanAndMachine GEN3 je současný název systému dříve označovaného jako
-Conglomerate GEN3. Tento repo root (`HumanAndMachines/Conglomerate_GEN3`) je sdílený
+Conglomerate GEN3. Tento repo root (`HumanAndMachines/Lazurio`) je sdílený
 framework pro Launchpad, Guide, templates, manuály a dynamické načítání
 Organizací; není to klientské Organization repo.
 
@@ -58,6 +58,12 @@ Conglomerate/
 - `guide/` — sdílený netechnický onboarding kurz (26 lekcí) do práce s digitální kanceláří a AI kolegy; technická cesta „mapa systému“ (Launchpad root, Organizace, workspace, productionspace, personalspace) je plánovaná budoucí část, do té doby tato témata drží MAP.md a `manual/`
 - Conglomerate Dashboard — v1 spike lokální mount (`dashboard/`) byl z rootu odstraněn i s launchery a Dock ikonou; aktuální Dashboard spike žije v privátním repu (v2 reference). Zůstává hostovaným surfacem pro Admin Organizace (billing, plány, přístupy, konfigurace, Buddy policies) a vstupem Uživatele Organizace (Organization User) do produkčních aplikací (decision 0047/0048 v manual/decision-register.md)
 - `manual/` — technický maintenance manuál Launchpad rootu
+- `distribution/` — source kontrakt, profilové fragmenty, manifest schema,
+  evaly a deterministický build non-Git Lazurio Rootu; sdílený produkt se sem
+  nekopíruje do druhého `common/` stromu.
+- `provisioning/` — source-only operator plane pro přípravu Resident Mašiny;
+  do výsledného Lazurio Rootu se nebalí a atomický install/update/rollback
+  deleguje na verzovaný resident lifecycle.
 - `.agents/skills/` — základní opakovatelné postupy pro Buddy a AI kolegy
 - `organizations/README.md` — vysvětlení mountpointu; jediný trackovaný soubor uvnitř `organizations/` v root repu
 - `organizations/<org>/` — lokální gitignored Organization GEN3 checkout, ideálně podle GitHub organizace
@@ -65,12 +71,12 @@ Conglomerate/
 - `organizations/<org>/workspace/` — plochá složka všech workspace modulů Organizace; Team (digitální kancelář týmu lidí nebo značky/venture s vlastním doctorem, pravidly a access hranicí) deklaruje manifest (kanonicky `modules[].teams` / `module_slots[].teams`; ještě nemigrované Organizace nesou legacy alias `modules[].workspace` / `module_slots[].workspace`), deklarace je autorita a UI grupuje podle ní; modul smí patřit do více Teamů zároveň (N:M), chybějící deklarace = default Team se slugem `workspace`; hosted vzor `<modul>.<team>.<doména>` se generuje z deklarace (decision 0041 v manual/decision-register.md)
 - `organizations/<org>/productionspace/` — org-level repozitáře dané Organizace, které nejsou workspace moduly (např. firmware, connect, platformní runtime nebo pracovní template checkout); každé repo si definuje vlastní pravidla a Doctor u nich vynucuje jen bezpečné minimum (decisions 0041 a 0127 v manual/decision-register.md)
 - `personalspace/` — privátní osobní repo mimo GitHub organizace; cílově obsahuje privátní moduly a per-user/per-colleague aplikace včetně GBrain rozhraní
-- **Hostovaný Buddy** — když si Principál Buddyho onboarduje, běží na dedikované per-owner VPS (decision 0080), ne lokálně; lokální mount `personalspace/<owner>_GEN3/buddy/` drží jen Git konfiguraci profilu. Na hostu platí instrukce repa `HumanAndMachines/Buddy_GEN2`, ne pravidla tohohle rootu — hranici a postup zjištění drží `manual/hosted-buddy-vps.md`
+- **Hostovaný Buddy** — když si Principál Buddyho onboarduje, běží na dedikované per-owner VPS (decision 0080), ne lokálně; lokální mount `personalspace/<owner>_GEN3/buddy/` drží jen Git konfiguraci profilu. Na hostu platí vygenerované instrukce aktivního Buddy resident rootu spolu s privátním profilem Principála, ne pravidla source checkoutu — hranici a postup zjištění drží `manual/hosted-buddy-vps.md`
 - `personalspace/<owner>_GEN3/secrets/<provider>/<scope>/<purpose>` — lokální gitignored
   custody cesta pro root/Buddy/operator secrets; organization/AI-colleague
   secrets patří do organization-local `private/secrets/...`
 - `templates/` — šablony
-- `drafts/` — lokální netrackované návrhy bez dlouhodobé autority (sdílené drafty žijí v privátním Rozjedeme-ai/HumanAndMachines)
+- `drafts/` — lokální netrackované návrhy bez dlouhodobé autority; sdílený draft patří do příslušné Organizace, plan-owned worktree nebo PR
 - **V jakém světě jsi (koexistence Human↔Machine):** začni sekcí
   `AGENTS.md → Model spolupráce → Koexistence Human and Machine`. Vysvětluje
   hierarchii, hranice a procesy, ve kterých tenhle root a všechny Organizace

@@ -8,8 +8,8 @@
 // nepropisuje do org discovery, shared/doctor reportů ani templates — odsud
 // vychází jen metadata (počty, validita, cesty), žádný obsah.
 //
-// Kontrakty (source of truth v HumanAndMachines, decision 0051):
-//   - personal.gen3.json  → schemas/personal.gen3.schema.json (kopie identická)
+// Lokální veřejné kontrakty (decision 0051 v manual/decision-register.md):
+//   - personal.gen3.json  → schemas/personal.gen3.schema.json
 //   - modules.manifest.json → identický module-slot kontrakt jako Organizace
 //   - workspace/<modul>/lazurio.module.json → module-owned port lease
 //   - workspace/<modul>/ … → osobní aplikace přes lazurio.runtime.v1; legacy

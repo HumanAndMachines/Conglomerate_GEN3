@@ -297,7 +297,7 @@ denně neověřuje. Proto pro každého agenta platí:
    chybu manuálu, zastaralý endpoint, změněnou verzi/scope či jiné chování
    poskytovatele, **nenech to jen v chatu**.
 2. Znáš-li řešení nebo aktualizaci, oprav runbook/manuál a pošli PR na
-   `HumanAndMachines/Conglomerate_GEN3` (platí worktree disciplína). Do PR
+   `HumanAndMachines/Lazurio` (platí worktree disciplína). Do PR
    popiš, co se stalo, na čem se Kolega zasekl, jak se to projevovalo a jak
    je oprava ověřená — metadata-only, žádné secrets, tokeny ani screenshoty
    s citlivým obsahem.

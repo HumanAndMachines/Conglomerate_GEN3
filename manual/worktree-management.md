@@ -11,8 +11,9 @@ Organizace. Příkazy označené jako plánované se nesmí vydávat za dnešní
 implementaci. Do dokončení CAC-0065 platí decision 0049 a současné Doctor /
 Launchpad guardy.
 
-Autoritativní shaping plán:
-`HumanAndMachines/mission-control/db/data/mission-control/plans/2026/07/CAC-0065-organization-worktree-environments.yaml`.
+Aktivní plán vždy vlastní konkrétní Organizace a jeho exact locator ukládá
+worktree sidecar. Veřejný manuál na privátní Mission Control neodkazuje;
+stabilní lokální rozhodovací kontrakt shrnuje `manual/decision-register.md`.
 
 ## Výsledek, který chceme
 
@@ -80,8 +81,8 @@ adresář ani branch.
 
 ### Standalone top-level repo environment
 
-Agenti mohou začít přímo v top-level repozitářích HumanAndMachines,
-Conglomerate nebo Dashboard. Každý z nich drží vlastní Git/access hranici a
+Agenti mohou začít přímo v top-level repozitářích Lazurio, Dashboard nebo
+jiném samostatném vývojovém repu. Každý z nich drží vlastní Git/access hranici a
 vlastní primary checkout. Pro změnu uvnitř jediného takového repa je kanonická
 cesta:
 
@@ -150,7 +151,7 @@ Kanonická cesta:
 <Conglomerate>/.worktrees/root/<canonical-plan-basename>.worktree.json
 ```
 
-Je to linked worktree repozitáře `HumanAndMachines/Conglomerate_GEN3`. Doctor z něj
+Je to linked worktree veřejného Lazurio root repozitáře. Doctor z něj
 umí přes Git common-dir bezpečně odvodit kanonický main root. Branch Launchpad
 smí dostat **read-only Organization mount context** z kanonického rootu, aby
 `bun run doctor` a Launchpad smoke nepadaly jen proto, že gitignored
@@ -429,15 +430,16 @@ aktuálnímu process cwd a nikdy absolutní host cesta:
 
 - `authority: organization` → Organization root; repository-db v3 cesta je
   `mission-control/db/data/mission-control/plans/...`;
-- `authority: humanandmachines_root` → canonical HumanAndMachines root; cesta
-  je opět `mission-control/db/data/mission-control/plans/...`.
+- `authority: external` → pouze čtecí compatibility locator inventury pro
+  legacy sidecar; create lane z něj nový worktree nevytvoří.
 
-Odkaz v hlavičce tohoto manuálu obsahuje prefix `HumanAndMachines/`, protože
-je to lidský locator psaný z Conglomerate/root-parent kontextu; není to hodnota
-sidecar `plan.path`. Legacy v1 sidecary s `mission-control/plans/...` ukazují na
-dřívější in-tree Mission Control. Phase 0 musí tuto formu přes compatibility
-bridge jednoznačně převést na repository-db locator; nejednoznačný nebo
-nedostupný target zůstane `needs_attention`.
+Nový Organization sidecar nese relativní
+`mission_control_authority_path` ve tvaru
+`organizations/<organization>/mission-control/db`. Legacy v1 sidecary bez
+tohoto pole smí compatibility bridge ověřit jen proti explicitně předanému
+`MISSION_CONTROL_AUTHORITY_ROOT`; bez něj zůstane `needs_attention`. Tím se
+kvůli kompatibilitě nerozšiřuje trust boundary na libovolný sousední checkout.
+Nový worktree tímto fallbackem nevzniká.
 
 Do sidecaru nepatří autoritativní `dirty`, `ahead`, `behind`, `pr_state`,
 `runtime_state` ani `ready_to_delete`. Tyto hodnoty zastarávají a Doctor je
