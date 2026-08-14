@@ -1315,6 +1315,78 @@ test("Doctor vynucuje root slot contract a Mission Control app/data pár", async
   );
 });
 
+test("explicitní in-tree compatibility root vrstvy nevyžadují checkout slot", async () => {
+  const root = await createCompaniesWorkspaceFixture();
+  const companyRoot = join(root, "organizations", "OmegaCo_GEN3");
+  await mkdir(join(companyRoot, "manual"), { recursive: true });
+  await mkdir(join(companyRoot, "company", "colleagues"), { recursive: true });
+  await mkdir(join(companyRoot, "design-system"), { recursive: true });
+  await mkdir(join(companyRoot, "mission-control"), { recursive: true });
+  await mkdir(join(companyRoot, "workspace", "wiki"), { recursive: true });
+  await writeJson(join(root, "launchpad.gen3.json"), {
+    launchpad_root: {
+      slug: "test-companies",
+      display_name: "Test Companies",
+      root_role: "companies-root",
+    },
+  });
+  await writeJson(join(companyRoot, "company.gen3.json"), {
+    organization_generation: "gen3",
+    company: { slug: "OmegaCo", display_name: "OmegaCo" },
+    workspaces: [{ slug: "workspace", display_name: "OmegaCo Workspace", default: true }],
+    layers: [
+      {
+        path: "design-system",
+        kind: "design-system",
+        ownership: "override",
+        status: "compatibility_in_tree",
+      },
+      {
+        path: "mission-control",
+        kind: "root-docs",
+        ownership: "manual",
+        status: "compatibility_in_tree",
+      },
+    ],
+  });
+  await writeJson(join(companyRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    module_slots: [
+      {
+        path: "design-system",
+        space: "root",
+        status: "planned_slot",
+      },
+      {
+        path: "mission-control",
+        space: "root",
+        status: "planned_slot",
+      },
+      {
+        path: "workspace/wiki",
+        teams: ["workspace"],
+        git: { url: "git@github.com:OmegaCo/wiki.git", branch: "main" },
+      },
+    ],
+  });
+  await writeJson(join(companyRoot, "TODO.tasks.json"), {});
+  await writeJson(join(companyRoot, "DONE.tasks.json"), {});
+  await writeJson(join(companyRoot, "ISSUES.open.json"), {});
+
+  const report = await buildLaunchpadDoctorReport({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+  });
+  const declarationCheck = report.checks.find(
+    (check) => check.id === "launchpad.workspace_declarations",
+  );
+  const details = declarationCheck?.details.join("\n") ?? "";
+
+  expect(declarationCheck?.status).toBe("ok");
+  expect(details).not.toContain("nemá odpovídající modules.manifest.json slot");
+});
+
 test("planned root slot nemá git a smí zůstat planned jen dokud není materializovaný", async () => {
   const root = await createCompaniesWorkspaceFixture();
   const companyRoot = join(root, "organizations", "OmegaCo_GEN3");

@@ -1136,10 +1136,18 @@ function slotScopeContractIssues(manifest, config) {
 
 // Organization root checkout boundaries mají přísnější kontrakt než běžné
 // Team moduly: scope musí být explicitní, aktivní slot musí nést přesné checkout
-// souřadnice a Mission Control app/data deklarace tvoří jeden pár.
+// souřadnice a Mission Control app/data deklarace tvoří jeden pár. Přechodová
+// Organizace smí root vrstvu dočasně držet přímo v super-repu pouze přes
+// explicitní `status: "compatibility_in_tree"` a jen dokud fyzická cesta existuje.
 function rootSlotContractIssues(manifest, config, organizationRoot) {
   const issues = [];
   const rootLayerPaths = new Set(["design-system", "infra", "mission-control"]);
+  const compatibilityLayerPaths = new Set(
+    (Array.isArray(config?.layers) ? config.layers : [])
+      .filter((layer) => layer?.status === "compatibility_in_tree")
+      .map((layer) => normalizeOrganizationSlotPath(layer?.path))
+      .filter((path) => rootLayerPaths.has(path)),
+  );
   const slots = Array.isArray(manifest?.module_slots) ? manifest.module_slots : [];
   const rootSlots = slots
     .filter((slot) => slot && typeof slot.path === "string")
@@ -1185,7 +1193,11 @@ function rootSlotContractIssues(manifest, config, organizationRoot) {
     const gitBranch = typeof slot.git?.branch === "string" ? slot.git.branch.trim() : "";
     const checkoutExists = existsSync(join(organizationRoot, path));
     const checkoutCoordinatesStarted = slot.git !== undefined;
-    if (slot.status === "planned_slot" && checkoutExists) {
+    if (
+      slot.status === "planned_slot" &&
+      checkoutExists &&
+      !compatibilityLayerPaths.has(path)
+    ) {
       issues.push(
         `modules.manifest.json: materializovaný root slot ${path} nesmí zůstat status: "planned_slot"; odstraň status a ponech nebo doplň celé git.url i git.branch`,
       );
@@ -1213,7 +1225,11 @@ function rootSlotContractIssues(manifest, config, organizationRoot) {
 
   const missionControlDeclared = declaredPaths.has("mission-control");
   const missionControlDataDeclared = declaredPaths.has("mission-control/db");
-  if (missionControlDeclared !== missionControlDataDeclared) {
+  const missionControlCompatibilityInTree = compatibilityLayerPaths.has("mission-control");
+  if (
+    missionControlDeclared !== missionControlDataDeclared &&
+    !(missionControlDeclared && missionControlCompatibilityInTree)
+  ) {
     const missingPath = missionControlDeclared ? "mission-control/db" : "mission-control";
     issues.push(
       `modules.manifest.json: Mission Control app/data boundary musí deklarovat oba root sloty; chybí ${missingPath} (během migrace smí mít protějšek status: "planned_slot")`,
@@ -1234,6 +1250,7 @@ function rootSlotContractIssues(manifest, config, organizationRoot) {
     .map((layer) => ({
       rawPath: layer.path.replace(/\\/g, "/"),
       path: normalizeOrganizationSlotPath(layer.path),
+      status: layer.status,
     }))
     .filter(({ path }) => rootLayerPaths.has(path));
   const declaredLayerPaths = new Set(rootLayers.map(({ path }) => path));
@@ -1243,8 +1260,14 @@ function rootSlotContractIssues(manifest, config, organizationRoot) {
       `company.gen3.json: root layer path "${rawPath}" není kanonický; použij "${path}"`,
     );
   }
-  for (const path of declaredLayerPaths) {
+  for (const { path, status } of rootLayers) {
     if (!declaredPaths.has(path)) {
+      if (
+        status === "compatibility_in_tree" &&
+        existsSync(join(organizationRoot, path))
+      ) {
+        continue;
+      }
       issues.push(
         `company.gen3.json: root vrstva ${path} nemá odpovídající modules.manifest.json slot`,
       );
