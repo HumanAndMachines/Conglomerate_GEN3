@@ -1,5 +1,13 @@
 import { expect, test } from "bun:test";
-import { chmod, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdtemp,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 
@@ -196,7 +204,7 @@ printf '%s\\n' "$PWD" "$@" > "$LAZURIO_ANSIBLE_PROBE_RESULT"
     const [workingDirectory, ...args] = (await readFile(resultPath, "utf8"))
       .trimEnd()
       .split("\n");
-    expect(workingDirectory).toBe(ansibleRoot);
+    expect(await realpath(workingDirectory)).toBe(await realpath(ansibleRoot));
     expect(args).toEqual([
       "-i",
       inventoryPath,
