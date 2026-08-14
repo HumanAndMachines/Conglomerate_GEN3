@@ -11,6 +11,7 @@
     { "company": "Lumbio", "start": 24500, "end": 24599 },
     { "company": "Macano-Tech", "start": 24600, "end": 24699 },
     { "company": "Spectoda", "start": 24700, "end": 24799 },
-    { "company": "Tiskarna-Adamek", "start": 24800, "end": 24899 }
+    { "company": "Tiskarna-Adamek", "start": 24800, "end": 24899 },
+    { "company": "BNO-LJ", "start": 24900, "end": 24999 }
   ]
 }
