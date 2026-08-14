@@ -45,6 +45,7 @@
     "lazurio/lib.mjs",
     "lazurio/search-lib.mjs",
     "manual/lazurio-resident-profiles.md",
+    "manual/update-installed-resident.md",
     "bridge/"
   ],
   "source_excludes": {

@@ -134,6 +134,13 @@ identita, její Teamy a branch rules.
 
 ## Instalace, aktualizace a rollback
 
+První nasazení celé Mašiny a aktualizace už nainstalovaného Lazurio Rootu jsou
+dvě různé operace. Blank nebo obnovovanou Mašinu připravuje zvenku reviewovaný
+operator plane; jeho public-safe vstup je `provisioning/README.md` ve source
+checkoutu. Běžný update už aktivního Residenta provádí pouze jeho verzovaný
+updater. Ansible může updater explicitně zavolat, ale nesmí znovu implementovat
+kopírování, přepnutí active verze ani rollback.
+
 Release je svázaný s přesným artefaktem. Bezpečný lifecycle má tento tvar:
 
 1. ověřit digest, manifest, profil a kompatibilitu s platformou;
@@ -159,6 +166,10 @@ rezidentní instalace se nezapne, dokud nebude mít vlastní atomický pointer
 adapter a stejné failure testy. To neomezuje dnešní Windows Kolegy: jejich
 Lazurio zůstává Git checkout, ve kterém mohou připravit platformní opravu přes
 branch a PR.
+
+Konkrétní offline postup pro status, update, rollback a zachování lokálního
+hotfixu je v `manual/update-installed-resident.md` a je součástí resident
+artefaktu.
 
 ## Když je potřeba vlastní oprava Launchpadu
 

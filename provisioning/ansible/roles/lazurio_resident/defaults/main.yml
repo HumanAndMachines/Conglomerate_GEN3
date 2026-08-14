@@ -1,0 +1,13 @@
+---
+lazurio_resident_profile: buddy
+lazurio_resident_channel: candidate
+lazurio_install_root: /opt/lazurio
+lazurio_artifact_archive: ""
+lazurio_artifact_checksum: ""
+lazurio_bun_path: ""
+lazurio_personalspace_source: ""
+lazurio_bridge_environment_file: /etc/buddy/buddy-bridge.env
+lazurio_bridge_state_root: /var/lib/buddy-bridge
+lazurio_hermes_root: /opt/buddy-runtime/hermes
+lazurio_operator_runtime_source: "{{ playbook_dir }}/../../../distribution/runtime"
+lazurio_operator_staging_root: /var/lib/lazurio-operator/staging

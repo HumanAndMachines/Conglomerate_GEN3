@@ -1,0 +1,27 @@
+---
+lazurio_resident_profile: buddy
+lazurio_owner_user: ""
+lazurio_runtime_user: buddy
+lazurio_bridge_user: buddy-bridge
+lazurio_shared_group: personalspace
+lazurio_runtime_groups:
+  - personalspace
+  - docker
+lazurio_install_root: /opt/lazurio
+lazurio_runtime_root: /opt/buddy-runtime
+lazurio_personalspace_source: /srv/conglomerate/personalspace
+lazurio_custody_root: /etc/buddy
+lazurio_bridge_state_root: /var/lib/buddy-bridge
+lazurio_bridge_environment_file: /etc/buddy/buddy-bridge.env
+lazurio_base_packages:
+  - acl
+  - age
+  - bind9-dnsutils
+  - ca-certificates
+  - curl
+  - docker-compose-v2
+  - docker.io
+  - git
+  - jq
+  - ufw
+  - unzip

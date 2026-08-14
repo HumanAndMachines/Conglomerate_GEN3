@@ -60,6 +60,8 @@
     "do-not-invent-second-role",
     "reuse-hermes-sandbox",
     "sandbox-substrate-not-runtime-writable",
-    "no-parallel-authorization-layer"
+    "no-parallel-authorization-layer",
+    "separate-machine-provisioning-from-resident-update",
+    "operator-plane-not-resident-autonomy"
   ]
 }

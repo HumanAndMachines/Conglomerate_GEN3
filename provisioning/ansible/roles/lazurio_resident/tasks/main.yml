@@ -1,0 +1,202 @@
+---
+- name: Refuse incomplete or non-absolute Resident rollout inputs
+  ansible.builtin.assert:
+    that:
+      - lazurio_resident_profile == "buddy"
+      - lazurio_resident_channel in ["candidate", "stable"]
+      - lazurio_artifact_archive is match('^/')
+      - lazurio_artifact_checksum is match('^/')
+      - lazurio_operator_runtime_source is match('^/')
+      - lazurio_bun_path is match('^/')
+      - lazurio_install_root is match('^/')
+      - lazurio_personalspace_source is match('^/')
+      - lazurio_bridge_environment_file is match('^/')
+      - lazurio_bridge_state_root is match('^/')
+      - lazurio_hermes_root is match('^/')
+    fail_msg: >-
+      Buddy rollout requires exact controller artifact paths and absolute host
+      paths for Bun, install root, Personalspace, custody, state and Hermes.
+
+- name: Inspect exact artifact inputs on the controller
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  delegate_to: localhost
+  become: false
+  loop:
+    - "{{ lazurio_artifact_archive }}"
+    - "{{ lazurio_artifact_checksum }}"
+    - "{{ lazurio_operator_runtime_source }}/buddy-rollout.mjs"
+    - "{{ lazurio_operator_runtime_source }}/buddy-rollout-lib.mjs"
+    - "{{ lazurio_operator_runtime_source }}/buddy-service-lib.mjs"
+    - "{{ lazurio_operator_runtime_source }}/updater-lib.mjs"
+    - "{{ lazurio_operator_runtime_source }}/integrity.mjs"
+  register: lazurio_controller_inputs
+
+- name: Refuse missing or non-regular controller inputs
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.isreg
+    fail_msg: "Required controller input is missing or not a regular file: {{ item.item }}"
+  loop: "{{ lazurio_controller_inputs.results }}"
+
+- name: Inspect private and runtime host prerequisites
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ lazurio_bun_path }}"
+    - "{{ lazurio_personalspace_source }}"
+    - "{{ lazurio_bridge_environment_file }}"
+    - "{{ lazurio_hermes_root }}"
+  register: lazurio_host_inputs
+
+- name: Refuse an unreadable runtime baseline
+  ansible.builtin.assert:
+    that:
+      - lazurio_host_inputs.results[0].stat.exists
+      - lazurio_host_inputs.results[0].stat.isreg
+      - lazurio_host_inputs.results[0].stat.executable
+      - lazurio_host_inputs.results[1].stat.exists
+      - lazurio_host_inputs.results[1].stat.isdir
+      - lazurio_host_inputs.results[2].stat.exists
+      - lazurio_host_inputs.results[2].stat.isreg
+      - lazurio_host_inputs.results[3].stat.exists
+      - lazurio_host_inputs.results[3].stat.isdir
+    fail_msg: >-
+      Phase-one rollout needs an executable Bun, existing Personalspace,
+      existing bridge EnvironmentFile and an already materialized Hermes root.
+
+- name: Derive the expected artifact id from the exact archive filename
+  ansible.builtin.set_fact:
+    lazurio_desired_artifact_id: "{{ lazurio_artifact_archive | basename | regex_replace('\\.tar$', '') }}"
+
+- name: Refuse an archive outside the Buddy/Linux release naming contract
+  ansible.builtin.assert:
+    that:
+      - lazurio_desired_artifact_id is match('^lazurio-resident-buddy-[A-Za-z0-9._+-]+-linux-(x64|arm64)$')
+    fail_msg: "Artifact filename does not identify a Buddy Linux resident release."
+
+- name: Create a private operator staging directory
+  ansible.builtin.file:
+    path: "{{ lazurio_operator_staging_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Stage the exact reviewed operator runtime
+  ansible.builtin.copy:
+    src: "{{ lazurio_operator_runtime_source }}/"
+    dest: "{{ lazurio_operator_staging_root }}/runtime/"
+    owner: root
+    group: root
+    mode: "u=rwX,g=,o="
+
+- name: Stage the exact resident archive and checksum
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ lazurio_operator_staging_root }}/{{ item | basename }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop:
+    - "{{ lazurio_artifact_archive }}"
+    - "{{ lazurio_artifact_checksum }}"
+
+- name: Inspect whether a Resident is already active
+  ansible.builtin.stat:
+    path: "{{ lazurio_install_root }}/active/resident/updater.mjs"
+  register: lazurio_active_updater
+
+- name: Read the current Resident status before an update
+  ansible.builtin.command:
+    argv:
+      - "{{ lazurio_bun_path }}"
+      - "{{ lazurio_install_root }}/active/resident/updater.mjs"
+      - status
+      - --install-root
+      - "{{ lazurio_install_root }}"
+      - --profile
+      - buddy
+  register: lazurio_before_status_command
+  changed_when: false
+  check_mode: false
+  when: lazurio_active_updater.stat.exists
+
+- name: Parse the current Resident status
+  ansible.builtin.set_fact:
+    lazurio_before_status: "{{ lazurio_before_status_command.stdout | from_json }}"
+  when: lazurio_active_updater.stat.exists
+
+- name: Refuse to update an unhealthy or wrong-profile Resident
+  ansible.builtin.assert:
+    that:
+      - lazurio_before_status.profile == "buddy"
+      - lazurio_before_status.health.status == "pass"
+    fail_msg: >-
+      Existing Resident is unhealthy or has another profile. Preserve it and
+      diagnose the drift before attempting an update.
+  when: lazurio_active_updater.stat.exists
+
+- name: Select first install or update without merging their lifecycle contracts
+  ansible.builtin.set_fact:
+    lazurio_rollout_operation: "{{ 'update' if lazurio_active_updater.stat.exists else 'install' }}"
+
+- name: Run the official compensated Buddy rollout
+  ansible.builtin.command:
+    argv:
+      - "{{ lazurio_bun_path }}"
+      - "{{ lazurio_operator_staging_root }}/runtime/buddy-rollout.mjs"
+      - "{{ lazurio_rollout_operation }}"
+      - --archive
+      - "{{ lazurio_operator_staging_root }}/{{ lazurio_artifact_archive | basename }}"
+      - --checksum
+      - "{{ lazurio_operator_staging_root }}/{{ lazurio_artifact_checksum | basename }}"
+      - --install-root
+      - "{{ lazurio_install_root }}"
+      - --channel
+      - "{{ lazurio_resident_channel }}"
+      - --mount-source
+      - "personalspace={{ lazurio_personalspace_source }}"
+      - --environment-file
+      - "{{ lazurio_bridge_environment_file }}"
+      - --queue-root
+      - "{{ lazurio_bridge_state_root }}"
+      - --hermes-root
+      - "{{ lazurio_hermes_root }}"
+      - --bun
+      - "{{ lazurio_bun_path }}"
+  register: lazurio_rollout_command
+  changed_when: (lazurio_rollout_command.stdout | from_json).status in ["installed", "updated"]
+  when: not ansible_check_mode
+
+- name: Explain the intentionally skipped lifecycle mutation in check mode
+  ansible.builtin.debug:
+    msg: >-
+      Check mode validated the host and controller inputs. The official
+      buddy-rollout lifecycle command and its post-switch proof were not run.
+  when: ansible_check_mode
+
+- name: Read back the active Resident after rollout
+  ansible.builtin.command:
+    argv:
+      - "{{ lazurio_bun_path }}"
+      - "{{ lazurio_install_root }}/active/resident/updater.mjs"
+      - status
+      - --install-root
+      - "{{ lazurio_install_root }}"
+      - --profile
+      - buddy
+  register: lazurio_after_status_command
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Prove the expected artifact is active and healthy
+  ansible.builtin.assert:
+    that:
+      - (lazurio_after_status_command.stdout | from_json).active == lazurio_desired_artifact_id
+      - (lazurio_after_status_command.stdout | from_json).profile == "buddy"
+      - (lazurio_after_status_command.stdout | from_json).health.status == "pass"
+    fail_msg: "Buddy rollout returned without the expected healthy active artifact."
+  when: not ansible_check_mode

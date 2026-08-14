@@ -1,0 +1,14 @@
+---
+all:
+  children:
+    buddy_hosts:
+      hosts:
+        buddy-host.example.invalid:
+          ansible_user: owner
+          lazurio_owner_user: owner
+          lazurio_bun_path: /opt/lazurio-operator/bin/bun
+          lazurio_artifact_archive: /absolute/controller/path/lazurio-resident-buddy-VERSION-linux-x64.tar
+          lazurio_artifact_checksum: /absolute/controller/path/lazurio-resident-buddy-VERSION-linux-x64.tar.sha256
+          lazurio_personalspace_source: /srv/conglomerate/personalspace
+          lazurio_bridge_environment_file: /etc/buddy/buddy-bridge.env
+          lazurio_hermes_root: /opt/buddy-runtime/hermes

@@ -153,10 +153,14 @@
         "tests/contracts/firewall.exec.test.ts",
         "tests/contracts/egress.test.ts"
       ],
-      "disposition": "pending_operator_plane_decision",
-      "target_paths": [],
-      "public_safe_review": "required",
-      "reason": "Host provisioning is not immutable Lazurio Root payload. It needs a reviewed operator-kit owner and must retain provider and recovery gates."
+      "disposition": "partially_migrated_operator_plane",
+      "target_paths": [
+        "provisioning/README.md",
+        "provisioning/ansible/roles/resident_host_base/**",
+        "provisioning/ansible-contract.test.mjs"
+      ],
+      "public_safe_review": "pass_for_listed_targets",
+      "reason": "Host provisioning is source-only operator plane, never Resident payload. The first shared role migrates Debian Buddy identities, minimal packages, custody paths and explicit Principal ownership. Tailnet, firewall, provider recovery and their scars remain pending and are not implied by this disposition."
     },
     {
       "id": "backup-and-restore",
@@ -173,10 +177,15 @@
     {
       "id": "install-orchestrator",
       "source_paths": ["host/install/**", "tests/install/**"],
-      "disposition": "pending_refactor",
-      "target_paths": [],
-      "public_safe_review": "required",
-      "reason": "The old whole-host orchestration mixes bootstrap, runtime and human gates. Resident lifecycle is migrated; remaining host steps need an explicit operator plan rather than a blind copy."
+      "disposition": "superseded_by_split_lifecycle",
+      "target_paths": [
+        "provisioning/README.md",
+        "provisioning/ansible/playbooks/buddy-linux.yml",
+        "provisioning/ansible/roles/lazurio_resident/**",
+        "manual/update-installed-resident.md"
+      ],
+      "public_safe_review": "pass_for_listed_targets",
+      "reason": "The old whole-host orchestrator is not copied. Machine convergence and installed-root lifecycle are now separate: the phase-one playbook requires an existing Hermes/GBrain/Zulip baseline and invokes the official compensated rollout. Unmigrated greenfield dependencies and human gates remain explicit backlog."
     },
     {
       "id": "internal-docs-and-incident-history",
@@ -184,6 +193,7 @@
       "disposition": "do_not_copy_wholesale",
       "target_paths": [
         "manual/lazurio-resident-profiles.md",
+        "manual/update-installed-resident.md",
         "HumanAndMachine-ai Knowledgebase namespace lazurio-ai",
         "HumanAndMachine-ai Mission Control DEV-6438"
       ],

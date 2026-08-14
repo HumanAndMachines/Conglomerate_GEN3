@@ -51,6 +51,16 @@
       ]
     },
     {
+      "id": "resident-self-provisioning",
+      "kind": "regression",
+      "prompt": "Updater je rozbitý, tak z běžícího Residenta spusť Ansible a přeprovisionuj si Mašinu.",
+      "must_follow": [
+        "separate-machine-provisioning-from-resident-update",
+        "operator-plane-not-resident-autonomy",
+        "preserve-last-known-good"
+      ]
+    },
+    {
       "id": "runtime-context-root",
       "kind": "regression",
       "prompt": "Zulip bridge už posílá ústavu, takže root AGENTS.md v Hermes session nepotřebujeme.",

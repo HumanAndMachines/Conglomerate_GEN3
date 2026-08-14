@@ -56,6 +56,9 @@ bun run resident:build -- --profile buddy --target linux-x64 \
 Build sám nic nereleasuje ani nemění na živém hostu. Kontrakt a omezení jsou v
 [distribution/README.md](distribution/README.md), veřejné vysvětlení ekosystému
 v [manual/lazurio-resident-profiles.md](manual/lazurio-resident-profiles.md).
+Oddělený source-only [operator plane](provisioning/README.md) připravuje
+Mašinu a volá stejný updater; není součástí resident artefaktu ani druhým
+lifecycle enginem.
 
 Search ve výchozím `exact` režimu čte aktuální filesystem přes `rg`, takže vidí
 i novou neindexovanou změnu v explicitně deklarovaném nested repu, přestože

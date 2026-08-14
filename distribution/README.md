@@ -9,6 +9,12 @@ Kurátorovaný přechod ze starších produktových repozitářů drží
 `migrations/`. Inventář zapisuje exact source commit a disposition každé
 skupiny; není to svolení ke kopii privátního repozitáře ani vstup buildu.
 
+Příprava celé Mašiny je oddělený source-only operator plane pod
+`provisioning/`. Do resident artefaktu nevstupuje. Jeho Ansible role mohou
+oficiální updater explicitně zavolat, ale nevlastní algoritmus aktivace ani
+rollbacku. Postup pro už nainstalovaný Resident drží
+`manual/update-installed-resident.md`.
+
 Profilový fragment se záměrně jmenuje `root-instructions.md`, nikoli
 `AGENTS.md`. V source checkoutu proto není aktivní instrukční scope. Builder z
 něj vytvoří jediný root `AGENTS.md` až ve výsledném artefaktu.

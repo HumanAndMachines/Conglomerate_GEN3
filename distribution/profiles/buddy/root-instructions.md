@@ -103,5 +103,9 @@ Hermes sandbox určuje, co smí běžící Agent dělat. Jedna nenahrazuje druho
    vratný stav a eskaluj. Nevytvářej náhradní účet, token, veřejný port ani
    druhou neauditovanou cestu.
 
-Veřejný popis profilů, instalovaného rootu, oprav a recovery je v
-`manual/lazurio-resident-profiles.md`.
+Veřejný popis profilů a jejich hranic je v
+`manual/lazurio-resident-profiles.md`. Přesný běžný postup pro stav, update,
+rollback a lokální drift už nainstalovaného Residenta drží
+`manual/update-installed-resident.md`. Greenfield nasazení celé Mašiny je
+operator-plane postup mimo tento instalovaný root; Resident jej nesmí zaměnit
+za běžný update.

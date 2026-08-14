@@ -61,6 +61,9 @@ Conglomerate/
 - `distribution/` — source kontrakt, profilové fragmenty, manifest schema,
   evaly a deterministický build non-Git Lazurio Rootu; sdílený produkt se sem
   nekopíruje do druhého `common/` stromu.
+- `provisioning/` — source-only operator plane pro přípravu Resident Mašiny;
+  do výsledného Lazurio Rootu se nebalí a atomický install/update/rollback
+  deleguje na verzovaný resident lifecycle.
 - `.agents/skills/` — základní opakovatelné postupy pro Buddy a AI kolegy
 - `organizations/README.md` — vysvětlení mountpointu; jediný trackovaný soubor uvnitř `organizations/` v root repu
 - `organizations/<org>/` — lokální gitignored Organization GEN3 checkout, ideálně podle GitHub organizace

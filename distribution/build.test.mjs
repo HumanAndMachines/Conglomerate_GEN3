@@ -104,6 +104,7 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
     expect.objectContaining({ path: "AGENTS.md" }),
   ]);
   expect(first.manifest.payload.files.map((file) => file.path)).toEqual(expect.arrayContaining([
+    "manual/update-installed-resident.md",
     "resident/integrity.mjs",
     "resident/updater-lib.mjs",
     "resident/updater.mjs",
@@ -115,6 +116,7 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
     "resident/services/hermes-lazurio-root.conf.template",
     "bridge/run.ts",
   ]));
+  expect(first.manifest.payload.files.some((file) => file.path.startsWith("provisioning/"))).toBe(false);
   const residentPackage = JSON.parse(
     await readFile(join(first.artifact_root, "package.json"), "utf8"),
   );
@@ -285,6 +287,10 @@ test("Buddy GEN2 migration inventory is exact, explicit and never a private hist
   });
   expect(inventory.items.find((item) => item.id === "internal-docs-and-incident-history"))
     .toMatchObject({ disposition: "do_not_copy_wholesale" });
+  expect(inventory.items.find((item) => item.id === "host-bootstrap-and-network"))
+    .toMatchObject({ disposition: "partially_migrated_operator_plane" });
+  expect(inventory.items.find((item) => item.id === "install-orchestrator"))
+    .toMatchObject({ disposition: "superseded_by_split_lifecycle" });
 });
 
 function runDoctor(root) {
