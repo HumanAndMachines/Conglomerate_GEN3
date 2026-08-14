@@ -7,6 +7,8 @@ let copyButton = null;
 let copyStatus = null;
 let returnFocus = null;
 let returnFocusAppId = null;
+let dialogTitle = null;
+let dialogIntro = null;
 
 export function isCodexPortConflict(app) {
   return app?.runtime?.failure_kind === PORT_CONFLICT_KIND;
@@ -42,12 +44,60 @@ Hranice úkolu: neměň soubory, Git stav, závislosti ani data aplikací; neuko
 
 export function openCodexPortConflictDialog(app) {
   if (typeof document === "undefined" || !isCodexPortConflict(app)) return false;
+  return openCodexHandoffDialog({
+    app,
+    title: "Vyřešit blokaci s Codexem",
+    intro: "Launchpad cizí proces sám neukončí. Codex ho nejdřív ověří a zasáhne pouze tehdy, když jde bezpečně o lokální vývojový náhled.",
+    prompt: buildCodexPortConflictPrompt(app),
+  });
+}
+
+export function buildCodexRuntimeIssuePrompt(app = {}, issue = {}) {
+  const title = cleanValue(app.title ?? app.name ?? app.id, "neznámá aplikace");
+  const technical = Array.isArray(issue.technical) && issue.technical.length > 0
+    ? issue.technical.map((value) => `- ${cleanValue(value)}`).join("\n")
+    : "- neuvedeno";
+  return `V Launchpadu nejde spustit aplikace „${title}“. Potřebuji najít skutečnou příčinu, udělat nejmenší bezpečnou opravu ve správném scope a ověřit spuštění přes Launchpad.
+
+Kontext z Launchpadu:
+- Organizace: ${cleanValue(app.company ?? app.organization)}
+- ID aplikace: ${cleanValue(app.id)}
+- Kód chyby: ${cleanValue(issue.code)}
+- Druh selhání: ${cleanValue(issue.failureKind)}
+- Checkout aplikace: ${cleanValue(app.dependencies?.cwd ?? app.cwd)}
+- Log: ${cleanValue(app.runtime?.log_path)}
+
+Diagnostika:
+${technical}
+
+Postupuj prosím takto:
+1. Nejdřív pouze čtením ověř příčinu, Git stav a správný root / Organizaci / modul.
+2. Pokud existuje bezpečná automatická náprava, proveď ji jen v rozsahu této aplikace. Cizí Organizaci neopravuj z nesprávného scope a neobcházej validační ani access hranice.
+3. Je-li potřeba změna souborů, zachovej cizí práci a použij předepsaný worktree + Draft PR postup. Nic nemerguj ani nepublikuj bez mého explicitního pokynu.
+4. Nakonec aplikaci spusť stejnou cestou přes Launchpad a ověř její health. Když oprava vyžaduje moje rozhodnutí nebo cizí pravomoc, řekni přesně jakou a proč.
+
+Hranice úkolu: nemaž data, neměň přístupy ani secrets a neukončuj neověřené procesy.`;
+}
+
+export function openCodexRuntimeIssueDialog(app, issue) {
+  if (typeof document === "undefined") return false;
+  return openCodexHandoffDialog({
+    app,
+    title: "Vyřešit spuštění s Codexem",
+    intro: "Launchpad připravil přesný kontext chyby. Codex podle něj ověří příčinu, opraví správný scope a znovu zkontroluje spuštění.",
+    prompt: buildCodexRuntimeIssuePrompt(app, issue),
+  });
+}
+
+function openCodexHandoffDialog({ app, title, intro, prompt }) {
   ensureStylesheet();
   ensureDialog();
 
   returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   returnFocusAppId = cleanValue(app.id, "");
-  promptField.value = buildCodexPortConflictPrompt(app);
+  dialogTitle.textContent = title;
+  dialogIntro.textContent = intro;
+  promptField.value = prompt;
   copyStatus.textContent = "";
   copyButton.textContent = "Zkopírovat zprávu";
 
@@ -75,22 +125,22 @@ function ensureDialog() {
 
   const header = document.createElement("header");
   header.className = "codex-handoff-head";
-  const heading = document.createElement("h2");
-  heading.id = "codexHandoffTitle";
-  heading.textContent = "Vyřešit blokaci s Codexem";
+  dialogTitle = document.createElement("h2");
+  dialogTitle.id = "codexHandoffTitle";
+  dialogTitle.textContent = "Vyřešit blokaci s Codexem";
   const closeButton = document.createElement("button");
   closeButton.type = "button";
   closeButton.className = "codex-handoff-close";
   closeButton.setAttribute("aria-label", "Zavřít okno");
   closeButton.textContent = "×";
   closeButton.addEventListener("click", () => dialog.close());
-  header.append(heading, closeButton);
+  header.append(dialogTitle, closeButton);
 
   const body = document.createElement("div");
   body.className = "codex-handoff-body";
-  const intro = document.createElement("p");
-  intro.id = "codexHandoffIntro";
-  intro.textContent = "Launchpad cizí proces sám neukončí. Codex ho nejdřív ověří a zasáhne pouze tehdy, když jde bezpečně o lokální vývojový náhled.";
+  dialogIntro = document.createElement("p");
+  dialogIntro.id = "codexHandoffIntro";
+  dialogIntro.textContent = "Launchpad cizí proces sám neukončí. Codex ho nejdřív ověří a zasáhne pouze tehdy, když jde bezpečně o lokální vývojový náhled.";
   const steps = document.createElement("ol");
   steps.id = "codexHandoffSteps";
   steps.className = "codex-handoff-steps";
@@ -114,7 +164,7 @@ function ensureDialog() {
   promptField.readOnly = true;
   promptField.spellcheck = false;
   promptField.rows = 14;
-  body.append(intro, steps, label, promptField);
+  body.append(dialogIntro, steps, label, promptField);
 
   const footer = document.createElement("footer");
   footer.className = "codex-handoff-actions";

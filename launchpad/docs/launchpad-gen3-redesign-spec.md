@@ -348,7 +348,7 @@ regions.
 | --- | --- | --- | --- |
 | Top bar | Výběr aktivního prostoru, identita MAIN/WORKTREE rootu a globální health | Launchpad process + root config + Doctor summary | Dropdown ukazuje jen lokální značku a název prostoru; root badge rozlišuje main a vývojový worktree. |
 | Main plane: Personalspace (~~left rail~~, revised 2026-07-05) | Private Buddy/user space and private modules, as a distinct section above workspace apps | `personalspace` mount when present via separate `/api/personalspace` lane | Own visually-distinct private treatment (tint + lock) + Private badge; header dropdown selects it; private modules/apps are per-user/per-colleague and never mixed into shared Organization discovery. |
-| Main: Workspace apps | Daily work surfaces | app package manifests + runtime/dependency model | Plná šířka; vyhledávání a stavové přepínače all, running, attention a stopped zůstávají nad kartami. |
+| Main: Workspace apps | Daily work surfaces | app package manifests + runtime/dependency model | Plná šířka; vyhledávání a stavové přepínače all, running, attention a stopped zůstávají nad kartami. Workspace modul sdílený napříč Teamy lze deklarací `launchpad_section: "organization"` prezentovat jednou v sekci Organizace; jeho fyzická repository boundary, runtime a Git ownership zůstávají ve Workspace. |
 | Main: Productionspace systems | Production/runtime engineering surfaces | future `productionspace` manifest + explicit policy | Visually distinct risk treatment; write/destructive actions disabled until policy exists. |
 | Detail panel | Selected app/system facts and next action | `/api/apps/:id/health`, logs, plugin metadata | Shows package path, cwd, dependency state, last failure, last install, runtime owner and log link. |
 | Doctor/support loop | Root health and explainability | `doctor` report + discovery/runtime checks | Read-only verdict with exact next actions. Doctor remains the authority for broad sync/install. |
@@ -388,6 +388,11 @@ Use one vocabulary across cards, detail panel and Doctor.
 | `restricted` | code exists but current profile/role may not act | request approval | depends on policy | lock/risk badge |
 | `planned_slot` | planned app/space not locally installed yet | follow roadmap/Doctor | no | ghost/planned |
 | `runtime_failed` | last start/install exited or health is failing | read logs, install/repair/fix script | no until resolved | red log-linked badge |
+
+Runtime readiness is Organization-scoped. A hard discovery failure in one
+mounted Organization must remain visible in the global Doctor, but it must not
+block Start/Open for an app whose own Organization passes scoped discovery.
+Root/schema failures and failures in the target Organization still fail closed.
 
 ## 5. Action policy
 
@@ -457,7 +462,10 @@ The detail panel is the explainability surface. It must include:
 - source links: package manifest, logs, Doctor check, Organization manifest
 
 For `runtime_failed` or `app_start_failed`, the panel should show the exact
-`failure_kind` and a next action. Examples:
+`failure_kind` and a next action. A transient toast or a logs-only dead end is
+not a valid recovery surface: the detail opens automatically and offers either
+a safe local Repair/Retry or a prepared Codex handoff with the app scope and
+diagnostic payload. Examples:
 
 - `missing_dependencies` → Install/Repair
 - `missing_script` → fix `dev_script` or package scripts
@@ -465,7 +473,7 @@ For `runtime_failed` or `app_start_failed`, the panel should show the exact
 - `reserved_port_owner_unresolvable` → inspect PID/process-group lookup; a
   valid `lazurio.module.v1` lease otherwise reclaims the occupied port
   automatically
-- `unknown_early_exit` → open Logs and inspect app error
+- `unknown_early_exit` → prepared Codex handoff with log path and error excerpt
 
 ## 8. Přepínač prostorů v záhlaví
 

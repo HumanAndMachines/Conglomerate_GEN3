@@ -528,10 +528,11 @@ test("Version families render as one card with a default version and a more-menu
 });
 
 test("CAC-0044: karty jsou celé klikatelné a spouští one-click open s guardem", async () => {
-  const [html, js, css] = await Promise.all([
+  const [html, js, css, recovery] = await Promise.all([
     readFile(join(publicRoot, "index.html"), "utf8"),
     readFile(join(publicRoot, "app.js"), "utf8"),
     readFile(join(publicRoot, "styles.css"), "utf8"),
+    readFile(join(publicRoot, "runtime-recovery.js"), "utf8"),
   ]);
 
   // Guard na vnitřní ovládací prvky + one-click open chain (port GEN2).
@@ -548,8 +549,9 @@ test("CAC-0044: karty jsou celé klikatelné a spouští one-click open s guarde
   expect(js).toContain("Launchpad nedostal URL běžící aplikace");
   expect(js).toContain(`/health`);
   expect(js).toContain("function classifyOpenError");
-  expect(js).toContain("Aplikace startuje moc dlouho");
-  expect(js).toContain("EADDRINUSE");
+  expect(js).toContain("runtimeRecoveryModel(error)");
+  expect(recovery).toContain("Aplikace startuje příliš dlouho");
+  expect(recovery).toContain('actionLabel: "Vyřešit s Codexem"');
   expect(js).toContain("function writeCardProgress");
   expect(js).toContain("function completedRuntimeActionLabel");
   expect(js).toContain('repair: "oprava dokončena"');
@@ -914,14 +916,15 @@ test("UI separates physical Organization/Workspace/Productionspace and prepares 
     readFile(join(import.meta.dirname, "diagnostics-lib.mjs"), "utf8"),
   ]);
 
-  // Physical placement defines the top-level section. Workspace modules are
-  // projected N:M into Teams, while live membership stays explicitly unknown
-  // until a GitHub adapter can verify it.
+  // Physical placement defines runtime/Git ownership. Workspace modules are
+  // projected N:M into Teams unless their declaration explicitly presents one
+  // shared tile in Organization; live membership stays explicitly unknown.
   expect(js).toContain("groupFamiliesBySpace");
   expect(js).toContain("groupWorkspaceFamiliesByTeam");
   expect(js).toContain("function organizationSectionNode");
   expect(js).toContain("function workspaceSectionNode");
   expect(js).toContain("function teamSectionNode");
+  expect(diag).toContain('slot.launchpad_section === "organization"');
   const teamSection = js.slice(js.indexOf("function teamSectionNode"), js.indexOf("function teamAccessSummaryNode"));
   expect(teamSection).not.toContain("team.description");
   expect(teamSection).not.toContain('description.className = "app-section-note"');

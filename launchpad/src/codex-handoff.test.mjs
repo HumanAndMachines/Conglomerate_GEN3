@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   buildCodexPortConflictPrompt,
+  buildCodexRuntimeIssuePrompt,
   isCodexPortConflict,
 } from "../public/codex-handoff.js";
 
@@ -50,4 +51,18 @@ test("Codex handoff nevypíše undefined při neúplné diagnostice", () => {
   expect(prompt).not.toContain("undefined");
   expect(prompt).not.toContain("null");
   expect(prompt).toContain("neuvedeno");
+});
+
+test("obecný runtime handoff nese chybu, scope a publikační hranici", () => {
+  const prompt = buildCodexRuntimeIssuePrompt(blockedApp, {
+    code: "invalid_discovery",
+    failureKind: "invalid_discovery",
+    technical: ["Lumbio: module_slots[3].path není kanonická boundary"],
+  });
+
+  expect(prompt).toContain("invalid_discovery");
+  expect(prompt).toContain("Lumbio: module_slots[3].path");
+  expect(prompt).toContain("správný root / Organizaci / modul");
+  expect(prompt).toContain("Nic nemerguj ani nepublikuj");
+  expect(prompt).toContain("ověř její health");
 });

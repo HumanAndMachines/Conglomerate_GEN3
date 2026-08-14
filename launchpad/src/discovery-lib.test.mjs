@@ -1151,6 +1151,25 @@ test("nečitelný company.gen3.json marker přítomného mountu je hard failure,
   expect(apps).toEqual([]);
 });
 
+test("scoped runtime discovery neparsuje rozbitý marker jiné Organizace", async () => {
+  const root = await createCompaniesWorkspaceFixture({
+    plugin: { schema_version: "companyascode.launchpad_plugin.v1", title: "Demo kontext" },
+  });
+  const brokenRoot = join(root, "organizations", "BrokenCompany");
+  await mkdir(brokenRoot, { recursive: true });
+  await writeFile(join(brokenRoot, "company.gen3.json"), "{ rozbité", "utf8");
+
+  const global = await discoverLaunchpadApps(root);
+  const scoped = await discoverLaunchpadApps(root, {
+    organization: "test-company",
+    organization_path: "organizations/TestCompany",
+  });
+
+  expect(global.failures.some((failure) => failure.includes("BrokenCompany") && failure.includes("nejde přečíst"))).toBe(true);
+  expect(scoped.failures).toEqual([]);
+  expect(scoped.apps.map((app) => app.id)).toEqual(["test-company-demo-v1"]);
+});
+
 test("namountovaná Organizace bez povinné GEN3 struktury je hard failure a její balíčky se neprocházejí (scan-first)", async () => {
   const root = await createCompaniesWorkspaceFixture({
     plugin: { schema_version: "companyascode.launchpad_plugin.v1", title: "Demo kontext" },

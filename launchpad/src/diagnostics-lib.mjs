@@ -877,8 +877,15 @@ async function readOrganizationSpaces(companiesRoot, organization, localConfig =
   const tileModules = moduleDeclarations.filter(
     (slot) => slot.ui_exposure === "module" && !isNestedChildSlot(slot),
   );
-  const organizationModules = tileModules.filter((slot) => slot.space === "root");
-  const workspaceModules = tileModules.filter((slot) => slot.space === "workspace");
+  // Fyzická repository boundary zůstává autoritou pro runtime a Git operace.
+  // Sdílený Workspace modul se ale smí explicitně prezentovat jednou v sekci
+  // Organizace, aby se stejná dlaždice neopakovala v každém Teamu.
+  const organizationModules = tileModules.filter(
+    (slot) => slot.space === "root" || slot.launchpad_section === "organization",
+  );
+  const workspaceModules = tileModules.filter(
+    (slot) => slot.space === "workspace" && slot.launchpad_section !== "organization",
+  );
   const teamSlugs = new Set([
     ...declared.filter((team) => team !== productionBoundary).map((team) => team.slug).filter(Boolean),
     ...workspaceModules.flatMap((slot) => slot.teams ?? []),
@@ -1044,6 +1051,17 @@ function workspaceConformanceIssues({ declared, productionBoundary, manifest, co
       issues.push(
         `${source}: slot ${path} leží v productionspace/, ale deklaruje workspace "${slot.workspace}" (decision 0041 bod 6)`,
       );
+    }
+    if (slot.launchpad_section !== undefined) {
+      if (slot.launchpad_section !== "organization") {
+        issues.push(
+          `${source}: slot ${path} má neplatnou launchpad_section ${JSON.stringify(slot.launchpad_section)}; podporovaná hodnota je "organization"`,
+        );
+      } else if (organizationSlotPathScope(path) !== "workspace") {
+        issues.push(
+          `${source}: launchpad_section "organization" je prezentační výjimka pouze pro sdílený workspace modul`,
+        );
+      }
     }
   }
   const productionSlotPaths = rawSlots
@@ -1346,6 +1364,9 @@ function appPlacementResolverForOrganization(company) {
         if (!match || declaration.path.length > match.path.length) match = declaration;
       }
     }
+    if (match?.space === "workspace" && match.launchpad_section === "organization") {
+      return { space: "root", teams: [], workspace: null };
+    }
     const teams = match?.space === "workspace" && match.teams?.length > 0
       ? match.teams
       : [defaultTeam];
@@ -1391,6 +1412,7 @@ function normalizeModuleSlot(slot) {
   const space = organizationSlotScope(slot, path);
   const teams = organizationSlotTeams(slot, path);
   const workspace = organizationSlotWorkspace(slot, path);
+  const launchpadSection = slot.launchpad_section === "organization" ? "organization" : null;
   if (space !== "root" && !workspace) return null;
   const repo =
     space === "root" ? slot.git?.url ?? null : slot.repo ?? slot.git?.url ?? null;
@@ -1407,6 +1429,7 @@ function normalizeModuleSlot(slot) {
     space,
     teams,
     workspace,
+    launchpad_section: launchpadSection,
     category: slot.category ?? null,
     default_access: slot.default_access ?? null,
     required_roles: Array.isArray(slot.required_roles) ? slot.required_roles : [],

@@ -953,7 +953,13 @@ function autoOrganizationFromCompanyJson({ companyJson, path, directoryName }) {
 // počty) a `templateMounts` (marker organization_kind=template — stejné gates, ale
 // mimo runtime/business/counts). Nepřítomnost adresáře nebo company.gen3.json =
 // prostě to není v seznamu, NIKDY failure.
-async function discoverOrganizations({ companiesRoot, companiesConfig, failures, warnings }) {
+async function discoverOrganizations({
+  companiesRoot,
+  companiesConfig,
+  failures,
+  warnings,
+  organizationPathSelector = null,
+}) {
   const organizations = [];
   const templateMounts = [];
   const seenSlugs = new Set();
@@ -976,6 +982,11 @@ async function discoverOrganizations({ companiesRoot, companiesConfig, failures,
     if (entry.name.startsWith(".") || ignoredDirs.has(entry.name)) continue;
 
     const path = `${mountpoint}/${entry.name}`;
+    // Runtime akce nad už objevenou aplikací zná přesnou Organization cestu.
+    // Scoped rediscovery proto nesmí ani parsovat cizí mount: jeho rozbitý
+    // marker nebo kontrakt patří do globálního Doctora, ne do start gate
+    // validní aplikace jiné Organizace.
+    if (organizationPathSelector && path !== organizationPathSelector) continue;
     const companyJsonPath = join(companiesRoot, path, "company.gen3.json");
     // Bez company.gen3.json to není namountovaná Organizace (může to být holý
     // checkout nebo pracovní složka) — přeskoč bez failure.
@@ -1426,11 +1437,16 @@ export async function discoverLaunchpadApps(
   const pluginSchema = await readJson(pluginSchemaPath);
   const packageEntries = [];
   const templatePackageEntries = [];
+  const organizationPathSelector = typeof options.organization_path === "string"
+    && options.organization_path.trim() !== ""
+    ? options.organization_path.trim()
+    : null;
   const discovered = await discoverOrganizations({
     companiesRoot,
     companiesConfig,
     failures,
     warnings,
+    organizationPathSelector,
   });
   let organizations = discovered.organizations;
   let templateMounts = discovered.templateMounts;
