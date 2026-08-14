@@ -1393,7 +1393,7 @@ test("planned root slot nemá git a smí zůstat planned jen dokud není materia
   );
 });
 
-test("app sekci určí fyzická cesta a manifest doplní N:M Team intent", async () => {
+test("app sekci určí fyzická cesta, manifest doplní N:M Team intent a sdílený modul může být jednou v Organizaci", async () => {
   const root = await createCompaniesWorkspaceFixture();
   const companyRoot = join(root, "organizations", "AlfaCo_GEN3");
   await mkdir(join(companyRoot, "manual"), { recursive: true });
@@ -1426,6 +1426,13 @@ test("app sekci určí fyzická cesta a manifest doplní N:M Team intent", async
         path: "workspace/wiki",
         git: { url: "git@github.com:AlfaCo/wiki.git", branch: "main" },
       },
+      {
+        path: "workspace/knowledgebase",
+        name: "AlfaCo Knowledgebase",
+        teams: ["workspace", "sidebrand"],
+        launchpad_section: "organization",
+        git: { url: "git@github.com:AlfaCo/knowledgebase.git", branch: "main" },
+      },
     ],
   });
   await writeJson(join(companyRoot, "TODO.tasks.json"), {});
@@ -1433,9 +1440,11 @@ test("app sekci určí fyzická cesta a manifest doplní N:M Team intent", async
   await writeJson(join(companyRoot, "ISSUES.open.json"), {});
   const shopApp = join(companyRoot, "workspace", "sidebrand-shop", "app", "v1");
   const wikiApp = join(companyRoot, "workspace", "wiki", "app", "v1");
+  const knowledgebaseApp = join(companyRoot, "workspace", "knowledgebase", "app", "v1");
   for (const [dir, id, port] of [
     [shopApp, "sidebrand-shop-v1", 5511],
     [wikiApp, "alfaco-wiki-v1", 5512],
+    [knowledgebaseApp, "alfaco-knowledgebase-v1", 5513],
   ]) {
     await mkdir(dir, { recursive: true });
     await writeJson(join(dir, "package.json"), {
@@ -1479,9 +1488,25 @@ test("app sekci určí fyzická cesta a manifest doplní N:M Team intent", async
     teams: ["workspace"],
     workspace: "workspace",
   });
+  expect(placementByAppId.get("alfaco-knowledgebase-v1")).toMatchObject({
+    space: "root",
+    teams: [],
+    workspace: null,
+  });
   const teams = new Map(response.organizations[0].teams.map((team) => [team.slug, team]));
   expect(teams.get("sidebrand")?.modules.map((module) => module.slug)).toContain("sidebrand-shop");
   expect(teams.get("workspace")?.modules.map((module) => module.slug)).toContain("sidebrand-shop");
+  expect(teams.get("sidebrand")?.modules.map((module) => module.slug)).not.toContain("knowledgebase");
+  expect(teams.get("workspace")?.modules.map((module) => module.slug)).not.toContain("knowledgebase");
+  expect(response.organizations[0].organization_modules).toContainEqual(
+    expect.objectContaining({
+      slug: "knowledgebase",
+      name: "AlfaCo Knowledgebase",
+      path: "workspace/knowledgebase",
+      space: "workspace",
+      launchpad_section: "organization",
+    }),
+  );
   const report = await buildLaunchpadDoctorReport({
     companiesRoot: root,
     launchpadRoot: join(root, "launchpad"),

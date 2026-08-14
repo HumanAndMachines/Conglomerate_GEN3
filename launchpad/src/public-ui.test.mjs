@@ -916,14 +916,15 @@ test("UI separates physical Organization/Workspace/Productionspace and prepares 
     readFile(join(import.meta.dirname, "diagnostics-lib.mjs"), "utf8"),
   ]);
 
-  // Physical placement defines the top-level section. Workspace modules are
-  // projected N:M into Teams, while live membership stays explicitly unknown
-  // until a GitHub adapter can verify it.
+  // Physical placement defines runtime/Git ownership. Workspace modules are
+  // projected N:M into Teams unless their declaration explicitly presents one
+  // shared tile in Organization; live membership stays explicitly unknown.
   expect(js).toContain("groupFamiliesBySpace");
   expect(js).toContain("groupWorkspaceFamiliesByTeam");
   expect(js).toContain("function organizationSectionNode");
   expect(js).toContain("function workspaceSectionNode");
   expect(js).toContain("function teamSectionNode");
+  expect(diag).toContain('slot.launchpad_section === "organization"');
   const teamSection = js.slice(js.indexOf("function teamSectionNode"), js.indexOf("function teamAccessSummaryNode"));
   expect(teamSection).not.toContain("team.description");
   expect(teamSection).not.toContain('description.className = "app-section-note"');
