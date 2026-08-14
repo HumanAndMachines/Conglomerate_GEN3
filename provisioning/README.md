@@ -35,11 +35,16 @@ Inventory nebo role si nesmějí založit konkurenční verzi „pro tento host�
    public repozitář. Hodnoty secrets do inventory nepatří.
 2. Vyplň absolutní controller cesty k exact `.tar` a `.tar.sha256`, absolutní
    cestu k Bunu na hostu a existující host custody cesty.
-3. Nejdřív spusť check mode:
+3. Ze source rootu nejdřív spusť check mode. Podshell vstoupí do Ansible
+   adresáře, aby Ansible automaticky načetl jeho `ansible.cfg` a našel
+   lokální role:
 
    ```sh
-   ansible-playbook -i /privatni/inventory.yml \
-     provisioning/ansible/playbooks/buddy-linux.yml --check --diff
+   (
+     cd provisioning/ansible
+     ansible-playbook -i /privatni/inventory.yml \
+       playbooks/buddy-linux.yml --check --diff
+   )
    ```
 
 4. Přečti celý diff. Zejména ověř owner účet, runtime identity, Personalspace

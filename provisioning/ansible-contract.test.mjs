@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { readFile, readdir } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 
 const repositoryRoot = join(import.meta.dir, "..");
@@ -145,4 +146,65 @@ test("operator plane remains source-only and manuals separate deploy from update
   expect(operatorManual.toLowerCase()).not.toMatch(/matty|friday/u);
   expect(updateManual).toContain("Updater není Ansible a Ansible není updater");
   expect(updateManual).toContain("Lokální úprava je legitimní drift");
+});
+
+test("documented root command enters the Ansible directory and discovers its config", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+
+  const sandbox = await mkdtemp(join(tmpdir(), "lazurio-ansible-entrypoint-"));
+  const probePath = join(sandbox, "ansible-playbook");
+  const resultPath = join(sandbox, "result.txt");
+  const inventoryPath = join(sandbox, "inventory.yml");
+
+  try {
+    await writeFile(inventoryPath, "all: {}\n", "utf8");
+    await writeFile(
+      probePath,
+      `#!/bin/sh
+set -eu
+test -f "$PWD/ansible.cfg"
+test -d "$PWD/roles/resident_host_base"
+printf '%s\\n' "$PWD" "$@" > "$LAZURIO_ANSIBLE_PROBE_RESULT"
+`,
+      "utf8",
+    );
+    await chmod(probePath, 0o755);
+
+    const command = [
+      "cd provisioning/ansible",
+      `ansible-playbook -i "${inventoryPath}" playbooks/buddy-linux.yml --check --diff`,
+    ].join(" && ");
+    const processResult = Bun.spawn(["sh", "-c", command], {
+      cwd: repositoryRoot,
+      env: {
+        ...process.env,
+        PATH: `${sandbox}:${process.env.PATH ?? ""}`,
+        LAZURIO_ANSIBLE_PROBE_RESULT: resultPath,
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [exitCode, stderr] = await Promise.all([
+      processResult.exited,
+      new Response(processResult.stderr).text(),
+    ]);
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+
+    const [workingDirectory, ...args] = (await readFile(resultPath, "utf8"))
+      .trimEnd()
+      .split("\n");
+    expect(workingDirectory).toBe(ansibleRoot);
+    expect(args).toEqual([
+      "-i",
+      inventoryPath,
+      "playbooks/buddy-linux.yml",
+      "--check",
+      "--diff",
+    ]);
+  } finally {
+    await rm(sandbox, { recursive: true, force: true });
+  }
 });
