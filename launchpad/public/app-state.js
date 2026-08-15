@@ -150,6 +150,30 @@ const BLOCKING_APP_STATES = new Set([
   "runtime_failed",
 ]);
 
+function expectedInactiveVersionLeaseMismatches(apps) {
+  const expected = new Set();
+  for (const family of groupAppFamilies(apps)) {
+    const primary = family.primary;
+    const primaryVersion = appTitleVersion(primary);
+    if (primaryVersion === null || primary.runtime_status !== "healthy") continue;
+    for (const member of family.members.slice(1)) {
+      const memberVersion = appTitleVersion(member);
+      if (
+        memberVersion !== null
+        && memberVersion < primaryVersion
+        && appBaseTitle(member) === appBaseTitle(primary)
+        && member.runtime_status === "unhealthy"
+        && member.runtime?.failure_kind === "port_owner_cwd_mismatch"
+        && member.host === primary.host
+        && member.port === primary.port
+      ) {
+        expected.add(member);
+      }
+    }
+  }
+  return expected;
+}
+
 export function summarizeOrganizationSpaceHealth({
   apps = [],
   organization = null,
@@ -161,6 +185,7 @@ export function summarizeOrganizationSpaceHealth({
   const spaceApps = organization?.slug
     ? apps.filter((app) => app.company === organization.slug)
     : apps;
+  const expectedVersionLeaseMismatches = expectedInactiveVersionLeaseMismatches(spaceApps);
   const slots = organization
     ? [
         ...(organization.organization_modules ?? []),
@@ -169,7 +194,8 @@ export function summarizeOrganizationSpaceHealth({
       ]
     : [];
   const blockingApps = spaceApps.filter(
-    (app) => BLOCKING_APP_STATES.has(app.dependencies?.state) || app.runtime_status === "unhealthy",
+    (app) => BLOCKING_APP_STATES.has(app.dependencies?.state)
+      || (app.runtime_status === "unhealthy" && !expectedVersionLeaseMismatches.has(app)),
   );
   const blockingSlots = Array.isArray(organization?.space_readiness?.blocking_slots)
     ? organization.space_readiness.blocking_slots
@@ -177,7 +203,11 @@ export function summarizeOrganizationSpaceHealth({
   const expectedRestrictions = slots.filter(
     (slot) => slot.status === "missing_access" && slotReadinessSeverity(slot) === "neutral",
   );
-  const attentionApps = spaceApps.filter((app) => isAttentionState(app) && !blockingApps.includes(app));
+  const attentionApps = spaceApps.filter(
+    (app) => isAttentionState(app, {
+      ignoreRuntimeUnhealthy: expectedVersionLeaseMismatches.has(app),
+    }) && !blockingApps.includes(app),
+  );
   const conformanceWarnings = organization?.workspace_conformance_issues?.length ?? 0;
 
   return {
@@ -647,7 +677,7 @@ export function runtimeStagesForApp(app, { openable = false, worktreeCount = 0 }
   ];
 }
 
-export function isAttentionState(app) {
+export function isAttentionState(app, { ignoreRuntimeUnhealthy = false } = {}) {
   return [
     "needs_install",
     "stale_lockfile",
@@ -658,7 +688,11 @@ export function isAttentionState(app) {
     "missing_package",
     "unknown_package_manager",
   ].includes(app.dependencies?.state)
-    || ["unhealthy", "starting", "unknown"].includes(app.runtime_status)
+    || [
+      ...(ignoreRuntimeUnhealthy ? [] : ["unhealthy"]),
+      "starting",
+      "unknown",
+    ].includes(app.runtime_status)
     // Git attention (CAC-0044/CAC-0042): nezávislý toggle kontroly zahrnuje i
     // git stavy (novější verze, čeká na odeslání, jiný režim…). Anotaci git_attention
     // dodává app.js z git read modelu; bez read modelu je vždy false,
