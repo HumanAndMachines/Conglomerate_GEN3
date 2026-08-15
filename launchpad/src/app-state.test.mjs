@@ -421,6 +421,87 @@ test("nezdravý runtime je prostorový blokátor i s ready dependencies", () => 
   expect(computeSpaceHeroState(health).tone).toBe("danger");
 });
 
+test("zdravá výchozí verze neutralizuje jen očekávaný mismatch staršího shared lease", () => {
+  const rollback = {
+    ...app("knowledgebase-v1", "Iotor", "ready"),
+    title: "Iotor Knowledgebase v1",
+    module: "knowledgebase",
+    host: "127.0.0.1",
+    port: 24_302,
+    runtime_status: "unhealthy",
+    runtime: {
+      failure_kind: "port_owner_cwd_mismatch",
+      message: "Port 24302 používá novější verze stejného modulu.",
+    },
+  };
+  const current = {
+    ...app("knowledgebase-v2", "Iotor", "ready"),
+    title: "Iotor Knowledgebase v2",
+    module: "knowledgebase",
+    host: "127.0.0.1",
+    port: 24_302,
+    runtime_status: "healthy",
+  };
+
+  const healthyDefault = summarizeOrganizationSpaceHealth({
+    organization: { slug: "Iotor", workspaces: [] },
+    apps: [rollback, current],
+  });
+  expect(healthyDefault).toMatchObject({ blockers: 0, warnings: 0, running: 1 });
+  expect(healthyDefault.blocking_apps).toEqual([]);
+
+  const wrongLease = summarizeOrganizationSpaceHealth({
+    organization: { slug: "Iotor", workspaces: [] },
+    apps: [{ ...rollback, port: 24_303 }, current],
+  });
+  expect(wrongLease.blockers).toBe(1);
+
+  const namedSubApp = summarizeOrganizationSpaceHealth({
+    organization: { slug: "Iotor", workspaces: [] },
+    apps: [
+      { ...rollback, title: "Iotor Knowledgebase Catalog v1" },
+      { ...current, title: "Iotor Knowledgebase Editor v2" },
+    ],
+  });
+  expect(namedSubApp.blockers).toBe(1);
+
+  const independentDependencyFailure = summarizeOrganizationSpaceHealth({
+    organization: { slug: "Iotor", workspaces: [] },
+    apps: [{ ...rollback, dependencies: { state: "missing_package" } }, current],
+  });
+  expect(independentDependencyFailure.blockers).toBe(1);
+});
+
+test("starší běžící rollback dál blokuje výchozí novější verzi", () => {
+  const rollback = {
+    ...app("knowledgebase-v1", "Iotor", "ready"),
+    title: "Iotor Knowledgebase v1",
+    module: "knowledgebase",
+    host: "127.0.0.1",
+    port: 24_302,
+    runtime_status: "healthy",
+  };
+  const current = {
+    ...app("knowledgebase-v2", "Iotor", "ready"),
+    title: "Iotor Knowledgebase v2",
+    module: "knowledgebase",
+    host: "127.0.0.1",
+    port: 24_302,
+    runtime_status: "unhealthy",
+    runtime: {
+      failure_kind: "port_owner_cwd_mismatch",
+      message: "Port 24302 používá starší rollback verze.",
+    },
+  };
+
+  const health = summarizeOrganizationSpaceHealth({
+    organization: { slug: "Iotor", workspaces: [] },
+    apps: [rollback, current],
+  });
+  expect(health.blockers).toBe(1);
+  expect(health.blocking_apps.map((entry) => entry.id)).toEqual(["knowledgebase-v2"]);
+});
+
 test("problémový panel používá stejné tři blokátory jako aktivní prostor", () => {
   const blockingApps = ["Guide", "Mission Control", "Invoices"].map((title, index) => ({
     ...app(`blocked-${index}`, "Rozjedeme-ai", "ready"),
