@@ -1,7 +1,7 @@
 ---
 name: nightly-steward-pr-sweep
 description: Use when an Organization Steward must run the daily 02:00 PR closeout for exactly one GitHub Organization assigned to that seat. Inventories the live queue, applies exact-head review and CI gates, actively fixes or routes bounded work, merges only within Steward authority, and writes one idempotent Mission Control Steward Report.
-version: 1.0.4
+version: 1.0.5
 author: HumanAndMachine GEN3
 license: MIT
 metadata:
@@ -204,8 +204,13 @@ Release and deployment are separate operations. The sweep does not create a GitH
 After merges, pushes and handoffs:
 
 1. reload every open PR in scope;
-2. merge newly eligible PRs whose complete exact-head gate now passes, including a verdict from a reviewer who did not author or push any commit included in that head;
-3. keep newly pushed heads in `waiting_for_exact_head_review` until a distinct current-head verdict exists;
+2. merge newly eligible PRs whose complete exact-head gate now passes. Require
+   a verdict from a reviewer who did not author or push substantive content in
+   that head; for a proven conflict-only current-base integration, apply the
+   narrow eligibility exception in §3 and require its recorded pre/post SHAs,
+   conflicted paths, resolution evidence and native checks;
+3. keep newly pushed heads in `waiting_for_exact_head_review` until an eligible
+   current-head verdict exists under §3;
 4. confirm drafts and no-touch items were not mutated;
 5. derive report counts from this one final data object.
 
