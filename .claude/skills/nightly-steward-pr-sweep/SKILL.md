@@ -1,7 +1,7 @@
 ---
 name: nightly-steward-pr-sweep
 description: Use when an Organization Steward must run the daily 02:00 PR closeout for exactly one GitHub Organization assigned to that seat. Inventories the live queue, applies exact-head review and CI gates, actively fixes or routes bounded work, merges only within Steward authority, and writes one idempotent Mission Control Steward Report.
-version: 1.0.3
+version: 1.0.4
 author: HumanAndMachine GEN3
 license: MIT
 metadata:
@@ -114,7 +114,18 @@ Before approving or merging, require:
 
 A timeout, transport failure or reviewer self-report is not approval. Reproduce stale bot findings on the current head before repeating or dismissing them.
 
-Independent review must come from an authorized reviewer distinct from the PR author and from every Steward/Kolega/Agent who authored or pushed a commit included in the reviewed head. If the Steward writes or pushes any fix, the Steward's own verdict is not independent for that head. Route it to another authorized reviewer; never manufacture self-review evidence.
+Independent review must come from an authorized reviewer distinct from the PR
+author and from every Steward/Kolega/Agent who authored or pushed substantive
+content included in the reviewed head. One narrow exception exists for a
+Steward-authored conflict-only integration commit: when live evidence proves
+that the commit only brings the current base into a colleague's PR branch,
+resolves the merge conflict without adding a new product or implementation
+intent, and passes the complete exact-head gate, the Steward remains eligible
+to publish the QA verdict on that resulting head. Record the pre/post SHAs,
+conflicted paths, resolution evidence and native checks. If the resolution
+contains a material code, data, policy or intent choice, it is substantive
+work; route the new head to another authorized reviewer and never manufacture
+self-review evidence.
 
 ## 4. Classify and act
 
@@ -129,6 +140,12 @@ Classify every non-draft PR:
 
 `DIRTY`, `BLOCKED`, `CHANGES_REQUESTED`, `REVIEW_REQUIRED` and a red check describe queue state, not a final class. Make a bounded active attempt before escalating.
 
+`merge_now` is a queue-closing obligation, not a discretionary holding state.
+When its live exact-head gate passes and the PR is within Steward authority,
+merge it to the configured base immediately and read the merge back. Do not
+leave an aligned `APPROVED` PR open for another transaction-specific Admin
+approval.
+
 ### Bounded active work
 
 After first merging all safe candidates and routing all change requests, use at most three independent fix slices in one run:
@@ -140,6 +157,15 @@ After first merging all safe candidates and routing all change requests, use at 
 5. push lease-safely when rewriting;
 6. comment with evidence and request a fresh exact-head review;
 7. clean the worktree only after durable remote state exists.
+
+For a conflict on a colleague's PR, use provider maintainer edit when the live
+branch permits it. If it does not, open a non-draft integration child PR whose
+base is the colleague's PR branch. A conflict-only child that adds no new
+intent may be merged into that branch after its native/provider gates pass;
+it does not require a separate Admin transaction. Re-load the original PR on
+its new head and apply the exact-head gate again. Never force-push an
+unauthorized branch or disguise substantive implementation as conflict
+resolution.
 
 Do not spend the whole run on one PR. Do not edit a primary reference checkout.
 
