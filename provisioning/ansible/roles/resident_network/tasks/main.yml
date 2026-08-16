@@ -5,7 +5,7 @@
       - ufw
       - allow
       - in
-      - on
+      - "on"
       - "{{ lazurio_tailnet_interface }}"
       - to
       - any
