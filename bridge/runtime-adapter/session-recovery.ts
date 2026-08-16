@@ -1,8 +1,8 @@
 // bridge/runtime-adapter — recovery from a wedged runtime session.
 //
-// THE FAILURE THIS EXISTS FOR, measured 2026-08-01 on a Buddy cohort host, first
-// morning after handover. Every message — including a a bare Buddy-name prompt — came
-// back as:
+// THE FAILURE THIS EXISTS FOR. A runtime session can remain over-full after
+// context compression exhausts its configured retry limit. Every subsequent
+// message then comes back as:
 //
 //   Context length exceeded: max compression attempts (3) reached.
 //
@@ -16,8 +16,8 @@
 // The Principal has no way out from the chat window. The runtime's own hint
 // ("Try /new") is a TUI command; through the OpenAI-shaped gateway (contract
 // K1) message text is just message text. A wedged Buddy therefore stays dead
-// until an operator deletes the session on the host — and the first morning
-// of Host #2, the operator had no SSH access either.
+// until an operator deletes the session on the host. That is not a dependable
+// recovery path when host access is unavailable.
 //
 // THE RECOVERY. The bridge owns session identity (contract K4: "the caller
 // assigns it"), so the bridge can ROTATE it: detect the exhaustion reply,

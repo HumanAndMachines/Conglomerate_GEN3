@@ -59,7 +59,7 @@ test("failed update service gate restores the previous resident and reconciles i
   ]);
 });
 
-test("failed first cohort service gate removes the initial activation and leaves old services in place", async () => {
+test("failed initial service gate removes the initial activation and leaves old services in place", async () => {
   const calls = [];
   await expect(rolloutBuddyArtifact({
     ...BASE,

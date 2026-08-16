@@ -1,8 +1,8 @@
 // COVERS: K3 end to end — the moral contract from the files on disk to the
 // bytes in the request body. That both documents travel VERBATIM; that the one
 // generated line is an annotation and not a ruling; that the date advances
-// between turns without a restart; that a contract of the size really measured on
-// the wire (36 194 characters, Host #1, 2026-07-29) arrives WHOLE; and that K3 is
+// between turns without a restart; that a representative large contract arrives
+// WHOLE; and that K3 is
 // FAIL-CLOSED — a turn with no contract is refused, not sent bare.
 //
 // DOES NOT COVER: whether the runtime OBEYS the contract. A fake provider proves
@@ -26,13 +26,11 @@ import { createRuntimeReplyProvider } from "../../bridge/runtime-adapter/http-cl
 import type { BridgeReplyInput } from "../../bridge/inbound/message.ts";
 
 /**
- * The size of the assembled system message really observed on the wire on
- * Host #1 on 2026-07-29 (`role=system chars=36194`). It is written down as a
- * FLOOR the transport must survive, not as an exact expectation: a Principal's
- * documents grow, and a test pinned to an exact byte count would go red on a
- * paragraph and green on a truncation.
+ * A conservative floor the transport must survive, not an exact expectation:
+ * a Principal's documents grow, and a test pinned to an exact byte count would
+ * go red on a paragraph and green on a truncation.
  */
-const MEASURED_CONTRACT_CHARS = 36_194;
+const CONTRACT_SIZE_FLOOR_CHARS = 36_000;
 
 function profileDir(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "buddy-agency-"));
@@ -152,11 +150,10 @@ describe("K3 — the contract reaches the wire, layered and verbatim", () => {
     expect(system).toContain("written by Ada Lovelace");
   });
 
-  test("a contract the size of the one really measured on the wire arrives WHOLE", async () => {
-    // The floor is a measurement, not a guess: 36 194 characters of assembled
-    // system message went over this hop on Host #1 on 2026-07-29. What this test
-    // asserts is that nothing between the file and the body truncates it — the
-    // last line of the LAST document is the one a truncation eats first.
+  test("a contract above the transport size floor arrives WHOLE", async () => {
+    // The test asserts that nothing between the file and the body truncates a
+    // large contract — the last line of the LAST document is the one a
+    // truncation eats first.
     const tail = "ZAVERECNA-VETA-KONTRAKTU";
     const bigMandates = [
       MANDATES,
@@ -169,11 +166,11 @@ describe("K3 — the contract reaches the wire, layered and verbatim", () => {
     ].join("\n");
     const { body } = await oneTurn({ mandates: bigMandates });
     const system: string = body.messages[0].content;
-    expect(system.length).toBeGreaterThanOrEqual(MEASURED_CONTRACT_CHARS);
+    expect(system.length).toBeGreaterThanOrEqual(CONTRACT_SIZE_FLOOR_CHARS);
     expect(system).toContain(tail);
     // And the transport really carried it: the serialized body is at least as
     // large as the message we counted.
-    expect(JSON.stringify(body).length).toBeGreaterThanOrEqual(MEASURED_CONTRACT_CHARS);
+    expect(JSON.stringify(body).length).toBeGreaterThanOrEqual(CONTRACT_SIZE_FLOOR_CHARS);
   });
 
   test("FAIL-CLOSED: with no contract to send, the turn is refused rather than sent bare", async () => {

@@ -136,12 +136,9 @@ const HISTORY: SeedMessageSpec[] = [
 
 posixDurabilityDescribe("cold start in front of a realm that already has a past", () => {
   test("SCAR-R4 a first start against a realm with history sends NOTHING", async () => {
-    // What actually happened on Host #1 on 2026-07-29: a brand-new bridge in
-    // front of a realm with a past accepted fifteen historical messages and
-    // delivered FIVE real replies into existing private conversations in twenty
-    // seconds, before a human could stop it. The defect was reading "I have no
-    // watermark" as "the conversation starts at message 1". A greenfield fixture
-    // has no past, which is why the whole archive suite was green.
+    // A brand-new bridge in front of a realm with history must not interpret a
+    // missing watermark as "the conversation starts at message 1". The history
+    // fixture keeps this boundary visible even though a greenfield realm cannot.
     const realm = new FakeRealm({ history: HISTORY });
     expect(realm.messageCount).toBe(15);
     const { bridge, queue, watermark, root } = await harness({ realm });
@@ -491,10 +488,9 @@ posixDurabilityDescribe("the queue is state we hold a handle to and do not own",
   });
 
   test("an nginx 502 with nothing to parse is a plain failure, not a fake recovery", async () => {
-    // MĚŘENO on Host #1: a real interruption came back through THIS branch, not
-    // through Zulip's JSON. A client that treats every failure as "the queue is
-    // gone" would throw its cursor away on every hiccup; one that treats this as
-    // recoverable would loop.
+    // A gateway interruption can return through this non-JSON branch. A client
+    // that treats every failure as "the queue is gone" would throw its cursor
+    // away on every hiccup; one that treats this as recoverable would loop.
     const realm = new FakeRealm();
     const { bridge } = await harness({ realm });
     await bridge.recover();

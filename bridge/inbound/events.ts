@@ -274,17 +274,11 @@ export class EventBridge {
       }
     }
     if (anchor === 0 && !hasBoundary) {
-      // COLD START — no watermark, no record, nothing at all. This is scar R4,
-      // and it is not hypothetical: on Host #1 a brand-new bridge in front of a
-      // realm that already had a past accepted fifteen historical messages and
-      // delivered FIVE real replies into existing private conversations in
-      // twenty seconds, before a human could stop it.
-      //
-      // The defect was reading "I know nothing" as "the conversation starts at
-      // message 1". A greenfield fixture cannot show it, because a greenfield
-      // fixture has no past — which is exactly why the archive's whole green
-      // suite never saw it, and why `tests/fakes/fake-realm.ts` takes a
-      // `history` in its constructor.
+      // COLD START — no watermark, no record, nothing at all. Reading "I know
+      // nothing" as "the conversation starts at message 1" would replay a
+      // realm's historical messages into existing private conversations. A
+      // greenfield fixture cannot expose that boundary because it has no past,
+      // so `tests/fakes/fake-realm.ts` accepts explicit `history`.
       //
       // So a cold start anchors at the server-owned boundary returned by the
       // SAME register request that allocated this queue. A separate newest-

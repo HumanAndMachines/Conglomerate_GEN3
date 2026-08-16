@@ -1,5 +1,5 @@
-// COVERS: automatic recovery from a wedged runtime session (Host #2, measured
-// 2026-08-01) — the second trigger of the shared rotation state. That the two
+// COVERS: automatic recovery from a wedged runtime session — the second
+// trigger of the shared rotation state. That the two
 // exhaustion sentences the pinned runtime produces rotate the session and
 // nothing else does; that resolution happens at SEND time so a queued or
 // re-run job lands on the fresh session; that the rotation is keyed by the
@@ -12,13 +12,9 @@
 // share ONE store on purpose: two stores writing the same session header
 // would rotate past each other.
 //
-// THE MEASURED DAY. First morning after handover, every message — including a
-// bare "Buddy?" — returned `Context length exceeded: max compression
-// attempts (3) reached.` The runtime persists the over-full session, the
-// bridge's DM session id is permanent by design, and the Principal had no
-// escape from the chat window. Until this mechanism existed, a wedged Buddy
-// stayed dead until an operator deleted the session on the host — and that
-// morning the operator had no SSH either.
+// A compression-exhausted runtime persists the over-full session while the
+// bridge's DM session id is permanent by design. Without rotation, every later
+// message reaches the same wedged session and recovery depends on host access.
 
 import { describe, expect, test } from "bun:test";
 import type { BridgeReplyInput } from "../../bridge/inbound/message.ts";
