@@ -78,6 +78,40 @@ test("every role task uses one fully qualified builtin action", async () => {
   }
 });
 
+test("recovery attestation is parsed and validated before any host mutation", async () => {
+  const tasks = await readYaml(
+    join(ansibleRoot, "roles", "resident_preflight", "tasks", "main.yml"),
+  );
+  const names = tasks.map((task) => task.name);
+  const parseName = "Parse the content-free recovery checkpoint attestation";
+  const verifyName = "Refuse an incomplete or ambiguous recovery checkpoint attestation";
+  expect(names.indexOf(parseName)).toBeGreaterThan(
+    names.indexOf("Refuse a missing recovery checkpoint attestation"),
+  );
+  expect(names.indexOf(verifyName)).toBeGreaterThan(names.indexOf(parseName));
+  expect(names.indexOf("Read the live Tailscale state without changing it"))
+    .toBeGreaterThan(names.indexOf(verifyName));
+
+  const parse = tasks.find((task) => task.name === parseName);
+  expect(parse["ansible.builtin.set_fact"].lazurio_recovery_attestation_document)
+    .toContain("lookup('ansible.builtin.file', lazurio_recovery_attestation_file) | from_json");
+  expect(parse).toMatchObject({ delegate_to: "localhost", become: false });
+
+  const verify = tasks.find((task) => task.name === verifyName);
+  const assertions = verify["ansible.builtin.assert"].that.join("\n");
+  for (const required of [
+    "lazurio.recovery-checkpoint.attestation.v1",
+    "checkpoint_id",
+    "created_at",
+    "restore_verified_at",
+    "whole-machine-before-change",
+    "keys() | list | sort",
+    "to_datetime('%Y-%m-%dT%H:%M:%SZ')",
+  ]) {
+    expect(assertions).toContain(required);
+  }
+});
+
 test("operator plane delegates immutable lifecycle to the official rollout", async () => {
   const lifecycleTasks = await readFile(
     join(ansibleRoot, "roles", "lazurio_resident", "tasks", "main.yml"),
