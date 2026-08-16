@@ -662,7 +662,7 @@ async function buildGitContext({ companiesRoot, gitStatusService = null }) {
     });
     return {
       reposByKey: new Map(gitResponse.repos.map((repo) => [repo.key, repo])),
-      warnings: gitResponse.warnings.map((warning) => `git: ${warning}`),
+      warnings: gitResponse.warnings.map((warning) => `git: ${formatGitWarning(warning)}`),
     };
   } catch (error) {
     return {
@@ -670,6 +670,18 @@ async function buildGitContext({ companiesRoot, gitStatusService = null }) {
       warnings: [`git: stav repozitářů nejde načíst (${error.message})`],
     };
   }
+}
+
+function formatGitWarning(warning) {
+  if (typeof warning === "string") return warning;
+  if (!warning || typeof warning !== "object") return String(warning ?? "neznámé Git varování");
+  const location = typeof warning.path === "string"
+    ? warning.path
+    : [warning.organization, warning.slug].filter(Boolean).join("/");
+  const message = typeof warning.message === "string"
+    ? warning.message
+    : "Git metadata obsahují nepojmenované varování.";
+  return location ? `${location}: ${message}` : message;
 }
 
 function gitRepoKeyForApp(app) {

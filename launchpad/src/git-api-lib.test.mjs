@@ -70,6 +70,34 @@ test("git API response combines manifest inventory, repo statuses, worktrees and
   });
 });
 
+test("apps diagnostics render structured Git warnings as human text", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const orgRoot = join(root, "organizations", "BetaCo_GEN3");
+  const worktreeRoot = join(orgRoot, ".worktrees", "workspace", "deals");
+  const worktree = join(worktreeRoot, "legacy-warning");
+  await initGitRepo(worktree, { branch: "legacy-warning" });
+  await writeJson(join(worktreeRoot, "legacy-warning.worktree.json"), {
+    schema_version: "companiesascode.worktree.v1",
+    organization: "BetaCo",
+    workspace: "workspace",
+    module: "deals",
+    branch: "legacy-warning",
+    mission_control_plan_code: "DEV-6327",
+    mission_control_plan_path: "mission-control/plans/2026/07/DEV-6327-deals-git-status.yaml",
+    owner: "legacy-agent",
+    status: "active",
+  });
+
+  const response = await buildLaunchpadAppsResponse({
+    companiesRoot: root,
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+  });
+
+  expect(response.warnings.some((warning) => warning.includes("[object Object]"))).toBe(false);
+  expect(response.warnings.some((warning) => warning.includes("Nekanonické pole owner"))).toBe(true);
+});
+
 test("git API can limit polling work to the selected organization", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
