@@ -6,5 +6,8 @@
   vars:
     lazurio_resident_profile: buddy
   roles:
+    - role: resident_preflight
     - role: resident_host_base
+    - role: resident_runtime_base
+    - role: resident_network
     - role: lazurio_resident

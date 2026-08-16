@@ -25,3 +25,4 @@ lazurio_base_packages:
   - jq
   - ufw
   - unzip
+  - xz-utils

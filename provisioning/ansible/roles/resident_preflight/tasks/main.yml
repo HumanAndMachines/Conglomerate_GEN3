@@ -1,0 +1,96 @@
+---
+- name: Refuse a greenfield run without exact recovery and tailnet inputs
+  ansible.builtin.assert:
+    that:
+      - lazurio_resident_profile == "buddy"
+      - lazurio_recovery_attestation_file is match('^/')
+      - lazurio_tailnet_interface is match('^[A-Za-z0-9._-]+$')
+      - lazurio_tailnet_tcp_ports | length > 0
+      - lazurio_tailnet_tcp_ports | select('integer') | list | length == lazurio_tailnet_tcp_ports | length
+    fail_msg: >-
+      Buddy provisioning starts only after the operator names a content-free
+      recovery attestation and the exact private tailnet surface.
+
+- name: Inspect the recovery attestation on the controller
+  ansible.builtin.stat:
+    path: "{{ lazurio_recovery_attestation_file }}"
+  delegate_to: localhost
+  become: false
+  register: lazurio_recovery_attestation
+
+- name: Refuse to mutate a host without a completed recovery checkpoint
+  ansible.builtin.assert:
+    that:
+      - lazurio_recovery_attestation.stat.exists
+      - lazurio_recovery_attestation.stat.isreg
+      - lazurio_recovery_attestation.stat.size > 0
+    fail_msg: >-
+      Create and verify the provider snapshot or equivalent recovery checkpoint,
+      then record only its content-free id, time and restore verification in the
+      controller attestation file.
+
+- name: Read the live Tailscale state without changing it
+  ansible.builtin.command:
+    argv:
+      - tailscale
+      - status
+      - --json
+  register: lazurio_tailscale_status_command
+  changed_when: false
+  check_mode: false
+
+- name: Parse the live Tailscale state
+  ansible.builtin.set_fact:
+    lazurio_tailscale_status: "{{ lazurio_tailscale_status_command.stdout | from_json }}"
+
+- name: Prove the private access plane before any host mutation
+  ansible.builtin.assert:
+    that:
+      - lazurio_tailscale_status.BackendState == "Running"
+      - lazurio_tailscale_status.TailscaleIPs | default([]) | length > 0
+    fail_msg: >-
+      Tailscale is not an authenticated running access plane. Restore tailnet
+      access before provisioning; Lazurio will not open a public bootstrap port.
+
+- name: Prove the declared tailnet interface exists
+  ansible.builtin.command:
+    argv:
+      - ip
+      - link
+      - show
+      - dev
+      - "{{ lazurio_tailnet_interface }}"
+  changed_when: false
+  check_mode: false
+
+- name: Inspect whether UFW already exists before the base package converge
+  ansible.builtin.stat:
+    path: /usr/sbin/ufw
+  register: lazurio_ufw_binary
+
+- name: Read existing UFW rules before changing the boundary
+  ansible.builtin.command:
+    argv:
+      - ufw
+      - show
+      - added
+  register: lazurio_ufw_before
+  changed_when: false
+  check_mode: false
+  when: lazurio_ufw_binary.stat.exists
+
+- name: Select existing inbound allow rules
+  ansible.builtin.set_fact:
+    lazurio_existing_allow_rules: >-
+      {{ lazurio_ufw_before.stdout_lines | default([])
+         | select('match', '^ufw allow( in)? ')
+         | list }}
+
+- name: Refuse to silently rewrite an existing non-tailnet boundary
+  ansible.builtin.assert:
+    that:
+      - lazurio_existing_allow_rules | reject('search', ' on ' ~ lazurio_tailnet_interface ~ ' ') | list | length == 0
+    fail_msg: >-
+      Existing UFW allow rules include a non-tailnet surface. Preserve the host
+      and review those rules explicitly; this playbook never resets or silently
+      deletes a Principal's firewall policy.

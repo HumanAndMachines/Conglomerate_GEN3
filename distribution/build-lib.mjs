@@ -115,6 +115,18 @@ export async function buildResidentArtifact({
     "distribution/dependencies/hermes.json",
   );
   validateHermesPin(hermes, contract.artifact_contract_version);
+  const gbrain = readJsonBlob(
+    repositoryRoot,
+    tree,
+    "distribution/dependencies/gbrain.json",
+  );
+  validateGbrainPin(gbrain, contract.artifact_contract_version);
+  const toolchain = readJsonBlob(
+    repositoryRoot,
+    tree,
+    "distribution/dependencies/toolchain.json",
+  );
+  validateToolchainPins(toolchain);
 
   const version = artifactVersion ?? `0.0.0-dev.${sourceCommit.slice(0, 12)}`;
   if (!/^[A-Za-z0-9][A-Za-z0-9.+-]*$/.test(version)) {
@@ -214,6 +226,18 @@ export async function buildResidentArtifact({
   );
   addGeneratedEntry(
     entries,
+    "resident/dependencies/gbrain.json",
+    readBlob(repositoryRoot, tree, "distribution/dependencies/gbrain.json"),
+    "0644",
+  );
+  addGeneratedEntry(
+    entries,
+    "resident/dependencies/toolchain.json",
+    readBlob(repositoryRoot, tree, "distribution/dependencies/toolchain.json"),
+    "0644",
+  );
+  addGeneratedEntry(
+    entries,
     "lazurio/search-scopes.v1.json",
     readBlob(repositoryRoot, tree, "distribution/runtime/search-scopes.empty.v1.json"),
     "0644",
@@ -269,6 +293,19 @@ export async function buildResidentArtifact({
         release_tag: hermes.release_tag,
         commit: hermes.commit,
         lock_sha256: hermes.lock_sha256,
+      },
+      gbrain: {
+        repository: gbrain.repository,
+        release_tag: gbrain.release_tag,
+        version: gbrain.version,
+        commit: gbrain.commit,
+        lock_sha256: gbrain.lock_sha256,
+        engine: gbrain.runtime.engine,
+        transport: gbrain.runtime.transport,
+      },
+      toolchain: {
+        bun: toolchain.tools.bun.version,
+        uv: toolchain.tools.uv.version,
       },
     },
     mutable_mounts: [...contract.mutable_mounts],
@@ -389,6 +426,50 @@ function validateHermesPin(hermes, artifactContractVersion) {
     || hermes?.compatibility?.independent_self_update_allowed !== false
   ) {
     throw new Error("Hermes dependency pin is incomplete or incompatible");
+  }
+}
+
+function validateGbrainPin(gbrain, artifactContractVersion) {
+  if (
+    gbrain?.schema_version !== "lazurio.resident.dependency-pin.v1"
+    || gbrain?.id !== "gbrain"
+    || gbrain?.repository !== "Lazurio/gbrain"
+    || gbrain?.upstream_repository !== "garrytan/gbrain"
+    || !/^\d+\.\d+\.\d+\.\d+$/.test(gbrain?.version ?? "")
+    || !/^[0-9a-f]{40}$/.test(gbrain?.commit ?? "")
+    || !/^[0-9a-f]{64}$/.test(gbrain?.lock_sha256 ?? "")
+    || gbrain?.runtime?.engine !== "pglite"
+    || gbrain?.runtime?.transport !== "stdio"
+    || !["put_page", "search", "get_page"].every((tool) => gbrain?.runtime?.required_tools?.includes(tool))
+    || !gbrain?.compatibility?.artifact_contract_versions?.includes(artifactContractVersion)
+    || gbrain?.compatibility?.independent_self_update_allowed !== false
+  ) {
+    throw new Error("GBrain dependency pin is incomplete or incompatible");
+  }
+}
+
+function validateToolchainPins(toolchain) {
+  const requiredTargets = ["linux-x64", "linux-arm64"];
+  if (toolchain?.schema_version !== "lazurio.resident.toolchain-pins.v1") {
+    throw new Error("Resident toolchain pins are missing or invalid");
+  }
+  for (const [name, tool] of Object.entries(toolchain.tools ?? {})) {
+    if (!/^[0-9]+\.[0-9]+\.[0-9]+$/.test(tool?.version ?? "")) {
+      throw new Error(`Resident ${name} version pin is invalid`);
+    }
+    for (const target of requiredTargets) {
+      const descriptor = tool.targets?.[target];
+      if (
+        !descriptor?.archive?.startsWith("https://github.com/")
+        || !/^[0-9a-f]{64}$/.test(descriptor?.sha256 ?? "")
+        || !descriptor?.binary
+      ) {
+        throw new Error(`Resident ${name} pin is incomplete for ${target}`);
+      }
+    }
+  }
+  for (const required of ["bun", "uv"]) {
+    if (!toolchain.tools?.[required]) throw new Error(`Resident toolchain is missing ${required}`);
   }
 }
 

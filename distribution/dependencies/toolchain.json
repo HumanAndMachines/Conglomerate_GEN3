@@ -1,0 +1,40 @@
+{
+  "schema_version": "lazurio.resident.toolchain-pins.v1",
+  "tools": {
+    "bun": {
+      "version": "1.3.10",
+      "targets": {
+        "linux-x64": {
+          "archive": "https://github.com/oven-sh/bun/releases/download/bun-v1.3.10/bun-linux-x64.zip",
+          "sha256": "f57bc0187e39623de716ba3a389fda5486b2d7be7131a980ba54dc7b733d2e08",
+          "binary": "bun-linux-x64/bun"
+        },
+        "linux-arm64": {
+          "archive": "https://github.com/oven-sh/bun/releases/download/bun-v1.3.10/bun-linux-aarch64.zip",
+          "sha256": "fa5ecb25cafa8e8f5c87a0f833719d46dd0af0a86c7837d806531212d55636d3",
+          "binary": "bun-linux-aarch64/bun"
+        }
+      }
+    },
+    "uv": {
+      "version": "0.11.32",
+      "targets": {
+        "linux-x64": {
+          "archive": "https://github.com/astral-sh/uv/releases/download/0.11.32/uv-x86_64-unknown-linux-gnu.tar.gz",
+          "sha256": "aab924fd522efd06f1c5f3b93a243864fc453132c94b2dc49f1371b528a4b967",
+          "binary": "uv-x86_64-unknown-linux-gnu/uv"
+        },
+        "linux-arm64": {
+          "archive": "https://github.com/astral-sh/uv/releases/download/0.11.32/uv-aarch64-unknown-linux-gnu.tar.gz",
+          "sha256": "4d4fa08d95b06642e5800df6a22bd71455f23f988269e18da2847971d8c0bf31",
+          "binary": "uv-aarch64-unknown-linux-gnu/uv"
+        }
+      }
+    }
+  },
+  "provenance": {
+    "migrated_from": "HumanAndMachine-ai/Buddy_GEN2@08b7ee79058a0ea91472fe6cc3651104221d2ab8:host/runtime",
+    "remote_verified_on": "2026-08-16",
+    "remote_verification": "GitHub release API asset digests agree for both supported Linux targets"
+  }
+}

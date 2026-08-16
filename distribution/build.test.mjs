@@ -86,6 +86,14 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
     repository: "Lazurio/hermes-agent",
     commit: "3ef6bbd201263d354fd83ec55b3c306ded2eb72a",
   });
+  expect(first.manifest.dependencies.gbrain).toMatchObject({
+    repository: "Lazurio/gbrain",
+    version: "0.42.67.0",
+    commit: "1057bf4368d945d04e45b728b460618b73284298",
+    engine: "pglite",
+    transport: "stdio",
+  });
+  expect(first.manifest.dependencies.toolchain).toEqual({ bun: "1.3.10", uv: "0.11.32" });
 
   const schema = JSON.parse(await readFile(join(import.meta.dir, "manifest.schema.json"), "utf8"));
   expect(validateAgainstSchema(first.manifest, schema, "manifest")).toEqual([]);
@@ -114,6 +122,8 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
     "resident/buddy-rollout.mjs",
     "resident/services/buddy-bridge.service.template",
     "resident/services/hermes-lazurio-root.conf.template",
+    "resident/dependencies/gbrain.json",
+    "resident/dependencies/toolchain.json",
     "bridge/run.ts",
   ]));
   expect(first.manifest.payload.files.some((file) => file.path.startsWith("provisioning/"))).toBe(false);

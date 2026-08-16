@@ -6,6 +6,7 @@ all:
         buddy-host.example.invalid:
           ansible_user: owner
           lazurio_owner_user: owner
+          lazurio_recovery_attestation_file: /absolute/controller/path/recovery-checkpoint.attest.json
           lazurio_bun_path: /opt/lazurio-operator/bin/bun
           lazurio_artifact_archive: /absolute/controller/path/lazurio-resident-buddy-VERSION-linux-x64.tar
           lazurio_artifact_checksum: /absolute/controller/path/lazurio-resident-buddy-VERSION-linux-x64.tar.sha256

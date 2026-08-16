@@ -1,0 +1,80 @@
+---
+- name: Add the closed Buddy TCP surface on the private tailnet only
+  ansible.builtin.command:
+    argv:
+      - ufw
+      - allow
+      - in
+      - on
+      - "{{ lazurio_tailnet_interface }}"
+      - to
+      - any
+      - port
+      - "{{ item | string }}"
+      - proto
+      - tcp
+  loop: "{{ lazurio_tailnet_tcp_ports }}"
+  register: lazurio_ufw_allow
+  changed_when: "'Skipping adding existing rule' not in lazurio_ufw_allow.stdout"
+  when: not ansible_check_mode
+
+- name: Set the default inbound policy to deny
+  ansible.builtin.command:
+    argv:
+      - ufw
+      - default
+      - deny
+      - incoming
+  register: lazurio_ufw_default_incoming
+  changed_when: "'Default incoming policy changed to' in lazurio_ufw_default_incoming.stdout"
+  when: not ansible_check_mode
+
+- name: Set the default outbound policy to allow
+  ansible.builtin.command:
+    argv:
+      - ufw
+      - default
+      - allow
+      - outgoing
+  register: lazurio_ufw_default_outgoing
+  changed_when: "'Default outgoing policy changed to' in lazurio_ufw_default_outgoing.stdout"
+  when: not ansible_check_mode
+
+- name: Enable UFW after the private allow rules exist
+  ansible.builtin.command:
+    argv:
+      - ufw
+      - --force
+      - enable
+  register: lazurio_ufw_enable
+  changed_when: "'Firewall is active and enabled on system startup' in lazurio_ufw_enable.stdout"
+  when: not ansible_check_mode
+
+- name: Read back the active UFW boundary
+  ansible.builtin.command:
+    argv:
+      - ufw
+      - show
+      - added
+  register: lazurio_ufw_after
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Prove every inbound allow remains tailnet-only
+  ansible.builtin.assert:
+    that:
+      - >-
+        lazurio_ufw_after.stdout_lines
+        | select('match', '^ufw allow( in)? ')
+        | reject('search', ' on ' ~ lazurio_tailnet_interface ~ ' ')
+        | list
+        | length == 0
+      - >-
+        lazurio_tailnet_tcp_ports
+        | map('string')
+        | map('regex_replace', '^(.*)$', 'ufw allow in on ' ~ lazurio_tailnet_interface ~ ' to any port \\1 proto tcp')
+        | difference(lazurio_ufw_after.stdout_lines)
+        | length == 0
+    fail_msg: "The live UFW boundary does not equal the declared tailnet-only Buddy surface."
+  when: not ansible_check_mode

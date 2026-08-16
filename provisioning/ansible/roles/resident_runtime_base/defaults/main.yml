@@ -1,0 +1,15 @@
+---
+lazurio_runtime_user: buddy
+lazurio_runtime_root: /opt/buddy-runtime
+lazurio_toolchain_root: /opt/lazurio-operator/bin
+lazurio_dependency_cache_root: /var/cache/lazurio-resident
+lazurio_dependency_pin_root: "{{ playbook_dir }}/../../../distribution/dependencies"
+lazurio_bun_path: "{{ lazurio_toolchain_root }}/bun"
+lazurio_uv_path: "{{ lazurio_toolchain_root }}/uv"
+lazurio_hermes_root: "{{ lazurio_runtime_root }}/hermes"
+lazurio_hermes_home: "/var/lib/{{ lazurio_runtime_user }}/.hermes"
+lazurio_hermes_environment_file: /etc/buddy/hermes-gateway.env
+lazurio_hermes_service_mode: upstream
+lazurio_gbrain_root: "{{ lazurio_runtime_root }}/gbrain"
+lazurio_gbrain_home: "/var/lib/{{ lazurio_runtime_user }}/.gbrain"
+lazurio_gbrain_engine: pglite

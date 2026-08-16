@@ -1,0 +1,37 @@
+{
+  "schema_version": "lazurio.resident.dependency-pin.v1",
+  "id": "gbrain",
+  "repository": "Lazurio/gbrain",
+  "upstream_repository": "garrytan/gbrain",
+  "release_tag": null,
+  "version": "0.42.67.0",
+  "commit": "1057bf4368d945d04e45b728b460618b73284298",
+  "lock_file": "bun.lock",
+  "lock_sha256": "b9a5d7fa455301edd18c0bcb8e9d135b347dcd71e3e6ce8734a878a5cafcb465",
+  "runtime": {
+    "engine": "pglite",
+    "transport": "stdio",
+    "required_tools": [
+      "put_page",
+      "search",
+      "get_page"
+    ]
+  },
+  "compatibility": {
+    "artifact_contract_versions": [
+      1
+    ],
+    "independent_self_update_allowed": false
+  },
+  "provenance": {
+    "migrated_from": "HumanAndMachine-ai/Buddy_GEN2@08b7ee79058a0ea91472fe6cc3651104221d2ab8:release/runtime-pins.json",
+    "remote_verified_on": "2026-08-16",
+    "remote_verification": {
+      "fork": true,
+      "commit_observed": "1057bf4368d945d04e45b728b460618b73284298",
+      "lock_sha256_observed": "b9a5d7fa455301edd18c0bcb8e9d135b347dcd71e3e6ce8734a878a5cafcb465",
+      "pglite_canary": "fresh init --pglite --no-embedding plus doctor --json exited 0 in an isolated HOME",
+      "agrees_with_pin": true
+    }
+  }
+}

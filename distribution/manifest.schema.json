@@ -122,7 +122,9 @@
     "dependencies": {
       "type": "object",
       "required": [
-        "hermes"
+        "hermes",
+        "gbrain",
+        "toolchain"
       ],
       "properties": {
         "hermes": {
@@ -148,6 +150,61 @@
             "lock_sha256": {
               "type": "string",
               "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          "additionalProperties": false
+        },
+        "gbrain": {
+          "type": "object",
+          "required": [
+            "repository",
+            "release_tag",
+            "version",
+            "commit",
+            "lock_sha256",
+            "engine",
+            "transport"
+          ],
+          "properties": {
+            "repository": {
+              "const": "Lazurio/gbrain"
+            },
+            "release_tag": {
+              "type": "null"
+            },
+            "version": {
+              "type": "string",
+              "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$"
+            },
+            "commit": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            },
+            "lock_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "engine": {
+              "const": "pglite"
+            },
+            "transport": {
+              "const": "stdio"
+            }
+          },
+          "additionalProperties": false
+        },
+        "toolchain": {
+          "type": "object",
+          "required": [
+            "bun",
+            "uv"
+          ],
+          "properties": {
+            "bun": {
+              "const": "1.3.10"
+            },
+            "uv": {
+              "const": "0.11.32"
             }
           },
           "additionalProperties": false
