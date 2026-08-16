@@ -83,6 +83,26 @@ test("discovery bez builder metadata dá null fallback bez failure", async () =>
   expect(apps[0].group).toBeNull();
 });
 
+test("in_tree_transition modul patří Organization root repu a nepotřebuje předčasnou git URL", async () => {
+  const root = await createCompaniesWorkspaceFixture({
+    plugin: { schema_version: "companyascode.launchpad_plugin.v1", title: "Demo kontext" },
+  });
+  const manifestPath = join(root, "organizations", "TestCompany", "modules.manifest.json");
+  const manifest = await Bun.file(manifestPath).json();
+  manifest.module_slots = [{
+    path: "modules/demo",
+    slug: "demo",
+    status: "in_tree_transition",
+  }];
+  await writeJson(manifestPath, manifest);
+
+  const { apps, failures, warnings } = await discoverLaunchpadApps(root);
+
+  expect(failures).toEqual([]);
+  expect(apps).toHaveLength(1);
+  expect(warnings.some((warning) => warning.includes("in_tree_transition") && warning.includes("Organization root"))).toBe(true);
+});
+
 test("discovery je warning-first u vadného builder metadata, appka zůstává validní", async () => {
   const root = await createCompaniesWorkspaceFixture({
     plugin: { schema_version: "companyascode.launchpad_plugin.v1", title: "Demo kontext" },

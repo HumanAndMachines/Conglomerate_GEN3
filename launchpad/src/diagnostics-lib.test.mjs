@@ -1459,6 +1459,11 @@ test("planned root slot nemá git a smí zůstat planned jen dokud není materia
   expect(materializedWithoutCoordinatesCheck?.details.join("\n")).toContain(
     'materializovaný root slot design-system nesmí zůstat status: "planned_slot"',
   );
+
+  manifest.module_slots[0].status = "in_tree_transition";
+  await writeJson(manifestPath, manifest);
+  const inTreeTransitionCheck = await doctor();
+  expect(inTreeTransitionCheck?.status).toBe("ok");
 });
 
 test("app sekci určí fyzická cesta, manifest doplní N:M Team intent a sdílený modul může být jednou v Organizaci", async () => {
@@ -1683,6 +1688,83 @@ test("invalid_manifest appka je viditelná v apps response a doctor ji hlásí j
   expect(appCheck?.status).toBe("warn");
   const goodCheck = report.checks.find((check) => check.id === "launchpad.runtime.brokenco-good-v1");
   expect(goodCheck).toBeDefined();
+});
+
+test("discovery chyba jedné Organization nezablokuje runtime měření dostupných aplikací", async () => {
+  const root = await createCompaniesWorkspaceFixture();
+  const validCompanyRoot = join(root, "organizations", "TestCompany_GEN3");
+  const validAppRoot = join(validCompanyRoot, "workspace", "demo", "app", "v1");
+  await mkdir(join(validCompanyRoot, "manual"), { recursive: true });
+  await mkdir(join(validCompanyRoot, "company", "colleagues"), { recursive: true });
+  await mkdir(validAppRoot, { recursive: true });
+  await writeJson(join(validCompanyRoot, "company.gen3.json"), {
+    organization_generation: "gen3",
+    company: { slug: "test-company", display_name: "Test Company", github_org: "TestCompany" },
+  });
+  await writeJson(join(validCompanyRoot, "modules.manifest.json"), {
+    company: "test-company",
+    github_org: "TestCompany",
+    module_slots: [],
+  });
+  await writeJson(join(validCompanyRoot, "TODO.tasks.json"), {});
+  await writeJson(join(validCompanyRoot, "DONE.tasks.json"), {});
+  await writeJson(join(validCompanyRoot, "ISSUES.open.json"), {});
+  await writeJson(join(validAppRoot, "package.json"), {
+    name: "test-company-demo-v1",
+    private: true,
+    type: "module",
+    scripts: { dev: "bun server.mjs" },
+    companyascode: {
+      app: {
+        schema_version: "companyascode.launchpad_app.v1",
+        id: "test-company-demo-v1",
+        title: "Demo v1",
+        company: "test-company",
+        module: "demo",
+        surface: "internal",
+        port: 24001,
+        host: "127.0.0.1",
+        health_path: "/health",
+        dev_script: "dev",
+        tags: ["test"],
+      },
+    },
+  });
+  const companyRoot = join(root, "organizations", "OmegaCo_GEN3");
+  await mkdir(join(companyRoot, "manual"), { recursive: true });
+  await mkdir(join(companyRoot, "company", "colleagues"), { recursive: true });
+  await mkdir(join(companyRoot, "workspace", "legacy"), { recursive: true });
+  await writeJson(join(companyRoot, "company.gen3.json"), {
+    organization_generation: "gen3",
+    company: { slug: "OmegaCo", display_name: "Omega Co", github_org: "OmegaCo" },
+  });
+  await writeJson(join(companyRoot, "modules.manifest.json"), {
+    company: "OmegaCo",
+    github_org: "OmegaCo",
+    module_slots: [{ path: "workspace/legacy", slug: "legacy" }],
+  });
+  await writeJson(join(companyRoot, "TODO.tasks.json"), {});
+  await writeJson(join(companyRoot, "DONE.tasks.json"), {});
+  await writeJson(join(companyRoot, "ISSUES.open.json"), {});
+
+  const report = await buildLaunchpadDoctorReport({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: {
+      appsWithRuntime: async (apps) => apps.map((app) => ({
+        ...app,
+        runtime_status: "stopped",
+        runtime: { status: "stopped", message: "Aplikace je zastavená." },
+        dependencies: { state: "ready", message: "Balíčky jsou připravené." },
+      })),
+    },
+  });
+
+  expect(report.checks.find((check) => check.id === "launchpad.discovery")?.status).toBe("fail");
+  const runtimeSummary = report.checks.find((check) => check.id === "launchpad.runtime");
+  expect(runtimeSummary?.status).toBe("warn");
+  expect(runtimeSummary?.message).toContain("Runtime dostupných aplikací byl změřen");
+  expect(report.checks.find((check) => check.id === "launchpad.runtime.test-company-demo-v1")).toBeDefined();
 });
 
 test("CAC-0042: doctor reportuje worktree inventory, contract violations a cleanup candidates", async () => {
