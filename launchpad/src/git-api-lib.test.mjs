@@ -83,6 +83,40 @@ test("git API can limit polling work to the selected organization", async () => 
   expect(response.repos.some((repo) => repo.organization === "OmegaCo")).toBe(false);
 });
 
+test("git API hides protected repos until their checkout exists on this machine", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const omegaManifestPath = join(root, "organizations", "OmegaCo_GEN3", "modules.manifest.json");
+  const betaManifestPath = join(root, "organizations", "BetaCo_GEN3", "modules.manifest.json");
+  const omegaManifest = JSON.parse(await readFile(omegaManifestPath, "utf8"));
+  const betaManifest = JSON.parse(await readFile(betaManifestPath, "utf8"));
+  const infra = omegaManifest.module_slots.find((slot) => slot.path === "infra");
+  infra.default_access = "restricted";
+  infra.required_roles = ["engineering"];
+  const future = omegaManifest.module_slots.find((slot) => slot.path === "workspace/future-module");
+  future.default_access = "private";
+  const knowledgebase = betaManifest.module_slots.find(
+    (slot) => slot.path === "workspace/knowledgebase",
+  );
+  knowledgebase.default_access = "role_based";
+  knowledgebase.required_roles = ["knowledge"];
+  await writeJson(omegaManifestPath, omegaManifest);
+  await writeJson(betaManifestPath, betaManifest);
+
+  const before = await buildGitApiResponse({ companiesRoot: root });
+  expect(before.repos.some((repo) => repo.key === "OmegaCo::infra")).toBe(false);
+  expect(before.repos.some((repo) => repo.key === "BetaCo::knowledgebase")).toBe(false);
+  expect(before.planned.some((repo) => repo.key === "OmegaCo::future-module")).toBe(false);
+  expect(JSON.stringify(before)).not.toContain("workspace/knowledgebase");
+
+  await initGitRepo(join(root, "organizations", "OmegaCo_GEN3", "infra"));
+  const after = await buildGitApiResponse({ companiesRoot: root });
+  expect(after.repos.find((repo) => repo.key === "OmegaCo::infra")).toMatchObject({
+    status: "up_to_date",
+    repo_path: "organizations/OmegaCo_GEN3/infra",
+  });
+});
+
 test("changes response exposes filenames and porcelain status without file contents", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
@@ -336,6 +370,24 @@ test("pull all can stay inside the Organization selected in Launchpad", async ()
   expect(response.results.some((result) => result.organization === "OmegaCo")).toBe(false);
 });
 
+test("pull all does not expose an unmaterialized protected repo when sync cannot access it", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const manifestPath = join(root, "organizations", "BetaCo_GEN3", "modules.manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  const knowledgebase = manifest.module_slots.find(
+    (slot) => slot.path === "workspace/knowledgebase",
+  );
+  knowledgebase.default_access = "restricted";
+  knowledgebase.required_roles = ["knowledge"];
+  await writeJson(manifestPath, manifest);
+
+  const response = await buildPullAllResponse({ companiesRoot: root, organization: "BetaCo" });
+
+  expect(response.results.some((result) => result.repo_key === "BetaCo::knowledgebase")).toBe(false);
+  expect(JSON.stringify(response)).not.toContain("knowledgebase");
+});
+
 test("pull all reloads a freshly pulled Organization manifest and materializes its new module in one action", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
@@ -383,6 +435,8 @@ test("pull all reloads a freshly pulled Organization manifest and materializes i
       {
         path: "workspace/lazurio",
         teams: ["lazurio"],
+        default_access: "restricted",
+        required_roles: ["builder"],
         git: { url: moduleRemote, branch: "main" },
       },
       {
@@ -409,6 +463,8 @@ test("pull all reloads a freshly pulled Organization manifest and materializes i
   expect(response.results.some((result) => result.repo_key === "BetaCo::future-lazurio")).toBe(false);
   expect(normalizeLineEndings(await readFile(join(orgRoot, "workspace", "lazurio", "README.md"), "utf8")))
     .toBe("# main\n");
+  const projected = await buildGitApiResponse({ companiesRoot: root, organization: "BetaCo" });
+  expect(projected.repos.some((repo) => repo.key === "BetaCo::lazurio")).toBe(true);
 }, 20_000);
 
 test("/api/apps app objects include compact git summary for their module", async () => {

@@ -1,6 +1,11 @@
 import { posix } from "path";
 
 const organizationSlotScopes = new Set(["root", "workspace", "productionspace"]);
+const protectedOrganizationSlotAccessModes = new Set([
+  "private",
+  "restricted",
+  "role_based",
+]);
 const organizationRootSlotPaths = new Set([
   "design-system",
   "infra",
@@ -212,6 +217,20 @@ export function organizationSlotUiExposure(slot, normalizedPath = null) {
     return "diagnostics-only";
   }
   return "module";
+}
+
+// Manifest deklaruje inventory a sync intent, nikoli oprávnění aktuálního
+// Principála. Chráněný slot se do každodenního Launchpad API promítne až když
+// na této mašině existuje jeho checkout (poslední známý offline stav bez TTL).
+// `required_roles: ["*"]` je explicitní veřejná deklarace a zůstává viditelná
+// i před materializací.
+export function organizationSlotProjectsToLocalMachine(
+  slot,
+  { materialized = slot?.status === "available" } = {},
+) {
+  if (materialized) return true;
+  if (slot?.required_roles?.includes("*")) return true;
+  return !protectedOrganizationSlotAccessModes.has(slot?.default_access);
 }
 
 export function normalizeOrganizationSlotPath(path) {
