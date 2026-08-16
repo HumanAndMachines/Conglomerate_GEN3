@@ -92,6 +92,7 @@ test("operator plane delegates immutable lifecycle to the official rollout", asy
     "--environment-file",
     "--hermes-root",
     "ansible_check_mode",
+    "lazurio_rollout_command.rc == 0",
   ]) {
     expect(lifecycleTasks).toContain(required);
   }

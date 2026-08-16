@@ -167,7 +167,9 @@
       - --bun
       - "{{ lazurio_bun_path }}"
   register: lazurio_rollout_command
-  changed_when: (lazurio_rollout_command.stdout | from_json).status in ["installed", "updated"]
+  changed_when: >-
+    lazurio_rollout_command.rc == 0 and
+    (lazurio_rollout_command.stdout | from_json).status in ["installed", "updated"]
   when: not ansible_check_mode
 
 - name: Explain the intentionally skipped lifecycle mutation in check mode
