@@ -113,10 +113,15 @@
         "tests/scars/mutations/RUNTIME-*.patch",
         "tests/scars/mutations/SEAM-*.patch"
       ],
-      "disposition": "pending_itemized_migration",
-      "target_paths": [],
-      "public_safe_review": "required",
-      "reason": "The manifest owns the exact Hermes pin and the resident service seam verifies live commit plus lock digest before binding TERMINAL_CWD to the active Lazurio Root. Fresh Hermes materialization and the base gateway unit still execute from Buddy_GEN2."
+      "disposition": "migrated_operator_plane",
+      "target_paths": [
+        "distribution/dependencies/hermes.json",
+        "distribution/dependencies/toolchain.json",
+        "provisioning/ansible/roles/resident_runtime_base/**",
+        "provisioning/ansible-contract.test.mjs"
+      ],
+      "public_safe_review": "pass_for_listed_targets",
+      "reason": "The exact fork, commit and lock remain artifact-visible pins. The source-only Ansible role now uses exact uv plus the fork's locked install and upstream gateway service seam; the large legacy bootstrap script is not copied."
     },
     {
       "id": "gbrain-runtime",
@@ -127,10 +132,15 @@
         "tests/scars/mutations/GBRAIN-*.patch",
         "tests/scars/mutations/PG-*.patch"
       ],
-      "disposition": "pending_separate_dependency_contract",
-      "target_paths": [],
-      "public_safe_review": "required",
-      "reason": "Memory runtime, PostgreSQL requirements and MCP handshake remain required, but gbrain needs a refreshed exact pin and canary evidence before entering a public artifact."
+      "disposition": "migrated_greenfield_dependency_contract",
+      "target_paths": [
+        "distribution/dependencies/gbrain.json",
+        "distribution/dependencies/toolchain.json",
+        "provisioning/ansible/roles/resident_runtime_base/**",
+        "provisioning/ansible-contract.test.mjs"
+      ],
+      "public_safe_review": "pass_for_listed_targets",
+      "reason": "The exact fork commit and lock are now artifact-visible. Greenfield Buddy uses GBrain's supported local PGLite plus stdio MCP, avoiding a new PostgreSQL service; an assisted existing host may explicitly retain its already verified engine. Private memory sources and embedding credentials remain Personalspace custody."
     },
     {
       "id": "profile-materialization",
@@ -153,14 +163,16 @@
         "tests/contracts/firewall.exec.test.ts",
         "tests/contracts/egress.test.ts"
       ],
-      "disposition": "partially_migrated_operator_plane",
+      "disposition": "migrated_tailnet_only_operator_plane",
       "target_paths": [
         "provisioning/README.md",
         "provisioning/ansible/roles/resident_host_base/**",
+        "provisioning/ansible/roles/resident_preflight/**",
+        "provisioning/ansible/roles/resident_network/**",
         "provisioning/ansible-contract.test.mjs"
       ],
       "public_safe_review": "pass_for_listed_targets",
-      "reason": "Host provisioning is source-only operator plane, never Resident payload. The first shared role migrates Debian Buddy identities, minimal packages, custody paths and explicit Principal ownership. Tailnet, firewall, provider recovery and their scars remain pending and are not implied by this disposition."
+      "reason": "Host provisioning remains source-only. The Linux Buddy lane now proves an authenticated tailnet before mutation, admits the closed private TCP surface only on that interface and refuses to delete foreign Principal rules. The legacy public-ingress classifier is intentionally not copied."
     },
     {
       "id": "backup-and-restore",
@@ -169,10 +181,13 @@
         "tests/drills/**",
         "tests/contracts/drill-evidence.test.ts"
       ],
-      "disposition": "pending_itemized_migration",
-      "target_paths": [],
-      "public_safe_review": "required",
-      "reason": "Backup and restore are cohort gates, but private keys, bundles and evidence remain installation custody and cannot enter Lazurio source or artifacts."
+      "disposition": "external_recovery_checkpoint_for_first_cohort",
+      "target_paths": [
+        "provisioning/README.md",
+        "provisioning/ansible/roles/resident_preflight/**"
+      ],
+      "public_safe_review": "pass_for_checkpoint_contract",
+      "reason": "The first cohort reuses its VPS provider snapshot or equivalent recovery mechanism and the playbook requires a content-free restore-verified attestation before mutation. Private keys, bundles and data remain installation custody. A long-lived application backup timer is deliberately deferred until both pilots prove this direction."
     },
     {
       "id": "install-orchestrator",
@@ -185,7 +200,7 @@
         "manual/update-installed-resident.md"
       ],
       "public_safe_review": "pass_for_listed_targets",
-      "reason": "The old whole-host orchestrator is not copied. Machine convergence and installed-root lifecycle are now separate: the phase-one playbook requires an existing Hermes/GBrain/Zulip baseline and invokes the official compensated rollout. Unmigrated greenfield dependencies and human gates remain explicit backlog."
+      "reason": "The old whole-host orchestrator is not copied. Ansible converges the bounded Linux host baseline and exact runtime dependencies, while the existing compensated rollout alone owns active-root install, service cutover and rollback. Zulip and provider recovery remain explicit external prerequisites."
     },
     {
       "id": "internal-docs-and-incident-history",

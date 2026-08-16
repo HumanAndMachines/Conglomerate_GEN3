@@ -4,20 +4,32 @@
 Mašin. Není součástí non-Git Lazurio Rootu a běžící Resident z něj neprovádí
 vlastní autonomní správu hostu.
 
-První lane je úmyslně malá:
+První greenfield lane je úmyslně malá:
 
 - podporuje Buddy profil na Debian-family Linuxu;
-- konverguje společné host identity, custody adresáře a minimální balíčky;
-- na už připraveném Hermes/GBrain/Zulip hostu umí přes exact operator runtime
-  spustit oficiální `buddy-rollout` nad exact resident artefaktem;
+- před první mutací vyžaduje content-free attestation už ověřeného provider
+  recovery checkpointu a živý Tailscale access plane;
+- konverguje společné host identity, custody adresáře, minimální balíčky a
+  tailnet-only UFW hranici bez veřejného ingressu;
+- materializuje exact Bun, uv, Hermes fork a GBrain fork z reviewovaných pinů;
+- pro nový osobní GBrain používá upstreamem podporovaný lokální PGLite a přes
+  Hermes upstream CLI registruje jeho stdio MCP;
+- přes exact operator runtime spustí stávající `buddy-rollout` nad exact
+  resident artefaktem;
 - neobsahuje inventory konkrétní kohorty, secrets ani provider credentials;
-- nevydává dnešní stav za kompletní greenfield instalaci.
+- nevytváří vlastní updater, daemon, sandbox, ACL ani fleet control plane.
 
-Z `Buddy_GEN2` zatím zůstávají položkově nepřenesené Hermes a GBrain
-materializace, tailnet/firewall lane, backup/restore instalace a lidské
-Principal gates. Dokud jejich veřejně bezpečné role a regrese nepřejdou,
-greenfield host se připravuje podle kurátorovaného cohort postupu a tento
-playbook se používá až na doloženém runtime baseline.
+Zulip není instalovaný do Buddyho hostu tímto playbookem. Bridge long-polluje
+privátní one-Principal realm odchozím spojením; membership, bot credential a
+provider access jsou proto explicitní privátní prerequisites, ne důvod přidat
+na host veřejný port nebo druhý orchestrátor. Stejně tak provider snapshot či
+ekvivalentní recovery checkpoint vzniká přes existující provider mechanismus.
+Playbook pouze odmítne první mutaci bez content-free dokladu, že checkpoint
+existuje a restore cesta byla ověřena.
+
+První kohorta tím nedostává vlastní dlouhodobý backup daemon. Aplikační
+encrypted backup/restore zůstává samostatný follow-up po ověření obou pilotů;
+do té doby je cohort gate provider recovery checkpoint před každou změnou.
 
 ## Proč Ansible není updater
 
@@ -29,13 +41,44 @@ nekopíruje jeho algoritmus do YAML tasků.
 Exact Hermes/GBrain piny se smějí odvozovat jen z Lazurio release kontraktu.
 Inventory nebo role si nesmějí založit konkurenční verzi „pro tento host“.
 
+## Privátní prerequisites
+
+Mimo public repo připrav:
+
+- privátní inventory;
+- exact resident `.tar` a `.tar.sha256` z jednoho reviewed source HEADu;
+- Tailscale node, který je už přihlášený do Principálova tailnetu;
+- provider snapshot nebo ekvivalentní recovery checkpoint s úspěšně ověřenou
+  restore cestou;
+- existující Personalspace se složkou profilu, kterou deklaruje
+  `BUDDY_PROFILE_DIR`;
+- `/etc/buddy/hermes-gateway.env` a `/etc/buddy/buddy-bridge.env` s reálnými
+  hodnotami a bez uložení secrets do inventory.
+
+Content-free controller attestation může mít například tento tvar:
+
+```json
+{
+  "schema_version": "lazurio.recovery-checkpoint.attestation.v1",
+  "checkpoint_id": "provider-opaque-id",
+  "created_at": "YYYY-MM-DDTHH:MM:SSZ",
+  "restore_verified_at": "YYYY-MM-DDTHH:MM:SSZ",
+  "scope": "whole-machine-before-change"
+}
+```
+
+Není v něm hostname, jméno Principála, cesta k Personalspace, obsah, token ani
+private key. Skutečný checkpoint a jeho custody zůstávají u providera a
+Principála.
+
 ## První Buddy/Linux průchod
 
 1. Připrav z `inventory.example.yml` vlastní privátní inventory mimo tento
    public repozitář. Hodnoty secrets do inventory nepatří.
-2. Vyplň absolutní controller cesty k exact `.tar` a `.tar.sha256`, absolutní
-   cestu k Bunu na hostu a existující host custody cesty.
-3. Ze source rootu nejdřív spusť check mode. Podshell vstoupí do Ansible
+2. Vyplň absolutní controller cesty k exact `.tar`, `.tar.sha256` a recovery
+   attestation. Bun na blank hostu materializuje role z exact toolchain pinu;
+   explicitní `lazurio_bun_path` dál určuje, co použije service a updater.
+3. Ze source rootu nejdřív spusť syntax check. Podshell vstoupí do Ansible
    adresáře, aby Ansible automaticky načetl jeho `ansible.cfg` a našel
    lokální role:
 
@@ -43,15 +86,29 @@ Inventory nebo role si nesmějí založit konkurenční verzi „pro tento host�
    (
      cd provisioning/ansible
      ansible-playbook -i /privatni/inventory.yml \
-       playbooks/buddy-linux.yml --check --diff
+       playbooks/buddy-linux.yml --syntax-check
    )
    ```
 
-4. Přečti celý diff. Zejména ověř owner účet, runtime identity, Personalspace
-   source, bridge EnvironmentFile, Hermes root a cílový artifact id.
-5. Konvergenci spusť až jako vědomý assisted krok. Playbook selže před
-   rolloutem, pokud požadovaný privátní nebo runtime vstup nejde přečíst.
-6. Readback proveď podle `manual/update-installed-resident.md`.
+4. Na už existujícím hostu můžeš navíc použít `--check --diff`; na blank hostu
+   check mode z principu nemůže pozorovat binárky, účty a service, které ještě
+   neexistují. Skutečný run proto drží read-only preflight jako první role a
+   před jeho PASS neprovede žádnou host mutaci.
+5. Konvergenci spusť až jako vědomý assisted krok. Zkontroluj owner účet,
+   Personalspace, exact piny, privátní env soubory, recovery attestation,
+   tailnet a cílový artifact id.
+6. Po prvním PASS spusť stejný playbook znovu: musí být no-op nebo pouze
+   transparentní readback. Potom ověř status podle
+   `manual/update-installed-resident.md`.
+7. Řízené selhání a rollback prováděj jen na disposable hostu nebo pod exact
+   live-host oprávněním. Po rebootu musí být Hermes a bridge aktivní a Resident
+   Doctor znovu `pass`.
+
+Assisted migrace smí pro existující host explicitně nastavit
+`lazurio_hermes_service_mode: existing` a `lazurio_gbrain_engine: existing`.
+Tím se zachová už ověřená service a databázový backend; role dál kontroluje
+exact checkouty a lifecycle. Greenfield výchozí hodnoty jsou `upstream` a
+`pglite`.
 
 Playbook nespouštěj proti žádnému živému hostu jen proto, že jeho syntax nebo
 testy prošly. Live host vyžaduje samostatný exact rollout gate, before-state a
