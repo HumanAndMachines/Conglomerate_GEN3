@@ -1,7 +1,7 @@
 # Manuální Lumbio shadow pilot — provozní kontrakt v0.1
 
-**Contract ID:** `PILOT-LUMBIO-SHADOW-0.2-R1`  
-**Stav:** návrh pouze k revizi; není spustitelný  
+**Contract ID:** `PILOT-LUMBIO-SHADOW-0.2-R1`
+**Stav:** návrh pouze k revizi; není spustitelný
 **Pack baseline:** `michael-ceo-double-v0-2-r1` / commit `1b7d60590fe5e6d83f63032fd64fb647a2191296`
 
 ## Co tato brána řeší

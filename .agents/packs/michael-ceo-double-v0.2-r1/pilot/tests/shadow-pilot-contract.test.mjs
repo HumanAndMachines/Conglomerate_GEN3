@@ -93,6 +93,15 @@ describe("manual Lumbio shadow pilot contract validator", () => {
     expect(result.errors).toContain("manifest relative_path schema must forbid absolute and traversal paths");
   }));
 
+  test("selže zavřeně, když review schema dovolí ponechat raw snapshot", () => withPackCopy((copy) => {
+    mutateJson(join(copy, "pilot", "schemas", "shadow-human-review.schema.json"), (schema) => {
+      schema.properties.cleanup.properties.raw_snapshot_deleted = { type: "boolean" };
+    });
+    const result = validateShadowPilotContract(copy);
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContain("human review schema must require verified raw snapshot deletion");
+  }));
+
   test("selže zavřeně při změně pack baseline commitu", () => withPackCopy((copy) => {
     mutateJson(join(copy, "pilot", "shadow-pilot-contract.json"), (contract) => {
       contract.pack.baseline_commit = "0000000000000000000000000000000000000000";

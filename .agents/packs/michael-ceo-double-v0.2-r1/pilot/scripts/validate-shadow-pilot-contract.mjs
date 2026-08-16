@@ -119,6 +119,10 @@ export function validateShadowPilotContract(packRootInput) {
     errors.push("pack baseline commit must match the approved inactive-pack commit");
   }
 
+  if (reviewSchema.properties?.cleanup?.properties?.raw_snapshot_deleted?.const !== true) {
+    errors.push("human review schema must require verified raw snapshot deletion");
+  }
+
   requireFalse(contract.execution?.enabled, "execution.enabled must remain false", errors);
   if (contract.execution?.mode !== "manual_one_shot_shadow" || contract.execution?.max_runs !== 1) {
     errors.push("execution must remain one manual one-shot shadow run");

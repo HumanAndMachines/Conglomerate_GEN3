@@ -47,7 +47,7 @@
       "type": "object",
       "required": ["raw_snapshot_deleted", "draft_deletion_due_at", "audit_contains_raw_source_content", "consumption_receipt_created", "consumption_receipt_contains_raw_source_content"],
       "properties": {
-        "raw_snapshot_deleted": {"type": "boolean"},
+        "raw_snapshot_deleted": {"const": true},
         "draft_deletion_due_at": {"type": "string", "format": "date-time"},
         "audit_contains_raw_source_content": {"const": false}
         ,"consumption_receipt_created": {"const": true}
