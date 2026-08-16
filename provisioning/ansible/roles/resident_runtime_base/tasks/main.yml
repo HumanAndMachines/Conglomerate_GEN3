@@ -21,6 +21,7 @@
       - lazurio_gbrain_root is match('^/')
       - lazurio_gbrain_home is match('^/')
       - lazurio_hermes_pin.repository == "Lazurio/hermes-agent"
+      - lazurio_hermes_pin.release_tag | length > 0
       - lazurio_gbrain_pin.repository == "Lazurio/gbrain"
       - lazurio_gbrain_pin.runtime.transport == "stdio"
     fail_msg: >-
@@ -102,7 +103,7 @@
   ansible.builtin.git:
     repo: "https://github.com/{{ lazurio_hermes_pin.repository }}.git"
     dest: "{{ lazurio_hermes_root }}"
-    version: "{{ lazurio_hermes_pin.commit }}"
+    version: "{{ lazurio_hermes_pin.release_tag }}"
     depth: 1
     single_branch: true
     force: false

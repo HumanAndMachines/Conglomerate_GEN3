@@ -135,6 +135,9 @@ test("runtime baseline invokes the exact pinned Hermes service interface", async
     expect(tasks.find((task) => task.name === taskName)["ansible.builtin.git"])
       .toMatchObject({ depth: 1, single_branch: true, force: false });
   }
+  expect(tasks.find(
+    (task) => task.name === "Materialize the exact Hermes fork commit",
+  )["ansible.builtin.git"].version).toBe("{{ lazurio_hermes_pin.release_tag }}");
   const service = tasks.find(
     (task) => task.name === "Install the upstream Hermes gateway service without starting it",
   );
