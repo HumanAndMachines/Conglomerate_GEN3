@@ -699,11 +699,12 @@ Původ ani CWD procesu nejsou důvod port ponechat obsazený. Neznámá nebo
 nesignalizovatelná process group je vysvětlitelný hard failure. Stop dál cílí
 jen managed aktivní instanci.
 
-Deklarovaný overlap je přípustný pouze mezi verzemi a worktrees téhož
-`company/module#lease`; všechny ostatní shody číselného portu napříč
-Organizacemi jsou hard discovery/Doctor failure. Lifecycle stejného modulu je
-serializovaný OS-level mutexem i mezi více Launchpad procesy a v jednu chvíli
-běží jen jedna jeho varianta. Samostatný
+Deklarovaný overlap je uvnitř jedné Organization přípustný pouze mezi verzemi
+a worktrees téhož `company/module#lease`. Oddělené Organizations mohou zachovat
+stejný stabilní číselný port; owner-aware index jej nezamění za bezpečně
+přepínatelnou variantu a na jednom hostu listener používají po jednom.
+Lifecycle stejného modulu je serializovaný OS-level mutexem i mezi více
+Launchpad procesy a v jednu chvíli běží jen jedna jeho varianta. Samostatný
 `POST /api/apps/:id/switch` dál vyžaduje potvrzení, běžný Start/Open ale
 nahrazuje jinou variantu stejného modulu bez portového dialogu. UI rezervuje tab
 před akcí (aby ho prohlížeč nezablokoval), ukazuje průběh „Otevírám…", toasty a

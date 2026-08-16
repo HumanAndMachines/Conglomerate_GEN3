@@ -1700,10 +1700,11 @@ export async function discoverLaunchpadApps(
     });
   }
 
-  // Všechny statické listenery zůstávají viditelné i při kolizi. Port patří
-  // jednomu company/module listener lease; pouze jiné verze a worktrees téhož
-  // modulu smějí deklarovat stejné číslo. Runtime port nikdy nepřemapovává a
-  // při explicitním Start/Open dosavadního live vlastníka lease nahradí.
+  // Všechny statické listenery zůstávají viditelné i při překryvu. Uvnitř
+  // Organization patří číslo jednomu module listener lease; oddělené
+  // Organizations mohou zachovat stejné stabilní číslo a na jedné mašině je
+  // používají po jednom. Runtime port nikdy nepřemapovává a při explicitním
+  // Start/Open dosavadního live vlastníka lease nahradí.
   const listenerIndex = buildPortOwnershipIndex(portOwners);
   const portOverlaps = listenerIndex.overlaps;
   const overlapByPort = new Map(portOverlaps.map((overlap) => [overlap.port, overlap]));

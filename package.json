@@ -39,7 +39,8 @@
     "worktrees:status": "bun .agents/skills/worktree-development-discipline/scripts/worktree-inventory.mjs",
     "worktrees:check": "bun .agents/skills/worktree-development-discipline/scripts/worktree-inventory.mjs --check",
     "runtime:migrate": "bun scripts/lazurio-runtime-migrate.mjs",
-    "runtime:migrate:test": "bun test scripts/lazurio-runtime-migrate.test.mjs scripts/lazurio-module-port.test.mjs",
+    "runtime:inventory": "bun scripts/lazurio-module-inventory.mjs",
+    "runtime:migrate:test": "bun test scripts/lazurio-runtime-migrate.test.mjs scripts/lazurio-module-port.test.mjs scripts/lazurio-module-inventory.test.mjs",
     "worktrees:test": "bun test scripts/worktree-inventory.contract.test.mjs scripts/worktree-create-contract.test.mjs scripts/worktree-create.test.mjs scripts/worktree-create-git-policy.test.mjs scripts/worktree-create-lock.test.mjs"
   }
 }

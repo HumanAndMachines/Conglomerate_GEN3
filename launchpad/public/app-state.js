@@ -474,9 +474,14 @@ export function groupAppFamilies(apps) {
     map.get(key).push(app);
   }
   return order.map((key) => {
-    // Highest version first → the default the tile represents and launches.
-    // Equal versions keep discovery order (stable), so the first sub-app wins.
-    const members = [...map.get(key)].sort((a, b) => (appTitleVersion(b) ?? -1) - (appTitleVersion(a) ?? -1));
+    // The Module contract is authoritative when it declares default_app.
+    // Legacy modules keep the existing highest-version fallback until they
+    // gain an explicit apps inventory. Equal versions retain discovery order.
+    const members = [...map.get(key)].sort((a, b) => {
+      const declaredDefault = Number(Boolean(b.module_app?.default)) - Number(Boolean(a.module_app?.default));
+      if (declaredDefault !== 0) return declaredDefault;
+      return (appTitleVersion(b) ?? -1) - (appTitleVersion(a) ?? -1);
+    });
     const primary = members[0];
     return { key, company: primary.company, module: primary.module ?? null, members, primary };
   });

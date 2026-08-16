@@ -277,6 +277,29 @@ test("One module = one tile: versions AND named sub-apps collapse by company+mod
   expect(appVersionLabel(apps[2])).toBe("");
 });
 
+test("explicit Module default_app outranks the legacy highest-version fallback", () => {
+  const families = groupAppFamilies([
+    {
+      id: "website-v3",
+      company: "OmegaCo",
+      module: "website",
+      title: "Website v3",
+      module_app: { package: "app/v3/package.json", declared: true, default: false },
+    },
+    {
+      id: "website-v2",
+      company: "OmegaCo",
+      module: "website",
+      title: "Website v2",
+      module_app: { package: "app/v2/package.json", declared: true, default: true },
+    },
+  ]);
+
+  expect(families).toHaveLength(1);
+  expect(families[0].members.map((member) => member.id)).toEqual(["website-v2", "website-v3"]);
+  expect(families[0].primary.id).toBe("website-v2");
+});
+
 test("Module tiles split by physical boundary and Workspace modules project N:M into Teams", () => {
   const apps = [
     { id: "kb", company: "AlfaCo", module: "knowledgebase", title: "Knowledgebase", space: "workspace", teams: ["core", "content"] },

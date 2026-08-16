@@ -1974,11 +1974,11 @@ function discoveryCheck(appsResponse) {
   };
 }
 
-// Doctor i Launchpad čtou stejný owner-aware listener index. Port smí sdílet
-// pouze více verzí/worktrees stejného module listener lease. Cross-module
-// překryv, drift portu mezi verzemi i port mimo povinnou Organization policy
-// jsou hard failure. Live proces na platném lease při Start/Open Launchpad
-// ukončí a nahradí deklarovanou aplikací; deklarace samotná se nepřemapovává.
+// Doctor i Launchpad čtou stejný owner-aware listener index. Uvnitř jedné
+// Organization smí port sdílet jen verze/worktrees stejného module listener
+// lease. Oddělené Organizations mohou zachovat stejné číslo; na jednom hostu
+// je jejich runtime one-at-a-time. Live proces na platném lease při Start/Open
+// Launchpad ukončí a nahradí deklarovanou aplikací; port se nepřemapovává.
 function portOverlapCheck(appsResponse) {
   const overlaps = appsResponse.port_overlaps ?? [];
   const registryIssues = appsResponse.port_registry_issues ?? [];
@@ -2013,7 +2013,7 @@ function portOverlapCheck(appsResponse) {
     message: status === "ok"
       ? compatible.length > 0
         ? `${formatCount(compatible.length, "sdílený module-version lease", "sdílené module-version leases", "sdílených module-version leases")}; žádný konflikt.`
-        : "Deklarované runtime listenery nemají překryv ani odchylku od centrálního port registru."
+        : "Deklarované runtime listenery nemají konflikt ani drift module lease."
       : `${formatCount(conflicts.length, "kolizní listener", "kolizní listenery", "kolizních listenerů")}, ${formatCount(moduleDrifts.length, "drift mezi verzemi", "drifty mezi verzemi", "driftů mezi verzemi")} a ${formatCount(registryIssues.length, "chyba port registru", "chyby port registru", "chyb port registru")}; deklarace musí být opravena.`,
     paths: ["lazurio.port-registry.json", "organizations"],
     links: [],
