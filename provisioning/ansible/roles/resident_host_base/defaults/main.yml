@@ -23,6 +23,7 @@ lazurio_base_packages:
   - docker.io
   - git
   - jq
+  - sudo
   - ufw
   - unzip
   - xz-utils

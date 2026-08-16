@@ -122,6 +122,10 @@ test("host baseline preserves existing custody and keeps bridge unprivileged", a
     mode: "0600",
     force: false,
   });
+  const defaults = await readYaml(
+    join(ansibleRoot, "roles", "resident_host_base", "defaults", "main.yml"),
+  );
+  expect(defaults.lazurio_base_packages).toContain("sudo");
 });
 
 test("runtime baseline invokes the exact pinned Hermes service interface", async () => {
