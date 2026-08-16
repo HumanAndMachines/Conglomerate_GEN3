@@ -65,7 +65,7 @@
       - -c
       - gc.auto=0
     lazurio_forbidden_checkout_git_config_pattern: >-
-      ^(include|includeif)\..*\.path$|^url\..*\.(insteadof|pushinsteadof)$|^http(\..*)?\.proxy$|^credential(\..*)?\.helper$|^remote\..*\.proxy$|^core\.(gitproxy|sshcommand)$|^filter\..*\.(clean|smudge|process)$
+      ^(include|includeif)\..*\.path$|^url\..*\.(insteadof|pushinsteadof)$|^http(\..*)?\.proxy$|^credential(\..*)?\.helper$|^remote\..*\.proxy$|^core\.(gitproxy|sshcommand|worktree)$|^filter\..*\.(clean|smudge|process)$
 
 - name: Refuse unsupported runtime modes or ambiguous paths
   ansible.builtin.assert:
@@ -207,7 +207,7 @@
 
 - name: Probe existing dependency checkout identities
   ansible.builtin.command:
-    argv: "{{ lazurio_safe_git_argv_prefix + ['-C', item.item.root, 'rev-parse', '--is-inside-work-tree'] }}"
+    argv: "{{ lazurio_safe_git_argv_prefix + ['--work-tree=' ~ item.item.root, '-C', item.item.root, 'rev-parse', '--is-inside-work-tree'] }}"
   loop: "{{ lazurio_dependency_root_stats.results }}"
   when: item.stat.exists
   register: lazurio_existing_checkout_probes
@@ -227,7 +227,7 @@
 
 - name: Prove existing dependency checkouts are clean before mutation
   ansible.builtin.command:
-    argv: "{{ lazurio_safe_git_argv_prefix + ['-C', item.item.root, 'status', '--porcelain=v1', '--untracked-files=all'] }}"
+    argv: "{{ lazurio_safe_git_argv_prefix + ['--work-tree=' ~ item.item.root, '-C', item.item.root, 'status', '--porcelain=v1', '--untracked-files=all'] }}"
   loop: "{{ lazurio_dependency_root_stats.results }}"
   when: item.stat.exists
   register: lazurio_existing_checkout_statuses
@@ -252,12 +252,19 @@
 
 - name: Read checkout-local Git configuration without following includes
   ansible.builtin.command:
-    argv: "{{ lazurio_safe_git_argv_prefix + ['-C', item.root, 'config', '--local', '--no-includes', '--name-only', '--list'] }}"
+    argv: "{{ lazurio_safe_git_argv_prefix + ['--work-tree=' ~ item.root, '-C', item.root, 'config', '--local', '--no-includes', '--name-only', '--list'] }}"
   loop: "{{ lazurio_dependency_checkouts }}"
   register: lazurio_checkout_git_configs
   changed_when: false
 
-- name: Refuse checkout-local execution or transport overrides
+- name: Read checkout-worktree Git configuration without following includes
+  ansible.builtin.command:
+    argv: "{{ lazurio_safe_git_argv_prefix + ['--work-tree=' ~ item.root, '-C', item.root, 'config', '--worktree', '--no-includes', '--name-only', '--list'] }}"
+  loop: "{{ lazurio_dependency_checkouts }}"
+  register: lazurio_checkout_worktree_git_configs
+  changed_when: false
+
+- name: Refuse checkout-local execution, transport or write-redirection overrides
   ansible.builtin.assert:
     that:
       - >-
@@ -268,19 +275,19 @@
         | length == 0
     fail_msg: >-
       Dependency checkout {{ item.item.root }} contains local Git execution or
-      transport overrides. Remove the override before provisioning; it will not
-      be executed or silently replaced.
-  loop: "{{ lazurio_checkout_git_configs.results }}"
+      transport/write-redirection overrides. Remove the override before
+      provisioning; it will not be executed or silently replaced.
+  loop: "{{ lazurio_checkout_git_configs.results + lazurio_checkout_worktree_git_configs.results }}"
 
 - name: Record the reviewed dependency origin without trusting it for transport
   ansible.builtin.command:
-    argv: "{{ lazurio_safe_git_argv_prefix + ['-C', item.root, 'config', '--local', '--replace-all', 'remote.origin.url', item.repository_url] }}"
+    argv: "{{ lazurio_safe_git_argv_prefix + ['--work-tree=' ~ item.root, '-C', item.root, 'config', '--local', '--replace-all', 'remote.origin.url', item.repository_url] }}"
   loop: "{{ lazurio_dependency_checkouts }}"
   changed_when: false
 
 - name: Read dependency commits before update
   ansible.builtin.command:
-    argv: "{{ lazurio_safe_git_argv_prefix + ['-C', item.root, 'rev-parse', '--verify', 'HEAD'] }}"
+    argv: "{{ lazurio_safe_git_argv_prefix + ['--work-tree=' ~ item.root, '-C', item.root, 'rev-parse', '--verify', 'HEAD'] }}"
   loop: "{{ lazurio_dependency_checkouts }}"
   register: lazurio_dependency_commits_before
   changed_when: false
@@ -288,21 +295,21 @@
 
 - name: Fetch only the missing exact dependency commits
   ansible.builtin.command:
-    argv: "{{ lazurio_safe_git_argv_prefix + ['-C', item.item.root, 'fetch', '--depth', '1', '--no-tags', '--no-recurse-submodules', item.item.repository_url, item.item.commit] }}"
+    argv: "{{ lazurio_safe_git_argv_prefix + ['--work-tree=' ~ item.item.root, '-C', item.item.root, 'fetch', '--depth', '1', '--no-tags', '--no-recurse-submodules', item.item.repository_url, item.item.commit] }}"
   loop: "{{ lazurio_dependency_commits_before.results }}"
   when: item.rc != 0 or item.stdout != item.item.commit
   changed_when: true
 
 - name: Check out only the missing exact dependency commits
   ansible.builtin.command:
-    argv: "{{ lazurio_safe_git_argv_prefix + ['-C', item.item.root, 'checkout', '--no-recurse-submodules', '--detach', item.item.commit] }}"
+    argv: "{{ lazurio_safe_git_argv_prefix + ['--work-tree=' ~ item.item.root, '-C', item.item.root, 'checkout', '--no-recurse-submodules', '--detach', item.item.commit] }}"
   loop: "{{ lazurio_dependency_commits_before.results }}"
   when: item.rc != 0 or item.stdout != item.item.commit
   changed_when: true
 
 - name: Read back exact dependency commits
   ansible.builtin.command:
-    argv: "{{ lazurio_safe_git_argv_prefix + ['-C', item.root, 'rev-parse', '--verify', 'HEAD'] }}"
+    argv: "{{ lazurio_safe_git_argv_prefix + ['--work-tree=' ~ item.root, '-C', item.root, 'rev-parse', '--verify', 'HEAD'] }}"
   loop: "{{ lazurio_dependency_checkouts }}"
   register: lazurio_dependency_commits_after
   changed_when: false
@@ -317,7 +324,7 @@
 
 - name: Read back final dependency checkout status
   ansible.builtin.command:
-    argv: "{{ lazurio_safe_git_argv_prefix + ['-C', item.root, 'status', '--porcelain=v1', '--untracked-files=all'] }}"
+    argv: "{{ lazurio_safe_git_argv_prefix + ['--work-tree=' ~ item.root, '-C', item.root, 'status', '--porcelain=v1', '--untracked-files=all'] }}"
   loop: "{{ lazurio_dependency_checkouts }}"
   register: lazurio_dependency_statuses_after
   changed_when: false
