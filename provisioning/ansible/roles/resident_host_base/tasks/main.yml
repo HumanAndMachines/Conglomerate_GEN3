@@ -101,8 +101,8 @@
       group: root
       mode: "0755"
     - path: "{{ lazurio_custody_root }}"
-      group: root
-      mode: "0700"
+      group: "{{ lazurio_runtime_user }}"
+      mode: "0750"
     - path: "{{ lazurio_bridge_state_root }}"
       group: "{{ lazurio_bridge_user }}"
       mode: "0700"
