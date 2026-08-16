@@ -481,9 +481,20 @@ function repoProjectsToLocalMachine(repo) {
 
 function projectGitDiagnosticMessages(messages = [], hiddenPaths = []) {
   return (messages ?? []).filter((message) =>
-    typeof message !== "string"
-    || !hiddenPaths.some((path) => message.includes(path)),
+    !hiddenPaths.some((path) => gitDiagnosticSearchText(message).includes(path)),
   );
+}
+
+function gitDiagnosticSearchText(message) {
+  if (typeof message === "string") return message;
+  if (!message || typeof message !== "object") return String(message ?? "");
+  return [
+    message.organization,
+    message.slug,
+    message.path,
+    message.repo_path,
+    message.message,
+  ].filter((value) => typeof value === "string").join(" ");
 }
 
 function publicRepo({ repo, status, worktrees }) {
