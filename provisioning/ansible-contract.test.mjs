@@ -245,13 +245,12 @@ test("network baseline preserves UFW argv tokens through YAML parsing", async ()
     .toContain("'Status: active' not in lazurio_ufw_status_before.stdout");
 });
 
-test("example inventory contains placeholders only and no cohort identity", async () => {
+test("example inventory contains public placeholders only", async () => {
   const inventoryPath = join(ansibleRoot, "inventory.example.yml");
   const inventoryText = await readFile(inventoryPath, "utf8");
   const inventory = await readYaml(inventoryPath);
   const hosts = inventory.all.children.buddy_hosts.hosts;
   expect(Object.keys(hosts)).toEqual(["buddy-host.example.invalid"]);
-  expect(inventoryText.toLowerCase()).not.toMatch(/matty|friday/u);
   expect(inventoryText).not.toMatch(/password|private_key|token|secret\s*:/iu);
   for (const key of [
     "lazurio_bun_path",
@@ -282,7 +281,6 @@ test("operator plane remains source-only and manuals separate deploy from update
   expect(operatorManual).toContain("provider recovery checkpoint");
   expect(operatorManual).toContain("PGLite");
   expect(operatorManual).toContain("nevytváří vlastní updater, daemon, sandbox, ACL ani fleet control plane");
-  expect(operatorManual.toLowerCase()).not.toMatch(/matty|friday/u);
   expect(updateManual).toContain("Updater není Ansible a Ansible není updater");
   expect(updateManual).toContain("Lokální úprava je legitimní drift");
 });

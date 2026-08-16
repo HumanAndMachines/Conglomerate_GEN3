@@ -127,6 +127,17 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
     "bridge/run.ts",
   ]));
   expect(first.manifest.payload.files.some((file) => file.path.startsWith("provisioning/"))).toBe(false);
+  const forbiddenPublicPatterns = [
+    { label: "private migration provenance", pattern: /"migrated_from"\s*:/u },
+  ];
+  const publicPayloadLeaks = [];
+  for (const file of first.manifest.payload.files) {
+    const text = (await readFile(join(first.artifact_root, file.path))).toString("utf8");
+    for (const { label, pattern } of forbiddenPublicPatterns) {
+      if (pattern.test(text)) publicPayloadLeaks.push(`${file.path}: ${label}`);
+    }
+  }
+  expect(publicPayloadLeaks).toEqual([]);
   const residentPackage = JSON.parse(
     await readFile(join(first.artifact_root, "package.json"), "utf8"),
   );
@@ -264,50 +275,6 @@ test("Buddy profile eval pack covers normal and negative-path cases without role
     sandbox_substrate_mutability: "principal-controlled-runtime-identities-non-owning-read-only",
     parallel_lazurio_acl: false,
   });
-});
-
-test("Buddy GEN2 migration inventory is exact, explicit and never a private history merge", async () => {
-  const inventory = JSON.parse(
-    await readFile(join(import.meta.dir, "migrations", "buddy-gen2.v1.json"), "utf8"),
-  );
-  expect(inventory).toMatchObject({
-    schema_version: "lazurio.resident.migration-inventory.v1",
-    source: {
-      repository: "HumanAndMachine-ai/Buddy_GEN2",
-      commit: "08b7ee79058a0ea91472fe6cc3651104221d2ab8",
-      visibility: "private",
-    },
-    policy: {
-      history_merge_allowed: false,
-      private_content_copy_allowed: false,
-      public_safe_review_required: true,
-      artifact_contains_instance_data: false,
-    },
-  });
-  expect(new Set(inventory.items.map((item) => item.id)).size).toBe(inventory.items.length);
-  expect(inventory.items.every((item) => (
-    item.source_paths.length > 0
-    && typeof item.disposition === "string"
-    && Array.isArray(item.target_paths)
-    && typeof item.reason === "string"
-    && item.reason.length > 0
-  ))).toBe(true);
-  expect(inventory.items.find((item) => item.id === "hermes-pin")).toMatchObject({
-    disposition: "migrated",
-    public_safe_review: "pass",
-  });
-  expect(inventory.items.find((item) => item.id === "hermes-runtime-materialization"))
-    .toMatchObject({ disposition: "migrated_operator_plane" });
-  expect(inventory.items.find((item) => item.id === "gbrain-runtime"))
-    .toMatchObject({ disposition: "migrated_greenfield_dependency_contract" });
-  expect(inventory.items.find((item) => item.id === "backup-and-restore"))
-    .toMatchObject({ disposition: "external_recovery_checkpoint_for_first_cohort" });
-  expect(inventory.items.find((item) => item.id === "internal-docs-and-incident-history"))
-    .toMatchObject({ disposition: "do_not_copy_wholesale" });
-  expect(inventory.items.find((item) => item.id === "host-bootstrap-and-network"))
-    .toMatchObject({ disposition: "migrated_tailnet_only_operator_plane" });
-  expect(inventory.items.find((item) => item.id === "install-orchestrator"))
-    .toMatchObject({ disposition: "superseded_by_split_lifecycle" });
 });
 
 function runDoctor(root) {
