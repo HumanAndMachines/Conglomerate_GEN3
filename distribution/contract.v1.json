@@ -74,6 +74,8 @@
     "resident/manifest.schema.json",
     "resident/profile.json",
     "resident/dependencies/hermes.json",
+    "resident/dependencies/gbrain.json",
+    "resident/dependencies/toolchain.json",
     "resident/updater-lib.mjs",
     "resident/updater.mjs",
     "resident/buddy-service-lib.mjs",

@@ -35,6 +35,38 @@ export async function verifyArtifactTree(artifactRoot, {
     return { ok: false, failures, checks, manifest: null };
   }
 
+  try {
+    const gbrain = JSON.parse(
+      await readFile(join(artifactRoot, "resident", "dependencies", "gbrain.json"), "utf8"),
+    );
+    check(
+      "gbrain-pin",
+      gbrain?.repository === manifest.dependencies.gbrain.repository
+        && gbrain?.version === manifest.dependencies.gbrain.version
+        && gbrain?.commit === manifest.dependencies.gbrain.commit
+        && gbrain?.lock_sha256 === manifest.dependencies.gbrain.lock_sha256
+        && gbrain?.runtime?.engine === manifest.dependencies.gbrain.engine
+        && gbrain?.runtime?.transport === manifest.dependencies.gbrain.transport
+        && gbrain?.compatibility?.independent_self_update_allowed === false,
+      "exact fork commit, lock digest and local stdio PGLite mode match the artifact manifest",
+    );
+    const toolchain = JSON.parse(
+      await readFile(join(artifactRoot, "resident", "dependencies", "toolchain.json"), "utf8"),
+    );
+    check(
+      "toolchain-pin",
+      toolchain?.tools?.bun?.version === manifest.dependencies.toolchain.bun
+        && toolchain?.tools?.uv?.version === manifest.dependencies.toolchain.uv,
+      "exact Bun and uv versions match the artifact manifest",
+    );
+  } catch (error) {
+    check(
+      "gbrain-pin",
+      false,
+      `GBrain or toolchain pin cannot be read: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
   const shapeFailures = validateResidentManifest(manifest);
   check(
     "manifest-shape",
@@ -234,6 +266,20 @@ export function validateResidentManifest(manifest) {
     || !/^[0-9a-f]{40}$/.test(hermes?.commit ?? "")
     || !/^[0-9a-f]{64}$/.test(hermes?.lock_sha256 ?? "")) {
     failures.push("invalid Hermes dependency pin");
+  }
+  const gbrain = manifest.dependencies?.gbrain;
+  if (gbrain?.repository !== "Lazurio/gbrain"
+    || gbrain?.release_tag !== null
+    || !/^\d+\.\d+\.\d+\.\d+$/.test(gbrain?.version ?? "")
+    || !/^[0-9a-f]{40}$/.test(gbrain?.commit ?? "")
+    || !/^[0-9a-f]{64}$/.test(gbrain?.lock_sha256 ?? "")
+    || gbrain?.engine !== "pglite"
+    || gbrain?.transport !== "stdio") {
+    failures.push("invalid GBrain dependency pin");
+  }
+  if (manifest.dependencies?.toolchain?.bun !== "1.3.10"
+    || manifest.dependencies?.toolchain?.uv !== "0.11.32") {
+    failures.push("invalid Resident toolchain pin");
   }
   if (!Array.isArray(manifest.mutable_mounts)
     || manifest.mutable_mounts.some((item) => !ALLOWED_MUTABLE_MOUNTS.has(item))

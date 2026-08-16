@@ -1,0 +1,8 @@
+---
+lazurio_resident_profile: buddy
+lazurio_recovery_attestation_file: ""
+lazurio_tailnet_interface: tailscale0
+lazurio_tailnet_tcp_ports:
+  - 22
+  - 443
+  - 8443

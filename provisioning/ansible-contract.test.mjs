@@ -40,7 +40,10 @@ test("operator plane YAML parses and the playbook stays Buddy/Linux scoped", asy
     become: true,
     vars: { lazurio_resident_profile: "buddy" },
     roles: [
+      { role: "resident_preflight" },
       { role: "resident_host_base" },
+      { role: "resident_runtime_base" },
+      { role: "resident_network" },
       { role: "lazurio_resident" },
     ],
   });
@@ -58,6 +61,10 @@ test("every role task uses one fully qualified builtin action", async () => {
     "check_mode",
     "delegate_to",
     "become",
+    "become_user",
+    "environment",
+    "args",
+    "failed_when",
   ]);
 
   for (const file of taskFiles) {
@@ -127,6 +134,7 @@ test("example inventory contains placeholders only and no cohort identity", asyn
   expect(inventoryText).not.toMatch(/password|private_key|token|secret\s*:/iu);
   for (const key of [
     "lazurio_bun_path",
+    "lazurio_recovery_attestation_file",
     "lazurio_artifact_archive",
     "lazurio_artifact_checksum",
     "lazurio_personalspace_source",
