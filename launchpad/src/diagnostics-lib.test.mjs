@@ -385,7 +385,7 @@ test("planned marker template mount se v git.mounts přeskočí jako planned Org
   expect(mountsCheck.status).toBe("ok");
 });
 
-test("apps response exposes manifest-only workspace modules and productionspace systems", async () => {
+test("public apps projection hides unmaterialized protected slots while Doctor retains them", async () => {
   const root = await createCompaniesWorkspaceFixture();
   const companyRoot = join(root, "organizations", "OmegaCo_GEN3");
   await mkdir(join(companyRoot, "manual"), { recursive: true });
@@ -453,15 +453,6 @@ test("apps response exposes manifest-only workspace modules and productionspace 
     slug: "workspace",
     modules: [
       {
-        slug: "knowledgebase",
-        path: "modules/knowledgebase",
-        category: "knowledge",
-        default_access: "role_based",
-        // repo je deklarované, checkout chybí → missing_access (decision 0042)
-        status: "missing_access",
-        readiness: { severity: "blocking", reason: "access_entitlement_unknown" },
-      },
-      {
         slug: "invoices",
         path: "modules/invoices",
         category: "business",
@@ -475,16 +466,11 @@ test("apps response exposes manifest-only workspace modules and productionspace 
     slug: "productionspace",
     display_name: "OmegaCo Productionspace",
     status: "candidate-boundary",
-    systems: [
-      {
-        slug: "monorepo",
-        path: "productionspace/monorepo",
-        category: "engineering",
-        status: "missing_access",
-        readiness: { severity: "blocking", reason: "access_entitlement_unknown" },
-      },
-    ],
+    systems: [],
   });
+  const publicPayload = JSON.stringify(response);
+  expect(publicPayload).not.toContain("modules/knowledgebase");
+  expect(publicPayload).not.toContain("productionspace/monorepo");
   // productionspace ve workspaces[] a workspace:"productionspace" hodnoty jsou
   // 0041 konflikty — hlásí je doctor jako warn, ne failure.
   expect(org?.workspace_conformance_issues?.some((issue) => issue.includes("workspaces[] obsahuje productionspace"))).toBe(true);
@@ -495,6 +481,8 @@ test("apps response exposes manifest-only workspace modules and productionspace 
   });
   const declarationCheck = report.checks.find((check) => check.id === "launchpad.workspace_declarations");
   expect(declarationCheck?.status).toBe("fail");
+  expect(declarationCheck?.details.join("\n")).toContain("modules/knowledgebase");
+  expect(declarationCheck?.details.join("\n")).toContain("productionspace/monorepo");
   expect(declarationCheck?.details.some((detail) => detail.includes("decision 0041"))).toBe(true);
 });
 
@@ -701,7 +689,7 @@ test("Doctor blokuje konfliktní space, ale productionspace zůstane read-only",
   );
 });
 
-test("Doctor drží missing_access bez autoritativního ACL důkazu fail-closed", async () => {
+test("public projection hides protected missing_access while Doctor stays fail-closed", async () => {
   const root = await createCompaniesWorkspaceFixture();
   const companyRoot = join(root, "organizations", "AccessCo_GEN3");
   await mkdir(join(companyRoot, "manual"), { recursive: true });
@@ -757,22 +745,15 @@ test("Doctor drží missing_access bez autoritativního ACL důkazu fail-closed"
     runtimeManager: { appsWithRuntime: async (apps) => apps },
   });
   const slots = response.organizations[0].workspaces[0].modules;
-  expect(slots.find((slot) => slot.slug === "restricted")?.readiness).toMatchObject({
-    severity: "blocking",
-    reason: "access_entitlement_unknown",
-  });
+  expect(slots.map((slot) => slot.slug)).toEqual(["required"]);
   expect(slots.find((slot) => slot.slug === "required")?.readiness).toMatchObject({
     severity: "blocking",
     reason: "unexpected_missing_access",
   });
-  expect(slots.find((slot) => slot.slug === "future")?.readiness).toMatchObject({
-    severity: "neutral",
-    reason: "planned",
-  });
-  expect(slots.find((slot) => slot.slug === "unknown")?.readiness).toMatchObject({
-    severity: "blocking",
-    reason: "access_entitlement_unknown",
-  });
+  const publicPayload = JSON.stringify(response);
+  expect(publicPayload).not.toContain("workspace/restricted");
+  expect(publicPayload).not.toContain("workspace/future");
+  expect(publicPayload).not.toContain("workspace/unknown");
 
   const report = await buildLaunchpadDoctorReport({
     companiesRoot: root,
@@ -787,7 +768,7 @@ test("Doctor drží missing_access bez autoritativního ACL důkazu fail-closed"
   expect(declarationCheck?.details.join("\n")).toContain("workspace/restricted");
 });
 
-test("Doctor neutralizuje role-based missing_access jen s principal-scoped lokální rolí", async () => {
+test("materialized-state projection does not turn local role hints into UI access grants", async () => {
   const root = await createCompaniesWorkspaceFixture();
   const companyRoot = join(root, "organizations", "AccessCo_GEN3");
   await mkdir(join(companyRoot, "manual"), { recursive: true });
@@ -841,12 +822,18 @@ test("Doctor neutralizuje role-based missing_access jen s principal-scoped loká
     runtimeManager: { appsWithRuntime: async (apps) => apps },
   });
   const slots = response.organizations[0].workspaces[0].modules;
-  expect(slots.find((slot) => slot.slug === "finance")?.readiness).toMatchObject({
+  expect(slots.map((slot) => slot.slug)).toEqual(["everyone"]);
+  expect(slots[0]?.readiness.severity).toBe("blocking");
+  const declarations = response.organizations[0].module_declarations;
+  expect(declarations.find((slot) => slot.slug === "finance")?.readiness).toMatchObject({
     severity: "neutral",
     reason: "role_not_entitled",
   });
-  expect(slots.find((slot) => slot.slug === "sales")?.readiness.severity).toBe("blocking");
-  expect(slots.find((slot) => slot.slug === "everyone")?.readiness.severity).toBe("blocking");
+  expect(declarations.find((slot) => slot.slug === "sales")?.readiness.severity).toBe("blocking");
+  expect(declarations.find((slot) => slot.slug === "everyone")?.readiness.severity).toBe("blocking");
+  const publicPayload = JSON.stringify(response);
+  expect(publicPayload).not.toContain("workspace/finance");
+  expect(publicPayload).not.toContain("workspace/sales");
 });
 
 test("Mission Control app/code a data jsou root sloty mimo Team dlaždice", async () => {

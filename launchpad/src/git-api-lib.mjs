@@ -1,3 +1,4 @@
+import { existsSync } from "fs";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
 import { materializeRepoCheckout } from "./git-materialization-lib.mjs";
 import { mapWithConcurrency } from "./git-lib.mjs";
@@ -12,6 +13,7 @@ import {
   readRepoChanges,
 } from "./git-status-lib.mjs";
 import { buildWorktreeIndex } from "./worktree-lib.mjs";
+import { organizationSlotProjectsToLocalMachine } from "./organization-slot-scope-lib.mjs";
 
 export class GitApiError extends Error {
   constructor(message, { status = 500, code = "git_api_error", metadata = null } = {}) {
@@ -30,9 +32,18 @@ export async function buildGitApiResponse({
   allowRemoteRefresh = true,
 } = {}) {
   const inventory = await buildGitInventory({ companiesRoot });
-  const inventoryRepos = organization
+  const scopedInventoryRepos = organization
     ? inventory.repos.filter((repo) => repo.organization === organization)
     : inventory.repos;
+  const inventoryRepos = scopedInventoryRepos.filter(repoProjectsToLocalMachine);
+  const scopedPlanned = organization
+    ? inventory.planned.filter((repo) => repo.organization === organization)
+    : inventory.planned;
+  const planned = scopedPlanned.filter(repoProjectsToLocalMachine);
+  const hiddenPaths = [...scopedInventoryRepos, ...scopedPlanned]
+    .filter((repo) => !repoProjectsToLocalMachine(repo))
+    .map((repo) => repo.slot_path)
+    .filter(Boolean);
   const [statuses, worktreeIndex] = await Promise.all([
     statusService
       ? statusService.readStatuses(inventoryRepos, { refresh, allowRemoteRefresh })
@@ -60,8 +71,11 @@ export async function buildGitApiResponse({
     repos,
     worktrees: worktreeIndex.worktrees,
     invalid_worktree_locations: worktreeIndex.invalid_locations,
-    planned: inventory.planned,
-    warnings: [...inventory.warnings, ...worktreeIndex.warnings],
+    planned,
+    warnings: [
+      ...projectGitDiagnosticMessages(inventory.warnings, hiddenPaths),
+      ...projectGitDiagnosticMessages(worktreeIndex.warnings, hiddenPaths),
+    ],
   };
 }
 
@@ -238,7 +252,13 @@ export async function buildPullAllResponse({ companiesRoot, organization = null,
     GIT_REMOTE_REFRESH_CONCURRENCY,
     (repo) => pullAllRepo({ companiesRoot, repo, statusService }),
   );
-  const results = [...rootResults, ...nestedResults];
+  const reposByKey = new Map(
+    [...initialInventory.repos, ...refreshedInventory.repos].map((repo) => [repo.key, repo]),
+  );
+  const results = [...rootResults, ...nestedResults].filter((result) => {
+    const repo = reposByKey.get(result.repo_key);
+    return !repo || repoProjectsToLocalMachine(repo);
+  });
 
   const count = (outcome) => results.filter((result) => result.outcome === outcome).length;
   return {
@@ -451,6 +471,19 @@ function compactWorktreeSummary(worktree) {
         }
       : null,
   };
+}
+
+function repoProjectsToLocalMachine(repo) {
+  return organizationSlotProjectsToLocalMachine(repo, {
+    materialized: typeof repo?.absolute_path === "string" && existsSync(repo.absolute_path),
+  });
+}
+
+function projectGitDiagnosticMessages(messages = [], hiddenPaths = []) {
+  return (messages ?? []).filter((message) =>
+    typeof message !== "string"
+    || !hiddenPaths.some((path) => message.includes(path)),
+  );
 }
 
 function publicRepo({ repo, status, worktrees }) {

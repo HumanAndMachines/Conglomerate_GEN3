@@ -38,6 +38,7 @@ import {
   normalizeOrganizationSlotPath,
   organizationRepositorySlotCollectionIssues,
   organizationSlotPathScope,
+  organizationSlotProjectsToLocalMachine,
   organizationSlotRepositoryId,
   organizationSlotScope,
   organizationSlotTeams,
@@ -76,6 +77,7 @@ export async function buildLaunchpadAppsResponse({
   allowMissingOrganizations = false,
   includeGit = true,
   organization = null,
+  includePrivateDiagnostics = false,
 } = {}) {
   const discovery = await discoverLaunchpadApps(companiesRoot, {
     allowMissingOrganizations,
@@ -92,7 +94,10 @@ export async function buildLaunchpadAppsResponse({
     : [];
   const organizations = organizationSpaces.map(({ organization, spaces }) => {
     // module_declarations je interní resolver plumbing, ne API kontrakt.
-    const { module_declarations, ...publicSpaces } = spaces;
+    const { module_declarations, ...allSpaces } = spaces;
+    const publicSpaces = includePrivateDiagnostics
+      ? allSpaces
+      : projectOrganizationDiagnostics(allSpaces, module_declarations);
     const publicOrganization = {
       slug: organization.slug,
       display_name: organization.display_name,
@@ -201,6 +206,17 @@ export async function buildLaunchpadAppsResponse({
     discovery_source: mount.discovery_source ?? "registry",
   }));
   const templateApps = discovery.template_apps ?? [];
+  const hiddenProtectedPaths = organizationSpaces.flatMap(({ spaces }) =>
+    (spaces.module_declarations ?? [])
+      .filter((slot) => !organizationSlotProjectsToLocalMachine(slot))
+      .map((slot) => slot.path),
+  );
+  const discoveryFailures = includePrivateDiagnostics
+    ? discovery.failures
+    : projectDiagnosticMessages(discovery.failures, hiddenProtectedPaths);
+  const discoveryWarnings = includePrivateDiagnostics
+    ? (discovery.warnings ?? [])
+    : projectDiagnosticMessages(discovery.warnings, hiddenProtectedPaths);
 
   return {
     schema_version: "companiesascode.launchpad.apps.v1",
@@ -208,7 +224,7 @@ export async function buildLaunchpadAppsResponse({
     launchpad_root: workspaceSummary(companiesConfig),
     companies_workspace: workspaceSummary(companiesConfig),
     root: companiesRoot,
-    ok: discovery.failures.length === 0,
+    ok: discoveryFailures.length === 0,
     summary: {
       app_count: apps.length,
       invalid_app_count: invalidApps.length,
@@ -219,8 +235,8 @@ export async function buildLaunchpadAppsResponse({
       port_registry_issue_count: discovery.port_registry_issues?.length ?? 0,
       template_mount_count: templateMounts.length,
       template_app_count: templateApps.length,
-      failure_count: discovery.failures.length,
-      warning_count: discovery.warnings?.length ?? 0,
+      failure_count: discoveryFailures.length,
+      warning_count: discoveryWarnings.length,
     },
     organizations,
     companies,
@@ -232,13 +248,16 @@ export async function buildLaunchpadAppsResponse({
     module_listener_drifts: discovery.module_listener_drifts ?? [],
     module_contracts: discovery.module_contracts ?? [],
     port_registry_issues: discovery.port_registry_issues ?? [],
-    failures: discovery.failures,
-    warnings: [...(discovery.warnings ?? []), ...gitContext.warnings],
+    failures: discoveryFailures,
+    warnings: [...discoveryWarnings, ...gitContext.warnings],
   };
 }
 
 export async function buildLaunchpadDoctorReport(options = {}) {
-  const appsResponse = await buildLaunchpadAppsResponse(options);
+  const appsResponse = await buildLaunchpadAppsResponse({
+    ...options,
+    includePrivateDiagnostics: true,
+  });
   const environmentChecks = buildEnvironmentChecks({
     companiesRoot: appsResponse.root,
     companies: appsResponse.companies,
@@ -866,15 +885,24 @@ async function readOrganizationSpaces(companiesRoot, organization, localConfig =
     .filter((slot) => !manifestPaths.has(slot.path))
     .map((slot) => moduleSlotWithReadiness(organizationRoot, slot, principalRoles));
   const moduleDeclarations = [...moduleSlots, ...configOnlyModules];
+  // Manifest je inventory/sync autorita, ne access grant. Chráněný slot bez
+  // lokálního checkoutu proto zůstává dostupný Doctoru a explicitní sync lane,
+  // ale nesmí se promítnout do veřejného /api/apps modelu, health summary ani
+  // UI copy. Materializovaný checkout je poslední známý offline stav této
+  // mašiny a bez TTL zůstává viditelný; úspěšný online sync chybějící checkout
+  // nejdřív materializuje a tím jej v dalším readu přirozeně zpřístupní.
+  const projectedModuleDeclarations = moduleDeclarations.filter(
+    organizationSlotProjectsToLocalMachine,
+  );
   // Vnořený child slot i explicitní repository-db slot jsou technické mounty
   // pro Doctor/search/publish flow, ne samostatné Launchpad module dlaždice.
   // Diagnostics-only klasifikace je záměrně nezávislá na přítomnosti parent
   // slotu (AVALTAR může dočasně deklarovat jen mission-control/db). Pro resolver
   // a Doctor (module_declarations) slot zůstává.
-  const declarationPaths = moduleDeclarations.map((slot) => slot.path);
+  const declarationPaths = projectedModuleDeclarations.map((slot) => slot.path);
   const isNestedChildSlot = (slot) =>
     declarationPaths.some((path) => path !== slot.path && slot.path.startsWith(`${path}/`));
-  const tileModules = moduleDeclarations.filter(
+  const tileModules = projectedModuleDeclarations.filter(
     (slot) => slot.ui_exposure === "module" && !isNestedChildSlot(slot),
   );
   // Fyzická repository boundary zůstává autoritou pro runtime a Git operace.
@@ -932,7 +960,7 @@ async function readOrganizationSpaces(companiesRoot, organization, localConfig =
     team_access: unevaluatedTeamAccess(),
     module_declarations: moduleDeclarations,
     space_readiness: {
-      blocking_slots: moduleDeclarations
+      blocking_slots: projectedModuleDeclarations
         .filter((slot) => slot.readiness?.severity === "blocking")
         .map((slot) => ({ path: slot.path, message: slot.readiness.message, reason: slot.readiness.reason })),
     },
@@ -1294,6 +1322,35 @@ function moduleSlotWithReadiness(organizationRoot, slot, principalRoles = null) 
     status,
     readiness: classifyModuleSlotReadiness(slot, status, principalRoles),
   };
+}
+
+function projectOrganizationDiagnostics(spaces, moduleDeclarations) {
+  const hiddenPaths = (moduleDeclarations ?? [])
+    .filter((slot) => !organizationSlotProjectsToLocalMachine(slot))
+    .map((slot) => slot.path);
+  return {
+    ...spaces,
+    workspace_conformance_issues: projectDiagnosticMessages(
+      spaces.workspace_conformance_issues,
+      hiddenPaths,
+    ),
+    root_slot_contract_issues: projectDiagnosticMessages(
+      spaces.root_slot_contract_issues,
+      hiddenPaths,
+    ),
+    slot_scope_contract_issues: projectDiagnosticMessages(
+      spaces.slot_scope_contract_issues,
+      hiddenPaths,
+    ),
+  };
+}
+
+function projectDiagnosticMessages(messages = [], hiddenPaths = []) {
+  if (!Array.isArray(messages) || hiddenPaths.length === 0) return messages ?? [];
+  return messages.filter((message) =>
+    typeof message !== "string"
+    || !hiddenPaths.some((path) => typeof path === "string" && message.includes(path)),
+  );
 }
 
 // Status popisuje fyzickou materializaci, readiness její dopad pro aktuální

@@ -323,6 +323,8 @@ function slotRecord({ organization, slot, companiesRoot }) {
     repo: slot.repo,
     slot_path: slot.path,
     category: slot.category ?? null,
+    default_access: slot.default_access ?? null,
+    required_roles: slot.required_roles ?? [],
   };
 }
 
@@ -365,6 +367,8 @@ function normalizeModuleSlot(slot, organization) {
     space,
     workspace: organizationSlotWorkspace(slot, path),
     category: slot.category ?? null,
+    default_access: slot.default_access ?? null,
+    required_roles: Array.isArray(slot.required_roles) ? slot.required_roles : [],
     status: slot.status ?? null,
     repo,
     branch,
