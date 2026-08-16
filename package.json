@@ -31,6 +31,7 @@
     "integrations:contracts:test": "bun test scripts/external-app-integrations-contract.test.mjs",
     "git-policy:test": "bun test scripts/pr-preflight.test.mjs launchpad/src/task-preflight-lib.test.mjs",
     "check:strict": "bun run preservation:test && bun run personalspace:test && bun run worktrees:test && bun run --cwd launchpad check:strict",
+    "install:macos-app": "bash scripts/install-launchpad-macos.sh",
     "install:windows-shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File ./Install-LaunchpadShortcut.ps1",
     "sync:gen2-gen3:inventory": "bun scripts/gen2-gen3-sync-inventory.mjs",
     "preserve:gen2-local": "node scripts/gen2-local-preservation.mjs",
