@@ -255,14 +255,14 @@ test("Launchpad shell ships GEN2-like command center, theme and feedback afforda
   expect(js).toContain("state.doctor?.summary?.status");
   expect(js).toContain("state.failures.length > 0 ? \"fail\"");
   expect(js).toContain("...state.failures.map((value) => `Discovery: ${value}`)");
-  expect(js).toContain("function slotAccessChip");
+  expect(js).toContain("function productionspaceCardFact");
   expect(js).toContain("buildSpaceProblemModel");
   expect(js).toContain("function spaceProblemNode");
   expect(js).toContain("function technicalProblemsNode");
   expect(js).toContain("Co je potřeba vyřešit");
   expect(js).toContain("Co udělat:");
   expect(js).toContain("Chybí očekávaný přístup");
-  expect(js).toContain("Očekávaně omezený přístup");
+  expect(js).toContain("Omezený přístup je očekávaný");
   expect(js).not.toContain("elements.heroSubtitle");
   expect(css).toContain("padding: 0 clamp(2rem, 3vw, 3.5rem) 3rem");
   expect(css).toContain(".hero .btn-sm");
@@ -953,7 +953,19 @@ test("UI separates physical Organization/Workspace/Productionspace and prepares 
   expect(js).toContain('fetchJson("/api/modules/open-folder"');
   expect(js).toContain("function productionspaceSectionNode");
   expect(js).toContain("function productionspaceCard");
-  expect(js).toContain("Jen pro čtení");
+  const productionspaceCard = js.slice(js.indexOf("function productionspaceCard"), js.indexOf("function productionspaceDetail"));
+  expect(productionspaceCard).toContain('titleBlock.className = "app-title-block"');
+  expect(productionspaceCard).toContain("appIconNode(detail)");
+  expect(productionspaceCard).toContain('desc.className = "app-card-desc"');
+  expect(productionspaceCard).toContain('copyBlock.className = "app-card-copy"');
+  expect(productionspaceCard).toContain("Externě spravovaný systém s vlastními pravidly.");
+  expect(productionspaceCard).toContain("productionspaceCardFact(system)");
+  expect(productionspaceCard).not.toContain('badges.className = "app-card-badges"');
+  expect(productionspaceCard).not.toContain('path.className = "app-card-endpoint"');
+  expect(productionspaceCard).not.toContain('actions.className = "app-card-actions"');
+  expect(productionspaceCard).not.toContain("Jen pro čtení");
+  expect(productionspaceCard).not.toContain("candidate-boundary");
+  expect(productionspaceCard).not.toContain("filesystem-boundary");
   expect(css).toContain(".app-section-productionspace");
   expect(css).toContain(".app-section-organization");
   expect(css).toContain(".team-access-summary");
@@ -993,6 +1005,30 @@ test("manifest-only module cards keep semantic icon precedence over a broad cate
   expect(cardBlock).toContain("appDescription(detail)");
   expect(cardBlock).not.toContain('badges.append(chip("Workspace modul"');
   expect(cardBlock).not.toContain('path.className = "app-card-endpoint"');
+});
+
+test("productionspace cards keep technical metadata in detail, not in the tile", async () => {
+  const js = await readFile(join(publicRoot, "app.js"), "utf8");
+  const cardBlock = js.slice(
+    js.indexOf("function productionspaceCard"),
+    js.indexOf("function productionspaceDetail"),
+  );
+  const detailBlock = js.slice(
+    js.indexOf("function productionspaceDetail"),
+    js.indexOf("// Lazurio section header"),
+  );
+
+  expect(cardBlock).toContain("V Launchpadu pouze k nahlédnutí.");
+  expect(cardBlock).toContain("Omezený přístup je očekávaný.");
+  expect(cardBlock).toContain("Chybí očekávaný přístup.");
+  expect(cardBlock).toContain("Systém je zatím naplánovaný.");
+  expect(cardBlock).not.toContain("system.path");
+  expect(cardBlock).not.toContain("entry.productionspace.status");
+  expect(detailBlock).toContain("package_path: system.path");
+  expect(detailBlock).toContain("cwd: system.path");
+  expect(detailBlock).toContain("productionspace_readiness: system.readiness ?? null");
+  expect(detailBlock).toContain("is_readonly_system: true");
+  expect(js).toContain('["Stav přístupu", app.productionspace_readiness.message');
 });
 
 test("read-only app and system detail selection opens the right drawer", async () => {
