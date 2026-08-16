@@ -18,7 +18,7 @@
   become: false
   register: lazurio_recovery_attestation
 
-- name: Refuse to mutate a host without a completed recovery checkpoint
+- name: Refuse a missing recovery checkpoint attestation
   ansible.builtin.assert:
     that:
       - lazurio_recovery_attestation.stat.exists
@@ -28,6 +28,38 @@
       Create and verify the provider snapshot or equivalent recovery checkpoint,
       then record only its content-free id, time and restore verification in the
       controller attestation file.
+
+- name: Parse the content-free recovery checkpoint attestation
+  ansible.builtin.set_fact:
+    lazurio_recovery_attestation_document: >-
+      {{ lookup('ansible.builtin.file', lazurio_recovery_attestation_file) | from_json }}
+  delegate_to: localhost
+  become: false
+
+- name: Refuse an incomplete or ambiguous recovery checkpoint attestation
+  ansible.builtin.assert:
+    that:
+      - lazurio_recovery_attestation_document is mapping
+      - >-
+        lazurio_recovery_attestation_document.keys() | list | sort ==
+        ['checkpoint_id', 'created_at', 'restore_verified_at', 'schema_version', 'scope']
+      - lazurio_recovery_attestation_document.schema_version == "lazurio.recovery-checkpoint.attestation.v1"
+      - lazurio_recovery_attestation_document.checkpoint_id is string
+      - lazurio_recovery_attestation_document.checkpoint_id is match('^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$')
+      - lazurio_recovery_attestation_document.created_at is string
+      - lazurio_recovery_attestation_document.created_at is match('^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$')
+      - lazurio_recovery_attestation_document.restore_verified_at is string
+      - lazurio_recovery_attestation_document.restore_verified_at is match('^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$')
+      - lazurio_recovery_attestation_document.scope == "whole-machine-before-change"
+      - >-
+        (lazurio_recovery_attestation_document.restore_verified_at | to_datetime('%Y-%m-%dT%H:%M:%SZ')) >=
+        (lazurio_recovery_attestation_document.created_at | to_datetime('%Y-%m-%dT%H:%M:%SZ'))
+    fail_msg: >-
+      The recovery attestation must be the exact content-free v1 document: one
+      opaque checkpoint id, UTC creation and restore-verification times in
+      chronological order, and whole-machine-before-change scope. Extra fields
+      are refused so host identity, paths, credentials and private data never
+      become rollout evidence.
 
 - name: Read the live Tailscale state without changing it
   ansible.builtin.command:

@@ -77,6 +77,12 @@ Content-free controller attestation může mít například tento tvar:
 }
 ```
 
+Preflight JSON skutečně parsuje a vyžaduje přesně těchto pět polí: exact v1
+schema, neprázdné opaque `checkpoint_id`, UTC časy v chronologickém pořadí a
+scope `whole-machine-before-change`. Neprázdný soubor s jiným obsahem nestačí;
+extra pole se odmítají, aby se z attestation nestal druhý store host identity,
+cest, credentials nebo privátních dat.
+
 Není v něm hostname, jméno Principála, cesta k Personalspace, obsah, token ani
 private key. Skutečný checkpoint a jeho custody zůstávají u providera a
 Principála.
