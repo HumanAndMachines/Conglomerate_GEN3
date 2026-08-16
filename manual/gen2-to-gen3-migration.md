@@ -668,7 +668,8 @@ Platí:
 Kořen modulu deklaruje `lazurio.module.v1` jako jedinou autoritu přesného portu.
 Každá spustitelná appka deklaruje `lazurio.runtime.v1` ve svém `package.json`
 jako autoritu příkazu, protokolu a health checku; na module lease pouze
-odkazuje. Organization blok vlastní `Conglomerate/lazurio.port-registry.json`.
+odkazuje. `Conglomerate/lazurio.port-registry.json` vlastní Organization blok
+pro přidělování nových lease, nikoli pro přečíslování existujících portů.
 Žádná z těchto hodnot se neduplikuje do `company.gen3.json` ani
 `modules.manifest.json`.
 
@@ -678,7 +679,9 @@ odkazuje. Organization blok vlastní `Conglomerate/lazurio.port-registry.json`.
   "id": "deals",
   "company": "ExampleOrg",
   "tcp_port_policy": { "mode": "single" },
-  "port_leases": [{ "id": "main", "host": "127.0.0.1", "port": 24001 }]
+  "port_leases": [{ "id": "main", "host": "127.0.0.1", "port": 24001 }],
+  "apps": ["app/v1/package.json"],
+  "default_app": "app/v1/package.json"
 }
 ```
 
@@ -719,6 +722,11 @@ samostatnou runtime autoritou. Každý listener povinně odkazuje na lease
 nejbližšího module manifestu; inline nebo dynamický port je nevalidní.
 `dev_script` musí existovat v témže package souboru.
 Legacy `companyascode.app` zůstává pouze read-compatible vstupem během migrace.
+`apps` je explicitní seznam runnable package souborů relativně ke kořeni
+Modulu; neprázdný seznam vyžaduje `default_app`, zatímco `apps: []` znamená
+Modul bez aplikace. Chybějící `apps` je jen dočasně čitelný legacy stav. Již
+používaný Module port se při migraci zachovává; centrální Organization block
+slouží pouze jako allocator nových lease.
 Workspace grouping pochází z module deklarace, nikoli z package cesty.
 Module lease je kanonický main/direct-run/worktree port. Worktree DEV runtime
 používá beze změny stejný materializovaný listener set přes
@@ -1163,9 +1171,10 @@ Migrace Organizace je hotová teprve když:
   mapování bez privátních dat;
 - každá required app má reference-only package `lazurio.runtime.v1` a její
   modul právě jeden module-root `lazurio.module.v1` port lease kontrakt;
-  inline/dynamický runtime port, jiné než same-module-version lease overlapy,
-  drift referencí, port mimo centrální Organization blok a překryv bloků jsou
-  hard Doctor failure;
+  inline/dynamický runtime port, cross-module overlap uvnitř jedné Organization,
+  drift referencí a překryv alokačních bloků jsou hard Doctor failure; nový
+  lease musí být přidělen z Organization bloku, existující stabilní lease se
+  kvůli dnešnímu bloku nepřečísluje;
 - Mission Control má jednu app-code a jednu data autoritu, legacy fallback je
   vypnutý pouze po decision-0036 gates;
 - DEV kódy jsou unikátní nebo sémanticky remapované s provenance;

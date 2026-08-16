@@ -26,7 +26,7 @@ function owner(packagePath, port, overrides = {}) {
   };
 }
 
-test("findPortOverlaps returns deterministic owner-aware diagnostics without remapping", () => {
+test("findPortOverlaps preserves cross-Organization numeric leases without remapping", () => {
   const owners = [
     owner("organizations/ExampleOrgA_GEN3/mission-control/app/v2/package.json", 5392, {
       app_id: "example-org-a-mission-control-v2",
@@ -48,7 +48,11 @@ test("findPortOverlaps returns deterministic owner-aware diagnostics without rem
   expect(index.used_ports).toEqual([5392, 5393]);
   expect(overlaps).toHaveLength(1);
   expect(overlaps[0]).toMatchObject({ port: 5392 });
-  expect(overlaps[0]).toMatchObject({ classification: "declared-conflict", conflict: true });
+  expect(overlaps[0]).toMatchObject({
+    classification: "cross-organization-lease",
+    intentional: true,
+    conflict: false,
+  });
   expect(overlaps[0]).not.toHaveProperty("suggested_free_port");
   expect(overlaps[0].owners.map((entry) => entry.package_path)).toEqual([
     "organizations/ExampleOrgA_GEN3/mission-control/app/v2/package.json",
@@ -56,7 +60,7 @@ test("findPortOverlaps returns deterministic owner-aware diagnostics without rem
   ]);
 });
 
-test("only versions of the same module listener may share a port", () => {
+test("same-module versions and separate Organizations may share a port", () => {
   const compatible = buildPortOwnershipIndex([
     owner("organizations/One/app/package.json", 5287, {
       app_id: "one-design-system-v1",
@@ -80,7 +84,13 @@ test("only versions of the same module listener may share a port", () => {
     compatible.owners[0],
     { ...compatible.owners[1], company: "Two" },
   ]).overlaps[0];
-  expect(incompatible).toMatchObject({ classification: "declared-conflict", conflict: true });
+  expect(incompatible).toMatchObject({ classification: "cross-organization-lease", conflict: false });
+
+  const sameOrganizationConflict = buildPortOwnershipIndex([
+    compatible.owners[0],
+    { ...compatible.owners[1], module: "another-module" },
+  ]).overlaps[0];
+  expect(sameOrganizationConflict).toMatchObject({ classification: "declared-conflict", conflict: true });
 });
 
 test("legacy owners never gain module-lease sharing authority", () => {
@@ -97,22 +107,34 @@ test("legacy owners never gain module-lease sharing authority", () => {
   });
 });
 
-test("port ownership is global across local bind hosts", () => {
+test("cross-Organization ownership is compatible across local bind spellings", () => {
   const overlap = buildPortOwnershipIndex([
     owner("organizations/One/app/package.json", 5392, { host: "localhost", company: "One" }),
     owner("organizations/Two/app/package.json", 5392, { host: "127.0.0.1", company: "Two" }),
   ]).overlaps[0];
 
-  expect(overlap).toMatchObject({ endpoint: "*:5392", host: "*", port: 5392, conflict: true });
+  expect(overlap).toMatchObject({
+    endpoint: "*:5392",
+    host: "*",
+    port: 5392,
+    classification: "cross-organization-lease",
+    conflict: false,
+  });
 });
 
-test("IPv6 and IPv4 declarations still collide by numeric port", () => {
+test("cross-Organization IPv6 and IPv4 declarations preserve one-at-a-time ownership", () => {
   const overlap = buildPortOwnershipIndex([
     owner("organizations/One/app/package.json", 5392, { host: "::1", company: "One" }),
     owner("organizations/Two/app/package.json", 5392, { host: "127.0.0.1", company: "Two" }),
   ]).overlaps[0];
 
-  expect(overlap).toMatchObject({ endpoint: "*:5392", host: "*", port: 5392, conflict: true });
+  expect(overlap).toMatchObject({
+    endpoint: "*:5392",
+    host: "*",
+    port: 5392,
+    classification: "cross-organization-lease",
+    conflict: false,
+  });
 });
 
 test("different versions of one module must declare the same listener endpoint", () => {

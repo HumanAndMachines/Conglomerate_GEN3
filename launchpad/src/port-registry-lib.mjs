@@ -76,6 +76,9 @@ export function portRegistryBlock(registry, company) {
 }
 
 export function validateModuleLeasesAgainstRegistry({ modules, registry }) {
+  // The registry is the allocator for new leases. Existing declared ports are
+  // stable external bindings and therefore are not range-validated here.
+  void registry;
   const issues = [];
   const owners = new Map();
   const moduleSources = new Map();
@@ -89,28 +92,20 @@ export function validateModuleLeasesAgainstRegistry({ modules, registry }) {
       continue;
     }
     moduleSources.set(moduleKey, module.module_path);
-    const block = portRegistryBlock(registry, module.company);
-    if (!block) {
-      issues.push(`${module.module_path}: company ${module.company} nemá centrálně přidělený port block`);
-      continue;
-    }
     for (const lease of module.port_leases ?? []) {
-      if (lease.port < block.start || lease.port > block.end) {
-        issues.push(`${module.module_path}: lease ${lease.id} port ${lease.port} leží mimo block ${block.start}-${block.end}`);
-      }
-      const owner = owners.get(lease.port);
+      const ownerKey = `${module.company}/${lease.port}`;
+      const owner = owners.get(ownerKey);
       if (
         owner &&
         (
-          owner.company !== module.company ||
           owner.module !== module.id ||
           owner.source !== module.module_path ||
           owner.lease !== lease.id
         )
       ) {
-        issues.push(`port ${lease.port} vlastní dva moduly: ${owner.company}/${owner.module} a ${module.company}/${module.id}`);
+        issues.push(`port ${lease.port} vlastní v ${module.company} dva moduly: ${owner.module} a ${module.id}`);
       } else {
-        owners.set(lease.port, {
+        owners.set(ownerKey, {
           company: module.company,
           module: module.id,
           lease: lease.id,

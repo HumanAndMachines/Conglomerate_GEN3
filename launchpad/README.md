@@ -255,7 +255,9 @@ Port vlastní kořen modulu v `lazurio.module.json`:
     "id": "main",
     "host": "127.0.0.1",
     "port": 24001
-  }]
+  }],
+  "apps": ["app/v1/package.json"],
+  "default_app": "app/v1/package.json"
 }
 ```
 
@@ -293,11 +295,13 @@ jediný lifecycle skript, který Launchpad skutečně spouští. `preview_script
 a `build_script` jsou volitelná metadata a nesmějí předstírat další
 Launchpad runtime.
 
-Každý listener odkazuje na module-owned lease. Main, všechny `app/vN` verze i
-worktrees stejného modulu tím používají přesně stejný port; číselný port,
-`allocation`, `host` ani `claim` do runtime kontraktu nepatří. Dynamické porty
-ani worktree remap nejsou povolené. V jednu chvíli běží jen jedna
-verze/worktree modulu. Legacy `companyascode.app` se jen čte jako
+Každý listener odkazuje na module-owned lease. Main, verze a worktrees jedné
+aplikace tím používají přesně stejné lease; číselný port, `allocation`, `host`
+ani `claim` do runtime kontraktu nepatří. Modul s více skutečně oddělenými
+aplikacemi může vlastnit více pojmenovaných lease pouze přes zdůvodněnou
+`tcp_port_policy.mode: exception`. Dynamické porty ani worktree remap nejsou
+povolené. Na jednom lease v jednu chvíli běží jen jedna varianta. Legacy
+`companyascode.app` se jen čte jako
 jeden známý entrypoint a neprohlašuje, že modul nemá skryté pomocné listenery.
 Runtime `dev_script` je implementační vstup Launchpadu, ne samostatné
 operátorské API: podporovaný Start/Open vždy vede přes sdílený Launchpad daemon
@@ -311,10 +315,29 @@ Automatika migruje živé package manifesty, vytvoří kořenový module lease a
 ověří shodu všech app verzí. Historické changelogy, dokončené tasky a generované
 soubory neprochází. Split web/API appky zachová jako zdůvodněnou výjimku; nový
 modul standardně používá jeden TCP listener pro `/` a `/api`.
+
+Read-only inventář před vlastnickými PR spustíš z Lazurio rootu přes
+`bun run runtime:inventory -- --organization <slug> --json`. Vychází jen z
+deklarovaných workspace slotů, materializovaný Module vyžaduje vlastní Git
+checkout a `productionspace`, planned sloty i `repository-db-data` vypisuje
+odděleně jako vyloučené položky. Nic nezapisuje a cross-Organization výstup
+není nový source of truth.
 Doctor navíc prohledá živý runtime source příslušného package a odmítne jako
 hard error jak číselnou kopii module lease, tak jiný číselný fallback napojený
 na `PORT` nebo listener env. Build, testy, fixtures, migrace, archivy, data a
 generované výstupy z této kontroly záměrně vynechává.
+
+`apps` je explicitní inventář runnable package souborů relativně ke kořeni
+Modulu. Neprázdný seznam má právě jeden `default_app`; `apps: []` pravdivě říká,
+že Modul vlastní data nebo know-how, ale nemá aplikaci. Chybějící `apps` se po
+dobu GEN3 rollout čte jako legacy stav, nikdy jako prázdný seznam. Jakmile
+`apps` existuje, nový `lazurio.runtime` mimo tento seznam je nevalidní.
+
+Existující číselný port je stabilní vlastnictví Modulu a migrace jej nemění.
+Organization blok v `lazurio.port-registry.json` slouží pouze k přidělování
+nových lease; není renumbering autoritou pro již provozované aplikace. Stejné
+číslo v různých Organizacích je kompatibilní s jejich oddělenými Team
+Workspace, zatímco dvě různá Module ID uvnitř jedné Organizace kolidovat nesmějí.
 
 V multi-company rootu platí:
 
@@ -328,14 +351,19 @@ V multi-company rootu platí:
   `<lowercase-company-slug>-<module-or-app>-<version>`.
   Pole `company` ve v1 vždy nese přesný Organization slug; Team, brand ani
   GitHub repository owner se do této osy nepromítají.
-- každý materializovaný module lease vstupuje do owner-aware indexu bez ohledu na
-  Organization hranici; cross-module kolize je hard failure. Více verzí
-  stejného modulu musí deklarovat shodný port a současně běží nejvýše jedna.
+- každý materializovaný module lease vstupuje do owner-aware indexu. Dvě
+  různá Module ID uvnitř stejné Organization nesmějí vlastnit shodný číselný
+  port. Oddělené Organizations stejné stabilní číslo zachovat mohou; na jedné
+  mašině pak listener používají po jednom a Start/Open přebírá jeho vlastnictví.
+- více verzí nebo worktrees jedné aplikace musí odkazovat na shodný pojmenovaný
+  lease a současně běží nejvýše jedna varianta.
 - `lazurio.port-registry.json` v Conglomerate rootu je jediná autorita
   nepřekrývajících se Organization bloků. Creator pod OS-level lockem jednou
   přidělí volný module port; Organization manifest blok neduplikuje.
-- chybějící module lease, inline/dynamický runtime port, port mimo centrální
-  blok, odlišný module ID na stejném portu nebo drift referencí je hard failure.
+- chybějící module lease, inline/dynamický runtime port, odlišný Module ID na
+  stejném portu uvnitř jedné Organization nebo drift referencí je hard failure.
+  Nový lease přiděluje creator z Organization bloku; již deklarovaný stabilní
+  port mimo dnešní blok se kvůli migraci nikdy nepřečísluje.
 - Start/Open preflightuje všechny listenery. Když deklarovaný modulový port
   poslouchá, Launchpad ukončí jeho aktuálního vlastníka (SIGTERM, po timeoutu
   SIGKILL) a spustí vybranou verzi modulu. Port se nikdy nepřemapuje. Samotný
@@ -463,11 +491,13 @@ podle `launchpad/schemas/lazurio-runtime.schema.json`; legacy
 uvnitř konkrétní Organization se přeskočí a reportuje jako warning, aby jeden
 stale modul neshodil celý Launchpad. `check` dál selže, pokud chybí Launchpad
 GEN3 root struktura, registry Organization mountpoint, povinné Organization
-soubory, plugin deklarace poruší read-only bezpečnost, nebo validní aplikace
-různých modulů používají stejný číselný port, některé verze stejného modulu
-driftují v listener setu, port leží mimo organizační blok nebo se organizační
-bloky překrývají. Sdílený lease je přípustný pouze mezi verzemi a worktrees
-stejného `company/module#lease`.
+soubory, plugin deklarace poruší read-only bezpečnost, dvě aplikace různých
+modulů v jedné Organization používají stejný číselný port, verze stejného
+module lease driftují v listener setu nebo se alokační Organization bloky
+překrývají. Existující stabilní lease smí ležet mimo dnešní alokační blok;
+nový port se z bloku přiděluje vždy. Stejné číslo v oddělených Organizations
+je owner-aware kompatibilní překryv, nikoli licence spustit oba listenery
+současně na jednom hostu.
 
 V template repozitáři `check` toleruje chybějící ukázkové organizace. V
 reálném Launchpad GEN3 root používej `check:strict`, aby chybějící organization
@@ -621,9 +651,11 @@ jasný mechanismus:
   procesu nejsou veto: vyhrazený port patří modulu.
 - `Restart` je `Stop` + `Start` nad module-owned lease.
 - `Otevřít` serializuje lifecycle podle `company/module`. Main, jiná
-  `app/vN` verze i worktree stejného modulu sdílejí přesný listener set;
-  poslední explicitně otevřená varianta nahradí předchozí. Jiný modul nesmí
-  stejný číselný port deklarovat ani v jiné Organizaci.
+  `app/vN` verze i worktree jedné aplikace sdílejí přesné pojmenované lease;
+  poslední explicitně otevřená varianta nahradí předchozí. Jiný modul uvnitř
+  stejné Organization nesmí stejný číselný port deklarovat. Oddělené
+  Organizations jej mohou stabilně vlastnit, ale na jedné mašině běží daný
+  listener vždy jen jednou a další explicitní Start/Open jej převezme.
 - `Logs` čte lokální log mimo Git.
 - `Stáhnout novější verzi` nejdřív ověří, že lokální `origin` a upstream
   odpovídají repozitáři a větvi deklarovaným v Organization manifestu. Potom

@@ -102,7 +102,13 @@ export function migrateLegacyRuntimePackage(packageJson, {
     packageJson: next,
     original: packageJson,
     packagePath,
-    moduleManifest: singleModuleManifest({ company: legacy.company, module: legacy.module, host, port }),
+    moduleManifest: singleModuleManifest({
+      company: legacy.company,
+      module: legacy.module,
+      host,
+      port,
+      packagePath,
+    }),
     registry,
   });
 }
@@ -164,6 +170,8 @@ export function migrateInlineRuntimePackage(packageJson, {
           reason: "Existing split TCP runtime retained during migration; consolidate behind one listener or local IPC in a follow-up.",
         },
     port_leases: inlineLeases,
+    apps: [appPackagePathForModule(packagePath, runtime.module)],
+    default_app: appPackagePathForModule(packagePath, runtime.module),
   };
   return validateMigration({ packageJson: next, original: packageJson, packagePath, moduleManifest, registry });
 }
@@ -195,14 +203,21 @@ function validateMigration({ packageJson, original, packagePath, moduleManifest,
   return { changed: true, packageJson, moduleManifest, issues: [] };
 }
 
-function singleModuleManifest({ company, module, host, port }) {
+function singleModuleManifest({ company, module, host, port, packagePath }) {
+  const appPackage = appPackagePathForModule(packagePath, module);
   return {
     schema_version: "lazurio.module.v1",
     id: module,
     company,
     tcp_port_policy: { mode: "single" },
     port_leases: [{ id: "main", host: host === "localhost" ? "127.0.0.1" : host, port }],
+    apps: [appPackage],
+    default_app: appPackage,
   };
+}
+
+function appPackagePathForModule(packagePath, moduleId) {
+  return relative(moduleRootForPackage(packagePath, moduleId), resolve(packagePath)).split(sep).join("/");
 }
 
 function unchanged(packageJson) {

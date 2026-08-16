@@ -50,6 +50,8 @@ test("migrates a single-listener legacy package without split authority", () => 
     company: "Example",
     tcp_port_policy: { mode: "single" },
     port_leases: [{ id: "main", host: "127.0.0.1", port: 5392 }],
+    apps: ["package.json"],
+    default_app: "package.json",
   });
 });
 
@@ -63,7 +65,7 @@ test("refuses to write a runtime generated from an invalid legacy manifest", () 
   expect(result.issues.join("\n")).toContain("path musí začínat /");
 });
 
-test("refuses a legacy port outside the centrally assigned Organization block", () => {
+test("preserves a stable legacy port outside the new-allocation Organization block", () => {
   const source = packageFixture(legacy);
   const result = migrateLegacyRuntimePackage(source, {
     registry: {
@@ -72,9 +74,9 @@ test("refuses a legacy port outside the centrally assigned Organization block", 
       organization_blocks: [{ company: "Example", start: 24000, end: 24099 }],
     },
   });
-  expect(result.changed).toBe(false);
-  expect(result.packageJson).toEqual(source);
-  expect(result.issues.join("\n")).toContain("leží mimo block 24000-24099");
+  expect(result.changed).toBe(true);
+  expect(result.moduleManifest.port_leases[0].port).toBe(5392);
+  expect(result.issues).toEqual([]);
 });
 
 test("preserves an invalid legacy host so validation blocks migration", () => {

@@ -89,11 +89,17 @@ export function findPortOverlaps(indexOrOwners) {
 
 export function classifyListenerOverlap({ endpoint, owners }) {
   const leaseKeys = new Set(owners.map(moduleListenerLeaseKey).filter(Boolean));
+  const companies = new Set(owners.map((owner) => owner.company).filter(Boolean));
   const legacy = owners.some((owner) => owner.legacy === true);
-  const intentional = !legacy
+  const sameModuleLease = !legacy
     && owners.length > 1
     && leaseKeys.size === 1
     && owners.every((owner) => moduleListenerLeaseKey(owner));
+  const crossOrganizationLease = !legacy
+    && owners.length > 1
+    && companies.size > 1
+    && owners.every((owner) => moduleListenerLeaseKey(owner));
+  const intentional = sameModuleLease || crossOrganizationLease;
   const separator = endpoint.lastIndexOf(":");
   const host = endpoint.slice(0, separator).replace(/^\[(.*)\]$/, "$1");
   const rawPort = endpoint.slice(separator + 1);
@@ -102,14 +108,16 @@ export function classifyListenerOverlap({ endpoint, owners }) {
     host,
     port: Number(rawPort),
     classification: intentional
-      ? "module-version-lease"
+      ? sameModuleLease
+        ? "module-version-lease"
+        : "cross-organization-lease"
       : legacy
         ? "legacy-overlap"
         : "declared-conflict",
     intentional,
     conflict: !intentional,
     claim_group: null,
-    module_lease: intentional ? [...leaseKeys][0] : null,
+    module_lease: sameModuleLease ? [...leaseKeys][0] : null,
     owners,
   };
 }

@@ -23,7 +23,7 @@ test("central registry owns non-overlapping Organization blocks", () => {
   expect(normalizePortRegistry(overlapping).issues.some((issue) => issue.includes("se překrývají"))).toBe(true);
 });
 
-test("module lease must stay inside the centrally assigned block", () => {
+test("existing module lease remains valid outside the new-allocation block", () => {
   const normalized = normalizePortRegistry(registry()).registry;
   const issues = validateModuleLeasesAgainstRegistry({
     registry: normalized,
@@ -34,9 +34,7 @@ test("module lease must stay inside the centrally assigned block", () => {
       port_leases: [{ id: "main", port: 24101 }],
     }],
   });
-  expect(issues).toEqual([
-    "demo/lazurio.module.json: lease main port 24101 leží mimo block 24000-24099",
-  ]);
+  expect(issues).toEqual([]);
 });
 
 test("different modules cannot own the same numeric port", () => {
@@ -48,7 +46,19 @@ test("different modules cannot own the same numeric port", () => {
       { id: "two", company: "alpha", module_path: "two", port_leases: [{ id: "main", port: 24001 }] },
     ],
   });
-  expect(issues).toContain("port 24001 vlastní dva moduly: alpha/one a alpha/two");
+  expect(issues).toContain("port 24001 vlastní v alpha dva moduly: one a two");
+});
+
+test("different Organizations may preserve the same machine-local port", () => {
+  const normalized = normalizePortRegistry(registry()).registry;
+  const issues = validateModuleLeasesAgainstRegistry({
+    registry: normalized,
+    modules: [
+      { id: "one", company: "alpha", module_path: "alpha/one", port_leases: [{ id: "main", port: 24001 }] },
+      { id: "two", company: "beta", module_path: "beta/two", port_leases: [{ id: "main", port: 24001 }] },
+    ],
+  });
+  expect(issues).toEqual([]);
 });
 
 test("one company/module identity can have only one module-root manifest", () => {

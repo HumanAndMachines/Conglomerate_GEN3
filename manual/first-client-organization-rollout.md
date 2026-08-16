@@ -403,7 +403,9 @@ nikoli přesné app porty. Přesný port vlastní kořen modulu:
   "id": "example",
   "company": "ClientX",
   "tcp_port_policy": { "mode": "single" },
-  "port_leases": [{ "id": "main", "host": "127.0.0.1", "port": 24901 }]
+  "port_leases": [{ "id": "main", "host": "127.0.0.1", "port": 24901 }],
+  "apps": ["app/v1/package.json"],
+  "default_app": "app/v1/package.json"
 }
 ```
 
@@ -459,9 +461,11 @@ Kontrolní pravidla:
 - Každý runtime listener odkazuje na stabilní module lease. Main, verze i
   worktrees stejného modulu používají shodný materializovaný port; dynamické
   i inline runtime porty jsou nevalidní.
-- Organization blok deklaruje jedině centrální `lazurio.port-registry.json`.
-  Chybějící module lease, port mimo blok, dvě module ID na stejném portu a
-  cross-module překryv jsou hard Doctor failure a blokují Start/Open.
+- Organization blok deklaruje jedině centrální `lazurio.port-registry.json`
+  a slouží jako allocator nových lease. Chybějící module lease, dvě Module ID
+  na stejném portu uvnitř jedné Organization a cross-module překryv jsou hard
+  Doctor failure a blokují Start/Open. Existující stabilní port mimo dnešní
+  blok se nepřečísluje.
 - Na portu modulu běží nejvýše jedna jeho verze. Start/Open případného živého
   vlastníka deklarovaného portu ukončí a nahradí vybranou aplikací; kdo tento
   lifecycle nechce, musí modulu přidělit jiný unikátní port.
@@ -488,7 +492,7 @@ Povinný výsledek pro klientský handoff:
 | Git root | čistý root checkout, žádné Organization submoduly |
 | Mounts | Organization mountpoint je Git checkout |
 | Discovery | klientská Organization je objevená; nezaložený modul je `planned_slot` bez repo URL, zatímco `missing_access` má vždy vlastní next action |
-| Runtime | žádný chybějící `lazurio.module.v1`, `invalid_manifest`, inline/dynamický port, cross-module konflikt, drift lease referencí, port mimo centrální Organization blok ani překryv bloků; živý vlastník rezervovaného portu musí mít signalizovatelnou procesní skupinu |
+| Runtime | žádný chybějící `lazurio.module.v1`, `invalid_manifest`, inline/dynamický port, cross-module konflikt uvnitř jedné Organization, drift lease referencí ani překryv alokačních bloků; nové lease jsou přidělené z Organization bloku, existující stabilní porty zůstávají beze změny a živý vlastník rezervovaného portu musí mít signalizovatelnou procesní skupinu |
 | Support loop | Doctor/Launchpad hlášky jsou `ok` nebo explicitně akceptované planned/stopped stavy |
 
 Template gate pro první instalaci:

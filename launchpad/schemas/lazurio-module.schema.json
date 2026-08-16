@@ -40,10 +40,40 @@
         },
         "additionalProperties": false
       }
+    },
+    "apps": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^(?:(?!\\.{1,2}/)[A-Za-z0-9._-]+/)*package\\.json$"
+      }
+    },
+    "default_app": {
+      "type": "string",
+      "pattern": "^(?:(?!\\.{1,2}/)[A-Za-z0-9._-]+/)*package\\.json$"
     }
   },
   "additionalProperties": false,
   "allOf": [
+    {
+      "if": {
+        "required": ["apps"],
+        "properties": { "apps": { "minItems": 1 } }
+      },
+      "then": { "required": ["default_app"] }
+    },
+    {
+      "if": {
+        "required": ["apps"],
+        "properties": { "apps": { "maxItems": 0 } }
+      },
+      "then": { "not": { "required": ["default_app"] } }
+    },
+    {
+      "if": { "not": { "required": ["apps"] } },
+      "then": { "not": { "required": ["default_app"] } }
+    },
     {
       "if": {
         "properties": {
