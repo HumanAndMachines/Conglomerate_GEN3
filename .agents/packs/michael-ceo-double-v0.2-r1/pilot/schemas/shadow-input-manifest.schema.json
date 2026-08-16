@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "michael.ceo_double.shadow_input_manifest.v1",
+  "type": "object",
+  "required": ["schema_version", "contract_id", "contract_version", "manifest_id", "created_at", "prepared_by_role", "cutoff_at", "pilot_object", "files", "total_bytes", "known_gaps", "boundary_review", "secret_scan", "manifest_sha256"],
+  "properties": {
+    "schema_version": {"const": "michael.ceo_double.shadow_input_manifest.v1"},
+    "contract_id": {"const": "PILOT-LUMBIO-SHADOW-0.2-R1"},
+    "contract_version": {"const": "0.1.0-draft"},
+    "manifest_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{7,127}$"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "prepared_by_role": {"enum": ["principal", "approved_lumbio_data_owner", "approved_operator"]},
+    "cutoff_at": {"type": "string", "format": "date-time"},
+    "pilot_object": {
+      "type": "object",
+      "required": ["organization_id", "scope_id", "legal_entity_id", "object_id", "object_label", "responsible_owner_id"],
+      "properties": {
+        "organization_id": {"const": "lumbio"},
+        "scope_id": {"const": "lumbio"},
+        "legal_entity_id": {"type": "string", "minLength": 1},
+        "object_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+        "object_label": {"type": "string", "minLength": 1},
+        "responsible_owner_id": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 40,
+      "items": {
+        "type": "object",
+        "required": ["artifact_id", "relative_path", "format", "bytes", "sha256", "source_ref", "observed_at", "classification", "evidence_class", "lineage", "organization_id", "scope_id", "legal_entity_id", "object_id"],
+        "properties": {
+          "artifact_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+          "relative_path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$"},
+          "format": {"enum": ["json", "csv", "xlsx", "pdf", "md"]},
+          "bytes": {"type": "integer", "minimum": 1, "maximum": 52428800},
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "source_ref": {"type": "string", "pattern": "^snapshot://lumbio/[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$"},
+          "observed_at": {"type": "string", "format": "date-time"},
+          "classification": {"enum": ["LUMBIO_INTERNAL", "LUMBIO_CONFIDENTIAL", "LUMBIO_FINANCE_RESTRICTED"]},
+          "evidence_class": {"enum": ["object_identity", "approved_scope_and_owner", "current_operational_state", "approved_milestone_baseline", "acceptance_or_gap_evidence", "finance_object_link_or_explicit_gap"]},
+          "lineage": {"type": "string", "minLength": 1},
+          "organization_id": {"const": "lumbio"},
+          "scope_id": {"const": "lumbio"},
+          "legal_entity_id": {"type": "string", "minLength": 1},
+          "object_id": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
+    },
+    "total_bytes": {"type": "integer", "minimum": 1, "maximum": 52428800},
+    "known_gaps": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "boundary_review": {
+      "type": "object",
+      "required": ["status", "reviewed_by_role", "reviewed_at"],
+      "properties": {
+        "status": {"const": "PASS"},
+        "reviewed_by_role": {"enum": ["principal", "approved_lumbio_data_owner", "approved_operator"]},
+        "reviewed_at": {"type": "string", "format": "date-time"}
+      },
+      "additionalProperties": false
+    },
+    "secret_scan": {
+      "type": "object",
+      "required": ["status", "scanner_version", "scanned_at"],
+      "properties": {
+        "status": {"const": "PASS"},
+        "scanner_version": {"type": "string", "minLength": 1},
+        "scanned_at": {"type": "string", "format": "date-time"}
+      },
+      "additionalProperties": false
+    },
+    "manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  },
+  "additionalProperties": false
+}

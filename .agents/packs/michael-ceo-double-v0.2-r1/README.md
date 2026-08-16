@@ -43,6 +43,19 @@ bun scripts/offline-eval-runner.mjs > evals/results/offline-eval-report.json
 
 Výstup musí mít `dry_run_only: true`, prázdné `tool_calls_executed` a `external_actions_executed` a stav `PASS`. Výstupní report zůstává lokální a necommitnutý, dokud nebude samostatně schválen commit.
 
+## Manuální Lumbio shadow pilot — Brána 3
+
+Adresář `pilot/` obsahuje neaktivní návrh kontraktu pro jeden budoucí manuální read-only shadow run nad jedním přesně schváleným Lumbio objektem. Samotná přítomnost těchto souborů pilot nespouští a neopravňuje k live konektorům, síti, schedule, zápisu, GBrain promoci ani externí akci.
+
+Kontrolní vrstvy:
+
+- `pilot/scripts/validate-shadow-pilot-contract.mjs` — ověří design-only stav a approval gate;
+- `pilot/scripts/preflight-shadow-snapshot.mjs` — po budoucím exact approval ověří execution commit, kontrakt, manifest, hashe, boundaries, symlinky, evidence coverage a prázdný output;
+- `pilot/scripts/validate-shadow-outcome.mjs` — mechanicky ověří výstup, lidské review, evidence coverage, actionable ratio a cleanup;
+- `pilot/tests/` — používají pouze syntetické dočasné soubory a nespouštějí pilot.
+
+Kandidát `EPC Hodonín` je pouze starší doporučení, nikoli schválený objekt. Spuštění vyžaduje samostatné přesné schválení object ID, právnické osoby, ownera, skutečného execution commitu, hashe kontraktu, hashe celého execution bundle, snapshot manifestu, cutoffu a výstupní cesty.
+
 ## Samostatné budoucí approval gates
 
 Live shadow pilot, přesné source/object allowlisty, runtime storage, GBrain promotion, schedule, jakýkoli write/outbound, commit a publikace vyžadují samostatný přesný souhlas.
