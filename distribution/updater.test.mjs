@@ -319,25 +319,23 @@ async function install(fixture, installRoot, mutableMountSources = {}) {
 async function buildFixture(root, version, target = currentResidentTarget()) {
   const [os, arch] = target.split("-");
   const artifactId = `lazurio-resident-buddy-${version}-${target}`;
+  const [hermesPinBytes, gbrainPinBytes, toolchainPinBytes] = await Promise.all([
+    readFile(join(import.meta.dir, "dependencies", "hermes.json")),
+    readFile(join(import.meta.dir, "dependencies", "gbrain.json")),
+    readFile(join(import.meta.dir, "dependencies", "toolchain.json")),
+  ]);
+  const hermesPin = JSON.parse(hermesPinBytes.toString("utf8"));
+  const gbrainPin = JSON.parse(gbrainPinBytes.toString("utf8"));
+  const toolchainPin = JSON.parse(toolchainPinBytes.toString("utf8"));
   const entries = new Map([
     ["AGENTS.md", { bytes: Buffer.from("<!-- generated:lazurio-resident-profile=buddy -->\n# Buddy\n"), mode: "0644" }],
     ["package.json", { bytes: Buffer.from("{\"private\":true,\"type\":\"module\"}\n"), mode: "0644" }],
     ["resident/doctor.mjs", { bytes: await readFile(join(import.meta.dir, "runtime", "doctor.mjs")), mode: "0755" }],
     ["resident/integrity.mjs", { bytes: await readFile(join(import.meta.dir, "runtime", "integrity.mjs")), mode: "0644" }],
     ["resident/profile.json", { bytes: Buffer.from(`${JSON.stringify({ schema_version: "lazurio.resident.profile.v1", id: "buddy" }, null, 2)}\n`), mode: "0644" }],
-    ["resident/dependencies/hermes.json", { bytes: Buffer.from(`${JSON.stringify({
-      schema_version: "lazurio.resident.dependency-pin.v1",
-      id: "hermes",
-      repository: "Lazurio/hermes-agent",
-      upstream_repository: "NousResearch/hermes-agent",
-      release_tag: "v2026.7.20",
-      commit: "3ef6bbd201263d354fd83ec55b3c306ded2eb72a",
-      lock_sha256: "456f76d5396df0f543d1035c2d05173cae1882c290ba585cc926a79958b9d7fe",
-      compatibility: {
-        artifact_contract_versions: [1],
-        independent_self_update_allowed: false,
-      },
-    }, null, 2)}\n`), mode: "0644" }],
+    ["resident/dependencies/hermes.json", { bytes: hermesPinBytes, mode: "0644" }],
+    ["resident/dependencies/gbrain.json", { bytes: gbrainPinBytes, mode: "0644" }],
+    ["resident/dependencies/toolchain.json", { bytes: toolchainPinBytes, mode: "0644" }],
     ["resident/services/buddy-bridge.service.template", {
       bytes: Buffer.from("[Service]\nUser=buddy-bridge\nRestartPreventExitStatus=78\n"),
       mode: "0644",
@@ -378,10 +376,23 @@ async function buildFixture(root, version, target = currentResidentTarget()) {
     compatibility: { resident_root: 1, rollback_from: [1] },
     dependencies: {
       hermes: {
-        repository: "Lazurio/hermes-agent",
-        release_tag: "v2026.7.20",
-        commit: "3ef6bbd201263d354fd83ec55b3c306ded2eb72a",
-        lock_sha256: "456f76d5396df0f543d1035c2d05173cae1882c290ba585cc926a79958b9d7fe",
+        repository: hermesPin.repository,
+        release_tag: hermesPin.release_tag,
+        commit: hermesPin.commit,
+        lock_sha256: hermesPin.lock_sha256,
+      },
+      gbrain: {
+        repository: gbrainPin.repository,
+        release_tag: gbrainPin.release_tag,
+        version: gbrainPin.version,
+        commit: gbrainPin.commit,
+        lock_sha256: gbrainPin.lock_sha256,
+        engine: gbrainPin.runtime.engine,
+        transport: gbrainPin.runtime.transport,
+      },
+      toolchain: {
+        bun: toolchainPin.tools.bun.version,
+        uv: toolchainPin.tools.uv.version,
       },
     },
     mutable_mounts: ["organizations", "personalspace"],
