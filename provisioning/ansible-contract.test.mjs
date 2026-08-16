@@ -141,6 +141,15 @@ test("runtime baseline invokes the exact pinned Hermes service interface", async
   const tasks = await readYaml(
     join(ansibleRoot, "roles", "resident_runtime_base", "tasks", "main.yml"),
   );
+  const defaults = await readYaml(
+    join(ansibleRoot, "roles", "resident_runtime_base", "defaults", "main.yml"),
+  );
+  expect(defaults.lazurio_gbrain_home).toBe("/var/lib/{{ lazurio_runtime_user }}");
+  expect(tasks.find(
+    (task) => task.name === "Inspect the local PGLite engine",
+  )["ansible.builtin.stat"].path).toBe(
+    "{{ lazurio_gbrain_home }}/.gbrain/brain.pglite/PG_VERSION",
+  );
   for (const taskName of [
     "Materialize the exact Hermes fork commit",
     "Materialize the exact GBrain fork commit",
