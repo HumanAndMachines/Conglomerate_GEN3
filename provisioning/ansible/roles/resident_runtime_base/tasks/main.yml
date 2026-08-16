@@ -103,6 +103,8 @@
     repo: "https://github.com/{{ lazurio_hermes_pin.repository }}.git"
     dest: "{{ lazurio_hermes_root }}"
     version: "{{ lazurio_hermes_pin.commit }}"
+    depth: 1
+    single_branch: true
     force: false
     update: true
 
@@ -111,6 +113,8 @@
     repo: "https://github.com/{{ lazurio_gbrain_pin.repository }}.git"
     dest: "{{ lazurio_gbrain_root }}"
     version: "{{ lazurio_gbrain_pin.commit }}"
+    depth: 1
+    single_branch: true
     force: false
     update: true
 
