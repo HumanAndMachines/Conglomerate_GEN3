@@ -2,7 +2,7 @@
 
 import { existsSync } from "fs";
 import { readdir, rename, writeFile } from "fs/promises";
-import { dirname, join, relative, resolve, sep } from "path";
+import { basename, dirname, join, relative, resolve, sep } from "path";
 import { normalizeModuleManifest } from "../launchpad/src/module-contract-lib.mjs";
 import {
   normalizePortRegistry,
@@ -267,6 +267,10 @@ export async function packagePathsBelow(root) {
 
 export function moduleRootForPackage(packagePath, moduleId = null) {
   const absolute = resolve(packagePath);
+  const packageDirectory = dirname(absolute);
+  // A module may itself be named `app`. In that case a root package belongs
+  // beside its lazurio.module.json and must not be mistaken for <module>/app.
+  if (moduleId && basename(packageDirectory) === moduleId) return packageDirectory;
   const parts = absolute.split(sep);
   const appIndex = parts.findLastIndex((part, index) =>
     part === "app"
@@ -276,8 +280,7 @@ export function moduleRootForPackage(packagePath, moduleId = null) {
     const candidate = parts.slice(0, appIndex).join(sep) || sep;
     return candidate;
   }
-  void moduleId;
-  return dirname(absolute);
+  return packageDirectory;
 }
 
 function sameJson(left, right) {

@@ -253,3 +253,10 @@ test("direct package targets keep the module manifest beside a root package", ()
     moduleRootForPackage(join(moduleRoot, "app", "v2", "package.json"), "demo"),
   ).toBe(moduleRoot);
 });
+
+test("a module named app keeps its root manifest inside the app directory", () => {
+  const moduleRoot = join(tmpdir(), "organizations", "Acme", "workspace", "app");
+  expect(moduleRootForPackage(join(moduleRoot, "package.json"), "app")).toBe(
+    moduleRoot,
+  );
+});

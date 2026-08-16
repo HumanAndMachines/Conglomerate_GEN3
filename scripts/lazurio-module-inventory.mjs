@@ -4,6 +4,10 @@ import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { basename, join, relative, resolve, sep } from "node:path";
 import { normalizeModuleManifest } from "../launchpad/src/module-contract-lib.mjs";
+import {
+  normalizeOrganizationSlotPath,
+  organizationSlotScope,
+} from "../launchpad/src/organization-slot-scope-lib.mjs";
 import { packagePathsBelow } from "./lazurio-runtime-migrate.mjs";
 
 function posixRelative(parent, child) {
@@ -16,12 +20,66 @@ function argumentValue(argv, name) {
 }
 
 function moduleExclusionReason(slot) {
-  const path = typeof slot?.path === "string" ? slot.path : "";
-  if (path.startsWith("productionspace/")) return "productionspace";
-  if (!(path.startsWith("workspace/") || path.startsWith("modules/"))) return "not-workspace-module";
-  if (String(slot?.classification ?? "").includes("repository-db-data")) return "nested-db";
-  if (typeof slot?.repo !== "string" || slot.repo.trim() === "") return "planned-slot";
+  const path = normalizeOrganizationSlotPath(slot?.path) ?? "";
+  const scope = organizationSlotScope(slot, path);
+  if (scope === "productionspace") return "productionspace";
+  if (scope !== "workspace" || !(path.startsWith("workspace/") || path.startsWith("modules/"))) {
+    return "not-workspace-module";
+  }
+  const classification = String(slot?.classification ?? "").toLowerCase();
+  const materialization = String(slot?.materialization ?? "").toLowerCase();
+  const nestedPath = path.split("/").length > 2;
+  if (
+    nestedPath
+    || classification.includes("repository-db-data")
+    || classification.includes("repository_db_data")
+    || materialization.startsWith("repository_db_mount")
+  ) {
+    return "nested-db";
+  }
+  if (slot?.status === "planned_slot" || !slotRepository(slot)) return "planned-slot";
   return null;
+}
+
+function slotRepository(slot) {
+  for (const candidate of [slot?.git?.url, slot?.repo, slot?.repository]) {
+    if (typeof candidate === "string" && candidate.trim() !== "") return candidate.trim();
+  }
+  return null;
+}
+
+async function declaredModuleSlots(organizationRoot, companyManifest) {
+  let manifestPath = null;
+  for (const candidate of ["modules.manifest.json", "company/scripts/modules.manifest.json"]) {
+    const path = join(organizationRoot, candidate);
+    if (existsSync(path)) {
+      manifestPath = path;
+      break;
+    }
+  }
+
+  const canonicalManifest = manifestPath ? await Bun.file(manifestPath).json() : null;
+  const declarations = new Map();
+  for (const slot of canonicalManifest?.module_slots ?? []) {
+    const path = normalizeOrganizationSlotPath(slot?.path);
+    if (!path) continue;
+    declarations.set(path, {
+      slot: { ...slot, path },
+      declaration_source: posixRelative(organizationRoot, manifestPath),
+    });
+  }
+
+  // Transitional compatibility only: canonical module_slots owns every path it
+  // declares; company.gen3.json#modules may fill paths not migrated yet.
+  for (const slot of companyManifest?.modules ?? []) {
+    const path = normalizeOrganizationSlotPath(slot?.path);
+    if (!path || declarations.has(path)) continue;
+    declarations.set(path, {
+      slot: { ...slot, path },
+      declaration_source: "company.gen3.json#modules",
+    });
+  }
+  return [...declarations.values()];
 }
 
 function numericPorts(command) {
@@ -91,15 +149,17 @@ export async function inventoryLazurioModules(conglomerateRoot, { organization =
     const companyManifest = await Bun.file(companyPath).json();
     const company = companyManifest?.company?.slug;
     if (organization && ![entry.name, company].includes(organization)) continue;
-    for (const slot of companyManifest?.modules ?? []) {
+    for (const { slot, declaration_source } of await declaredModuleSlots(organizationRoot, companyManifest)) {
       const reason = moduleExclusionReason(slot);
       const record = {
         organization: entry.name,
         company,
-        module: slot?.slug ?? null,
+        module: slot?.slug ?? basename(slot.path),
         path: slot?.path ?? null,
-        repository: slot?.repo ?? null,
+        repository: slotRepository(slot),
         classification: slot?.classification ?? null,
+        materialization: slot?.materialization ?? null,
+        declaration_source,
       };
       if (reason) {
         excluded.push({ ...record, reason });
