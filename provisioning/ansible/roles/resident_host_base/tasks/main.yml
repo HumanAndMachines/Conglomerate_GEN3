@@ -118,13 +118,21 @@
 - name: Materialize empty custody files without replacing existing values
   ansible.builtin.copy:
     content: ""
-    dest: "{{ item }}"
+    dest: "{{ item.path }}"
     owner: root
-    group: root
-    mode: "0600"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
     force: false
   loop:
-    - "{{ lazurio_bridge_environment_file }}"
-    - "{{ lazurio_custody_root }}/hermes-gateway.env"
-    - "{{ lazurio_custody_root }}/gbrain.env"
-    - "{{ lazurio_custody_root }}/backup.env"
+    - path: "{{ lazurio_bridge_environment_file }}"
+      group: root
+      mode: "0600"
+    - path: "{{ lazurio_custody_root }}/hermes-gateway.env"
+      group: "{{ lazurio_runtime_user }}"
+      mode: "0640"
+    - path: "{{ lazurio_custody_root }}/gbrain.env"
+      group: root
+      mode: "0600"
+    - path: "{{ lazurio_custody_root }}/backup.env"
+      group: root
+      mode: "0600"

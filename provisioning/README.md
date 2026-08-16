@@ -55,6 +55,16 @@ Mimo public repo připrav:
 - `/etc/buddy/hermes-gateway.env` a `/etc/buddy/buddy-bridge.env` s reálnými
   hodnotami a bez uložení secrets do inventory.
 
+Hermes soubor musí zapnout jeho upstream loopback API přes
+`API_SERVER_ENABLED=true` a držet neprázdný `API_SERVER_KEY`. Bridge soubor
+musí mířit `AGENT_RUNTIME_URL` na privátní Hermes endpoint (výchozí upstream
+tvar je `http://127.0.0.1:8642/v1/chat/completions`) a jeho
+`AGENT_RUNTIME_KEY` musí být stejná hodnota jako `API_SERVER_KEY`. Playbook
+porovná pouze přítomnost a shodu; secret hodnotu nevypisuje ani nekopíruje do
+inventory. Hermes soubor navíc nese zvolený model/provider credential a bridge
+soubor reálný `ZULIP_SITE`, `BUDDY_BOT_EMAIL`, `BUDDY_BOT_API_KEY`,
+`BUDDY_PROFILE_DIR` a durable `BUDDY_BRIDGE_QUEUE_DIR`.
+
 Content-free controller attestation může mít například tento tvar:
 
 ```json
