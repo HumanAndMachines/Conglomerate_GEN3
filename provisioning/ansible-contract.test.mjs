@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   chmod,
+  mkdir,
   mkdtemp,
   readFile,
   readdir,
@@ -204,16 +205,47 @@ test("runtime baseline invokes the exact pinned Hermes service interface", async
   )["ansible.builtin.stat"].path).toBe(
     "{{ lazurio_gbrain_home }}/.gbrain/brain.pglite/PG_VERSION",
   );
-  for (const taskName of [
-    "Materialize the exact Hermes fork commit",
-    "Materialize the exact GBrain fork commit",
+  expect(defaults.lazurio_git_executable).toBe("/usr/bin/git");
+  const gitPolicy = tasks.find(
+    (task) => task.name === "Define the exact dependency checkouts and safe Git invocation",
+  )["ansible.builtin.set_fact"];
+  expect(gitPolicy.lazurio_dependency_checkouts.map((checkout) => checkout.commit))
+    .toEqual(["{{ lazurio_hermes_pin.commit }}", "{{ lazurio_gbrain_pin.commit }}"]);
+  expect(gitPolicy.lazurio_safe_git_argv_prefix.slice(0, 2))
+    .toEqual(["/usr/bin/env", "-i"]);
+  expect(gitPolicy.lazurio_safe_git_argv_prefix).toContain("{{ lazurio_git_executable }}");
+  for (const required of [
+    "PATH=/usr/bin:/bin",
+    "GIT_CONFIG_NOSYSTEM=1",
+    "GIT_CONFIG_GLOBAL=/dev/null",
+    "GIT_TERMINAL_PROMPT=0",
+    "GIT_SSH=/usr/bin/ssh",
+    "core.hooksPath=/dev/null",
+    "core.fsmonitor=false",
+    "core.sshCommand=/usr/bin/ssh",
+    "core.gitProxy=",
+    "credential.helper=",
+    "protocol.ext.allow=never",
+    "protocol.file.allow=never",
   ]) {
-    expect(tasks.find((task) => task.name === taskName)["ansible.builtin.git"])
-      .toMatchObject({ depth: 1, single_branch: true, force: false });
+    expect(gitPolicy.lazurio_safe_git_argv_prefix).toContain(required);
+  }
+  expect(JSON.stringify(tasks)).not.toContain("ansible.builtin.git");
+  expect(JSON.stringify(tasks)).not.toContain('"sh","-c"');
+  for (const task of tasks.filter((candidate) => {
+    const argv = candidate["ansible.builtin.command"]?.argv;
+    return typeof argv === "string" && argv.includes("git");
+  })) {
+    expect(task["ansible.builtin.command"].argv).toStartWith(
+      "{{ lazurio_safe_git_argv_prefix +",
+    );
   }
   expect(tasks.find(
-    (task) => task.name === "Materialize the exact Hermes fork commit",
-  )["ansible.builtin.git"].version).toBe("{{ lazurio_hermes_pin.release_tag }}");
+    (task) => task.name === "Read back exact dependency lock digests",
+  )["ansible.builtin.stat"]).toMatchObject({
+    get_checksum: true,
+    checksum_algorithm: "sha256",
+  });
   expect(tasks.find(
     (task) => task.name === "Keep the uv environment marker operator-owned",
   )["ansible.builtin.file"]).toMatchObject({
@@ -247,6 +279,174 @@ test("runtime baseline invokes the exact pinned Hermes service interface", async
   expect(tasks.find(
     (task) => task.name === "Point Hermes at its root-custodied private environment",
   )["ansible.builtin.file"]).toMatchObject({ follow: false, force: false });
+});
+
+test("Resident Git argv blocks ambient, checkout and transport execution markers", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+
+  const tasks = await readYaml(
+    join(ansibleRoot, "roles", "resident_runtime_base", "tasks", "main.yml"),
+  );
+  const defaults = await readYaml(
+    join(ansibleRoot, "roles", "resident_runtime_base", "defaults", "main.yml"),
+  );
+  expect(await Bun.file(defaults.lazurio_git_executable).exists()).toBe(true);
+
+  const policy = tasks.find(
+    (task) => task.name === "Define the exact dependency checkouts and safe Git invocation",
+  )["ansible.builtin.set_fact"];
+  const sandbox = await mkdtemp(join(tmpdir(), "lazurio-resident-git-policy-"));
+  const gitHome = join(sandbox, "git-home");
+  const fakeBin = join(sandbox, "fake-bin");
+  const repository = join(sandbox, "checkout");
+  const hooks = join(sandbox, "hooks");
+  const pathMarker = join(sandbox, "path-marker");
+  const fsmonitorMarker = join(sandbox, "fsmonitor-marker");
+  const hookMarker = join(sandbox, "hook-marker");
+  const transportMarker = join(sandbox, "transport-marker");
+  const fsmonitorProbe = join(sandbox, "fsmonitor-probe");
+  const transportProbe = join(sandbox, "transport-probe");
+
+  const renderPrefix = policy.lazurio_safe_git_argv_prefix.map((value) => String(value)
+    .replaceAll("{{ lazurio_git_executable }}", defaults.lazurio_git_executable)
+    .replaceAll("{{ lazurio_git_home }}", gitHome));
+  const run = (argv, options = {}) => Bun.spawnSync(argv, {
+    stdout: "pipe",
+    stderr: "pipe",
+    timeout: 10_000,
+    ...options,
+  });
+  const requireSuccess = (result) => {
+    expect(result.exitCode, new TextDecoder().decode(result.stderr)).toBe(0);
+  };
+  const systemGit = (...args) => run([defaults.lazurio_git_executable, ...args]);
+  const safeGit = (...args) => run([...renderPrefix, ...args], {
+    env: {
+      ...process.env,
+      PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_KEY_0: "core.fsmonitor",
+      GIT_CONFIG_VALUE_0: fsmonitorProbe,
+      GIT_DIR: join(sandbox, "foreign.git"),
+      GIT_SSH_COMMAND: transportProbe,
+    },
+  });
+
+  try {
+    await mkdir(gitHome, { recursive: true });
+    await mkdir(fakeBin, { recursive: true });
+    await mkdir(hooks, { recursive: true });
+    await writeFile(
+      join(fakeBin, "git"),
+      `#!/bin/sh\n/usr/bin/touch ${JSON.stringify(pathMarker)}\nexit 0\n`,
+      "utf8",
+    );
+    await writeFile(
+      fsmonitorProbe,
+      `#!/bin/sh\n/usr/bin/touch ${JSON.stringify(fsmonitorMarker)}\nexit 1\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(hooks, "post-checkout"),
+      `#!/bin/sh\n/usr/bin/touch ${JSON.stringify(hookMarker)}\nexit 0\n`,
+      "utf8",
+    );
+    await writeFile(
+      transportProbe,
+      `#!/bin/sh\n/usr/bin/touch ${JSON.stringify(transportMarker)}\nexit 1\n`,
+      "utf8",
+    );
+    for (const executable of [
+      join(fakeBin, "git"),
+      fsmonitorProbe,
+      join(hooks, "post-checkout"),
+      transportProbe,
+    ]) {
+      await chmod(executable, 0o755);
+    }
+
+    requireSuccess(systemGit("init", "--quiet", repository));
+    await writeFile(join(repository, "tracked.txt"), "one\n", "utf8");
+    requireSuccess(systemGit("-C", repository, "add", "tracked.txt"));
+    requireSuccess(systemGit(
+      "-C",
+      repository,
+      "-c",
+      "user.name=Lazurio Test",
+      "-c",
+      "user.email=lazurio@example.invalid",
+      "-c",
+      "commit.gpgsign=false",
+      "commit",
+      "--quiet",
+      "-m",
+      "first",
+    ));
+    await writeFile(join(repository, "tracked.txt"), "two\n", "utf8");
+    requireSuccess(systemGit("-C", repository, "add", "tracked.txt"));
+    requireSuccess(systemGit(
+      "-C",
+      repository,
+      "-c",
+      "user.name=Lazurio Test",
+      "-c",
+      "user.email=lazurio@example.invalid",
+      "-c",
+      "commit.gpgsign=false",
+      "commit",
+      "--quiet",
+      "-m",
+      "second",
+    ));
+    requireSuccess(systemGit("-C", repository, "config", "core.fsmonitor", fsmonitorProbe));
+    requireSuccess(systemGit("-C", repository, "config", "core.hooksPath", hooks));
+    requireSuccess(systemGit(
+      "-C",
+      repository,
+      "config",
+      `url.ext::${transportProbe}.insteadOf`,
+      "https://example.invalid/repository.git",
+    ));
+
+    requireSuccess(safeGit("-C", repository, "status", "--porcelain=v1"));
+    requireSuccess(safeGit("-C", repository, "checkout", "--detach", "HEAD~1"));
+    expect(await Bun.file(pathMarker).exists()).toBe(false);
+    expect(await Bun.file(fsmonitorMarker).exists()).toBe(false);
+    expect(await Bun.file(hookMarker).exists()).toBe(false);
+
+    const configRead = safeGit(
+      "-C",
+      repository,
+      "config",
+      "--local",
+      "--no-includes",
+      "--name-only",
+      "--list",
+    );
+    requireSuccess(configRead);
+    const forbidden = new RegExp(policy.lazurio_forbidden_checkout_git_config_pattern);
+    const forbiddenKeys = new TextDecoder()
+      .decode(configRead.stdout)
+      .trim()
+      .split("\n")
+      .map((key) => key.toLowerCase())
+      .filter((key) => forbidden.test(key));
+    expect(forbiddenKeys).toContain(`url.ext::${transportProbe}.insteadof`.toLowerCase());
+
+    const transport = safeGit(
+      "-C",
+      repository,
+      "ls-remote",
+      "https://example.invalid/repository.git",
+    );
+    expect(transport.exitCode).not.toBe(0);
+    expect(await Bun.file(transportMarker).exists()).toBe(false);
+    expect(await Bun.file(pathMarker).exists()).toBe(false);
+  } finally {
+    await rm(sandbox, { recursive: true, force: true });
+  }
 });
 
 test("network baseline preserves UFW argv tokens through YAML parsing", async () => {

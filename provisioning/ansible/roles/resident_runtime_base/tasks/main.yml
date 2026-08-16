@@ -9,6 +9,64 @@
   ansible.builtin.set_fact:
     lazurio_dependency_target: "{{ 'linux-x64' if ansible_facts.architecture == 'x86_64' else 'linux-arm64' }}"
 
+- name: Define the exact dependency checkouts and safe Git invocation
+  ansible.builtin.set_fact:
+    lazurio_dependency_checkouts:
+      - id: hermes
+        root: "{{ lazurio_hermes_root }}"
+        repository_url: "https://github.com/{{ lazurio_hermes_pin.repository }}.git"
+        commit: "{{ lazurio_hermes_pin.commit }}"
+        lock_file: "{{ lazurio_hermes_pin.lock_file }}"
+        lock_sha256: "{{ lazurio_hermes_pin.lock_sha256 }}"
+      - id: gbrain
+        root: "{{ lazurio_gbrain_root }}"
+        repository_url: "https://github.com/{{ lazurio_gbrain_pin.repository }}.git"
+        commit: "{{ lazurio_gbrain_pin.commit }}"
+        lock_file: "{{ lazurio_gbrain_pin.lock_file }}"
+        lock_sha256: "{{ lazurio_gbrain_pin.lock_sha256 }}"
+    lazurio_safe_git_argv_prefix:
+      - /usr/bin/env
+      - -i
+      - PATH=/usr/bin:/bin
+      - LC_ALL=C
+      - "HOME={{ lazurio_git_home }}"
+      - "XDG_CONFIG_HOME={{ lazurio_git_home }}/xdg"
+      - GIT_CONFIG_NOSYSTEM=1
+      - GIT_CONFIG_GLOBAL=/dev/null
+      - GIT_TERMINAL_PROMPT=0
+      - GCM_INTERACTIVE=never
+      - GIT_ASKPASS=/bin/false
+      - SSH_ASKPASS=/bin/false
+      - SSH_ASKPASS_REQUIRE=never
+      - GIT_SSH=/usr/bin/ssh
+      - "{{ lazurio_git_executable }}"
+      - -c
+      - core.hooksPath=/dev/null
+      - -c
+      - core.fsmonitor=false
+      - -c
+      - core.sshCommand=/usr/bin/ssh
+      - -c
+      - core.gitProxy=
+      - -c
+      - core.askPass=/bin/false
+      - -c
+      - credential.helper=
+      - -c
+      - protocol.ext.allow=never
+      - -c
+      - protocol.file.allow=never
+      - -c
+      - submodule.recurse=false
+      - -c
+      - fetch.recurseSubmodules=false
+      - -c
+      - maintenance.auto=false
+      - -c
+      - gc.auto=0
+    lazurio_forbidden_checkout_git_config_pattern: >-
+      ^(include|includeif)\..*\.path$|^url\..*\.(insteadof|pushinsteadof)$|^http(\..*)?\.proxy$|^credential(\..*)?\.helper$|^remote\..*\.proxy$|^core\.(gitproxy|sshcommand)$|^filter\..*\.(clean|smudge|process)$
+
 - name: Refuse unsupported runtime modes or ambiguous paths
   ansible.builtin.assert:
     that:
@@ -16,6 +74,8 @@
       - lazurio_gbrain_engine in ["pglite", "existing"]
       - lazurio_bun_path is match('^/')
       - lazurio_uv_path is match('^/')
+      - lazurio_git_executable == "/usr/bin/git"
+      - lazurio_git_home is match('^/')
       - lazurio_hermes_root is match('^/')
       - lazurio_hermes_home is match('^/')
       - lazurio_gbrain_root is match('^/')
@@ -44,6 +104,14 @@
       owner: root
       group: root
       mode: "0755"
+    - path: "{{ lazurio_git_home }}"
+      owner: root
+      group: root
+      mode: "0700"
+    - path: "{{ lazurio_git_home }}/xdg"
+      owner: root
+      group: root
+      mode: "0700"
     - path: "{{ lazurio_hermes_home }}"
       owner: "{{ lazurio_runtime_user }}"
       group: "{{ lazurio_runtime_user }}"
@@ -99,46 +167,171 @@
     fail_msg: "Installed {{ item.item.key }} does not match the reviewed version pin."
   loop: "{{ lazurio_toolchain_versions.results }}"
 
-- name: Materialize the exact Hermes fork commit
-  ansible.builtin.git:
-    repo: "https://github.com/{{ lazurio_hermes_pin.repository }}.git"
-    dest: "{{ lazurio_hermes_root }}"
-    version: "{{ lazurio_hermes_pin.release_tag }}"
-    depth: 1
-    single_branch: true
-    force: false
-    update: true
+- name: Inspect the allowlisted Git executable
+  ansible.builtin.stat:
+    path: "{{ lazurio_git_executable }}"
+    follow: true
+    get_checksum: false
+  register: lazurio_git_executable_stat
 
-- name: Materialize the exact GBrain fork commit
-  ansible.builtin.git:
-    repo: "https://github.com/{{ lazurio_gbrain_pin.repository }}.git"
-    dest: "{{ lazurio_gbrain_root }}"
-    version: "{{ lazurio_gbrain_pin.commit }}"
-    depth: 1
-    single_branch: true
-    force: false
-    update: true
+- name: Refuse an untrusted Git executable
+  ansible.builtin.assert:
+    that:
+      - lazurio_git_executable_stat.stat.exists
+      - lazurio_git_executable_stat.stat.isreg
+      - lazurio_git_executable_stat.stat.executable
+      - lazurio_git_executable_stat.stat.uid == 0
+      - not lazurio_git_executable_stat.stat.wgrp
+      - not lazurio_git_executable_stat.stat.woth
+    fail_msg: >-
+      Resident dependency materialization requires the root-owned, non-writable
+      Debian package Git executable at /usr/bin/git.
 
-- name: Read back dependency commits and lock digests
+- name: Probe the allowlisted Git executable through the safe argv prefix
   ansible.builtin.command:
-    argv:
-      - sh
-      - -c
-      - >-
-        test "$(git -C "$1" rev-parse HEAD)" = "$2" &&
-        test "$(sha256sum "$1/$3" | cut -d' ' -f1)" = "$4" &&
-        test -z "$(git -C "$1" status --porcelain=v1 --untracked-files=all)"
-      - lazurio-dependency-check
-      - "{{ item.root }}"
-      - "{{ item.pin.commit }}"
-      - "{{ item.pin.lock_file }}"
-      - "{{ item.pin.lock_sha256 }}"
-  loop:
-    - root: "{{ lazurio_hermes_root }}"
-      pin: "{{ lazurio_hermes_pin }}"
-    - root: "{{ lazurio_gbrain_root }}"
-      pin: "{{ lazurio_gbrain_pin }}"
+    argv: "{{ lazurio_safe_git_argv_prefix + ['--version'] }}"
   changed_when: false
+
+- name: Inspect dependency checkout roots
+  ansible.builtin.stat:
+    path: "{{ item.root }}"
+  loop: "{{ lazurio_dependency_checkouts }}"
+  register: lazurio_dependency_root_stats
+
+- name: Refuse non-directory dependency checkout roots
+  ansible.builtin.assert:
+    that:
+      - not item.stat.exists or item.stat.isdir
+    fail_msg: "Dependency root {{ item.item.root }} exists but is not a directory."
+  loop: "{{ lazurio_dependency_root_stats.results }}"
+
+- name: Probe existing dependency checkout identities
+  ansible.builtin.command:
+    argv: "{{ lazurio_safe_git_argv_prefix + ['-C', item.item.root, 'rev-parse', '--is-inside-work-tree'] }}"
+  loop: "{{ lazurio_dependency_root_stats.results }}"
+  when: item.stat.exists
+  register: lazurio_existing_checkout_probes
+  changed_when: false
+  failed_when: false
+
+- name: Refuse ambiguous existing dependency roots
+  ansible.builtin.assert:
+    that:
+      - item.rc == 0
+      - item.stdout == "true"
+    fail_msg: >-
+      Existing dependency root {{ item.item.item.root }} is not a Git worktree;
+      preserve or relocate it before provisioning.
+  loop: "{{ lazurio_existing_checkout_probes.results }}"
+  when: not (item.skipped | default(false))
+
+- name: Prove existing dependency checkouts are clean before mutation
+  ansible.builtin.command:
+    argv: "{{ lazurio_safe_git_argv_prefix + ['-C', item.item.root, 'status', '--porcelain=v1', '--untracked-files=all'] }}"
+  loop: "{{ lazurio_dependency_root_stats.results }}"
+  when: item.stat.exists
+  register: lazurio_existing_checkout_statuses
+  changed_when: false
+
+- name: Preserve local dependency checkout changes
+  ansible.builtin.assert:
+    that:
+      - item.stdout | length == 0
+    fail_msg: >-
+      Dependency checkout {{ item.item.item.root }} contains local changes.
+      Provisioning will not overwrite or clean them.
+  loop: "{{ lazurio_existing_checkout_statuses.results }}"
+  when: not (item.skipped | default(false))
+
+- name: Initialize missing dependency worktrees
+  ansible.builtin.command:
+    argv: "{{ lazurio_safe_git_argv_prefix + ['init', '--quiet', item.item.root] }}"
+  loop: "{{ lazurio_dependency_root_stats.results }}"
+  when: not item.stat.exists
+  changed_when: true
+
+- name: Read checkout-local Git configuration without following includes
+  ansible.builtin.command:
+    argv: "{{ lazurio_safe_git_argv_prefix + ['-C', item.root, 'config', '--local', '--no-includes', '--name-only', '--list'] }}"
+  loop: "{{ lazurio_dependency_checkouts }}"
+  register: lazurio_checkout_git_configs
+  changed_when: false
+
+- name: Refuse checkout-local execution or transport overrides
+  ansible.builtin.assert:
+    that:
+      - >-
+        item.stdout_lines
+        | map('lower')
+        | select('match', lazurio_forbidden_checkout_git_config_pattern)
+        | list
+        | length == 0
+    fail_msg: >-
+      Dependency checkout {{ item.item.root }} contains local Git execution or
+      transport overrides. Remove the override before provisioning; it will not
+      be executed or silently replaced.
+  loop: "{{ lazurio_checkout_git_configs.results }}"
+
+- name: Record the reviewed dependency origin without trusting it for transport
+  ansible.builtin.command:
+    argv: "{{ lazurio_safe_git_argv_prefix + ['-C', item.root, 'config', '--local', '--replace-all', 'remote.origin.url', item.repository_url] }}"
+  loop: "{{ lazurio_dependency_checkouts }}"
+  changed_when: false
+
+- name: Read dependency commits before update
+  ansible.builtin.command:
+    argv: "{{ lazurio_safe_git_argv_prefix + ['-C', item.root, 'rev-parse', '--verify', 'HEAD'] }}"
+  loop: "{{ lazurio_dependency_checkouts }}"
+  register: lazurio_dependency_commits_before
+  changed_when: false
+  failed_when: lazurio_dependency_commits_before.rc not in [0, 128]
+
+- name: Fetch only the missing exact dependency commits
+  ansible.builtin.command:
+    argv: "{{ lazurio_safe_git_argv_prefix + ['-C', item.item.root, 'fetch', '--depth', '1', '--no-tags', '--no-recurse-submodules', item.item.repository_url, item.item.commit] }}"
+  loop: "{{ lazurio_dependency_commits_before.results }}"
+  when: item.rc != 0 or item.stdout != item.item.commit
+  changed_when: true
+
+- name: Check out only the missing exact dependency commits
+  ansible.builtin.command:
+    argv: "{{ lazurio_safe_git_argv_prefix + ['-C', item.item.root, 'checkout', '--no-recurse-submodules', '--detach', item.item.commit] }}"
+  loop: "{{ lazurio_dependency_commits_before.results }}"
+  when: item.rc != 0 or item.stdout != item.item.commit
+  changed_when: true
+
+- name: Read back exact dependency commits
+  ansible.builtin.command:
+    argv: "{{ lazurio_safe_git_argv_prefix + ['-C', item.root, 'rev-parse', '--verify', 'HEAD'] }}"
+  loop: "{{ lazurio_dependency_checkouts }}"
+  register: lazurio_dependency_commits_after
+  changed_when: false
+
+- name: Read back exact dependency lock digests
+  ansible.builtin.stat:
+    path: "{{ item.root }}/{{ item.lock_file }}"
+    get_checksum: true
+    checksum_algorithm: sha256
+  loop: "{{ lazurio_dependency_checkouts }}"
+  register: lazurio_dependency_lock_stats
+
+- name: Read back final dependency checkout status
+  ansible.builtin.command:
+    argv: "{{ lazurio_safe_git_argv_prefix + ['-C', item.root, 'status', '--porcelain=v1', '--untracked-files=all'] }}"
+  loop: "{{ lazurio_dependency_checkouts }}"
+  register: lazurio_dependency_statuses_after
+  changed_when: false
+
+- name: Prove exact clean dependency materialization
+  ansible.builtin.assert:
+    that:
+      - lazurio_dependency_commits_after.results[item].stdout == lazurio_dependency_checkouts[item].commit
+      - lazurio_dependency_lock_stats.results[item].stat.exists
+      - lazurio_dependency_lock_stats.results[item].stat.isreg
+      - lazurio_dependency_lock_stats.results[item].stat.checksum | default('') == lazurio_dependency_checkouts[item].lock_sha256
+      - lazurio_dependency_statuses_after.results[item].stdout | length == 0
+    fail_msg: "Dependency {{ lazurio_dependency_checkouts[item].id }} does not match its reviewed commit and lock digest."
+  loop: "{{ range(0, lazurio_dependency_checkouts | length) | list }}"
 
 - name: Install the Hermes Python runtime selected by the exact uv toolchain
   ansible.builtin.command:
