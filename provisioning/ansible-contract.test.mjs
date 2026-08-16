@@ -124,6 +124,25 @@ test("host baseline preserves existing custody and keeps bridge unprivileged", a
   });
 });
 
+test("runtime baseline invokes the exact pinned Hermes service interface", async () => {
+  const tasks = await readYaml(
+    join(ansibleRoot, "roles", "resident_runtime_base", "tasks", "main.yml"),
+  );
+  const service = tasks.find(
+    (task) => task.name === "Install the upstream Hermes gateway service without starting it",
+  );
+  expect(service["ansible.builtin.command"].argv).toEqual([
+    "{{ lazurio_hermes_root }}/venv/bin/hermes",
+    "gateway",
+    "install",
+    "--system",
+    "--run-as-user",
+    "{{ lazurio_runtime_user }}",
+    "--no-start-now",
+    "--start-on-login",
+  ]);
+});
+
 test("example inventory contains placeholders only and no cohort identity", async () => {
   const inventoryPath = join(ansibleRoot, "inventory.example.yml");
   const inventoryText = await readFile(inventoryPath, "utf8");

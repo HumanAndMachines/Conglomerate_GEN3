@@ -315,10 +315,10 @@
       - gateway
       - install
       - --system
-      - --user
+      - --run-as-user
       - "{{ lazurio_runtime_user }}"
-      - --no-start
-      - --enable
+      - --no-start-now
+      - --start-on-login
   environment:
     HOME: "/var/lib/{{ lazurio_runtime_user }}"
     HERMES_HOME: "{{ lazurio_hermes_home }}"
