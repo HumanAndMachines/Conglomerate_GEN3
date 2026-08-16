@@ -126,6 +126,15 @@ test("host baseline preserves existing custody and keeps bridge unprivileged", a
     join(ansibleRoot, "roles", "resident_host_base", "defaults", "main.yml"),
   );
   expect(defaults.lazurio_base_packages).toContain("sudo");
+  const directories = tasks.find(
+    (task) => task.name === "Converge operator-owned Resident directories",
+  );
+  expect(directories.loop.find((item) => item.path === "{{ lazurio_custody_root }}"))
+    .toEqual({
+      path: "{{ lazurio_custody_root }}",
+      group: "{{ lazurio_runtime_user }}",
+      mode: "0750",
+    });
 });
 
 test("runtime baseline invokes the exact pinned Hermes service interface", async () => {
