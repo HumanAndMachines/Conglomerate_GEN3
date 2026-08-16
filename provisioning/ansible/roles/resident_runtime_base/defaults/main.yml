@@ -4,6 +4,8 @@ lazurio_runtime_root: /opt/buddy-runtime
 lazurio_toolchain_root: /opt/lazurio-operator/bin
 lazurio_dependency_cache_root: /var/cache/lazurio-resident
 lazurio_dependency_pin_root: "{{ playbook_dir }}/../../../distribution/dependencies"
+lazurio_git_executable: /usr/bin/git
+lazurio_git_home: /var/lib/lazurio-operator/git
 lazurio_bun_path: "{{ lazurio_toolchain_root }}/bun"
 lazurio_uv_path: "{{ lazurio_toolchain_root }}/uv"
 lazurio_hermes_root: "{{ lazurio_runtime_root }}/hermes"
