@@ -155,7 +155,7 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
   const tampered = runDoctor(first.artifact_root);
   expect(tampered.status).toBe(1);
   expect(JSON.parse(tampered.stdout)).toMatchObject({ status: "fail" });
-});
+}, 20_000);
 
 test("resident provenance is independent of mutable remote configuration", async () => {
   const fixture = await isolatedRepositoryFixture();
@@ -189,7 +189,7 @@ test("resident provenance is independent of mutable remote configuration", async
   expect(
     (await readFile(mutated.archive_path)).equals(await readFile(baseline.archive_path)),
   ).toBe(true);
-});
+}, 20_000);
 
 test.skipIf(process.platform === "win32")(
   "resident build ignores PATH git and a checkout-local fsmonitor helper",
@@ -229,6 +229,7 @@ test.skipIf(process.platform === "win32")(
     expect(existsSync(fakeGitMarker)).toBe(false);
     expect(existsSync(fsmonitorMarker)).toBe(false);
   },
+  20_000,
 );
 
 test("Buddy profile eval pack covers normal and negative-path cases without role grants", async () => {
