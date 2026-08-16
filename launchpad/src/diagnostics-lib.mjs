@@ -1243,9 +1243,6 @@ function rootSlotContractIssues(manifest, config, organizationRoot) {
     const gitBranch = typeof slot.git?.branch === "string" ? slot.git.branch.trim() : "";
     const checkoutExists = existsSync(join(organizationRoot, path));
     const checkoutCoordinatesStarted = slot.git !== undefined;
-    const inTreeTransition = slot.status === "in_tree_transition"
-      && checkoutExists
-      && !existsSync(join(organizationRoot, path, ".git"));
     if (slot.status === "planned_slot" && checkoutExists) {
       issues.push(
         `modules.manifest.json: materializovaný root slot ${path} nesmí zůstat status: "planned_slot"; odstraň status a ponech nebo doplň celé git.url i git.branch`,
@@ -1254,7 +1251,7 @@ function rootSlotContractIssues(manifest, config, organizationRoot) {
       issues.push(
         `modules.manifest.json: planned root slot ${path} nesmí deklarovat git; s checkout souřadnicemi už jde o aktivní nebo missing-access slot`,
       );
-    } else if (slot.status !== "planned_slot" && !inTreeTransition) {
+    } else if (slot.status !== "planned_slot") {
       const missingCoordinates = [
         ...(gitUrl ? [] : ["git.url"]),
         ...(gitBranch ? [] : ["git.branch"]),
@@ -1264,11 +1261,6 @@ function rootSlotContractIssues(manifest, config, organizationRoot) {
           `modules.manifest.json: materializovaný nebo checkoutem rozepsaný root slot ${path} musí deklarovat ${missingCoordinates.join(" a ")}; bez checkout údajů smí být jen nematerializovaný status: "planned_slot"`,
         );
       }
-    }
-    if (inTreeTransition && checkoutCoordinatesStarted) {
-      issues.push(
-        `modules.manifest.json: in_tree_transition root slot ${path} je vlastněný Organization root repozitářem a nesmí deklarovat samostatné git souřadnice`,
-      );
     }
     if (path === "mission-control/db" && gitBranch && gitBranch !== "v3") {
       issues.push(

@@ -83,7 +83,7 @@ test("discovery bez builder metadata dá null fallback bez failure", async () =>
   expect(apps[0].group).toBeNull();
 });
 
-test("in_tree_transition modul patří Organization root repu a nepotřebuje předčasnou git URL", async () => {
+test("in_tree_transition workspace modul patří Organization super-repu a nepotřebuje předčasnou git URL", async () => {
   const root = await createCompaniesWorkspaceFixture({
     plugin: { schema_version: "companyascode.launchpad_plugin.v1", title: "Demo kontext" },
   });
@@ -100,7 +100,7 @@ test("in_tree_transition modul patří Organization root repu a nepotřebuje př
 
   expect(failures).toEqual([]);
   expect(apps).toHaveLength(1);
-  expect(warnings.some((warning) => warning.includes("in_tree_transition") && warning.includes("Organization root"))).toBe(true);
+  expect(warnings.some((warning) => warning.includes("in_tree_transition") && warning.includes("Organization super-repozitářem"))).toBe(true);
 });
 
 test("discovery je warning-first u vadného builder metadata, appka zůstává validní", async () => {

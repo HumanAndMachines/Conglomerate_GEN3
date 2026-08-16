@@ -1462,8 +1462,11 @@ test("planned root slot nemá git a smí zůstat planned jen dokud není materia
 
   manifest.module_slots[0].status = "in_tree_transition";
   await writeJson(manifestPath, manifest);
-  const inTreeTransitionCheck = await doctor();
-  expect(inTreeTransitionCheck?.status).toBe("ok");
+  const unsupportedRootTransitionCheck = await doctor();
+  expect(unsupportedRootTransitionCheck?.status).toBe("fail");
+  expect(unsupportedRootTransitionCheck?.details.join("\n")).toContain(
+    "materializovaný nebo checkoutem rozepsaný root slot design-system musí deklarovat git.url a git.branch",
+  );
 });
 
 test("app sekci určí fyzická cesta, manifest doplní N:M Team intent a sdílený modul může být jednou v Organizaci", async () => {
