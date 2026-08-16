@@ -35,7 +35,7 @@ Rezidentní root:
 - není Git repozitář a nemá personu ukrytou v branchi;
 - má právě jeden vygenerovaný root `AGENTS.md`;
 - nese manifest `lazurio.resident.json` s exact source SHA, profilem,
-  platformou, Hermes pinem a hashi payloadu;
+  platformou, Hermes/GBrain/toolchain piny a hashi payloadu;
 - neobsahuje Personalspace, Organization checkouty, secrets ani runtime data;
 - může po instalaci připojit perzistentní `personalspace/` a `organizations/`
   jako oddělené mutable mounty.
@@ -140,6 +140,20 @@ operator plane; jeho public-safe vstup je `provisioning/README.md` ve source
 checkoutu. Běžný update už aktivního Residenta provádí pouze jeho verzovaný
 updater. Ansible může updater explicitně zavolat, ale nesmí znovu implementovat
 kopírování, přepnutí active verze ani rollback.
+
+První Buddy/Linux operator lane používá jen existující mechanismy: Ansible pro
+host desired state, upstream install rozhraní Hermesu a GBrainu, Tailscale jako
+access plane, UFW jako host firewall a provider snapshot jako recovery bod.
+Nový osobní GBrain začíná na lokálním PGLite; nevzniká kvůli němu další
+PostgreSQL service. Zulip je privátní externí transport prerequisite a Buddy
+bridge jej polluje odchozím spojením, takže resident host nepotřebuje veřejný
+Zulip ingress.
+
+Síťový kontrakt prvního Linux profilu má nulový veřejný ingress. SSH, případný
+privátní Zulip HTTPS a servisní UI se připouštějí pouze přes deklarované
+tailnet rozhraní. Najde-li preflight staré veřejné nebo jinak cizí allow
+pravidlo, nic nemaže ani nepřepisuje: zastaví se a nechá Principála rozhodnout,
+co na jeho Mašině skutečně patří zachovat.
 
 Release je svázaný s přesným artefaktem. Bezpečný lifecycle má tento tvar:
 

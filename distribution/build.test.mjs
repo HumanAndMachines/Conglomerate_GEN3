@@ -296,10 +296,16 @@ test("Buddy GEN2 migration inventory is exact, explicit and never a private hist
     disposition: "migrated",
     public_safe_review: "pass",
   });
+  expect(inventory.items.find((item) => item.id === "hermes-runtime-materialization"))
+    .toMatchObject({ disposition: "migrated_operator_plane" });
+  expect(inventory.items.find((item) => item.id === "gbrain-runtime"))
+    .toMatchObject({ disposition: "migrated_greenfield_dependency_contract" });
+  expect(inventory.items.find((item) => item.id === "backup-and-restore"))
+    .toMatchObject({ disposition: "external_recovery_checkpoint_for_first_cohort" });
   expect(inventory.items.find((item) => item.id === "internal-docs-and-incident-history"))
     .toMatchObject({ disposition: "do_not_copy_wholesale" });
   expect(inventory.items.find((item) => item.id === "host-bootstrap-and-network"))
-    .toMatchObject({ disposition: "partially_migrated_operator_plane" });
+    .toMatchObject({ disposition: "migrated_tailnet_only_operator_plane" });
   expect(inventory.items.find((item) => item.id === "install-orchestrator"))
     .toMatchObject({ disposition: "superseded_by_split_lifecycle" });
 });

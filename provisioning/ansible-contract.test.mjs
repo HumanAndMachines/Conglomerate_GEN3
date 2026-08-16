@@ -158,7 +158,9 @@ test("operator plane remains source-only and manuals separate deploy from update
     "utf8",
   );
   expect(operatorManual).toContain("source-only operator plane");
-  expect(operatorManual).toContain("nevydává dnešní stav za kompletní greenfield instalaci");
+  expect(operatorManual).toContain("provider recovery checkpoint");
+  expect(operatorManual).toContain("PGLite");
+  expect(operatorManual).toContain("nevytváří vlastní updater, daemon, sandbox, ACL ani fleet control plane");
   expect(operatorManual.toLowerCase()).not.toMatch(/matty|friday/u);
   expect(updateManual).toContain("Updater není Ansible a Ansible není updater");
   expect(updateManual).toContain("Lokální úprava je legitimní drift");
