@@ -90,7 +90,7 @@
   ansible.builtin.file:
     path: "{{ item.path }}"
     state: directory
-    owner: root
+    owner: "{{ item.owner | default('root') }}"
     group: "{{ item.group }}"
     mode: "{{ item.mode }}"
   loop:
@@ -104,9 +104,11 @@
       group: "{{ lazurio_runtime_user }}"
       mode: "0750"
     - path: "{{ lazurio_bridge_state_root }}"
+      owner: "{{ lazurio_bridge_user }}"
       group: "{{ lazurio_bridge_user }}"
       mode: "0700"
     - path: "{{ lazurio_bridge_state_root }}/queue"
+      owner: "{{ lazurio_bridge_user }}"
       group: "{{ lazurio_bridge_user }}"
       mode: "0700"
     - path: "{{ lazurio_personalspace_source }}"

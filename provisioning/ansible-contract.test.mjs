@@ -140,9 +140,12 @@ test("host baseline preserves existing custody and keeps bridge unprivileged", a
     (item) => item.path === "{{ lazurio_bridge_state_root }}/queue",
   )).toEqual({
     path: "{{ lazurio_bridge_state_root }}/queue",
+    owner: "{{ lazurio_bridge_user }}",
     group: "{{ lazurio_bridge_user }}",
     mode: "0700",
   });
+  expect(directories["ansible.builtin.file"].owner)
+    .toBe("{{ item.owner | default('root') }}");
 });
 
 test("runtime baseline invokes the exact pinned Hermes service interface", async () => {
