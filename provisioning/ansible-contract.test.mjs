@@ -128,6 +128,13 @@ test("runtime baseline invokes the exact pinned Hermes service interface", async
   const tasks = await readYaml(
     join(ansibleRoot, "roles", "resident_runtime_base", "tasks", "main.yml"),
   );
+  for (const taskName of [
+    "Materialize the exact Hermes fork commit",
+    "Materialize the exact GBrain fork commit",
+  ]) {
+    expect(tasks.find((task) => task.name === taskName)["ansible.builtin.git"])
+      .toMatchObject({ depth: 1, single_branch: true, force: false });
+  }
   const service = tasks.find(
     (task) => task.name === "Install the upstream Hermes gateway service without starting it",
   );
