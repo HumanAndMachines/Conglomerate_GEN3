@@ -1,4 +1,15 @@
 ---
+- name: Read the live UFW policy before converge
+  ansible.builtin.command:
+    argv:
+      - ufw
+      - status
+      - verbose
+  register: lazurio_ufw_status_before
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+
 - name: Add the closed Buddy TCP surface on the private tailnet only
   ansible.builtin.command:
     argv:
@@ -26,8 +37,10 @@
       - deny
       - incoming
   register: lazurio_ufw_default_incoming
-  changed_when: "'Default incoming policy changed to' in lazurio_ufw_default_incoming.stdout"
-  when: not ansible_check_mode
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - "'deny (incoming)' not in lazurio_ufw_status_before.stdout"
 
 - name: Set the default outbound policy to allow
   ansible.builtin.command:
@@ -37,8 +50,10 @@
       - allow
       - outgoing
   register: lazurio_ufw_default_outgoing
-  changed_when: "'Default outgoing policy changed to' in lazurio_ufw_default_outgoing.stdout"
-  when: not ansible_check_mode
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - "'allow (outgoing)' not in lazurio_ufw_status_before.stdout"
 
 - name: Enable UFW after the private allow rules exist
   ansible.builtin.command:
@@ -47,8 +62,10 @@
       - --force
       - enable
   register: lazurio_ufw_enable
-  changed_when: "'Firewall is active and enabled on system startup' in lazurio_ufw_enable.stdout"
-  when: not ansible_check_mode
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - "'Status: active' not in lazurio_ufw_status_before.stdout"
 
 - name: Read back the active UFW boundary
   ansible.builtin.command:

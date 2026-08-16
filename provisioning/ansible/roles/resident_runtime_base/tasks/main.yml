@@ -188,6 +188,14 @@
   register: lazurio_hermes_sync
   changed_when: "'Installed ' in lazurio_hermes_sync.stderr or 'Prepared ' in lazurio_hermes_sync.stderr"
 
+- name: Keep the uv environment marker operator-owned
+  ansible.builtin.file:
+    path: "{{ lazurio_hermes_root }}/venv/.lock"
+    state: file
+    owner: root
+    group: root
+    mode: "0644"
+
 - name: Materialize GBrain dependencies without running repository postinstall hooks
   ansible.builtin.command:
     argv:
@@ -256,6 +264,34 @@
       Populate the private Hermes gateway EnvironmentFile before runtime
       activation. Credentials never belong in inventory or the Resident artifact.
 
+- name: Prove the private Hermes API and bridge credential seam without printing values
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |-
+        import pathlib, sys
+        def read_env(path):
+          result = {}
+          for raw in pathlib.Path(path).read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+              continue
+            key, value = line.removeprefix("export ").split("=", 1)
+            result[key.strip()] = value.strip().strip("'\"")
+          return result
+        hermes = read_env(sys.argv[1])
+        bridge = read_env(sys.argv[2])
+        enabled = hermes.get("API_SERVER_ENABLED", "").lower() in {"1", "true", "yes", "on"}
+        hermes_key = hermes.get("API_SERVER_KEY", "")
+        bridge_key = next((bridge.get(key, "") for key in ("AGENT_RUNTIME_KEY", "API_SERVER_KEY", "HERMES_API_KEY") if bridge.get(key, "")), "")
+        if not enabled or not hermes_key or hermes_key != bridge_key:
+          print("Hermes API must be enabled and use the same non-empty private key as the Buddy bridge", file=sys.stderr)
+          raise SystemExit(1)
+      - "{{ lazurio_hermes_environment_file }}"
+      - "{{ lazurio_bridge_environment_file }}"
+  changed_when: false
+
 - name: Grant only the runtime group read access to the Hermes custody file
   ansible.builtin.file:
     path: "{{ lazurio_hermes_environment_file }}"
@@ -270,9 +306,8 @@
     src: "{{ lazurio_hermes_environment_file }}"
     dest: "{{ lazurio_hermes_home }}/.env"
     state: link
-    owner: "{{ lazurio_runtime_user }}"
-    group: "{{ lazurio_runtime_user }}"
     force: false
+    follow: false
   when: lazurio_hermes_service_mode == "upstream"
 
 - name: Read configured Hermes MCP servers
@@ -313,6 +348,11 @@
   become_user: "{{ lazurio_runtime_user }}"
   when: "'gbrain' not in lazurio_hermes_mcp_list.stdout"
 
+- name: Inspect the Hermes gateway service before upstream converge
+  ansible.builtin.stat:
+    path: /etc/systemd/system/hermes-gateway.service
+  register: lazurio_hermes_service_before
+
 - name: Install the upstream Hermes gateway service without starting it
   ansible.builtin.command:
     argv:
@@ -328,7 +368,7 @@
     HOME: "/var/lib/{{ lazurio_runtime_user }}"
     HERMES_HOME: "{{ lazurio_hermes_home }}"
   register: lazurio_hermes_service_install
-  changed_when: "'installed' in lazurio_hermes_service_install.stdout | lower"
+  changed_when: false
   when:
     - lazurio_hermes_service_mode == "upstream"
     - not ansible_check_mode
@@ -337,6 +377,14 @@
   ansible.builtin.stat:
     path: /etc/systemd/system/hermes-gateway.service
   register: lazurio_hermes_service
+
+- name: Report an actual upstream Hermes service change
+  ansible.builtin.set_fact:
+    lazurio_hermes_service_changed: true
+  changed_when: >-
+    not lazurio_hermes_service_before.stat.exists or
+    lazurio_hermes_service_before.stat.checksum != lazurio_hermes_service.stat.checksum
+  when: lazurio_hermes_service_mode == "upstream"
 
 - name: Require the gateway service before Resident activation
   ansible.builtin.assert:

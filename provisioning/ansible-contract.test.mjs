@@ -120,8 +120,17 @@ test("host baseline preserves existing custody and keeps bridge unprivileged", a
   const custody = tasks.find((task) => task.name === "Materialize empty custody files without replacing existing values");
   expect(custody["ansible.builtin.copy"]).toMatchObject({
     content: "",
-    mode: "0600",
+    dest: "{{ item.path }}",
+    group: "{{ item.group }}",
+    mode: "{{ item.mode }}",
     force: false,
+  });
+  expect(custody.loop.find(
+    (item) => item.path === "{{ lazurio_custody_root }}/hermes-gateway.env",
+  )).toEqual({
+    path: "{{ lazurio_custody_root }}/hermes-gateway.env",
+    group: "{{ lazurio_runtime_user }}",
+    mode: "0640",
   });
   const defaults = await readYaml(
     join(ansibleRoot, "roles", "resident_host_base", "defaults", "main.yml"),
@@ -171,6 +180,14 @@ test("runtime baseline invokes the exact pinned Hermes service interface", async
   expect(tasks.find(
     (task) => task.name === "Materialize the exact Hermes fork commit",
   )["ansible.builtin.git"].version).toBe("{{ lazurio_hermes_pin.release_tag }}");
+  expect(tasks.find(
+    (task) => task.name === "Keep the uv environment marker operator-owned",
+  )["ansible.builtin.file"]).toMatchObject({
+    path: "{{ lazurio_hermes_root }}/venv/.lock",
+    owner: "root",
+    group: "root",
+    mode: "0644",
+  });
   const service = tasks.find(
     (task) => task.name === "Install the upstream Hermes gateway service without starting it",
   );
@@ -184,6 +201,18 @@ test("runtime baseline invokes the exact pinned Hermes service interface", async
     "--no-start-now",
     "--start-on-login",
   ]);
+  expect(service.changed_when).toBe(false);
+  const credentialSeam = tasks.find(
+    (task) => task.name === "Prove the private Hermes API and bridge credential seam without printing values",
+  );
+  expect(credentialSeam["ansible.builtin.command"].argv.join("\n"))
+    .toContain("API_SERVER_ENABLED");
+  expect(credentialSeam["ansible.builtin.command"].argv.join("\n"))
+    .toContain("AGENT_RUNTIME_KEY");
+  expect(credentialSeam.changed_when).toBe(false);
+  expect(tasks.find(
+    (task) => task.name === "Point Hermes at its root-custodied private environment",
+  )["ansible.builtin.file"]).toMatchObject({ follow: false, force: false });
 });
 
 test("network baseline preserves UFW argv tokens through YAML parsing", async () => {
@@ -191,6 +220,11 @@ test("network baseline preserves UFW argv tokens through YAML parsing", async ()
     join(ansibleRoot, "roles", "resident_network", "tasks", "main.yml"),
   );
   expect(tasks[0]["ansible.builtin.command"].argv).toEqual([
+    "ufw",
+    "status",
+    "verbose",
+  ]);
+  expect(tasks[1]["ansible.builtin.command"].argv).toEqual([
     "ufw",
     "allow",
     "in",
@@ -203,6 +237,12 @@ test("network baseline preserves UFW argv tokens through YAML parsing", async ()
     "proto",
     "tcp",
   ]);
+  expect(tasks.find((task) => task.name === "Set the default inbound policy to deny").when)
+    .toContain("'deny (incoming)' not in lazurio_ufw_status_before.stdout");
+  expect(tasks.find((task) => task.name === "Set the default outbound policy to allow").when)
+    .toContain("'allow (outgoing)' not in lazurio_ufw_status_before.stdout");
+  expect(tasks.find((task) => task.name === "Enable UFW after the private allow rules exist").when)
+    .toContain("'Status: active' not in lazurio_ufw_status_before.stdout");
 });
 
 test("example inventory contains placeholders only and no cohort identity", async () => {
