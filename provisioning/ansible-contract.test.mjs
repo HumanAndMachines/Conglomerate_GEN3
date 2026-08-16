@@ -230,6 +230,8 @@ test("runtime baseline invokes the exact pinned Hermes service interface", async
   ]) {
     expect(gitPolicy.lazurio_safe_git_argv_prefix).toContain(required);
   }
+  expect(gitPolicy.lazurio_forbidden_checkout_git_config_pattern)
+    .toContain("worktree");
   expect(JSON.stringify(tasks)).not.toContain("ansible.builtin.git");
   expect(JSON.stringify(tasks)).not.toContain('"sh","-c"');
   for (const task of tasks.filter((candidate) => {
@@ -239,6 +241,13 @@ test("runtime baseline invokes the exact pinned Hermes service interface", async
     expect(task["ansible.builtin.command"].argv).toStartWith(
       "{{ lazurio_safe_git_argv_prefix +",
     );
+    if (
+      !task["ansible.builtin.command"].argv.includes("['--version']")
+      && !task["ansible.builtin.command"].argv.includes("['init'")
+    ) {
+      expect(task["ansible.builtin.command"].argv)
+        .toContain("'--work-tree=' ~");
+    }
   }
   expect(tasks.find(
     (task) => task.name === "Read back exact dependency lock digests",
@@ -448,6 +457,140 @@ test("Resident Git argv blocks ambient, checkout and transport execution markers
     await rm(sandbox, { recursive: true, force: true });
   }
 });
+
+for (const configLayer of ["local", "worktree"]) {
+  test(`Resident Git pins the declared checkout root against ${configLayer} core.worktree`, async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
+    const tasks = await readYaml(
+      join(ansibleRoot, "roles", "resident_runtime_base", "tasks", "main.yml"),
+    );
+    const defaults = await readYaml(
+      join(ansibleRoot, "roles", "resident_runtime_base", "defaults", "main.yml"),
+    );
+    const policy = tasks.find(
+      (task) => task.name === "Define the exact dependency checkouts and safe Git invocation",
+    )["ansible.builtin.set_fact"];
+    const sandbox = await mkdtemp(join(tmpdir(), `lazurio-core-worktree-${configLayer}-`));
+    const gitHome = join(sandbox, "git-home");
+    const repository = join(sandbox, "checkout");
+    const redirectedRoot = join(sandbox, "redirected-root");
+    const renderPrefix = policy.lazurio_safe_git_argv_prefix.map((value) => String(value)
+      .replaceAll("{{ lazurio_git_executable }}", defaults.lazurio_git_executable)
+      .replaceAll("{{ lazurio_git_home }}", gitHome));
+    const run = (argv) => Bun.spawnSync(argv, {
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: 10_000,
+    });
+    const requireSuccess = (result) => {
+      expect(result.exitCode, new TextDecoder().decode(result.stderr)).toBe(0);
+    };
+    const systemGit = (...args) => run([defaults.lazurio_git_executable, ...args]);
+    const safeGit = (...args) => run([
+      ...renderPrefix,
+      `--work-tree=${repository}`,
+      "-C",
+      repository,
+      ...args,
+    ]);
+
+    try {
+      await mkdir(gitHome, { recursive: true });
+      await mkdir(redirectedRoot, { recursive: true });
+      requireSuccess(systemGit("init", "--quiet", repository));
+      await writeFile(join(repository, "tracked.txt"), "one\n", "utf8");
+      requireSuccess(systemGit("-C", repository, "add", "tracked.txt"));
+      requireSuccess(systemGit(
+        "-C",
+        repository,
+        "-c",
+        "user.name=Lazurio Test",
+        "-c",
+        "user.email=lazurio@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "--quiet",
+        "-m",
+        "first",
+      ));
+      await writeFile(join(repository, "tracked.txt"), "two\n", "utf8");
+      requireSuccess(systemGit("-C", repository, "add", "tracked.txt"));
+      requireSuccess(systemGit(
+        "-C",
+        repository,
+        "-c",
+        "user.name=Lazurio Test",
+        "-c",
+        "user.email=lazurio@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "--quiet",
+        "-m",
+        "second",
+      ));
+      await writeFile(join(redirectedRoot, "tracked.txt"), "two\n", "utf8");
+
+      if (configLayer === "worktree") {
+        requireSuccess(systemGit(
+          "-C",
+          repository,
+          "config",
+          "extensions.worktreeConfig",
+          "true",
+        ));
+        requireSuccess(systemGit(
+          "-C",
+          repository,
+          "config",
+          "--worktree",
+          "core.worktree",
+          redirectedRoot,
+        ));
+      } else {
+        requireSuccess(systemGit(
+          "-C",
+          repository,
+          "config",
+          "core.worktree",
+          redirectedRoot,
+        ));
+      }
+
+      const declaredRoot = safeGit("rev-parse", "--show-toplevel");
+      requireSuccess(declaredRoot);
+      expect(await realpath(new TextDecoder().decode(declaredRoot.stdout).trim()))
+        .toBe(await realpath(repository));
+      requireSuccess(safeGit("status", "--porcelain=v1", "--untracked-files=all"));
+      requireSuccess(safeGit("checkout", "--detach", "HEAD~1"));
+      expect(await readFile(join(repository, "tracked.txt"), "utf8")).toBe("one\n");
+      expect(await readFile(join(redirectedRoot, "tracked.txt"), "utf8")).toBe("two\n");
+
+      const configRead = safeGit(
+        "config",
+        configLayer === "worktree" ? "--worktree" : "--local",
+        "--no-includes",
+        "--name-only",
+        "--list",
+      );
+      requireSuccess(configRead);
+      const forbidden = new RegExp(policy.lazurio_forbidden_checkout_git_config_pattern);
+      const forbiddenKeys = new TextDecoder()
+        .decode(configRead.stdout)
+        .trim()
+        .split("\n")
+        .map((key) => key.toLowerCase())
+        .filter((key) => forbidden.test(key));
+      expect(forbiddenKeys).toContain("core.worktree");
+    } finally {
+      await rm(sandbox, { recursive: true, force: true });
+    }
+  });
+}
 
 test("network baseline preserves UFW argv tokens through YAML parsing", async () => {
   const tasks = await readYaml(
