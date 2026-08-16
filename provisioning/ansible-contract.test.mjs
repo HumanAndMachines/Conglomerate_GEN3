@@ -166,6 +166,25 @@ test("runtime baseline invokes the exact pinned Hermes service interface", async
   ]);
 });
 
+test("network baseline preserves UFW argv tokens through YAML parsing", async () => {
+  const tasks = await readYaml(
+    join(ansibleRoot, "roles", "resident_network", "tasks", "main.yml"),
+  );
+  expect(tasks[0]["ansible.builtin.command"].argv).toEqual([
+    "ufw",
+    "allow",
+    "in",
+    "on",
+    "{{ lazurio_tailnet_interface }}",
+    "to",
+    "any",
+    "port",
+    "{{ item | string }}",
+    "proto",
+    "tcp",
+  ]);
+});
+
 test("example inventory contains placeholders only and no cohort identity", async () => {
   const inventoryPath = join(ansibleRoot, "inventory.example.yml");
   const inventoryText = await readFile(inventoryPath, "utf8");
