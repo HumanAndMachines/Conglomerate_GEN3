@@ -260,3 +260,21 @@ test("a module named app keeps its root manifest inside the app directory", () =
     moduleRoot,
   );
 });
+
+test("a module named app keeps an unversioned nested App below the Module root", () => {
+  const moduleRoot = join(tmpdir(), "organizations", "Acme", "workspace", "app");
+  const packagePath = join(moduleRoot, "app", "package.json");
+  expect(moduleRootForPackage(packagePath, "app")).toBe(moduleRoot);
+
+  const result = migrateLegacyRuntimePackage(packageFixture({
+    ...legacy,
+    id: "example-app-v1",
+    module: "app",
+  }), { packagePath });
+  expect(result.changed).toBe(true);
+  expect(result.moduleManifest).toMatchObject({
+    id: "app",
+    apps: ["app/package.json"],
+    default_app: "app/package.json",
+  });
+});

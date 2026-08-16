@@ -268,10 +268,24 @@ export async function packagePathsBelow(root) {
 export function moduleRootForPackage(packagePath, moduleId = null) {
   const absolute = resolve(packagePath);
   const packageDirectory = dirname(absolute);
+  const parts = absolute.split(sep);
+  const organizationsIndex = parts.findLastIndex((part, index) =>
+    part === "organizations"
+    && ["workspace", "modules"].includes(parts[index + 2])
+    && index + 3 < parts.length - 1
+  );
+  if (organizationsIndex >= 0) {
+    const moduleRoot = parts.slice(0, organizationsIndex + 4).join(sep) || sep;
+    return moduleRoot;
+  }
   // A module may itself be named `app`. In that case a root package belongs
   // beside its lazurio.module.json and must not be mistaken for <module>/app.
-  if (moduleId && basename(packageDirectory) === moduleId) return packageDirectory;
-  const parts = absolute.split(sep);
+  // A standalone double `app/app/package.json` keeps the outer matching root;
+  // canonical Organization paths above are authoritative when available.
+  if (moduleId && basename(packageDirectory) === moduleId) {
+    const parent = dirname(packageDirectory);
+    return moduleId === "app" && basename(parent) === moduleId ? parent : packageDirectory;
+  }
   const appIndex = parts.findLastIndex((part, index) =>
     part === "app"
     && (index === parts.length - 2 || /^v\d+$/.test(parts[index + 1] ?? ""))
