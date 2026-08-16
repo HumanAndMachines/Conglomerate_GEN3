@@ -420,30 +420,23 @@ narrower: it first persists disabled desired state and then signals only the
 active record managed by the current Launchpad instance. It never adopts or
 kills an unrelated process without performing that replacement lifecycle.
 
-Productionspace systems must not look like normal office apps. The first
-productionspace release should ship with read-only Open/Logs/Doctor and explicit
-`action_policy=disabled_pending_policy` for Install/Start/Stop/Restart.
+Productionspace systems use the same canonical card anatomy as Workspace, so
+the grid keeps one Lazurio rhythm. Their behavior remains distinct: the tile
+shows a human description and a quiet read-only fact, opens only the detail,
+and never offers Install/Start/Stop/Restart, pull or release actions.
 
 ## 6. App card layout
 
-Each card should show, in order:
-
-1. Organization badge + app title.
-2. Surface badge: Workspace / Productionspace / Manual / Public preview.
-3. Primary status badge: Running / Ready / Attention / Blocked / Planned.
-4. Dependency badge: `ready`, `needs install`, `stale lockfile`, etc.
-5. Git/worktree chip: main checkout state (`Git aktuální` / `Pull N` / `Draft` /
-   `Push N` / `Diverged`) and active worktree count with Mission Control plan
-   ownership (see section 12).
-6. Runtime owner line: managed, adopted-port, none, or conflict.
-7. Local endpoint: `host:port` and health path.
-8. Primary next action:
-   - `Open` when running or URL is useful;
-   - `Install` for `needs_install`;
-   - `Repair` for `stale_lockfile`;
-   - `Start` for ready/stopped;
-   - `Logs` for failed/blocked.
-9. Secondary actions behind a kebab/more menu to reduce accidental clicks.
+The calm card surface contains the semantic icon, title and a short human
+description. A bottom fact row is reserved for a state that changes meaning or
+the next step; technical paths, boundary identifiers, runtime ownership and
+full diagnostics belong to the detail. Surface labels are not repeated inside
+a section that already establishes Organization, Workspace or Productionspace.
+Productionspace therefore never renders `Productionspace`,
+`candidate-boundary`/`filesystem-boundary`, a filesystem path or a disabled
+read-only button on every tile. It expresses the boundary as ordinary human
+copy and keeps the underlying metadata available in the detail read model.
+Secondary actions stay behind a kebab/more menu to reduce accidental clicks.
 
 The current table can remain as a debug mode, but the default shell should be card
 or grouped list based; the header dropdown determines the active Organization.

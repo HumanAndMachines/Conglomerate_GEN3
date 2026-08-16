@@ -1817,8 +1817,8 @@ input:focus-visible,
   height: 1.25rem;
 }
 
-/* Kept for the manifest-only / productionspace system cards, which build their
-   own .app-card-titles wrapper (icon beside title). */
+/* Detail drawer keeps the compact icon-beside-title wrapper. Module cards use
+   the canonical stacked .app-title-block anatomy below. */
 .app-card-titles {
   min-width: 0;
   flex: 1 1 auto;

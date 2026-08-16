@@ -2655,12 +2655,12 @@ function productionspaceSectionNode(entry) {
   node.append(
     appSectionHead(
       entry.productionspace.display_name ?? "Productionspace",
-      `${entry.productionspace.systems.length} ${pluralSystem(entry.productionspace.systems.length)} · externě spravované`,
+      `${entry.productionspace.systems.length} ${pluralSystem(entry.productionspace.systems.length)}`,
     ),
   );
   const note = document.createElement("p");
   note.className = "app-section-note";
-  note.textContent = "Release a runtime systémy s vlastními pravidly. V Launchpadu jen pro čtení, nespouští se odsud.";
+  note.textContent = "Externě spravované systémy s vlastními pravidly. V Launchpadu jsou pouze k nahlédnutí.";
   node.append(note);
   const grid = document.createElement("div");
   grid.className = "apps-grid";
@@ -2678,47 +2678,38 @@ function productionspaceCard(system, entry) {
   card.style.setProperty("--app-focus-accent", appIconFocusAccent("system"));
   card.dataset.readonlyDetailId = detail.id;
   card.tabIndex = 0;
-  card.setAttribute("aria-label", `${detail.title} — detail`);
+  card.setAttribute("aria-label", `${detail.title} — pouze k nahlédnutí, otevřít detail`);
 
   const head = document.createElement("div");
   head.className = "app-card-head";
-  const icon = document.createElement("span");
-  icon.className = "app-card-icon";
-  icon.style.cssText = appIconStyle("system");
-  icon.innerHTML = appIconSvg("system");
-  const titles = document.createElement("div");
-  titles.className = "app-card-titles";
+  const titleBlock = document.createElement("div");
+  titleBlock.className = "app-title-block";
+  titleBlock.append(appIconNode(detail));
+  const titleBody = document.createElement("div");
+  titleBody.className = "app-title-body";
   const titleRow = document.createElement("div");
   titleRow.className = "app-card-title-row";
   const title = document.createElement("h3");
   title.className = "app-card-title";
   title.textContent = system.name;
   titleRow.append(title);
-  const sub = document.createElement("p");
-  sub.className = "app-card-sub";
-  sub.textContent = `${entry.companyName} · productionspace`;
-  titles.append(titleRow, sub);
-  head.append(icon, titles);
+  const desc = document.createElement("p");
+  desc.className = "app-card-desc";
+  desc.textContent = "Externě spravovaný systém s vlastními pravidly.";
+  const copyBlock = document.createElement("div");
+  copyBlock.className = "app-card-copy";
+  copyBlock.append(titleRow, desc);
+  titleBody.append(copyBlock);
+  titleBlock.append(titleBody);
+  head.append(titleBlock);
 
-  const badges = document.createElement("div");
-  badges.className = "app-card-badges";
-  badges.append(chip("Productionspace", "chip-prod"), chip(entry.productionspace.status ?? "candidate", "chip-muted"));
-  // Readiness slotu (decision 0042) i pro productionspace systémy — např.
-  // deklarovaný firmware bez lokálního checkoutu.
-  if (system.status === "missing_access") badges.append(slotAccessChip(system));
-  if (system.status === "planned_slot") badges.append(chip("planned slot", "chip-warn"));
+  const fact = cardWarningNode({
+    kind: "fact",
+    tone: "neutral",
+    title: productionspaceCardFact(system),
+  });
 
-  const path = document.createElement("p");
-  path.className = "app-card-endpoint";
-  path.textContent = system.path;
-
-  const actions = document.createElement("div");
-  actions.className = "app-card-actions";
-  const readonly = cardActionButton("Jen pro čtení", null, true);
-  readonly.classList.add("primary-action", "btn", "btn-ghost");
-  actions.append(readonly);
-
-  card.append(head, badges, path, actions);
+  card.append(head, fact);
   card.addEventListener("click", (event) => {
     if (!shouldOpenFromCardSurface(event.target)) return;
     selectReadonlyDetail(detail);
@@ -2732,12 +2723,14 @@ function productionspaceCard(system, entry) {
   return card;
 }
 
-function slotAccessChip(slot) {
-  const blocking = slot.readiness?.severity === "blocking"
-    || !slot.readiness;
-  const node = chip(blocking ? "Chybí očekávaný přístup" : "Očekávaně omezený přístup", blocking ? "chip-danger" : "chip-muted");
-  node.title = slot.readiness?.message ?? "Závažnost vychází z access deklarace modulu.";
-  return node;
+function productionspaceCardFact(system) {
+  if (system.status === "planned_slot") return "Systém je zatím naplánovaný.";
+  if (system.status === "missing_access") {
+    const blocking = system.readiness?.severity === "blocking"
+      || !system.readiness;
+    return blocking ? "Chybí očekávaný přístup." : "Omezený přístup je očekávaný.";
+  }
+  return "V Launchpadu pouze k nahlédnutí.";
 }
 
 function productionspaceDetail(system, entry) {
@@ -2761,6 +2754,7 @@ function productionspaceDetail(system, entry) {
     },
     package_path: system.path ?? "-",
     cwd: system.path ?? "-",
+    productionspace_readiness: system.readiness ?? null,
     is_productionspace: true,
     is_readonly_system: true,
     readonly_reason: "Productionspace systémy jsou v Launchpadu jen pro čtení. Nespouštějí se ani nereleasují z rootu bez explicitní policy.",
@@ -4408,6 +4402,12 @@ function renderDetailStatus(app) {
     note.className = "detail-note";
     note.textContent = app.readonly_reason ?? policyLabel(app);
     section.append(note);
+  }
+  if (app.productionspace_readiness) {
+    section.append(detailList([
+      ["Stav přístupu", app.productionspace_readiness.message ?? "Bez dalšího vysvětlení."],
+      ["Důvod", app.productionspace_readiness.reason ?? "-"],
+    ]));
   }
   return section;
 }
