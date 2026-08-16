@@ -14,7 +14,6 @@
     "independent_self_update_allowed": false
   },
   "provenance": {
-    "migrated_from": "HumanAndMachine-ai/Buddy_GEN2@08b7ee79058a0ea91472fe6cc3651104221d2ab8:release/runtime-pins.json",
     "remote_verified_on": "2026-08-12",
     "remote_verification": {
       "fork": true,

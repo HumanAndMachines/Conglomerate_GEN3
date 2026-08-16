@@ -37,7 +37,7 @@ Jsou to **dvě různé otázky** a pletou se snadno:
 - *Mám k němu teď přístup?* — na to odpoví **jedině krok 4**.
 
 Kroky 1–3 jsou **indicie, ne odpovědi**. Žádný z nich postup neukončuje: ani
-Principálovo „ano, mám Friday", ani binding v manifestu, ani viditelný node
+Principálovo „ano, Buddy existuje", ani binding v manifestu, ani viditelný node
 v tailnetu neprokazují, že se k Buddymu dnes někdo dostane. Když se na
 kterémkoli z nich zastavíš, začneš plánovat proti Buddymu, který nemusí být
 dosažitelný — a přijdeš na to až ve chvíli, kdy už jsi něco slíbil.
@@ -96,9 +96,9 @@ vrstva nenahrazuje druhou.
 Nejdřív ověř `active/lazurio.resident.json`, integritu payloadu a profil
 `buddy`. Chybějící manifest neznamená, že se smějí použít source instrukce:
 znamená legacy kohortový host, který ještě neprošel assisted migrací. Takový
-host se nemění ad hoc. Jeho přechod drží verzovaný kontrakt
-`distribution/migrations/buddy-gen2.v1.json`, rollout plán příslušné Organizace
-a zachovaný původní service fallback až do prokázané parity.
+host se nemění ad hoc. Jeho přechod drží veřejný assisted rollout kontrakt,
+rollout plán příslušné Organizace a zachovaný původní service fallback až do
+prokázané parity.
 
 Praktický důsledek pro tvoje rozhodování:
 
@@ -114,14 +114,14 @@ Praktický důsledek pro tvoje rozhodování:
 ## Vztah k self-service onboardingu
 
 Založení personalspace pokrývá [`create-personalspace.md`](create-personalspace.md).
-**Buddy část self-service flow zůstává PENDING `CAC-0072`** — root parser
-`--with-buddy` ji dnes nevytváří. První kohorta se místo toho převádí
+**Buddy část self-service flow zatím není dostupná** — root parser
+`--with-buddy` ji dnes nevytváří. Legacy hosty se místo toho převádějí
 asistovaným resident rolloutem s integrity, health, rollback a service-cutover
 gatem. Když aktivní resident manifest chybí, narazil jsi na dosud
-nemigrovanou kohortovou instalaci, ne na podporovanou druhou architekturu.
+nemigrovanou instalaci, ne na podporovanou druhou architekturu.
 
 ---
 
-*Vzniklo z provozu první GEN2 kohorty (2026-07/08): agenti v rootu neměli jak
-zjistit, že hostovaný Buddy existuje, a neměli kam být odkázáni, když na něj
-narazili.*
+*Vzniklo z anonymizovaných provozních poznatků legacy hostů: agenti v rootu
+neměli jak zjistit, že hostovaný Buddy existuje, a neměli kam být odkázáni,
+když na něj narazili.*

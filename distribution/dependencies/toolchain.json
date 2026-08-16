@@ -33,7 +33,6 @@
     }
   },
   "provenance": {
-    "migrated_from": "HumanAndMachine-ai/Buddy_GEN2@08b7ee79058a0ea91472fe6cc3651104221d2ab8:host/runtime",
     "remote_verified_on": "2026-08-16",
     "remote_verification": "GitHub release API asset digests agree for both supported Linux targets"
   }
