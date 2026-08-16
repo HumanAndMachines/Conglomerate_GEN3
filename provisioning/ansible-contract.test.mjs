@@ -136,6 +136,13 @@ test("host baseline preserves existing custody and keeps bridge unprivileged", a
       group: "{{ lazurio_runtime_user }}",
       mode: "0750",
     });
+  expect(directories.loop.find(
+    (item) => item.path === "{{ lazurio_bridge_state_root }}/queue",
+  )).toEqual({
+    path: "{{ lazurio_bridge_state_root }}/queue",
+    group: "{{ lazurio_bridge_user }}",
+    mode: "0700",
+  });
 });
 
 test("runtime baseline invokes the exact pinned Hermes service interface", async () => {
