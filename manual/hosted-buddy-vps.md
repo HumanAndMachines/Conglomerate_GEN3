@@ -26,8 +26,8 @@ běh, který se odehrává jinde, pod jinými pravidly a s jiným credential set
 ## Jak zjistíš, jestli tvůj Principál Buddyho má
 
 **Deklarace není důkaz.** `personal.gen3.json` může Buddyho binding deklarovat
-a přesto k němu Principál dnes přístup mít nemusí — a naopak, kohortové
-instalace běží mimo self-service lane a v manifestu je nemusí být vidět vůbec.
+a přesto k němu Principál dnes přístup mít nemusí — a naopak, instalace mimo
+self-service lane v manifestu nemusí být vidět vůbec.
 Stejná logika jako u přístupů obecně: **scope se prokazuje operací, ne
 přečtením konfigurace.**
 
@@ -47,8 +47,8 @@ dosažitelný — a přijdeš na to až ve chvíli, kdy už jsi něco slíbil.
    signál, že instalace proběhla. O přístupu neříká nic.
 2. **Manifest jako indicie.** `personalspace/<owner>_GEN3/personal.gen3.json` —
    pokud nese Buddy binding, ber to jako *pravděpodobné ano, ověř operací*.
-   Pokud ho nenese, **neuzavírej z toho „ne"**: kohortové instalace běží mimo
-   self-service lane a v manifestu být nemusí.
+   Pokud ho nenese, **neuzavírej z toho „ne"**: instalace mimo self-service
+   lane v manifestu být nemusí.
 3. **Dosažitelnost hostu.** Hostované Buddy hosty se zpřístupňují přes privátní
    síť Principála, ne veřejným portem. Pokud používá Tailscale, `tailscale
    status` vypíše i nody sdílené do jeho tailnetu. **Odpovídající node
@@ -58,12 +58,6 @@ dosažitelný — a přijdeš na to až ve chvíli, kdy už jsi něco slíbil.
    nebo SSH na host. Tady zároveň končí to, co smí agent dělat sám — viz
    hranice níž. Když operace neproběhla, správná odpověď je **„nevím, a proto
    nemá"**, ne „nejspíš ano".
-
-> **Měřený příklad, proč to takhle stojí.** 2026-08-01 platilo o jednom hostu
-> současně: Principál Buddyho má, node odpovídá (`tailscale ping` → `pong`
-> za 88 ms) — a SSH přesto odmítlo **každého** uživatele. Kroky 1 a 3 daly
-> „ano", pravdivá odpověď byla „ne". Operátor to zjistil až tím, že se
-> skutečně pokusil přihlásit.
 
 **Fail-closed:** dokud nemáš důkaz z kroku 4, pracuj s odpovědí „nemá". Nikdy
 nezakládej plán, report ani slib na domněnce, že Buddy je dosažitelný.
@@ -95,7 +89,7 @@ vrstva nenahrazuje druhou.
 
 Nejdřív ověř `active/lazurio.resident.json`, integritu payloadu a profil
 `buddy`. Chybějící manifest neznamená, že se smějí použít source instrukce:
-znamená legacy kohortový host, který ještě neprošel assisted migrací. Takový
+znamená legacy host, který ještě neprošel assisted migrací. Takový
 host se nemění ad hoc. Jeho přechod drží veřejný assisted rollout kontrakt,
 rollout plán příslušné Organizace a zachovaný původní service fallback až do
 prokázané parity.
@@ -122,6 +116,6 @@ nemigrovanou instalaci, ne na podporovanou druhou architekturu.
 
 ---
 
-*Vzniklo z anonymizovaných provozních poznatků legacy hostů: agenti v rootu
-neměli jak zjistit, že hostovaný Buddy existuje, a neměli kam být odkázáni,
-když na něj narazili.*
+*Tento manuál drží obecnou hranici mezi lokálním Lazurio rootem a hostovaným
+Buddy runtime; konkrétní rollout plány a provozní poznatky patří do interních
+zdrojů příslušné Organizace.*

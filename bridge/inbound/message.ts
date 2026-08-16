@@ -101,9 +101,9 @@ export const CONSOLE_LOGGER: BridgeEventLogger = {
 // BUDDY_NAME and fails SAFE to the generic "Buddy" — NEVER to another host's
 // Buddy.
 //
-// The concrete failure this exists for: Host #2 is installed from this same
-// repo. With the name baked in as a literal, the owner's very first message to
-// their brand-new Buddy came back signed by somebody else's Buddy.
+// With a display name baked in as a literal, two installations from the same
+// source can answer under the wrong Buddy identity. The name therefore remains
+// a per-host input rather than shared source state.
 export const DEFAULT_BUDDY_NAME = "Buddy";
 
 export function buddyDisplayName(

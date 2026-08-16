@@ -4,7 +4,7 @@
 Mašin. Není součástí non-Git Lazurio Rootu a běžící Resident z něj neprovádí
 vlastní autonomní správu hostu.
 
-První greenfield lane je úmyslně malá:
+Buddy/Linux greenfield lane v1 je úmyslně malá:
 
 - podporuje Buddy profil na Debian-family Linuxu;
 - před první mutací vyžaduje content-free attestation už ověřeného provider
@@ -16,7 +16,7 @@ První greenfield lane je úmyslně malá:
   Hermes upstream CLI registruje jeho stdio MCP;
 - přes exact operator runtime spustí stávající `buddy-rollout` nad exact
   resident artefaktem;
-- neobsahuje inventory konkrétní kohorty, secrets ani provider credentials;
+- neobsahuje inventory konkrétního nasazení, secrets ani provider credentials;
 - nevytváří vlastní updater, daemon, sandbox, ACL ani fleet control plane.
 
 Zulip není instalovaný do Buddyho hostu tímto playbookem. Bridge long-polluje
@@ -27,9 +27,10 @@ ekvivalentní recovery checkpoint vzniká přes existující provider mechanismu
 Playbook pouze odmítne první mutaci bez content-free dokladu, že checkpoint
 existuje a restore cesta byla ověřena.
 
-První kohorta tím nedostává vlastní dlouhodobý backup daemon. Aplikační
-encrypted backup/restore zůstává samostatný follow-up po ověření obou pilotů;
-do té doby je cohort gate provider recovery checkpoint před každou změnou.
+Playbook tím nezavádí vlastní dlouhodobý backup daemon. Aplikační encrypted
+backup/restore je samostatná operator-owned capability; dokud pro konkrétní
+nasazení není zvlášť ověřena, zůstává provider recovery checkpoint povinným
+vstupem před každou změnou.
 
 ## Proč Ansible není updater
 
@@ -87,7 +88,7 @@ Není v něm hostname, jméno Principála, cesta k Personalspace, obsah, token a
 private key. Skutečný checkpoint a jeho custody zůstávají u providera a
 Principála.
 
-## První Buddy/Linux průchod
+## Buddy/Linux greenfield průchod
 
 1. Připrav z `inventory.example.yml` vlastní privátní inventory mimo tento
    public repozitář. Hodnoty secrets do inventory nepatří.
@@ -113,7 +114,7 @@ Principála.
 5. Konvergenci spusť až jako vědomý assisted krok. Zkontroluj owner účet,
    Personalspace, exact piny, privátní env soubory, recovery attestation,
    tailnet a cílový artifact id.
-6. Po prvním PASS spusť stejný playbook znovu: musí být no-op nebo pouze
+6. Po úspěšné konvergenci spusť stejný playbook znovu: musí být no-op nebo pouze
    transparentní readback. Potom ověř status podle
    `manual/update-installed-resident.md`.
 7. Řízené selhání a rollback prováděj jen na disposable hostu nebo pod exact

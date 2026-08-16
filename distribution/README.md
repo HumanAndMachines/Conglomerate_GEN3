@@ -117,7 +117,7 @@ existující mutable strom bez kopie nebo přesunu. Updater uloží resolved tar
 do mode-0600 `mounts.v1.json`; každý další update, status i rollback ověřuje,
 že lokální link stále míří přesně tam. Jiný target se odmítne a neprázdný
 managed adresář se nikdy neschová pod externím mountem. Pro existující Buddy
-host je deklarace `personalspace` povinnou součástí cohort preflightu.
+host je deklarace `personalspace` povinnou součástí rollout preflightu.
 
 V1 používá POSIX atomic-symlink adapter pro Linux a macOS. Windows Kolegové
 zůstávají na stávajícím Git checkoutu a Windows resident lifecycle se
@@ -186,6 +186,7 @@ Nová Hermes/gbrain materializace zůstává dalším explicitním parity gatem.
 ## Stav první fáze
 
 Build contract v1 vydává pouze profil `buddy`. Schema, builder, integrity
-engine a updater jsou profilově neutrální, ale runtime profil `ai-colleague`
-ani Steward overlay se nepublikují před úspěšným Buddy cohort gatem. Build ani
-updater sám neopravňuje přístup na živý host, Release nebo production cutover.
+engine a updater jsou profilově neutrální; každý další runtime profil nebo
+overlay se publikuje teprve s vlastním reviewovaným kontraktem a ověřením.
+Build ani updater sám neopravňuje přístup na živý host, Release nebo production
+cutover.

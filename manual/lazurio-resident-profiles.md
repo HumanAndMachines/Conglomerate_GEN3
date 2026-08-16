@@ -141,7 +141,7 @@ checkoutu. Běžný update už aktivního Residenta provádí pouze jeho verzova
 updater. Ansible může updater explicitně zavolat, ale nesmí znovu implementovat
 kopírování, přepnutí active verze ani rollback.
 
-První Buddy/Linux operator lane používá jen existující mechanismy: Ansible pro
+Buddy/Linux operator lane v1 používá jen existující mechanismy: Ansible pro
 host desired state, upstream install rozhraní Hermesu a GBrainu, Tailscale jako
 access plane, UFW jako host firewall a provider snapshot jako recovery bod.
 Nový osobní GBrain začíná na lokálním PGLite; nevzniká kvůli němu další
@@ -149,7 +149,7 @@ PostgreSQL service. Zulip je privátní externí transport prerequisite a Buddy
 bridge jej polluje odchozím spojením, takže resident host nepotřebuje veřejný
 Zulip ingress.
 
-Síťový kontrakt prvního Linux profilu má nulový veřejný ingress. SSH, případný
+Síťový kontrakt Linux profilu v1 má nulový veřejný ingress. SSH, případný
 privátní Zulip HTTPS a servisní UI se připouštějí pouze přes deklarované
 tailnet rozhraní. Najde-li preflight staré veřejné nebo jinak cizí allow
 pravidlo, nic nemaže ani nepřepisuje: zastaví se a nechá Principála rozhodnout,
@@ -164,18 +164,18 @@ Release je svázaný s přesným artefaktem. Bezpečný lifecycle má tento tvar
 5. teprve při PASS atomicky přepnout aktivní verzi;
 6. ponechat poslední zdravou verzi jako explicitní rollback cíl.
 
-První rollout je úmyslně asistovaný a viditelný. Background daemon,
+Rollout v1 je úmyslně asistovaný a viditelný. Background daemon,
 nepozorovaná fleet aktualizace a autonomní maintenance window nejsou součástí
 základního kontraktu. Přesný stav aktuálního artefaktu ověří
 `bun run resident:doctor`.
 
 Updater v1 drží immutable verze pod `versions/`, content-free lifecycle stav a
 mutable `organizations/` a `personalspace/` pod odděleným `state/`. `active`
-je atomicky měněný odkaz na jednu zdravou verzi. Po prvním assisted bootstrapu
+je atomicky měněný odkaz na jednu zdravou verzi. Po assisted bootstrapu
 se update, status a rollback spouští z `active/resident/updater.mjs`; živý root
 se kvůli tomu nestává source checkoutem.
 
-První lifecycle adapter je záměrně pouze POSIX (Linux a macOS). Windows
+Lifecycle adapter v1 je záměrně pouze POSIX (Linux a macOS). Windows
 rezidentní instalace se nezapne, dokud nebude mít vlastní atomický pointer
 adapter a stejné failure testy. To neomezuje dnešní Windows Kolegy: jejich
 Lazurio zůstává Git checkout, ve kterém mohou připravit platformní opravu přes

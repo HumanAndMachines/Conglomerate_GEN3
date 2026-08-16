@@ -64,7 +64,7 @@ export interface FakeRealmOptions {
   firstMessageId?: number;
 }
 
-/** How a broken gateway breaks. Both shapes were observed on Host #1. */
+/** Two supported failure shapes at the Zulip gateway boundary. */
 export type GatewayBreak =
   /** Zulip itself answers, with its documented machine-readable code. */
   | "bad-event-queue-id"

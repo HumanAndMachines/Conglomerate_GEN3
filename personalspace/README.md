@@ -20,8 +20,8 @@ skutečně onboarduje. Aktivní Buddy smí běžet pouze na dedikované per-owne
 VPS; tento lokální mount drží jeho Git konfiguraci, ne Hermes/Buddy runtime.
 
 **Agentům:** jestli tvůj Principál hostovaného Buddyho má, se nepozná
-z manifestu — deklarace není důkaz a kohortové instalace v něm nemusí být
-vidět vůbec. Postup zjištění, hranice toho, co s hostem smíš dělat, a pravidlo,
+z manifestu — deklarace není důkaz a instalace mimo self-service lane v něm
+nemusí být vidět vůbec. Postup zjištění, hranice toho, co s hostem smíš dělat, a pravidlo,
 že **na VPS platí vygenerované instrukce aktivního Buddy resident rootu spolu
 s privátním profilem Principála** a ne pravidla source checkoutu, drží
 [`../manual/hosted-buddy-vps.md`](../manual/hosted-buddy-vps.md).

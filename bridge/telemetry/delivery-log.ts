@@ -1,11 +1,9 @@
 // bridge/telemetry — the content-free delivery state machine of the Buddy bridge.
 //
-// WHY THIS EXISTS (Host #1, 2026-07-25/26). A reply crossed four hops —
-// Zulip → Smokescreen → bridge → agent runtime → back into Zulip — and the only
-// operational evidence the bridge produced when the LAST hop failed was a single
-// line: "durable reply delivery deferred". That line says a hop failed. It does
-// not say WHICH hop, and it does not say WHY, so the outage cost a four-hop
-// manual hunt instead of a two-minute read.
+// WHY THIS EXISTS. A reply crosses multiple hops — Zulip → bridge → agent
+// runtime → back into Zulip — and a generic "delivery deferred" line cannot
+// tell an operator which hop failed or why. The state machine below keeps that
+// diagnosis content-free while making the failed boundary explicit.
 //
 // The replacement is deliberately two-dimensional and nothing else:
 //
@@ -174,7 +172,7 @@ export type HostnameProbe = (hostname: string) => Promise<boolean>;
  * Ask this host's own resolver whether the hop's hostname resolves at all.
  * This is the ONLY honest way to separate `dns` from `connect` on this runtime:
  * Bun 1.3.14 reports an NXDOMAIN fetch and a refused connection with the SAME
- * `ConnectionRefused` code (measured 2026-07-26).
+ * `ConnectionRefused` code.
  *
  * A resolver that never answers IS a DNS fault, so a timed-out probe is `false`.
  * The hostname is used here and never logged.
