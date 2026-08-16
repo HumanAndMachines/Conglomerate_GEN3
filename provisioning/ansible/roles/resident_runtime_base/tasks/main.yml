@@ -204,7 +204,7 @@
 
 - name: Inspect the local PGLite engine
   ansible.builtin.stat:
-    path: "{{ lazurio_gbrain_home }}/brain.pglite/PG_VERSION"
+    path: "{{ lazurio_gbrain_home }}/.gbrain/brain.pglite/PG_VERSION"
   register: lazurio_gbrain_pglite
   when: lazurio_gbrain_engine == "pglite"
 
