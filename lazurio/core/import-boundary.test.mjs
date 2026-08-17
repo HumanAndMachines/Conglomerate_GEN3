@@ -52,6 +52,30 @@ test("slot classification has one physical owner shared by CLI and Launchpad", a
   expect(consumers.some((importer) => importer.startsWith("launchpad/src/"))).toBe(true);
 });
 
+test("canonical path containment has one physical Core owner", async () => {
+  const moduleName = "path-boundary-lib.mjs";
+  expect(existsSync(join(coreRoot, moduleName))).toBe(true);
+  expect(existsSync(join(repositoryRoot, "launchpad", "src", moduleName))).toBe(false);
+
+  const imports = await repositoryImports([
+    join(repositoryRoot, "lazurio"),
+    join(repositoryRoot, "launchpad", "src"),
+    join(repositoryRoot, "scripts"),
+  ]);
+  const consumers = imports
+    .filter(({ target }) => target === join(coreRoot, moduleName))
+    .map(({ importer }) => importer)
+    .sort();
+
+  expect(consumers).toEqual([
+    "launchpad/src/git-inventory-lib.mjs",
+    "launchpad/src/git-materialization-lib.mjs",
+    "launchpad/src/mission-control-plan-lib.mjs",
+    "launchpad/src/worktree-actions-lib.mjs",
+    "launchpad/src/worktree-lib.mjs",
+  ]);
+});
+
 async function repositoryImports(roots) {
   const imports = [];
   for (const root of roots) {
