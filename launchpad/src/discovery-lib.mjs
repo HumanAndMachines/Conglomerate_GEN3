@@ -1677,6 +1677,7 @@ export async function discoverLaunchpadApps(
       dev_script: app.dev_script,
       preview_script: app.preview_script ?? null,
       build_script: app.build_script ?? null,
+      required_module_slots: app.required_module_slots ?? [],
       listeners: app.listeners ?? [],
       entrypoint_listener: app.entrypoint_listener ?? null,
       module_contract: app.module_contract ?? null,

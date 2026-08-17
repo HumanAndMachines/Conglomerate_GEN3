@@ -14,6 +14,7 @@ const RUNTIME_KEYS = new Set([
   "dev_script",
   "preview_script",
   "build_script",
+  "required_module_slots",
   "plugin",
   "icon",
   "description",

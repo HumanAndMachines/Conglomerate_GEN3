@@ -3549,6 +3549,51 @@ test("runtime manager open chain nejdřív nainstaluje chybějící balíčky", 
   await runtime.stop("test-company-demo-v1");
 }, platformTestTimeout(15_000));
 
+test("Mission Control s planned data slotem se zastaví před startem procesu", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({
+    port,
+    moduleSlots: [
+      {
+        path: "mission-control/db",
+        slug: "mission-control-data",
+        category: "planning-data",
+        default_access: "expected",
+        required_roles: ["organization-admin"],
+        source_of_truth: "repository-db:v3",
+        space: "root",
+        status: "planned_slot",
+      },
+    ],
+    appOverrides: {
+      title: "BNO & LJ Mission Control",
+      module: "mission-control",
+      required_module_slots: ["mission-control/db"],
+      tags: ["mission-control", "repository-db"],
+    },
+  });
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "test-instance",
+  });
+
+  const health = await runtime.health("test-company-demo-v1");
+  expect(health.dependencies).toMatchObject({
+    state: "planned_slot",
+    can_start: false,
+    can_install: false,
+  });
+  expect(health.dependencies.message).toContain("repozitář ručně neklonuj");
+
+  await expect(runtime.start("test-company-demo-v1")).rejects.toMatchObject({
+    status: 409,
+    code: "app_not_ready",
+    metadata: { failure_kind: "planned_slot" },
+  });
+  expect((await runtime.health("test-company-demo-v1")).managed).toBe(false);
+});
+
 test("runtime manager vrací 404 pro aplikaci mimo discovery", async () => {
   const port = await findFreePort();
   const root = await createCompaniesWorkspaceFixture({ port });
@@ -3575,6 +3620,8 @@ async function createCompaniesWorkspaceFixture({
   withNodeModules = false,
   staleLockfile = false,
   installScripts = {},
+  appOverrides = {},
+  moduleSlots = [],
 }) {
   const root = await mkdtemp(join(tmpdir(), "companiesascode-launchpad-"));
   registerTempRoot(root, { port });
@@ -3601,7 +3648,7 @@ async function createCompaniesWorkspaceFixture({
   });
   await writeJson(join(companyRoot, "modules.manifest.json"), {
     company: "test-company",
-    module_slots: [],
+    module_slots: moduleSlots,
   });
   await writeJson(join(companyRoot, "TODO.tasks.json"), {});
   await writeJson(join(companyRoot, "DONE.tasks.json"), {});
@@ -3630,6 +3677,7 @@ async function createCompaniesWorkspaceFixture({
         health_path: "/health",
         dev_script: "dev",
         tags: ["test"],
+        ...appOverrides,
       },
     },
   };

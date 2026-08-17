@@ -3153,6 +3153,25 @@ export function createRuntimeManager({
     const manager = detectPackageManager({ packageJson, lockfile });
     const declaredDependencyCount = countDeclaredDependencies(packageJson);
     const packageNeedsInstall = declaredDependencyCount > 0 || Boolean(lockfile);
+    const requiredSlot = await requiredModuleSlotState({ companiesRoot, app });
+
+    if (requiredSlot) {
+      return dependencyResult({
+        app,
+        state: requiredSlot.state,
+        appCwd,
+        packagePath,
+        packageJsonPresent: true,
+        nodeModulesPresent,
+        lockfile,
+        declaredDependencyCount,
+        packageManager: manager.name,
+        packageManagerSource: manager.source,
+        installCommand: null,
+        checkedAt,
+        message: requiredSlot.message,
+      });
+    }
 
     if (!manager.supported) {
       return dependencyResult({
@@ -3248,6 +3267,58 @@ export function createRuntimeManager({
     logs,
     reconcileDesiredState,
   };
+}
+
+async function requiredModuleSlotState({ companiesRoot, app }) {
+  const requiredSlots = Array.isArray(app?.required_module_slots)
+    ? app.required_module_slots
+    : [];
+  if (requiredSlots.length === 0) return null;
+
+  const organizationPath = typeof app?.organization_path === "string"
+    ? app.organization_path
+    : null;
+  if (!organizationPath) {
+    return {
+      state: "required_slot_unavailable",
+      message: `${app.title} deklaruje povinný Organization slot, ale runtime nemá bezpečně určenou cestu Organizace. Oprav runtime manifest.`,
+    };
+  }
+
+  const organizationRoot = join(companiesRoot, organizationPath);
+  let manifest;
+  try {
+    manifest = JSON.parse(await readFile(join(organizationRoot, "modules.manifest.json"), "utf8"));
+  } catch (error) {
+    return {
+      state: "required_slot_unavailable",
+      message: `${app.title} nejde spustit, protože modules.manifest.json nelze přečíst: ${error.message}`,
+    };
+  }
+
+  const slots = Array.isArray(manifest?.module_slots) ? manifest.module_slots : [];
+  for (const requiredPath of requiredSlots) {
+    const slot = slots.find((candidate) => candidate?.path === requiredPath);
+    if (!slot) {
+      return {
+        state: "required_slot_unavailable",
+        message: `${app.title} nejde spustit, protože modules.manifest.json nedeklaruje povinný slot ${requiredPath}.`,
+      };
+    }
+    if (slot.status === "planned_slot") {
+      return {
+        state: "planned_slot",
+        message: `${app.title} zatím nejde spustit: datový slot ${requiredPath} je plánovaný. Dokonči jeho schválenou manifestem řízenou aktivaci; repozitář ručně neklonuj.`,
+      };
+    }
+    if (!existsSync(join(organizationRoot, requiredPath))) {
+      return {
+        state: "required_slot_unavailable",
+        message: `${app.title} nejde spustit, protože povinný slot ${requiredPath} není na této mašině dostupný. Spusť Synchronizovat a Doctor.`,
+      };
+    }
+  }
+  return null;
 }
 
 function dependencyResult({
