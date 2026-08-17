@@ -425,19 +425,31 @@ export async function buildWorktreesResponse({ companiesRoot, organization = nul
 }
 
 export async function buildPlansResponse({ companiesRoot, organization = null, module = null } = {}) {
-  if (!module) return buildMissionControlPlanIndex({ companiesRoot, organization });
-
   const inventory = await buildGitInventory({ companiesRoot });
   const records = [...inventory.repos, ...inventory.planned]
     .filter((record) => !organization || record.organization === organization);
-  const record = resolveInventoryModuleRecord(records, module);
-  if (!record || !repoProjectsToLocalMachine(record)) return emptyMissionControlPlanIndex();
+  const selectedRecord = module ? resolveInventoryModuleRecord(records, module) : null;
+  if (module && (!selectedRecord || !repoProjectsToLocalMachine(selectedRecord))) {
+    return emptyMissionControlPlanIndex();
+  }
 
-  return buildMissionControlPlanIndex({
-    companiesRoot,
-    organization: record.organization,
-    moduleIdentity: moduleIdentityForRecord(record, records),
+  const planIndex = await buildMissionControlPlanIndex({ companiesRoot, organization });
+  const projectedPlans = planIndex.plans.filter((plan) => {
+    const planRecords = resolvePlanInventoryRecords(
+      plan,
+      records.filter((record) => record.organization === plan.organization),
+    );
+    if (planRecords.length === 0 || planRecords.some((record) => !repoProjectsToLocalMachine(record))) {
+      return false;
+    }
+    return !selectedRecord || planRecords.some((record) => record.key === selectedRecord.key);
   });
+  return {
+    ...planIndex,
+    plans: selectedRecord
+      ? projectedPlans.map((plan) => ({ ...plan, module_match: "direct" }))
+      : projectedPlans,
+  };
 }
 
 export function compactGitSummaryForApp(repo) {
@@ -527,15 +539,30 @@ function resolveInventoryModuleRecord(records, module) {
   return pathMatches.length === 1 ? pathMatches[0] : null;
 }
 
-function moduleIdentityForRecord(record, records) {
-  const identityMatches = records.filter((candidate) => inventoryRecordMatchesModule(candidate, record.module));
-  return {
-    // A stable ID is safe as a free-text fallback only while it identifies
-    // this declaration uniquely. An exact slot path remains unambiguous even
-    // when legacy modules/ and workspace/ basenames collide.
-    ids: identityMatches.length === 1 && identityMatches[0].key === record.key ? [record.module] : [],
-    paths: typeof record.slot_path === "string" ? [record.slot_path] : [],
-  };
+function resolvePlanInventoryRecords(plan, records) {
+  const resolved = new Map();
+  for (const path of Array.isArray(plan.linked_paths) ? plan.linked_paths : []) {
+    const exactMatches = records
+      .filter((record) => typeof record.slot_path === "string" && planPathBelongsToSlot(path, record.slot_path))
+      .sort((left, right) => right.slot_path.length - left.slot_path.length);
+    if (exactMatches.length > 0) {
+      const longest = exactMatches.filter((record) => record.slot_path.length === exactMatches[0].slot_path.length);
+      if (longest.length === 1) resolved.set(longest[0].key, longest[0]);
+      continue;
+    }
+
+    const [space, physicalName] = path.split("/");
+    if (!physicalName || (space !== "modules" && space !== "workspace")) continue;
+    const legacyMatches = records.filter((record) =>
+      typeof record.slot_path === "string" && basename(record.slot_path) === physicalName,
+    );
+    if (legacyMatches.length === 1) resolved.set(legacyMatches[0].key, legacyMatches[0]);
+  }
+  return [...resolved.values()];
+}
+
+function planPathBelongsToSlot(path, slotPath) {
+  return path === slotPath || path.startsWith(`${slotPath}/`);
 }
 
 function emptyMissionControlPlanIndex() {

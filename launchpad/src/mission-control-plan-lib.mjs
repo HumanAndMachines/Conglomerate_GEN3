@@ -14,15 +14,14 @@ const missionControlPlanRoots = [
   "mission-control/db/data/mission-control/plans",
   "mission-control/plans",
 ];
+const planLinkItemFields = new Set(["label", "path", "url"]);
 
 export async function buildMissionControlPlanIndex({
   companiesRoot,
   organization = null,
   module = null,
-  moduleIdentity = null,
 } = {}) {
   if (!companiesRoot) throw new Error("buildMissionControlPlanIndex requires companiesRoot");
-  const hasModuleSelector = Boolean(module || moduleIdentity);
   const inventory = await buildGitInventory({ companiesRoot });
   const realCompaniesRoot = await realpath(companiesRoot);
   const organizations = uniqueOrganizations(inventory.repos);
@@ -50,8 +49,8 @@ export async function buildMissionControlPlanIndex({
       })) {
         if (!file.endsWith(".yaml") && !file.endsWith(".yml")) continue;
         const text = await readFile(file, "utf8");
-        const plan = parsePlanFile({ companiesRoot, organization: org, file, text, module, moduleIdentity });
-        if (hasModuleSelector && plan.module_match === "none") continue;
+        const plan = parsePlanFile({ companiesRoot, organization: org, file, text, module });
+        if (module && plan.module_match === "none") continue;
         plans.push(plan);
       }
     }
@@ -114,12 +113,13 @@ export function isMissionControlPlanPath(planPath) {
   return missionControlPlanRoots.some((root) => planPath.startsWith(`${root}/`));
 }
 
-function parsePlanFile({ companiesRoot, organization, file, text, module, moduleIdentity = null }) {
+function parsePlanFile({ companiesRoot, organization, file, text, module }) {
   const fileName = basename(file);
   const code = topLevelValue(text, "dev_code") ?? topLevelValue(text, "code") ?? fileName.match(/[A-Z]+-\d+/)?.[0] ?? fileName.replace(/\.ya?ml$/, "");
   const title = topLevelValue(text, "title") ?? topLevelValue(text, "name") ?? humanizeFileName(fileName);
   const status = topLevelValue(text, "status") ?? "unknown";
-  return {
+  const linkedPaths = topLevelLinkPaths(text);
+  const plan = {
     code,
     organization: organization.slug,
     organization_path: organization.path,
@@ -127,36 +127,87 @@ function parsePlanFile({ companiesRoot, organization, file, text, module, module
     organization_relative_path: relative(join(companiesRoot, organization.path), file).replace(/\\/g, "/"),
     title,
     status,
-    module_match: module || moduleIdentity ? moduleMatch(text, { module, moduleIdentity }) : "general",
+    module_match: module ? moduleMatch(linkedPaths, module) : "general",
   };
+  // Public plan projection needs structured ownership evidence, but link paths
+  // are internal resolver plumbing and must not expand the API payload.
+  Object.defineProperty(plan, "linked_paths", {
+    value: linkedPaths,
+    enumerable: false,
+  });
+  return plan;
 }
 
-function moduleMatch(text, { module, moduleIdentity }) {
-  if (moduleIdentity) {
-    for (const path of normalizedModuleIdentityValues(moduleIdentity.paths)) {
-      const escapedPath = escapeRegExp(path);
-      if (new RegExp(`(?:^|[^A-Za-z0-9._/-])${escapedPath}(?:/|$|[^A-Za-z0-9._-])`, "m").test(text)) {
-        return "direct";
-      }
-    }
-    for (const id of normalizedModuleIdentityValues(moduleIdentity.ids)) {
-      const escapedId = escapeRegExp(id);
-      if (new RegExp(`(?:^|[^A-Za-z0-9._-])${escapedId}(?:$|[^A-Za-z0-9._-])`, "m").test(text)) {
-        return "general";
-      }
-    }
-    return "none";
-  }
-
-  const escaped = escapeRegExp(module);
-  if (new RegExp(`(modules|workspace)/${escaped}(?:/|\\b)`).test(text)) return "direct";
-  if (new RegExp(`\\b${escaped}\\b`).test(text)) return "general";
+function moduleMatch(linkedPaths, module) {
+  if (linkedPaths.some((path) => planPathBelongsToSlot(path, `modules/${module}`))) return "direct";
+  if (linkedPaths.some((path) => planPathBelongsToSlot(path, `workspace/${module}`))) return "direct";
   return "none";
 }
 
-function normalizedModuleIdentityValues(values) {
-  if (!Array.isArray(values)) return [];
-  return [...new Set(values.filter((value) => typeof value === "string" && value !== ""))];
+function topLevelLinkPaths(text) {
+  const paths = [];
+  let inLinks = false;
+  let item = null;
+  let invalid = false;
+  const finishItem = () => {
+    if (item?.path) paths.push(item.path);
+    item = null;
+  };
+  for (const line of text.split(/\r?\n/)) {
+    if (!inLinks) {
+      if (/^links:\s*(?:#.*)?$/.test(line)) inLinks = true;
+      continue;
+    }
+    if (/^[A-Za-z_][A-Za-z0-9_-]*:\s*/.test(line)) {
+      finishItem();
+      break;
+    }
+    if (/^\s*(?:#.*)?$/.test(line)) continue;
+
+    const itemStart = line.match(/^(\s*)-\s+([A-Za-z_][A-Za-z0-9_-]*):\s*(.*)$/);
+    if (itemStart) {
+      finishItem();
+      item = { indent: itemStart[1].length, fields: new Set(), path: null };
+      if (!readLinkItemField(item, itemStart[2], itemStart[3])) invalid = true;
+      if (invalid) break;
+      continue;
+    }
+
+    const field = line.match(/^(\s+)([A-Za-z_][A-Za-z0-9_-]*):\s*(.*)$/);
+    if (!item || !field || field[1].length !== item.indent + 2) {
+      invalid = true;
+      break;
+    }
+    if (!readLinkItemField(item, field[2], field[3])) {
+      invalid = true;
+      break;
+    }
+  }
+  if (inLinks && !invalid) finishItem();
+  return invalid ? [] : [...new Set(paths)];
+}
+
+function readLinkItemField(item, key, rawValue) {
+  if (!planLinkItemFields.has(key) || item.fields.has(key)) return false;
+  item.fields.add(key);
+  if (key !== "path") return true;
+  const raw = rawValue.trim();
+  if (!raw || raw === "|" || raw === ">" || raw === ">-") return false;
+  item.path = canonicalPlanLinkPath(stripYamlScalar(raw));
+  return Boolean(item.path);
+}
+
+function canonicalPlanLinkPath(value) {
+  if (typeof value !== "string" || value.includes("\\") || value.includes("\0")) return null;
+  const path = value.split("#", 1)[0];
+  if (!path || path.startsWith("/")) return null;
+  const normalized = posix.normalize(path);
+  if (normalized !== path || normalized === "." || normalized.startsWith("../")) return null;
+  return normalized;
+}
+
+function planPathBelongsToSlot(path, slotPath) {
+  return path === slotPath || path.startsWith(`${slotPath}/`);
 }
 
 function topLevelValue(text, key) {
