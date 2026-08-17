@@ -820,6 +820,11 @@ export function probeBuddyRuntimeAccess({
     assertSystemdSafeAbsolutePath(label, path);
   }
   const commandOptions = {
+    // The privileged caller commonly starts from /root. runuser preserves
+    // that directory, so GNU find can finish the scan but still exit 1 when
+    // it cannot restore the service user's initial working directory. Run
+    // every identity probe from a universally traversable, trusted path.
+    cwd: "/",
     encoding: "utf8",
     env: residentSystemEnvironment(environment),
     shell: false,

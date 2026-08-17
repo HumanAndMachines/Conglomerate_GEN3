@@ -585,6 +585,7 @@ linuxHostTest("Hermes verification rejects Git and filesystem indirection around
 
 test("runtime access probe protects sandbox dependencies from both service identities", () => {
   const calls = [];
+  const commandOptions = [];
   const executables = new Map([
     ["id", "/trusted/id"],
     ["runuser", "/trusted/runuser"],
@@ -601,11 +602,14 @@ test("runtime access probe protects sandbox dependencies from both service ident
   };
   probeBuddyRuntimeAccess({
     ...options,
-    commandRunner: (command, args) => {
+    commandRunner: (command, args, invocationOptions) => {
       calls.push([command, args]);
+      commandOptions.push(invocationOptions);
       return { status: 0, stdout: "", stderr: "" };
     },
   });
+  expect(commandOptions.length).toBeGreaterThan(0);
+  expect(commandOptions.every((invocationOptions) => invocationOptions.cwd === "/")).toBe(true);
   for (const username of ["buddy", "buddy-bridge"]) {
     expect(calls).toContainEqual([
       "/trusted/runuser",
