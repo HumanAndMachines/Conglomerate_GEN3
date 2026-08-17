@@ -42,6 +42,7 @@
     "launchpad/src/",
     "lazurio/cli.mjs",
     "lazurio/context-v0.schema.json",
+    "lazurio/core/",
     "lazurio/lib.mjs",
     "lazurio/search-lib.mjs",
     "manual/lazurio-resident-profiles.md",
