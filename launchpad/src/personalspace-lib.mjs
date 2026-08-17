@@ -24,7 +24,7 @@ import { existsSync } from "fs";
 import { readdir } from "fs/promises";
 import { dirname, join, relative, resolve, sep } from "path";
 import { readJson, readLocalOverrideConfig, validateAppManifest } from "./discovery-lib.mjs";
-import { normalizePackageRuntime } from "./runtime-contract-lib.mjs";
+import { normalizePackageRuntime } from "../../lazurio/core/runtime-contract-lib.mjs";
 import { materializeRuntimeFromModule, normalizeModuleManifest } from "./module-contract-lib.mjs";
 
 const launchpadRoot = join(import.meta.dirname, "..");

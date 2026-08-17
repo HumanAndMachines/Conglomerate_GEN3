@@ -2,7 +2,7 @@ import { existsSync, lstatSync, readdirSync, realpathSync } from "fs";
 import { readdir, readFile } from "fs/promises";
 import { basename, dirname, extname, isAbsolute, join, posix, relative, resolve, sep } from "path";
 import { buildPortOwner, buildPortOwnershipIndex, canonicalListenerHost } from "./port-ownership-lib.mjs";
-import { normalizePackageRuntime } from "./runtime-contract-lib.mjs";
+import { normalizePackageRuntime } from "../../lazurio/core/runtime-contract-lib.mjs";
 import {
   materializeRuntimeFromModule,
   normalizeModuleManifest,

@@ -8,7 +8,7 @@ import {
   normalizePortRegistry,
   validateModuleLeasesAgainstRegistry,
 } from "../launchpad/src/port-registry-lib.mjs";
-import { validateDeclaredRuntime } from "../launchpad/src/runtime-contract-lib.mjs";
+import { validateDeclaredRuntime } from "../lazurio/core/runtime-contract-lib.mjs";
 import { readAllModuleContracts } from "./lazurio-module-port.mjs";
 
 const ignoredDirectories = new Set([

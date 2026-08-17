@@ -9,8 +9,8 @@ importovat Lazurio CLI, search adapter, Launchpad server, UI ani runtime
 composition. Směr závislosti je vždy opačný: surfaces importují Core.
 
 První behavior-preserving řezy vlastní klasifikaci Organization repository
-slotů a kanonickou filesystem containment hranici pro Git materializaci,
-Mission Control a worktrees. Další doménové vrstvy se přesunují samostatnými
+slotů, kanonickou filesystem containment hranici a čistý kontrakt runtime
+deklarace Modulové aplikace. Další doménové vrstvy se přesunují samostatnými
 PR až nad zeleným parity baseline; fyzický přesun souboru sám nesmí měnit
 schéma ani chování.
 
