@@ -3,6 +3,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { platformTestTimeout } from "../launchpad/src/test-platform-setup.mjs";
+
 const tempRoots = [];
 const cliPath = join(import.meta.dirname, "cli.mjs");
 
@@ -38,7 +40,7 @@ test("doctor CLI drží přesný report, lidský výstup a exit code", async () 
       schema_version: "humanandmachines.doctor.declaration.v1",
       command: [process.execPath, "run", "fixture-doctor.mjs"],
       scope_type: "personalspace",
-      timeout_ms: 5_000,
+      timeout_ms: platformTestTimeout(5_000),
     },
   }));
 
