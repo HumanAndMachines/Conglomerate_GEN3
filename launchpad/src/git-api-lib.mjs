@@ -613,7 +613,10 @@ function findRepoForWorktree(worktree, repos) {
   const expectedRepoKind = worktree.repo_kind === "productionspace" ? "productionspace" : worktree.repo_kind;
   return organizationRepos.find((repo) => {
     if (repo.repo_kind !== expectedRepoKind) return false;
-    if (repo.workspace !== worktree.workspace) return false;
+    // `repo.workspace` is a logical Team classification for workspace
+    // modules and null for root slots. `worktree.workspace` is the physical
+    // canonical lane (workspace/root/productionspace), so it is not an
+    // identity field and must not participate in this join.
     return repo.module === worktree.module
       || (typeof repo.slot_path === "string" && basename(repo.slot_path) === worktree.module);
   }) ?? null;

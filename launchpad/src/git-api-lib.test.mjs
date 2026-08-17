@@ -77,6 +77,61 @@ test("git API response combines manifest inventory, repo statuses, worktrees and
   });
 });
 
+test("worktree projection preserves visible Team-scoped modules and root repositories", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const betaRoot = join(root, "organizations", "BetaCo_GEN3");
+  const betaManifestPath = join(betaRoot, "modules.manifest.json");
+  const betaManifest = JSON.parse(await readFile(betaManifestPath, "utf8"));
+  const deals = betaManifest.module_slots.find((slot) => slot.path === "workspace/deals");
+  deals.teams = ["sales"];
+  await writeJson(betaManifestPath, betaManifest);
+  await initGitRepo(join(betaRoot, "workspace", "deals"));
+  await createOwnedWorktreeFixture({
+    root,
+    organization: "BetaCo",
+    organizationPath: "organizations/BetaCo_GEN3",
+    workspace: "workspace",
+    module: "deals",
+    modulePath: "workspace/deals",
+    repoKind: "module",
+    slug: "team-review",
+    planCode: "DEV-7001",
+  });
+
+  const omegaRoot = join(root, "organizations", "OmegaCo_GEN3");
+  await initGitRepo(join(omegaRoot, "infra"));
+  await createOwnedWorktreeFixture({
+    root,
+    organization: "OmegaCo",
+    organizationPath: "organizations/OmegaCo_GEN3",
+    workspace: "root",
+    module: "infra",
+    modulePath: "infra",
+    repoKind: "root_repo",
+    slug: "infra-review",
+    planCode: "DEV-7002",
+  });
+
+  const [betaResponse, omegaResponse, betaWorktrees, omegaWorktrees] = await Promise.all([
+    buildGitApiResponse({ companiesRoot: root, organization: "BetaCo" }),
+    buildGitApiResponse({ companiesRoot: root, organization: "OmegaCo" }),
+    buildWorktreesResponse({ companiesRoot: root, organization: "BetaCo", module: "deals" }),
+    buildWorktreesResponse({ companiesRoot: root, organization: "OmegaCo", module: "infra" }),
+  ]);
+
+  expect(betaResponse.repos.find((repo) => repo.key === "BetaCo::deals")).toMatchObject({
+    workspace: "sales",
+    worktrees: ["team-review"],
+  });
+  expect(omegaResponse.repos.find((repo) => repo.key === "OmegaCo::infra")).toMatchObject({
+    workspace: null,
+    worktrees: ["infra-review"],
+  });
+  expect(betaWorktrees.worktrees.map((worktree) => worktree.slug)).toEqual(["team-review"]);
+  expect(omegaWorktrees.worktrees.map((worktree) => worktree.slug)).toEqual(["infra-review"]);
+});
+
 test("apps diagnostics render structured Git warnings as human text", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
@@ -631,3 +686,41 @@ test("/api/apps app objects include compact git summary for their module", async
     },
   });
 });
+
+async function createOwnedWorktreeFixture({
+  root,
+  organization,
+  organizationPath,
+  workspace,
+  module,
+  modulePath,
+  repoKind,
+  slug,
+  planCode,
+}) {
+  const organizationRoot = join(root, organizationPath);
+  const planRelativePath = `mission-control/plans/2026/07/${planCode}-${slug}.yaml`;
+  const worktreeRelativePath = `.worktrees/${workspace}/${module}/${slug}`;
+  await writeFile(
+    join(organizationRoot, planRelativePath),
+    `dev_code: ${planCode}\ntitle: ${slug}\nstatus: in_progress\nlinks:\n  - path: ${modulePath}\n`,
+  );
+  await initGitRepo(join(organizationRoot, worktreeRelativePath), { branch: slug });
+  await writeJson(join(organizationRoot, `.worktrees/${workspace}/${module}/${slug}.worktree.json`), {
+    schema_version: "companiesascode.worktree.v1",
+    organization,
+    organization_path: organizationPath,
+    workspace,
+    module,
+    module_path: modulePath,
+    repo_kind: repoKind,
+    base_branch: "main",
+    branch: slug,
+    mission_control_plan_code: planCode,
+    mission_control_plan_path: planRelativePath,
+    worktree_path: worktreeRelativePath,
+    created_at: new Date().toISOString(),
+    created_by: "fixture-agent",
+    status: "active",
+  });
+}
