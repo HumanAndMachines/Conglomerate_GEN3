@@ -41,7 +41,7 @@ bun test tests/offline-eval-runner.test.mjs
 bun scripts/offline-eval-runner.mjs > evals/results/offline-eval-report.json
 ```
 
-Výstup musí mít `dry_run_only: true`, prázdné `tool_calls_executed` a `external_actions_executed` a stav `PASS`. Výstupní report zůstává lokální a necommitnutý, dokud nebude samostatně schválen commit.
+Výstup musí mít `dry_run_only: true`, prázdné `tool_calls_executed` a `external_actions_executed` a stav `PASS`. Soubor `evals/results/offline-eval-report.json` v tomto review packu je schválený, Git-trackovaný deterministický snapshot pro kontrolu přesného commitu. Běžné budoucí regenerace zůstávají lokální a necommitnuté; aktualizace trackovaného snapshotu vyžaduje samostatně schválený commit a musí být byte-for-byte reprodukovatelná stejným runnerem.
 
 ## Manuální Lumbio shadow pilot — Brána 3
 
