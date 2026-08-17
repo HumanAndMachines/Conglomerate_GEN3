@@ -10,7 +10,7 @@ import {
 import {
   inspectCanonicalPathBoundary,
   isSamePath,
-} from "./path-boundary-lib.mjs";
+} from "../../lazurio/core/path-boundary-lib.mjs";
 
 export const GIT_CLONE_TIMEOUT_MS = 10 * 60_000;
 

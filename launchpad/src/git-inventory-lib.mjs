@@ -17,7 +17,7 @@ import {
 import {
   inspectCanonicalPathBoundary,
   isSamePath,
-} from "./path-boundary-lib.mjs";
+} from "../../lazurio/core/path-boundary-lib.mjs";
 
 export async function buildGitInventory({ companiesRoot, organizations = null } = {}) {
   if (!companiesRoot) throw new Error("buildGitInventory requires companiesRoot");

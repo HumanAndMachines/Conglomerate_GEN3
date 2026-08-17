@@ -8,7 +8,7 @@ import { buildGitInventory } from "./git-inventory-lib.mjs";
 import { GIT_LOCAL_TIMEOUT_MS, runGit, safeGitRemoteEnv } from "./git-lib.mjs";
 import { readGitRepoStatus } from "./git-status-lib.mjs";
 import { isMissionControlPlanPath, readMissionControlPlanAt } from "./mission-control-plan-lib.mjs";
-import { inspectCanonicalPathBoundary } from "./path-boundary-lib.mjs";
+import { inspectCanonicalPathBoundary } from "../../lazurio/core/path-boundary-lib.mjs";
 import { buildWorktreeIndex } from "./worktree-lib.mjs";
 
 export class WorktreeActionError extends Error {
