@@ -58,7 +58,7 @@ test("Mission Control plan index parses YAML frontmatter without a YAML dependen
   );
 });
 
-test("Mission Control plan index binds a resolved module identity to its exact slot path", async () => {
+test("Mission Control plan index matches module ownership only through structured link paths", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const plansRoot = join(root, "organizations", "BetaCo_GEN3", "mission-control", "plans", "2026", "07");
@@ -68,19 +68,21 @@ test("Mission Control plan index binds a resolved module identity to its exact s
     "dev_code: DEV-7004\ntitle: Visible shared plan\nstatus: ready\nlinks:\n  - path: workspace/shared-name\n",
   );
   await writeFile(
-    join(plansRoot, "DEV-7005-hidden-shared.yaml"),
-    "dev_code: DEV-7005\ntitle: Restricted shared plan\nstatus: review\nlinks:\n  - path: modules/shared-name\n",
+    join(plansRoot, "DEV-7005-incidental-mention.yaml"),
+    "dev_code: DEV-7005\ntitle: Incidental visible mention\nstatus: review\ncontext: This protected sibling merely mentions workspace/shared-name.\nlinks:\n  - path: modules/other-name\n",
   );
 
   const index = await buildMissionControlPlanIndex({
     companiesRoot: root,
     organization: "BetaCo",
-    moduleIdentity: { ids: ["visible-shared"], paths: ["workspace/shared-name"] },
+    module: "shared-name",
   });
 
   expect(index.plans.map((plan) => plan.code)).toEqual(["DEV-7004"]);
+  expect(index.plans[0].linked_paths).toEqual(["workspace/shared-name"]);
+  expect(JSON.stringify(index)).not.toContain("workspace/shared-name");
   expect(JSON.stringify(index)).not.toContain("DEV-7005");
-  expect(JSON.stringify(index)).not.toContain("Restricted shared plan");
+  expect(JSON.stringify(index)).not.toContain("Incidental visible mention");
 });
 
 test("Mission Control plan index discovers the canonical nested v3 data path and preserves its exact relative path", async () => {

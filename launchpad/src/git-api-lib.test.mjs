@@ -162,7 +162,7 @@ test("worktree projection resolves basename collisions before applying protected
   await initGitRepo(join(worktreeRoot, "protected-review"), { branch: "protected-review" });
   await writeFile(
     join(orgRoot, "mission-control", "plans", "2026", "07", "DEV-7003-protected.yaml"),
-    "dev_code: DEV-7003\ntitle: Protected basename collision\nstatus: in_progress\nlinks:\n  - path: modules/shared-name\n",
+    "dev_code: DEV-7003\ntitle: Protected basename collision\nstatus: in_progress\ncontext: This protected plan merely mentions workspace/shared-name and visible-shared.\nlinks:\n  - path: modules/shared-name\n",
   );
   await writeFile(
     join(orgRoot, "mission-control", "plans", "2026", "07", "DEV-7004-visible.yaml"),
@@ -200,14 +200,18 @@ test("worktree projection resolves basename collisions before applying protected
   expect(worktrees.worktrees).toEqual([]);
   expect(JSON.stringify(worktrees)).not.toContain("protected-review");
 
-  const [ambiguousPlans, visiblePlans, hiddenPlans] = await Promise.all([
+  const [organizationPlans, ambiguousPlans, visiblePlans, hiddenPlans] = await Promise.all([
+    buildPlansResponse({ companiesRoot: root, organization: "BetaCo" }),
     buildPlansResponse({ companiesRoot: root, organization: "BetaCo", module: "shared-name" }),
     buildPlansResponse({ companiesRoot: root, organization: "BetaCo", module: "visible-shared" }),
     buildPlansResponse({ companiesRoot: root, organization: "BetaCo", module: "hidden-shared" }),
   ]);
+  expect(organizationPlans.plans.map((plan) => plan.code)).toEqual(["DEV-7004"]);
+  expect(JSON.stringify(organizationPlans)).not.toContain("DEV-7003");
   expect(ambiguousPlans.plans).toEqual([]);
   expect(JSON.stringify(ambiguousPlans)).not.toContain("DEV-7003");
   expect(visiblePlans.plans.map((plan) => plan.code)).toEqual(["DEV-7004"]);
+  expect(visiblePlans.plans[0].module_match).toBe("direct");
   expect(JSON.stringify(visiblePlans)).not.toContain("DEV-7003");
   expect(JSON.stringify(visiblePlans)).not.toContain("Protected basename collision");
   expect(hiddenPlans.plans).toEqual([]);

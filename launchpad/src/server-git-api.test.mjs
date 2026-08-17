@@ -116,6 +116,10 @@ test("public read routes do not expose an unmaterialized protected repo through 
     join(orgRoot, "mission-control", "plans", "2026", "07", "DEV-9999-protected.yaml"),
     "dev_code: DEV-9999\ntitle: Protected worktree\nstatus: in_progress\nlinks:\n  - path: workspace/knowledgebase\n",
   );
+  await writeFile(
+    join(orgRoot, "mission-control", "plans", "2026", "07", "DEV-9000-visible.yaml"),
+    "dev_code: DEV-9000\ntitle: Visible deals plan\nstatus: ready\nlinks:\n  - path: workspace/deals\n",
+  );
   const { port } = await startLaunchpadServer(root);
 
   const repos = await getJson(port, "/api/git/repos?company=BetaCo");
@@ -131,6 +135,13 @@ test("public read routes do not expose an unmaterialized protected repo through 
 
   const plans = await getJson(port, "/api/mission-control/plans?organization=BetaCo&module=knowledgebase");
   expect(plans.plans).toEqual([]);
+
+  const organizationPlans = await getJson(port, "/api/mission-control/plans?organization=BetaCo");
+  expect(organizationPlans.plans.map((plan) => plan.code)).toEqual(["DEV-9000"]);
+  expect(JSON.stringify(organizationPlans)).not.toContain("DEV-9999");
+  expect(JSON.stringify(organizationPlans)).not.toContain("Protected worktree");
+  expect(JSON.stringify(organizationPlans)).not.toContain("DEV-9999-protected.yaml");
+  expect(JSON.stringify(organizationPlans)).not.toContain('"status":"in_progress"');
 
   const detailResponse = await fetch(
     `http://127.0.0.1:${port}/api/git/repos/BetaCo%3A%3Aknowledgebase`,
@@ -179,7 +190,7 @@ test("module-scoped plan route fails closed on a visible and protected basename 
   );
   await writeFile(
     join(plansRoot, "DEV-7005-hidden-shared.yaml"),
-    "dev_code: DEV-7005\ntitle: Restricted shared plan\nstatus: review\nlinks:\n  - path: modules/shared-name\n",
+    "dev_code: DEV-7005\ntitle: Restricted shared plan\nstatus: review\ncontext: This protected plan merely mentions workspace/shared-name and visible-shared.\nlinks:\n  - path: modules/shared-name\n",
   );
   const { port } = await startLaunchpadServer(root);
 
