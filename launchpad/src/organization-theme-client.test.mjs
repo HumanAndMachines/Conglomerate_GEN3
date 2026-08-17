@@ -22,6 +22,10 @@ test("Organization Theme přijme jen neprůhlednou platnou barvu", () => {
     "rgba(96, 88, 233, .5)",
     "rgb(96 88 233 / 20%)",
     "hsl(244 76% 63% / 50%)",
+    "rgb(255,,255)",
+    "not-a-color",
+    "rgb()",
+    "rgba(1,2,)",
   ]) {
     expect(safeOpaqueOrganizationThemeColor(value)).toBe(false);
   }

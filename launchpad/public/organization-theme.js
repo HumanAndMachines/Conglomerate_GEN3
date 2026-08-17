@@ -9,8 +9,10 @@ export function safeOpaqueOrganizationThemeColor(value) {
     return false;
   }
   const colorFunction = parseOrganizationThemeColorFunction(value);
-  return colorFunction?.alpha === undefined
-    || /^(?:1(?:\.0+)?|100(?:\.0+)?%)$/.test(colorFunction.alpha);
+  return colorFunction !== null && (
+    colorFunction.alpha === undefined
+    || /^(?:1(?:\.0+)?|100(?:\.0+)?%)$/.test(colorFunction.alpha)
+  );
 }
 
 function parseOrganizationThemeColorFunction(value) {
