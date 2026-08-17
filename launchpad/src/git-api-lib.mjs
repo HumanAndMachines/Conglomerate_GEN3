@@ -673,6 +673,14 @@ function groupWorktreesByRepo(worktrees, repos) {
 
 function findRepoForWorktree(worktree, repos) {
   const organizationRepos = repos.filter((repo) => repo.organization === worktree.organization);
+  const metadataRepoKind = worktree.metadata?.repo_kind;
+  if (
+    typeof metadataRepoKind === "string"
+    && metadataRepoKind !== ""
+    && metadataRepoKind !== worktree.repo_kind
+  ) {
+    return null;
+  }
   if (worktree.repo_kind === "organization_root") {
     return organizationRepos.find((repo) => repo.repo_kind === "organization_root") ?? null;
   }
@@ -680,14 +688,25 @@ function findRepoForWorktree(worktree, repos) {
   const expectedRepoKind = worktree.repo_kind === "productionspace" ? "productionspace" : worktree.repo_kind;
   const candidates = organizationRepos.filter((repo) => {
     if (repo.repo_kind !== expectedRepoKind) return false;
-    // `repo.workspace` is a logical Team classification for workspace
-    // modules and null for root slots. `worktree.workspace` is the physical
-    // canonical lane (workspace/root/productionspace), so it is not an
-    // identity field and must not participate in this join.
-    return repo.module === worktree.module
-      || (typeof repo.slot_path === "string" && basename(repo.slot_path) === worktree.module);
+    // Worktree.module comes from the physical canonical directory. Stable
+    // declaration IDs may differ, so they are checked separately below.
+    return typeof repo.slot_path === "string" && basename(repo.slot_path) === worktree.module;
   });
   const metadataModule = worktree.metadata?.module;
+  const metadataModulePath = worktree.metadata?.module_path;
+  if (typeof metadataModulePath === "string" && metadataModulePath !== "") {
+    const pathMatches = candidates.filter((repo) => repo.slot_path === metadataModulePath);
+    if (pathMatches.length !== 1) return null;
+    const pathMatch = pathMatches[0];
+    if (
+      typeof metadataModule === "string"
+      && metadataModule !== ""
+      && pathMatch.module !== metadataModule
+    ) {
+      return null;
+    }
+    return pathMatch;
+  }
   if (typeof metadataModule === "string" && metadataModule !== "") {
     const declaredMatches = candidates.filter((repo) => repo.module === metadataModule);
     return declaredMatches.length === 1 ? declaredMatches[0] : null;

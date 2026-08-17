@@ -173,7 +173,9 @@ test("worktree projection resolves basename collisions before applying protected
     organization: "BetaCo",
     organization_path: "organizations/BetaCo_GEN3",
     workspace: "knowledge",
-    module: "hidden-shared",
+    // Adversarial identity conflict: the stable ID names the visible slot,
+    // while the canonical path and owner plan belong to the protected slot.
+    module: "visible-shared",
     module_path: "modules/shared-name",
     repo_kind: "module",
     base_branch: "main",
