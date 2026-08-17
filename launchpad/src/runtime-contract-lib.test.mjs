@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import {
   normalizePackageRuntime,
   validateDeclaredRuntime,
-} from "./runtime-contract-lib.mjs";
+} from "../../lazurio/core/runtime-contract-lib.mjs";
 
 function runtime(overrides = {}) {
   return {
