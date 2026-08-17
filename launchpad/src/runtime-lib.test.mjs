@@ -2944,6 +2944,7 @@ test("runtime manager replaces main with one worktree instance on the same decla
   await mkdir(join(orgRoot, ".worktrees", "workspace", "demo"), { recursive: true });
   await mkdir(join(orgRoot, "mission-control", "plans", "2026", "07"), { recursive: true });
   await cp(mainModuleRoot, worktreeRoot, { recursive: true });
+  await declareFixtureLazurioRuntime(worktreeRoot);
   await writeFile(
     join(orgRoot, "mission-control", "plans", "2026", "07", "CAC-0042-demo-runtime-selector.yaml"),
     "dev_code: CAC-0042\ntitle: Demo runtime selector\nstatus: in_progress\n",
@@ -3008,6 +3009,109 @@ test("runtime manager replaces main with one worktree instance on the same decla
 
   await runtime.stop("test-company-demo-v1", { source: { type: "worktree", slug: worktreeSlug } });
 }, platformTestTimeout(15_000));
+
+test("worktree Start materializes its explicit contract while main is still legacy", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port });
+  const { slug } = await createOwnedWorktreeFixture({
+    root,
+    slug: "DEV-6439-contract-adoption",
+  });
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "worktree-contract-adoption",
+  });
+  const squatter = spawnFixtureChild(root,
+    [
+      "bun",
+      "-e",
+      "const net=require('net');net.createServer(()=>{}).listen(Number(process.env.PORT),'127.0.0.1');setInterval(()=>{},2147483647);",
+    ],
+    {
+      env: { ...process.env, PORT: String(port) },
+      stdout: "ignore",
+      stderr: "ignore",
+      detached: process.platform !== "win32",
+    },
+  );
+  try {
+    await waitForTcpListen(port);
+    const result = await runtime.open("test-company-demo-v1", {
+      source: { type: "worktree", slug },
+    });
+    expect(result.url).toBe(`http://127.0.0.1:${port}`);
+    expect(result.runtime_source).toMatchObject({ type: "worktree", slug });
+    expect(result.runtime).toMatchObject({
+      owner: "current-instance",
+      host: "127.0.0.1",
+      port,
+      runtime_source: { type: "worktree", slug },
+    });
+    expect(result.runtime.listeners).toEqual([
+      expect.objectContaining({
+        id: "web",
+        allocation: "static",
+        host: "127.0.0.1",
+        port,
+      }),
+    ]);
+    expect(result.runtime.dependencies.cwd).toContain(`.worktrees/workspace/demo/${slug}/app/v1`);
+    const takeoverAudit = JSON.parse((await readFile(
+      join(root, "launchpad", "runtime", "audit", "takeovers.jsonl"),
+      "utf8",
+    )).trim());
+    expect(takeoverAudit).toMatchObject({
+      company: "test-company",
+      module: "demo",
+      app_id: "test-company-demo-v1",
+      runtime_source: { type: "worktree", slug },
+      reclaimed_listeners: [{ previous_pid: squatter.pid }],
+    });
+    await runtime.stop("test-company-demo-v1", {
+      source: { type: "worktree", slug },
+    });
+  } finally {
+    await killFixtureProcess(squatter, root);
+  }
+}, platformTestTimeout(15_000));
+
+test("worktree Start rejects a lease that drifts from an explicit main contract", async () => {
+  const port = await findFreePort();
+  const driftPort = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port });
+  const app = withRuntimeListeners(fixtureDiscoveryApp({ port }), [
+    runtimeListener("web", "entrypoint", port),
+  ]);
+  app.module_contract.port_leases = [{ id: "main", host: "127.0.0.1", port }];
+  const { slug, worktreeRoot } = await createOwnedWorktreeFixture({
+    root,
+    slug: "DEV-6439-contract-drift",
+  });
+  const manifestPath = join(worktreeRoot, "lazurio.module.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  manifest.port_leases[0].port = driftPort;
+  await writeJson(manifestPath, manifest);
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "worktree-contract-drift",
+    discover: discoveryWithApp(app),
+  });
+
+  await expect(runtime.start(app.id, {
+    source: { type: "worktree", slug },
+  })).rejects.toMatchObject({
+    status: 409,
+    code: "invalid_worktree_runtime_contract",
+    metadata: { failure_kind: "invalid_worktree_runtime_contract", worktree_slug: slug },
+  });
+  await expect(runtime.health(app.id, {
+    source: { type: "worktree", slug },
+  })).rejects.toMatchObject({
+    code: "invalid_worktree_runtime_contract",
+  });
+});
 
 test("durable Stop commits disabled before signaling and cannot be resurrected after either failure boundary", async () => {
   const port = await findFreePort();
@@ -3839,6 +3943,7 @@ async function createOwnedWorktreeFixture({ root, slug = "DEV-6439-hosted-parity
   await mkdir(join(orgRoot, ".worktrees", "workspace", "demo"), { recursive: true });
   await mkdir(join(orgRoot, "mission-control", "plans", "2026", "08"), { recursive: true });
   await cp(mainModuleRoot, worktreeRoot, { recursive: true });
+  await declareFixtureLazurioRuntime(worktreeRoot);
   await writeFile(planPath, `dev_code: DEV-6439\ntitle: Hosted parity\nstatus: in_progress\n`, "utf8");
   await writeJson(join(orgRoot, ".worktrees", "workspace", "demo", `${slug}.worktree.json`), {
     schema_version: "companiesascode.worktree.v1",
@@ -3858,6 +3963,49 @@ async function createOwnedWorktreeFixture({ root, slug = "DEV-6439-hosted-parity
     status: "active",
   });
   return { slug, worktreeRoot };
+}
+
+async function declareFixtureLazurioRuntime(moduleRoot) {
+  const packagePath = join(moduleRoot, "app", "v1", "package.json");
+  const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
+  const legacy = packageJson.companyascode?.app;
+  if (!legacy) throw new Error(`Fixture ${packagePath} nemá legacy runtime pro migraci`);
+  delete packageJson.companyascode;
+  packageJson.lazurio = {
+    runtime: {
+      schema_version: "lazurio.runtime.v1",
+      id: legacy.id,
+      title: legacy.title,
+      company: legacy.company,
+      module: legacy.module,
+      surface: legacy.surface,
+      dev_script: legacy.dev_script,
+      ...(legacy.preview_script ? { preview_script: legacy.preview_script } : {}),
+      ...(legacy.build_script ? { build_script: legacy.build_script } : {}),
+      tags: legacy.tags ?? [],
+      listeners: [{
+        id: "web",
+        role: "entrypoint",
+        lease: "main",
+        protocol: "http",
+        health: { kind: "http", path: legacy.health_path ?? "/" },
+      }],
+    },
+  };
+  await writeJson(packagePath, packageJson);
+  await writeJson(join(moduleRoot, "lazurio.module.json"), {
+    schema_version: "lazurio.module.v1",
+    id: legacy.module,
+    company: legacy.company,
+    tcp_port_policy: { mode: "single" },
+    port_leases: [{
+      id: "main",
+      host: legacy.host === "localhost" ? "127.0.0.1" : legacy.host,
+      port: legacy.port,
+    }],
+    apps: ["app/v1/package.json"],
+    default_app: "app/v1/package.json",
+  });
 }
 
 function crashOnceServerSource() {
