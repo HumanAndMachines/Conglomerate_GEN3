@@ -58,6 +58,31 @@ test("Mission Control plan index parses YAML frontmatter without a YAML dependen
   );
 });
 
+test("Mission Control plan index binds a resolved module identity to its exact slot path", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const plansRoot = join(root, "organizations", "BetaCo_GEN3", "mission-control", "plans", "2026", "07");
+  await mkdir(plansRoot, { recursive: true });
+  await writeFile(
+    join(plansRoot, "DEV-7004-visible-shared.yaml"),
+    "dev_code: DEV-7004\ntitle: Visible shared plan\nstatus: ready\nlinks:\n  - path: workspace/shared-name\n",
+  );
+  await writeFile(
+    join(plansRoot, "DEV-7005-hidden-shared.yaml"),
+    "dev_code: DEV-7005\ntitle: Restricted shared plan\nstatus: review\nlinks:\n  - path: modules/shared-name\n",
+  );
+
+  const index = await buildMissionControlPlanIndex({
+    companiesRoot: root,
+    organization: "BetaCo",
+    moduleIdentity: { ids: ["visible-shared"], paths: ["workspace/shared-name"] },
+  });
+
+  expect(index.plans.map((plan) => plan.code)).toEqual(["DEV-7004"]);
+  expect(JSON.stringify(index)).not.toContain("DEV-7005");
+  expect(JSON.stringify(index)).not.toContain("Restricted shared plan");
+});
+
 test("Mission Control plan index discovers the canonical nested v3 data path and preserves its exact relative path", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);

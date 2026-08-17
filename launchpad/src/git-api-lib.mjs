@@ -425,18 +425,19 @@ export async function buildWorktreesResponse({ companiesRoot, organization = nul
 }
 
 export async function buildPlansResponse({ companiesRoot, organization = null, module = null } = {}) {
-  const planIndex = await buildMissionControlPlanIndex({ companiesRoot, organization, module });
-  if (!module) return planIndex;
+  if (!module) return buildMissionControlPlanIndex({ companiesRoot, organization });
 
   const inventory = await buildGitInventory({ companiesRoot });
-  const projection = projectGitInventory(inventory, { organization, module });
-  const visibleOrganizations = new Set(
-    [...projection.repos, ...projection.planned].map((record) => record.organization),
-  );
-  return {
-    ...planIndex,
-    plans: planIndex.plans.filter((plan) => visibleOrganizations.has(plan.organization)),
-  };
+  const records = [...inventory.repos, ...inventory.planned]
+    .filter((record) => !organization || record.organization === organization);
+  const record = resolveInventoryModuleRecord(records, module);
+  if (!record || !repoProjectsToLocalMachine(record)) return emptyMissionControlPlanIndex();
+
+  return buildMissionControlPlanIndex({
+    companiesRoot,
+    organization: record.organization,
+    moduleIdentity: moduleIdentityForRecord(record, records),
+  });
 }
 
 export function compactGitSummaryForApp(repo) {
@@ -513,6 +514,36 @@ function projectGitInventory(inventory, { organization = null, module = null } =
 function inventoryRecordMatchesModule(record, module) {
   if (record.module === module) return true;
   return typeof record.slot_path === "string" && basename(record.slot_path) === module;
+}
+
+function resolveInventoryModuleRecord(records, module) {
+  const exactMatches = records.filter((record) => record.module === module);
+  if (exactMatches.length === 1) return exactMatches[0];
+  if (exactMatches.length > 1) return null;
+
+  const pathMatches = records.filter((record) =>
+    typeof record.slot_path === "string" && basename(record.slot_path) === module,
+  );
+  return pathMatches.length === 1 ? pathMatches[0] : null;
+}
+
+function moduleIdentityForRecord(record, records) {
+  const identityMatches = records.filter((candidate) => inventoryRecordMatchesModule(candidate, record.module));
+  return {
+    // A stable ID is safe as a free-text fallback only while it identifies
+    // this declaration uniquely. An exact slot path remains unambiguous even
+    // when legacy modules/ and workspace/ basenames collide.
+    ids: identityMatches.length === 1 && identityMatches[0].key === record.key ? [record.module] : [],
+    paths: typeof record.slot_path === "string" ? [record.slot_path] : [],
+  };
+}
+
+function emptyMissionControlPlanIndex() {
+  return {
+    schema_version: "companiesascode.launchpad.mission_control_plans.v1",
+    generated_at: new Date().toISOString(),
+    plans: [],
+  };
 }
 
 function projectPublicWorktreeIndex({

@@ -147,6 +147,66 @@ test("public read routes do not expose an unmaterialized protected repo through 
   expect(changes.repo_path).toBeUndefined();
 });
 
+test("module-scoped plan route fails closed on a visible and protected basename collision", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const orgRoot = join(root, "organizations", "BetaCo_GEN3");
+  const manifestPath = join(orgRoot, "modules.manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  manifest.module_slots.push(
+    {
+      path: "workspace/shared-name",
+      slug: "visible-shared",
+      teams: ["sales"],
+      repo: "git@github.com:BetaCo/shared-name.git",
+      branch: "main",
+    },
+    {
+      path: "modules/shared-name",
+      slug: "hidden-shared",
+      teams: ["knowledge"],
+      default_access: "restricted",
+      required_roles: ["knowledge"],
+      repo: "git@github.com:BetaCo/shared-name.git",
+      branch: "main",
+    },
+  );
+  await writeJson(manifestPath, manifest);
+  const plansRoot = join(orgRoot, "mission-control", "plans", "2026", "07");
+  await writeFile(
+    join(plansRoot, "DEV-7004-visible-shared.yaml"),
+    "dev_code: DEV-7004\ntitle: Visible shared plan\nstatus: ready\nlinks:\n  - path: workspace/shared-name\n",
+  );
+  await writeFile(
+    join(plansRoot, "DEV-7005-hidden-shared.yaml"),
+    "dev_code: DEV-7005\ntitle: Restricted shared plan\nstatus: review\nlinks:\n  - path: modules/shared-name\n",
+  );
+  const { port } = await startLaunchpadServer(root);
+
+  const ambiguous = await getJson(
+    port,
+    "/api/mission-control/plans?organization=BetaCo&module=shared-name",
+  );
+  expect(ambiguous.plans).toEqual([]);
+  expect(JSON.stringify(ambiguous)).not.toContain("DEV-7005");
+  expect(JSON.stringify(ambiguous)).not.toContain("Restricted shared plan");
+  expect(JSON.stringify(ambiguous)).not.toContain("modules/shared-name");
+  expect(JSON.stringify(ambiguous)).not.toContain('"status":"review"');
+
+  const visible = await getJson(
+    port,
+    "/api/mission-control/plans?organization=BetaCo&module=visible-shared",
+  );
+  expect(visible.plans.map((plan) => plan.code)).toEqual(["DEV-7004"]);
+  expect(JSON.stringify(visible)).not.toContain("DEV-7005");
+
+  const hidden = await getJson(
+    port,
+    "/api/mission-control/plans?organization=BetaCo&module=hidden-shared",
+  );
+  expect(hidden.plans).toEqual([]);
+});
+
 test("identity endpoint is local-only and a foreign root cannot reuse the port", async () => {
   const root = await createLaunchpadGitFixture();
   const otherRoot = await createLaunchpadGitFixture();
