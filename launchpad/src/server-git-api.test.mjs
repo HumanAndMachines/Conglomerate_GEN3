@@ -192,7 +192,41 @@ test("module-scoped plan route fails closed on a visible and protected basename 
     join(plansRoot, "DEV-7005-hidden-shared.yaml"),
     "dev_code: DEV-7005\ntitle: Restricted shared plan\nstatus: review\ncontext: This protected plan merely mentions workspace/shared-name and visible-shared.\nlinks:\n  - path: modules/shared-name\n",
   );
+  const worktreeRoot = join(orgRoot, ".worktrees", "workspace", "shared-name");
+  await initGitRepo(join(worktreeRoot, "protected-review"), { branch: "protected-review" });
+  await writeJson(join(worktreeRoot, "protected-review.worktree.json"), {
+    schema_version: "companiesascode.worktree.v1",
+    organization: "BetaCo",
+    organization_path: "organizations/BetaCo_GEN3",
+    workspace: "workspace",
+    // The visible stable ID conflicts with the protected canonical path.
+    module: "visible-shared",
+    module_path: "modules/shared-name",
+    repo_kind: "module",
+    base_branch: "main",
+    branch: "protected-review",
+    mission_control_plan_code: "DEV-7005",
+    mission_control_plan_path: "mission-control/plans/2026/07/DEV-7005-hidden-shared.yaml",
+    created_at: new Date().toISOString(),
+    created_by: "fixture-agent",
+    status: "active",
+  });
   const { port } = await startLaunchpadServer(root);
+
+  const repos = await getJson(port, "/api/git/repos?company=BetaCo");
+  expect(repos.repos.some((repo) => repo.key === "BetaCo::visible-shared")).toBe(true);
+  expect(repos.worktrees).toEqual([]);
+  expect(JSON.stringify(repos)).not.toContain("protected-review");
+  expect(JSON.stringify(repos)).not.toContain("DEV-7005-hidden-shared.yaml");
+
+  const worktrees = await getJson(
+    port,
+    "/api/git/worktrees?organization=BetaCo&module=shared-name",
+  );
+  expect(worktrees.worktrees).toEqual([]);
+  expect(worktrees.warnings).toEqual([]);
+  expect(JSON.stringify(worktrees)).not.toContain("protected-review");
+  expect(JSON.stringify(worktrees)).not.toContain("DEV-7005");
 
   const ambiguous = await getJson(
     port,
