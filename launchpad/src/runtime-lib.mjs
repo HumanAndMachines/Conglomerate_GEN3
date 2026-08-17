@@ -2,8 +2,10 @@ import { existsSync } from "fs";
 import { appendFile, mkdir, readFile, realpath, stat, utimes, writeFile } from "fs/promises";
 import { randomUUID } from "crypto";
 import { createConnection } from "net";
-import { basename, dirname, isAbsolute, join, relative, resolve, win32 } from "path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep, win32 } from "path";
 import { discoverLaunchpadApps } from "./discovery-lib.mjs";
+import { materializeRuntimeFromModule, normalizeModuleManifest } from "./module-contract-lib.mjs";
+import { normalizePackageRuntime } from "./runtime-contract-lib.mjs";
 import { recordAppOpen } from "./usage-lib.mjs";
 import { buildWorktreeIndex } from "./worktree-lib.mjs";
 import { acquireModuleRuntimeLock } from "./module-runtime-lock-lib.mjs";
@@ -1629,20 +1631,23 @@ export function createRuntimeManager({
     { source = null, requireValidDiscovery = true, enforcePortContract = false } = {},
   ) {
     const { app, discovery } = await findApp(appId, { requireValidDiscovery });
-    if (enforcePortContract) assertValidRuntimePortContract(app, discovery);
     const runtimeSource = normalizeRuntimeSource(source);
-    if (runtimeSource.type === "main") {
-      return {
+    const runtimeApp = runtimeSource.type === "main"
+      ? {
         ...app,
         runtime_key: app.id,
         runtime_source: { type: "main" },
-      };
+      }
+      : await worktreeRuntimeApp(app, runtimeSource);
+    if (enforcePortContract) {
+      assertValidRuntimePortContract(runtimeApp, discovery, { discoveryApp: app });
     }
-    return worktreeRuntimeApp(app, runtimeSource);
+    return runtimeApp;
   }
 
-  function assertValidRuntimePortContract(app, discovery) {
-    const owns = (owner) => owner?.app_id === app.id && owner?.package_path === app.package_path;
+  function assertValidRuntimePortContract(app, discovery, { discoveryApp = app } = {}) {
+    const owns = (owner) => owner?.app_id === app.id
+      && [app.package_path, discoveryApp.package_path].includes(owner?.package_path);
     const conflicts = (discovery.port_overlaps ?? [])
       .filter((overlap) => overlap.conflict !== false && overlap.owners?.some(owns));
 
@@ -1793,9 +1798,20 @@ export function createRuntimeManager({
     const worktreePath = normalizeRelativePath(worktree.path);
     const cwd = replacePathPrefix(app.cwd, mainModulePath, worktreePath);
     const packagePath = replacePathPrefix(app.package_path, mainModulePath, worktreePath);
+    const worktreeContract = await materializeWorktreeRuntimeContract({
+      app,
+      worktree,
+      worktreePath,
+      packagePath,
+    });
 
     return {
       ...app,
+      ...worktreeContract,
+      // Plugin paths/capabilities are validated only by main discovery. A
+      // worktree may change its Module App runtime, but it cannot smuggle a
+      // different plugin boundary into a lifecycle action.
+      plugin: app.plugin,
       cwd,
       package_path: packagePath,
       runtime_key: runtimeKey,
@@ -1810,6 +1826,132 @@ export function createRuntimeManager({
         status: worktree.status,
       },
     };
+  }
+
+  async function materializeWorktreeRuntimeContract({
+    app,
+    worktree,
+    worktreePath,
+    packagePath,
+  }) {
+    const absoluteWorktreeRoot = resolve(companiesRoot, worktreePath);
+    const absolutePackagePath = resolve(companiesRoot, packagePath);
+    const packageBoundary = relative(absoluteWorktreeRoot, absolutePackagePath);
+    if (
+      !packageBoundary
+      || isAbsolute(packageBoundary)
+      || win32.isAbsolute(packageBoundary)
+      || packageBoundary === ".."
+      || packageBoundary.startsWith(`..${sep}`)
+    ) {
+      throw invalidWorktreeRuntimeContract(app, worktree, [
+        `${packagePath}: runtime package neleží uvnitř canonical worktree ${worktreePath}`,
+      ]);
+    }
+
+    let packageJson;
+    try {
+      packageJson = JSON.parse(await readFile(absolutePackagePath, "utf8"));
+    } catch (error) {
+      throw invalidWorktreeRuntimeContract(app, worktree, [
+        `${packagePath}: package.json nejde přečíst: ${error.message}`,
+      ]);
+    }
+    const normalizedRuntime = normalizePackageRuntime({ packageJson, packagePath });
+    if (!normalizedRuntime) {
+      throw invalidWorktreeRuntimeContract(app, worktree, [
+        `${packagePath}: chybí lazurio.runtime nebo legacy companyascode.app`,
+      ]);
+    }
+
+    const issues = [...normalizedRuntime.issues];
+    let worktreeApp = normalizedRuntime.app;
+    if (worktreeApp.runtime_contract?.legacy !== true) {
+      const moduleManifestPath = `${worktreePath}/lazurio.module.json`;
+      let moduleManifest;
+      try {
+        moduleManifest = JSON.parse(await readFile(resolve(companiesRoot, moduleManifestPath), "utf8"));
+      } catch (error) {
+        issues.push(`${moduleManifestPath}: lazurio.module.json nejde přečíst: ${error.message}`);
+      }
+      if (moduleManifest) {
+        const normalizedModule = normalizeModuleManifest({
+          manifest: moduleManifest,
+          modulePath: moduleManifestPath,
+        });
+        issues.push(...normalizedModule.issues);
+        const materialized = materializeRuntimeFromModule({
+          runtime: worktreeApp,
+          module: normalizedModule.module,
+          packagePath,
+        });
+        worktreeApp = materialized.app;
+        issues.push(...materialized.issues);
+      }
+    } else if (app.runtime_contract?.schema_version === "lazurio.runtime.v1") {
+      issues.push(`${packagePath}: worktree používá legacy companyascode.app, ale main už vyžaduje lazurio.runtime.v1`);
+    }
+
+    if (worktreeApp.id !== app.id) {
+      issues.push(`${packagePath}: worktree app id ${String(worktreeApp.id)} neodpovídá zvolenému app id ${app.id}`);
+    }
+    if (worktreeApp.company !== app.company) {
+      issues.push(`${packagePath}: worktree company ${String(worktreeApp.company)} neodpovídá ${app.company}`);
+    }
+    if (worktreeApp.module !== app.module) {
+      issues.push(`${packagePath}: worktree module ${String(worktreeApp.module)} neodpovídá ${app.module}`);
+    }
+    if (
+      app.module_contract?.schema_version === "lazurio.module.v1"
+      && Array.isArray(app.module_contract.port_leases)
+      && app.module_contract.port_leases.length > 0
+      && moduleLeaseSignature(worktreeApp.module_contract) !== moduleLeaseSignature(app.module_contract)
+    ) {
+      issues.push(`${packagePath}: worktree module lease se liší od main; worktree nesmí měnit stabilní porty ani hosty Modulu`);
+    }
+    if (issues.length > 0) throw invalidWorktreeRuntimeContract(app, worktree, issues);
+
+    return {
+      title: worktreeApp.title,
+      company: worktreeApp.company,
+      module: worktreeApp.module,
+      surface: worktreeApp.surface,
+      port: worktreeApp.port,
+      host: worktreeApp.host,
+      health_path: worktreeApp.health_path,
+      dev_script: worktreeApp.dev_script,
+      preview_script: worktreeApp.preview_script ?? null,
+      build_script: worktreeApp.build_script ?? null,
+      listeners: worktreeApp.listeners ?? [],
+      entrypoint_listener: worktreeApp.entrypoint_listener ?? null,
+      module_contract: worktreeApp.module_contract ?? null,
+      runtime_contract: worktreeApp.runtime_contract ?? null,
+      tags: worktreeApp.tags ?? [],
+    };
+  }
+
+  function moduleLeaseSignature(moduleContract) {
+    return JSON.stringify((moduleContract?.port_leases ?? [])
+      .map((lease) => ({
+        id: lease.id,
+        host: canonicalRuntimeListenerHost(lease.host),
+        port: lease.port,
+      }))
+      .sort((left, right) => String(left.id).localeCompare(String(right.id))));
+  }
+
+  function invalidWorktreeRuntimeContract(app, worktree, issues) {
+    return new RuntimeActionError(
+      409,
+      "invalid_worktree_runtime_contract",
+      `${app.title}: zvolený worktree nemá platný a kompatibilní Module App runtime contract.`,
+      issues,
+      {
+        failure_kind: "invalid_worktree_runtime_contract",
+        worktree_slug: worktree.slug,
+        worktree_path: worktree.path,
+      },
+    );
   }
 
   function runtimeKeyForApp(app) {
