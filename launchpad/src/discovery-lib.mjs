@@ -497,7 +497,7 @@ async function declaredOrganizationModuleRoots(organizationRoot) {
   return [...new Set(paths)];
 }
 
-function runtimeScriptPortAuthorityIssues({ packageJson, packagePath, module }) {
+export function runtimeScriptPortAuthorityIssues({ packageJson, packagePath, module }) {
   const issues = [];
   for (const [scriptName, command] of Object.entries(packageJson?.scripts ?? {})) {
     if (typeof command !== "string") continue;
