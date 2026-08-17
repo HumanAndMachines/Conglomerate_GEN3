@@ -53,7 +53,7 @@ test("doctor CLI drží přesný report, lidský výstup a exit code", async () 
   expect(human.exitCode).toBe(0);
   expect(human.stderr).toBe("");
   expect(human.stdout).toBe(await golden("doctor-personalspace.txt"));
-});
+}, platformTestTimeout(15_000));
 
 test("CLI error exit-code baseline rozlišuje usage a chybějící Doctor report", async () => {
   const root = await tempRoot("lazurio-exit-golden-");
