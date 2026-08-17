@@ -42,6 +42,7 @@ export async function buildGitApiResponse({
   ]);
   const worktreeIndex = projectPublicWorktreeIndex({
     worktreeIndex: rawWorktreeIndex,
+    inventoryRecords: projection.records,
     projectedRepos: projection.repos,
     hiddenPaths: projection.hiddenPaths,
   });
@@ -416,6 +417,7 @@ export async function buildWorktreesResponse({ companiesRoot, organization = nul
   const worktreeIndex = await buildWorktreeIndex({ companiesRoot, organization, module });
   return projectPublicWorktreeIndex({
     worktreeIndex,
+    inventoryRecords: projection.records,
     projectedRepos: projection.repos,
     hiddenPaths: projection.hiddenPaths,
     module,
@@ -505,7 +507,7 @@ function projectGitInventory(inventory, { organization = null, module = null } =
     .filter((record) => !repoProjectsToLocalMachine(record))
     .flatMap((record) => [record.slot_path, record.repo_path])
     .filter((path) => typeof path === "string" && path !== "");
-  return { repos, planned, hiddenPaths };
+  return { repos, planned, records: [...reposInScope, ...plannedInScope], hiddenPaths };
 }
 
 function inventoryRecordMatchesModule(record, module) {
@@ -513,9 +515,16 @@ function inventoryRecordMatchesModule(record, module) {
   return typeof record.slot_path === "string" && basename(record.slot_path) === module;
 }
 
-function projectPublicWorktreeIndex({ worktreeIndex, projectedRepos, hiddenPaths, module = null }) {
+function projectPublicWorktreeIndex({
+  worktreeIndex,
+  inventoryRecords,
+  projectedRepos,
+  hiddenPaths,
+  module = null,
+}) {
+  const projectedRepoKeys = new Set(projectedRepos.map((repo) => repo.key));
   const worktrees = worktreeIndex.worktrees.filter((worktree) =>
-    Boolean(findRepoForWorktree(worktree, projectedRepos)),
+    projectedRepoKeys.has(findRepoForWorktree(worktree, inventoryRecords)?.key),
   );
   const visibleSidecars = new Set(worktrees.map((worktree) => worktree.sidecar_path));
   const warnings = (worktreeIndex.warnings ?? []).filter((warning) => {
@@ -611,7 +620,7 @@ function findRepoForWorktree(worktree, repos) {
   }
 
   const expectedRepoKind = worktree.repo_kind === "productionspace" ? "productionspace" : worktree.repo_kind;
-  return organizationRepos.find((repo) => {
+  const candidates = organizationRepos.filter((repo) => {
     if (repo.repo_kind !== expectedRepoKind) return false;
     // `repo.workspace` is a logical Team classification for workspace
     // modules and null for root slots. `worktree.workspace` is the physical
@@ -619,5 +628,14 @@ function findRepoForWorktree(worktree, repos) {
     // identity field and must not participate in this join.
     return repo.module === worktree.module
       || (typeof repo.slot_path === "string" && basename(repo.slot_path) === worktree.module);
-  }) ?? null;
+  });
+  const metadataModule = worktree.metadata?.module;
+  if (typeof metadataModule === "string" && metadataModule !== "") {
+    const declaredMatches = candidates.filter((repo) => repo.module === metadataModule);
+    return declaredMatches.length === 1 ? declaredMatches[0] : null;
+  }
+  // A basename fallback is legacy compatibility only. Resolve it against the
+  // complete inventory and fail closed when two declared boundaries could own
+  // the same physical worktree directory.
+  return candidates.length === 1 ? candidates[0] : null;
 }

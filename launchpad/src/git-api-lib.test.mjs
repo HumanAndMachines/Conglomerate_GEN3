@@ -132,6 +132,71 @@ test("worktree projection preserves visible Team-scoped modules and root reposit
   expect(omegaWorktrees.worktrees.map((worktree) => worktree.slug)).toEqual(["infra-review"]);
 });
 
+test("worktree projection resolves basename collisions before applying protected visibility", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const orgRoot = join(root, "organizations", "BetaCo_GEN3");
+  const manifestPath = join(orgRoot, "modules.manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  manifest.module_slots.push(
+    {
+      path: "workspace/shared-name",
+      slug: "visible-shared",
+      teams: ["sales"],
+      repo: "git@github.com:BetaCo/shared-name.git",
+      branch: "main",
+    },
+    {
+      path: "modules/shared-name",
+      slug: "hidden-shared",
+      teams: ["knowledge"],
+      default_access: "restricted",
+      required_roles: ["knowledge"],
+      repo: "git@github.com:BetaCo/shared-name.git",
+      branch: "main",
+    },
+  );
+  await writeJson(manifestPath, manifest);
+
+  const worktreeRoot = join(orgRoot, ".worktrees", "workspace", "shared-name");
+  await initGitRepo(join(worktreeRoot, "protected-review"), { branch: "protected-review" });
+  await writeFile(
+    join(orgRoot, "mission-control", "plans", "2026", "07", "DEV-7003-protected.yaml"),
+    "dev_code: DEV-7003\ntitle: Protected basename collision\nstatus: in_progress\nlinks:\n  - path: modules/shared-name\n",
+  );
+  await writeJson(join(worktreeRoot, "protected-review.worktree.json"), {
+    schema_version: "companiesascode.worktree.v1",
+    organization: "BetaCo",
+    organization_path: "organizations/BetaCo_GEN3",
+    workspace: "knowledge",
+    module: "hidden-shared",
+    module_path: "modules/shared-name",
+    repo_kind: "module",
+    base_branch: "main",
+    branch: "protected-review",
+    mission_control_plan_code: "DEV-7003",
+    mission_control_plan_path: "mission-control/plans/2026/07/DEV-7003-protected.yaml",
+    created_at: new Date().toISOString(),
+    created_by: "fixture-agent",
+    status: "active",
+  });
+
+  const response = await buildGitApiResponse({ companiesRoot: root, organization: "BetaCo" });
+  expect(response.repos.some((repo) => repo.key === "BetaCo::visible-shared")).toBe(true);
+  expect(response.repos.some((repo) => repo.key === "BetaCo::hidden-shared")).toBe(false);
+  expect(response.worktrees).toEqual([]);
+  expect(response.summary.worktree_count).toBe(0);
+  expect(JSON.stringify(response)).not.toContain("protected-review");
+
+  const worktrees = await buildWorktreesResponse({
+    companiesRoot: root,
+    organization: "BetaCo",
+    module: "shared-name",
+  });
+  expect(worktrees.worktrees).toEqual([]);
+  expect(JSON.stringify(worktrees)).not.toContain("protected-review");
+});
+
 test("apps diagnostics render structured Git warnings as human text", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
