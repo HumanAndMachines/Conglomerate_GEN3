@@ -14,7 +14,7 @@ import {
   readRepoChanges,
 } from "./git-status-lib.mjs";
 import { buildWorktreeIndex } from "./worktree-lib.mjs";
-import { organizationSlotProjectsToLocalMachine } from "./organization-slot-scope-lib.mjs";
+import { organizationSlotProjectsToLocalMachine } from "../../lazurio/core/organization-slot-scope-lib.mjs";
 
 export class GitApiError extends Error {
   constructor(message, { status = 500, code = "git_api_error", metadata = null } = {}) {

@@ -17,7 +17,7 @@ import {
   organizationRepositorySlotCollectionIssues,
   organizationSlotRepositoryId,
   organizationSlotRepositoryMountIssue,
-} from "./organization-slot-scope-lib.mjs";
+} from "../../lazurio/core/organization-slot-scope-lib.mjs";
 
 const ignoredDirs = new Set([
   ".git",

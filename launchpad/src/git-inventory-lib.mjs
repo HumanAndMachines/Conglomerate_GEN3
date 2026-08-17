@@ -13,7 +13,7 @@ import {
   organizationSlotRepositoryMountIssue,
   organizationSlotScope,
   organizationSlotWorkspace,
-} from "./organization-slot-scope-lib.mjs";
+} from "../../lazurio/core/organization-slot-scope-lib.mjs";
 import {
   inspectCanonicalPathBoundary,
   isSamePath,

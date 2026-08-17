@@ -44,7 +44,7 @@ import {
   organizationSlotTeams,
   organizationSlotUiExposure,
   organizationSlotWorkspace,
-} from "./organization-slot-scope-lib.mjs";
+} from "../../lazurio/core/organization-slot-scope-lib.mjs";
 
 const supportedPlatforms = {
   darwin: "macOS",

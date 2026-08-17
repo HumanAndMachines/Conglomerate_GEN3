@@ -14,7 +14,7 @@ import {
   mapWithConcurrency,
   runGit,
 } from "../launchpad/src/git-lib.mjs";
-import { githubRepositoryCoordinate } from "../launchpad/src/organization-slot-scope-lib.mjs";
+import { githubRepositoryCoordinate } from "./core/organization-slot-scope-lib.mjs";
 import { buildWorktreeIndex } from "../launchpad/src/worktree-lib.mjs";
 import {
   declarationIssues,

@@ -1,4 +1,4 @@
-import { posix } from "path";
+import { posix } from "node:path";
 
 const organizationSlotScopes = new Set(["root", "workspace", "productionspace"]);
 const protectedOrganizationSlotAccessModes = new Set([
