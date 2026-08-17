@@ -3113,6 +3113,53 @@ test("worktree Start rejects a lease that drifts from an explicit main contract"
   });
 });
 
+test("worktree Start applies discovery port-authority validation before launch", async () => {
+  const port = await findFreePort();
+  const root = await createCompaniesWorkspaceFixture({ port });
+  const { slug, worktreeRoot } = await createOwnedWorktreeFixture({
+    root,
+    slug: "DEV-6439-port-authority",
+  });
+  const runtime = createRuntimeManager({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    instanceId: "worktree-port-authority",
+  });
+  const packagePath = join(worktreeRoot, "app", "v1", "package.json");
+  const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
+  packageJson.scripts.dev = `bun server.mjs --port ${port}`;
+  await writeJson(packagePath, packageJson);
+
+  const scriptError = await runtime.start("test-company-demo-v1", {
+    source: { type: "worktree", slug },
+  }).catch((error) => error);
+  expect(scriptError).toMatchObject({
+    status: 409,
+    code: "invalid_worktree_runtime_contract",
+  });
+  expect(scriptError.details.join("\n")).toContain(
+    `scripts.dev obsahuje číselný port ${port}`,
+  );
+
+  packageJson.scripts.dev = "bun server.mjs";
+  await writeJson(packagePath, packageJson);
+  await writeFile(
+    join(worktreeRoot, "app", "v1", "server.mjs"),
+    `Bun.serve({ hostname: process.env.HOST, port: Number(process.env.PORT ?? ${port}), fetch: () => new Response("ok") });\n`,
+    "utf8",
+  );
+  const sourceError = await runtime.start("test-company-demo-v1", {
+    source: { type: "worktree", slug },
+  }).catch((error) => error);
+  expect(sourceError).toMatchObject({
+    status: 409,
+    code: "invalid_worktree_runtime_contract",
+  });
+  expect(sourceError.details.join("\n")).toContain(
+    `runtime source obsahuje číselný port fallback ${port}`,
+  );
+});
+
 test("durable Stop commits disabled before signaling and cannot be resurrected after either failure boundary", async () => {
   const port = await findFreePort();
   const root = await createCompaniesWorkspaceFixture({ port });

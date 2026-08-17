@@ -3,7 +3,11 @@ import { appendFile, mkdir, readFile, realpath, stat, utimes, writeFile } from "
 import { randomUUID } from "crypto";
 import { createConnection } from "net";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep, win32 } from "path";
-import { discoverLaunchpadApps } from "./discovery-lib.mjs";
+import {
+  discoverLaunchpadApps,
+  runtimeScriptPortAuthorityIssues,
+  runtimeSourcePortAuthorityIssues,
+} from "./discovery-lib.mjs";
 import { materializeRuntimeFromModule, normalizeModuleManifest } from "./module-contract-lib.mjs";
 import { normalizePackageRuntime } from "./runtime-contract-lib.mjs";
 import { recordAppOpen } from "./usage-lib.mjs";
@@ -1890,6 +1894,18 @@ export function createRuntimeManager({
       }
     } else if (app.runtime_contract?.schema_version === "lazurio.runtime.v1") {
       issues.push(`${packagePath}: worktree používá legacy companyascode.app, ale main už vyžaduje lazurio.runtime.v1`);
+    }
+    if (worktreeApp.runtime_contract?.schema_version === "lazurio.runtime.v1") {
+      issues.push(...runtimeScriptPortAuthorityIssues({
+        packageJson,
+        packagePath,
+        module: worktreeApp.module_contract,
+      }));
+      issues.push(...await runtimeSourcePortAuthorityIssues({
+        packageDirectory: dirname(absolutePackagePath),
+        packagePath,
+        module: worktreeApp.module_contract,
+      }));
     }
 
     if (worktreeApp.id !== app.id) {
