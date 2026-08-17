@@ -100,10 +100,14 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(js).not.toContain("--space-logo-hue");
   expect(js).toContain("space.organization.logo_url");
   expect(js).toContain("function applyOrganizationTheme");
-  expect(js).not.toContain("space.organization.theme");
+  expect(js).toContain("space.organization.theme");
   expect(js).toContain('root.removeAttribute("data-organization-theme"');
-  expect(js).not.toContain("ORGANIZATION_THEME_TOKENS");
-  expect(js).not.toContain("safeOrganizationThemeValue");
+  expect(js).toContain("ORGANIZATION_THEME_PROPERTIES");
+  expect(js).toContain("safeOpaqueOrganizationThemeColor");
+  expect(js).toContain('root.style.setProperty("--organization-theme-accent", accent)');
+  expect(js).toContain('root.setAttribute("data-organization-theme", space.organization.slug)');
+  expect(css).toContain("--organization-theme-accent: var(--lz-blue-500)");
+  expect(css).toMatch(/\.notifications-badge\s*\{[\s\S]*?background: var\(--organization-theme-accent\)/);
   expect(js).toContain("accentLockedByOrganization");
   expect(js).toContain("accentLockedByOrganization: true");
   expect(js).toContain('if (space.kind === "personal")');
@@ -213,13 +217,18 @@ test("každá kanonická pixelová ikona odkazovaná UI existuje", async () => {
   for (const file of referencedFiles) expect(files.has(file)).toBe(true);
 });
 
-test("Launchpad drží kanonické Lazurio a nepřebírá skin Organizace", async () => {
-  const js = await readFile(join(publicRoot, "app.js"), "utf8");
+test("Launchpad přebírá z Organizace jen úzký Theme akcent", async () => {
+  const [js, css] = await Promise.all([
+    readFile(join(publicRoot, "app.js"), "utf8"),
+    readFile(join(publicRoot, "styles.css"), "utf8"),
+  ]);
   expect(js).toContain("function applyOrganizationTheme");
   expect(js).toContain('root.removeAttribute("data-organization-theme")');
   expect(js).toContain('root.removeAttribute("data-accent")');
-  expect(js).not.toContain("safeOrganizationThemeValue");
-  expect(js).not.toContain("space.organization.theme");
+  expect(js).toContain("safeOpaqueOrganizationThemeColor");
+  expect(js).toContain("space.organization.theme");
+  expect(js).not.toContain('root.style.setProperty("--accent"');
+  expect(css).toContain("--organization-theme-accent: var(--lz-blue-500)");
 });
 
 test("Launchpad shell ships GEN2-like command center, theme and feedback affordances", async () => {
