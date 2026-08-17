@@ -103,7 +103,7 @@
         },
         {
           "label": "Root/data slot scope helper",
-          "path": "launchpad/src/organization-slot-scope-lib.mjs"
+          "path": "lazurio/core/organization-slot-scope-lib.mjs"
         },
         {
           "label": "AVALTAR-like regression",
