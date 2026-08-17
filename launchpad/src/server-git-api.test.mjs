@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
-import { cp, mkdir, rm, symlink, writeFile } from "fs/promises";
+import { cp, mkdir, readFile, rm, symlink, writeFile } from "fs/promises";
 import { createServer } from "net";
 import { join } from "path";
 import {
@@ -81,6 +81,70 @@ test("Launchpad server exposes read-only git and Mission Control routes", async 
   expect(plans.schema_version).toBe("companiesascode.launchpad.mission_control_plans.v1");
   expect(moduleFolderGet.status).toBe(405);
   expect(invalidModuleFolderPost.status).toBe(400);
+});
+
+test("public read routes do not expose an unmaterialized protected repo through changes or worktrees", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const orgRoot = join(root, "organizations", "BetaCo_GEN3");
+  const manifestPath = join(orgRoot, "modules.manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  const knowledgebase = manifest.module_slots.find((slot) => slot.path === "workspace/knowledgebase");
+  knowledgebase.default_access = "restricted";
+  knowledgebase.required_roles = ["knowledge"];
+  await writeJson(manifestPath, manifest);
+
+  const worktreeRoot = join(orgRoot, ".worktrees", "workspace", "knowledgebase");
+  await initGitRepo(join(worktreeRoot, "protected-review"), { branch: "protected-review" });
+  await writeJson(join(worktreeRoot, "protected-review.worktree.json"), {
+    schema_version: "companiesascode.worktree.v1",
+    organization: "BetaCo",
+    organization_path: "organizations/BetaCo_GEN3",
+    workspace: "workspace",
+    module: "knowledgebase",
+    module_path: "workspace/knowledgebase",
+    repo_kind: "module",
+    base_branch: "main",
+    branch: "protected-review",
+    mission_control_plan_code: "DEV-9999",
+    mission_control_plan_path: "mission-control/plans/2026/07/DEV-9999-protected.yaml",
+    created_at: new Date().toISOString(),
+    created_by: "fixture-agent",
+    status: "active",
+  });
+  await writeFile(
+    join(orgRoot, "mission-control", "plans", "2026", "07", "DEV-9999-protected.yaml"),
+    "dev_code: DEV-9999\ntitle: Protected worktree\nstatus: in_progress\nlinks:\n  - path: workspace/knowledgebase\n",
+  );
+  const { port } = await startLaunchpadServer(root);
+
+  const repos = await getJson(port, "/api/git/repos?company=BetaCo");
+  expect(repos.repos.some((repo) => repo.key === "BetaCo::knowledgebase")).toBe(false);
+  expect(repos.worktrees).toEqual([]);
+  expect(repos.summary.worktree_count).toBe(0);
+  expect(JSON.stringify(repos)).not.toContain("protected-review");
+
+  const worktrees = await getJson(port, "/api/git/worktrees?organization=BetaCo&module=knowledgebase");
+  expect(worktrees.worktrees).toEqual([]);
+  expect(worktrees.warnings).toEqual([]);
+  expect(JSON.stringify(worktrees)).not.toContain("protected-review");
+
+  const plans = await getJson(port, "/api/mission-control/plans?organization=BetaCo&module=knowledgebase");
+  expect(plans.plans).toEqual([]);
+
+  const detailResponse = await fetch(
+    `http://127.0.0.1:${port}/api/git/repos/BetaCo%3A%3Aknowledgebase`,
+  );
+  expect(detailResponse.status).toBe(404);
+  expect(await detailResponse.json()).toMatchObject({ error: "repo_not_found" });
+
+  const changesResponse = await fetch(
+    `http://127.0.0.1:${port}/api/git/repos/BetaCo%3A%3Aknowledgebase/changes`,
+  );
+  expect(changesResponse.status).toBe(404);
+  const changes = await changesResponse.json();
+  expect(changes).toMatchObject({ error: "repo_not_found" });
+  expect(changes.repo_path).toBeUndefined();
 });
 
 test("identity endpoint is local-only and a foreign root cannot reuse the port", async () => {
