@@ -1,0 +1,6 @@
+Lazurio context v0 · unstable · read-only
+Root: personalspace
+Principál: fixture-owner · present (personalspace_manifest_owner)
+Mašina: <platform>/<architecture>
+Personalspace: mount present (personalspace_is_root) · access not_evaluated (provider_authority_not_checked)
+Organization: nevybrána · absent (rootless_mode)
