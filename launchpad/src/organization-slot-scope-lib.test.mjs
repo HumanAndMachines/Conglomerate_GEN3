@@ -5,7 +5,7 @@ import {
   organizationRepositorySlotCollectionIssues,
   organizationSlotRepositoryId,
   organizationSlotRepositoryMountIssue,
-} from "./organization-slot-scope-lib.mjs";
+} from "../../lazurio/core/organization-slot-scope-lib.mjs";
 
 describe("case-preserving Organization repository mount paths", () => {
   test.each([

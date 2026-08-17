@@ -7,7 +7,7 @@ import { normalizeModuleManifest } from "../launchpad/src/module-contract-lib.mj
 import {
   normalizeOrganizationSlotPath,
   organizationSlotScope,
-} from "../launchpad/src/organization-slot-scope-lib.mjs";
+} from "../lazurio/core/organization-slot-scope-lib.mjs";
 import { packagePathsBelow } from "./lazurio-runtime-migrate.mjs";
 
 function posixRelative(parent, child) {

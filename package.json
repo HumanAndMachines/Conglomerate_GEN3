@@ -12,7 +12,7 @@
     "launchpad:serve": "bun run --cwd launchpad serve",
     "launchpad:dev": "bun run --cwd launchpad dev",
     "lazurio": "bun lazurio/cli.mjs",
-    "lazurio:test": "bun test --cwd lazurio --timeout 15000 lazurio.test.mjs search.test.mjs parity.test.mjs",
+    "lazurio:test": "bun test --cwd lazurio --timeout 15000 lazurio.test.mjs search.test.mjs parity.test.mjs core/import-boundary.test.mjs",
     "resident:build": "bun distribution/build.mjs",
     "resident:test": "bun test --timeout 60000 distribution/build.test.mjs distribution/updater.test.mjs distribution/buddy-service.test.mjs distribution/buddy-rollout.test.mjs provisioning/ansible-contract.test.mjs tests/bridge",
     "resident:operator:test": "bun test provisioning/ansible-contract.test.mjs",
