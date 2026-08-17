@@ -15,8 +15,14 @@ const missionControlPlanRoots = [
   "mission-control/plans",
 ];
 
-export async function buildMissionControlPlanIndex({ companiesRoot, organization = null, module = null } = {}) {
+export async function buildMissionControlPlanIndex({
+  companiesRoot,
+  organization = null,
+  module = null,
+  moduleIdentity = null,
+} = {}) {
   if (!companiesRoot) throw new Error("buildMissionControlPlanIndex requires companiesRoot");
+  const hasModuleSelector = Boolean(module || moduleIdentity);
   const inventory = await buildGitInventory({ companiesRoot });
   const realCompaniesRoot = await realpath(companiesRoot);
   const organizations = uniqueOrganizations(inventory.repos);
@@ -44,8 +50,8 @@ export async function buildMissionControlPlanIndex({ companiesRoot, organization
       })) {
         if (!file.endsWith(".yaml") && !file.endsWith(".yml")) continue;
         const text = await readFile(file, "utf8");
-        const plan = parsePlanFile({ companiesRoot, organization: org, file, text, module });
-        if (module && plan.module_match === "none") continue;
+        const plan = parsePlanFile({ companiesRoot, organization: org, file, text, module, moduleIdentity });
+        if (hasModuleSelector && plan.module_match === "none") continue;
         plans.push(plan);
       }
     }
@@ -108,7 +114,7 @@ export function isMissionControlPlanPath(planPath) {
   return missionControlPlanRoots.some((root) => planPath.startsWith(`${root}/`));
 }
 
-function parsePlanFile({ companiesRoot, organization, file, text, module }) {
+function parsePlanFile({ companiesRoot, organization, file, text, module, moduleIdentity = null }) {
   const fileName = basename(file);
   const code = topLevelValue(text, "dev_code") ?? topLevelValue(text, "code") ?? fileName.match(/[A-Z]+-\d+/)?.[0] ?? fileName.replace(/\.ya?ml$/, "");
   const title = topLevelValue(text, "title") ?? topLevelValue(text, "name") ?? humanizeFileName(fileName);
@@ -121,15 +127,36 @@ function parsePlanFile({ companiesRoot, organization, file, text, module }) {
     organization_relative_path: relative(join(companiesRoot, organization.path), file).replace(/\\/g, "/"),
     title,
     status,
-    module_match: module ? moduleMatch(text, module) : "general",
+    module_match: module || moduleIdentity ? moduleMatch(text, { module, moduleIdentity }) : "general",
   };
 }
 
-function moduleMatch(text, module) {
+function moduleMatch(text, { module, moduleIdentity }) {
+  if (moduleIdentity) {
+    for (const path of normalizedModuleIdentityValues(moduleIdentity.paths)) {
+      const escapedPath = escapeRegExp(path);
+      if (new RegExp(`(?:^|[^A-Za-z0-9._/-])${escapedPath}(?:/|$|[^A-Za-z0-9._-])`, "m").test(text)) {
+        return "direct";
+      }
+    }
+    for (const id of normalizedModuleIdentityValues(moduleIdentity.ids)) {
+      const escapedId = escapeRegExp(id);
+      if (new RegExp(`(?:^|[^A-Za-z0-9._-])${escapedId}(?:$|[^A-Za-z0-9._-])`, "m").test(text)) {
+        return "general";
+      }
+    }
+    return "none";
+  }
+
   const escaped = escapeRegExp(module);
   if (new RegExp(`(modules|workspace)/${escaped}(?:/|\\b)`).test(text)) return "direct";
   if (new RegExp(`\\b${escaped}\\b`).test(text)) return "general";
   return "none";
+}
+
+function normalizedModuleIdentityValues(values) {
+  if (!Array.isArray(values)) return [];
+  return [...new Set(values.filter((value) => typeof value === "string" && value !== ""))];
 }
 
 function topLevelValue(text, key) {

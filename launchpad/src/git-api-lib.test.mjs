@@ -164,6 +164,10 @@ test("worktree projection resolves basename collisions before applying protected
     join(orgRoot, "mission-control", "plans", "2026", "07", "DEV-7003-protected.yaml"),
     "dev_code: DEV-7003\ntitle: Protected basename collision\nstatus: in_progress\nlinks:\n  - path: modules/shared-name\n",
   );
+  await writeFile(
+    join(orgRoot, "mission-control", "plans", "2026", "07", "DEV-7004-visible.yaml"),
+    "dev_code: DEV-7004\ntitle: Visible basename collision\nstatus: ready\nlinks:\n  - path: workspace/shared-name\n",
+  );
   await writeJson(join(worktreeRoot, "protected-review.worktree.json"), {
     schema_version: "companiesascode.worktree.v1",
     organization: "BetaCo",
@@ -195,6 +199,18 @@ test("worktree projection resolves basename collisions before applying protected
   });
   expect(worktrees.worktrees).toEqual([]);
   expect(JSON.stringify(worktrees)).not.toContain("protected-review");
+
+  const [ambiguousPlans, visiblePlans, hiddenPlans] = await Promise.all([
+    buildPlansResponse({ companiesRoot: root, organization: "BetaCo", module: "shared-name" }),
+    buildPlansResponse({ companiesRoot: root, organization: "BetaCo", module: "visible-shared" }),
+    buildPlansResponse({ companiesRoot: root, organization: "BetaCo", module: "hidden-shared" }),
+  ]);
+  expect(ambiguousPlans.plans).toEqual([]);
+  expect(JSON.stringify(ambiguousPlans)).not.toContain("DEV-7003");
+  expect(visiblePlans.plans.map((plan) => plan.code)).toEqual(["DEV-7004"]);
+  expect(JSON.stringify(visiblePlans)).not.toContain("DEV-7003");
+  expect(JSON.stringify(visiblePlans)).not.toContain("Protected basename collision");
+  expect(hiddenPlans.plans).toEqual([]);
 });
 
 test("apps diagnostics render structured Git warnings as human text", async () => {
