@@ -1,0 +1,30 @@
+{
+  "schema_version": "companiesascode.doctor.report.v3",
+  "scope": {
+    "type": "personalspace",
+    "path": ".",
+    "name": "Fixture Personalspace",
+    "absolute_path": "<root>"
+  },
+  "summary": {
+    "status": "warn",
+    "ok": 0,
+    "warn": 1,
+    "fail": 0,
+    "not_applicable": 0,
+    "blocked": 0
+  },
+  "checks": [
+    {
+      "id": "fixture.ready",
+      "status": "warn",
+      "severity": "recommended",
+      "title": "Fixture",
+      "message": "Fixture warning",
+      "paths": [],
+      "links": [],
+      "details": []
+    }
+  ],
+  "generated_at": "2026-08-11T00:00:00.000Z"
+}

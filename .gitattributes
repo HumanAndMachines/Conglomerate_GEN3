@@ -14,6 +14,7 @@
 # byly zelené a windows-latest hlásil rozešlý otisk schématu. `.mjs` už eol=lf má,
 # schéma je JSON, takže potřebuje vlastní řádek.
 launchpad/schemas/doctor-report.schema.json text eol=lf
+lazurio/testdata/golden/** text eol=lf
 
 *.png binary
 *.jpg binary
