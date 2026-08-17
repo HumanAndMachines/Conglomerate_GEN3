@@ -112,6 +112,7 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
     expect.objectContaining({ path: "AGENTS.md" }),
   ]);
   expect(first.manifest.payload.files.map((file) => file.path)).toEqual(expect.arrayContaining([
+    "lazurio/core/organization-slot-scope-lib.mjs",
     "manual/update-installed-resident.md",
     "resident/integrity.mjs",
     "resident/updater-lib.mjs",
@@ -150,6 +151,14 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
     "buddy:service": "bun resident/buddy-service.mjs",
     "buddy:rollout": "bun resident/buddy-rollout.mjs",
   });
+
+  const lazurioHelp = spawnSync(process.execPath, ["lazurio/cli.mjs", "--help"], {
+    cwd: first.artifact_root,
+    encoding: "utf8",
+    shell: false,
+  });
+  expect(lazurioHelp.status).toBe(0);
+  expect(lazurioHelp.stdout).toContain("Lazurio CLI v0");
 
   const doctor = runDoctor(first.artifact_root);
   expect(doctor.status).toBe(0);
