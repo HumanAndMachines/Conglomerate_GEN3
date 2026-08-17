@@ -1,4 +1,5 @@
 import { existsSync } from "fs";
+import { basename } from "path";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
 import { materializeRepoCheckout } from "./git-materialization-lib.mjs";
 import { mapWithConcurrency } from "./git-lib.mjs";
@@ -32,27 +33,21 @@ export async function buildGitApiResponse({
   allowRemoteRefresh = true,
 } = {}) {
   const inventory = await buildGitInventory({ companiesRoot });
-  const scopedInventoryRepos = organization
-    ? inventory.repos.filter((repo) => repo.organization === organization)
-    : inventory.repos;
-  const inventoryRepos = scopedInventoryRepos.filter(repoProjectsToLocalMachine);
-  const scopedPlanned = organization
-    ? inventory.planned.filter((repo) => repo.organization === organization)
-    : inventory.planned;
-  const planned = scopedPlanned.filter(repoProjectsToLocalMachine);
-  const hiddenPaths = [...scopedInventoryRepos, ...scopedPlanned]
-    .filter((repo) => !repoProjectsToLocalMachine(repo))
-    .map((repo) => repo.slot_path)
-    .filter(Boolean);
-  const [statuses, worktreeIndex] = await Promise.all([
+  const projection = projectGitInventory(inventory, { organization });
+  const [statuses, rawWorktreeIndex] = await Promise.all([
     statusService
-      ? statusService.readStatuses(inventoryRepos, { refresh, allowRemoteRefresh })
-      : readGitRepoStatuses(inventoryRepos, { refresh }),
+      ? statusService.readStatuses(projection.repos, { refresh, allowRemoteRefresh })
+      : readGitRepoStatuses(projection.repos, { refresh }),
     buildWorktreeIndex({ companiesRoot, organization }),
   ]);
+  const worktreeIndex = projectPublicWorktreeIndex({
+    worktreeIndex: rawWorktreeIndex,
+    projectedRepos: projection.repos,
+    hiddenPaths: projection.hiddenPaths,
+  });
   const statusByKey = new Map(statuses.map((status) => [status.key, status]));
-  const worktreesByRepo = groupWorktreesByRepo(worktreeIndex.worktrees);
-  const repos = inventoryRepos.map((repo) => {
+  const worktreesByRepo = groupWorktreesByRepo(worktreeIndex.worktrees, projection.repos);
+  const repos = projection.repos.map((repo) => {
     const worktrees = worktreesByRepo.get(repo.key) ?? [];
     const status = statusByKey.get(repo.key);
     return publicRepo({ repo, status, worktrees });
@@ -71,10 +66,10 @@ export async function buildGitApiResponse({
     repos,
     worktrees: worktreeIndex.worktrees,
     invalid_worktree_locations: worktreeIndex.invalid_locations,
-    planned,
+    planned: projection.planned,
     warnings: [
-      ...projectGitDiagnosticMessages(inventory.warnings, hiddenPaths),
-      ...projectGitDiagnosticMessages(worktreeIndex.warnings, hiddenPaths),
+      ...projectGitDiagnosticMessages(inventory.warnings, projection.hiddenPaths),
+      ...worktreeIndex.warnings,
     ],
   };
 }
@@ -92,7 +87,7 @@ export async function buildRepoResponse({ companiesRoot, repoKey, refresh = fals
 
 export async function buildRepoChangesResponse({ companiesRoot, repoKey } = {}) {
   const inventory = await buildGitInventory({ companiesRoot });
-  const repo = inventory.repos.find((item) => item.key === repoKey);
+  const repo = projectGitInventory(inventory).repos.find((item) => item.key === repoKey);
   if (!repo) throw new GitApiError(`Repo ${repoKey} nebylo nalezeno.`, { status: 404, code: "repo_not_found" });
   const { status, changes } = await readRepoChanges(repo);
   return {
@@ -416,11 +411,30 @@ function compactPullStatus(status) {
 }
 
 export async function buildWorktreesResponse({ companiesRoot, organization = null, module = null } = {}) {
-  return buildWorktreeIndex({ companiesRoot, organization, module });
+  const inventory = await buildGitInventory({ companiesRoot });
+  const projection = projectGitInventory(inventory, { organization, module });
+  const worktreeIndex = await buildWorktreeIndex({ companiesRoot, organization, module });
+  return projectPublicWorktreeIndex({
+    worktreeIndex,
+    projectedRepos: projection.repos,
+    hiddenPaths: projection.hiddenPaths,
+    module,
+  });
 }
 
 export async function buildPlansResponse({ companiesRoot, organization = null, module = null } = {}) {
-  return buildMissionControlPlanIndex({ companiesRoot, organization, module });
+  const planIndex = await buildMissionControlPlanIndex({ companiesRoot, organization, module });
+  if (!module) return planIndex;
+
+  const inventory = await buildGitInventory({ companiesRoot });
+  const projection = projectGitInventory(inventory, { organization, module });
+  const visibleOrganizations = new Set(
+    [...projection.repos, ...projection.planned].map((record) => record.organization),
+  );
+  return {
+    ...planIndex,
+    plans: planIndex.plans.filter((plan) => visibleOrganizations.has(plan.organization)),
+  };
 }
 
 export function compactGitSummaryForApp(repo) {
@@ -477,6 +491,48 @@ function repoProjectsToLocalMachine(repo) {
   return organizationSlotProjectsToLocalMachine(repo, {
     materialized: typeof repo?.absolute_path === "string" && existsSync(repo.absolute_path),
   });
+}
+
+function projectGitInventory(inventory, { organization = null, module = null } = {}) {
+  const inScope = (record) =>
+    (!organization || record.organization === organization)
+    && (!module || inventoryRecordMatchesModule(record, module));
+  const reposInScope = inventory.repos.filter(inScope);
+  const plannedInScope = inventory.planned.filter(inScope);
+  const repos = reposInScope.filter(repoProjectsToLocalMachine);
+  const planned = plannedInScope.filter(repoProjectsToLocalMachine);
+  const hiddenPaths = [...reposInScope, ...plannedInScope]
+    .filter((record) => !repoProjectsToLocalMachine(record))
+    .flatMap((record) => [record.slot_path, record.repo_path])
+    .filter((path) => typeof path === "string" && path !== "");
+  return { repos, planned, hiddenPaths };
+}
+
+function inventoryRecordMatchesModule(record, module) {
+  if (record.module === module) return true;
+  return typeof record.slot_path === "string" && basename(record.slot_path) === module;
+}
+
+function projectPublicWorktreeIndex({ worktreeIndex, projectedRepos, hiddenPaths, module = null }) {
+  const worktrees = worktreeIndex.worktrees.filter((worktree) =>
+    Boolean(findRepoForWorktree(worktree, projectedRepos)),
+  );
+  const visibleSidecars = new Set(worktrees.map((worktree) => worktree.sidecar_path));
+  const warnings = (worktreeIndex.warnings ?? []).filter((warning) => {
+    if (warning && typeof warning === "object" && typeof warning.path === "string") {
+      return visibleSidecars.has(warning.path);
+    }
+    return projectGitDiagnosticMessages([warning], hiddenPaths).length > 0;
+  });
+  return {
+    ...worktreeIndex,
+    worktrees,
+    // Invalid legacy bases belong to the Organization, not to a module. A
+    // module-scoped public response therefore must not attach them to a
+    // predictable protected module query.
+    invalid_locations: module ? [] : projectGitDiagnosticMessages(worktreeIndex.invalid_locations, hiddenPaths),
+    warnings,
+  };
 }
 
 function projectGitDiagnosticMessages(messages = [], hiddenPaths = []) {
@@ -536,12 +592,29 @@ function publicRepo({ repo, status, worktrees }) {
   };
 }
 
-function groupWorktreesByRepo(worktrees) {
+function groupWorktreesByRepo(worktrees, repos) {
   const byRepo = new Map();
   for (const worktree of worktrees) {
-    const key = `${worktree.organization}::${worktree.module}`;
+    const repo = findRepoForWorktree(worktree, repos);
+    if (!repo) continue;
+    const key = repo.key;
     if (!byRepo.has(key)) byRepo.set(key, []);
     byRepo.get(key).push(worktree);
   }
   return byRepo;
+}
+
+function findRepoForWorktree(worktree, repos) {
+  const organizationRepos = repos.filter((repo) => repo.organization === worktree.organization);
+  if (worktree.repo_kind === "organization_root") {
+    return organizationRepos.find((repo) => repo.repo_kind === "organization_root") ?? null;
+  }
+
+  const expectedRepoKind = worktree.repo_kind === "productionspace" ? "productionspace" : worktree.repo_kind;
+  return organizationRepos.find((repo) => {
+    if (repo.repo_kind !== expectedRepoKind) return false;
+    if (repo.workspace !== worktree.workspace) return false;
+    return repo.module === worktree.module
+      || (typeof repo.slot_path === "string" && basename(repo.slot_path) === worktree.module);
+  }) ?? null;
 }

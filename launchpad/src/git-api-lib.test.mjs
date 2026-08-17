@@ -1,7 +1,14 @@
 import { afterAll, expect, test } from "bun:test";
 import { mkdir, readFile, rm, writeFile } from "fs/promises";
 import { join } from "path";
-import { buildGitApiResponse, buildPullAllResponse, buildRepoChangesResponse, buildRepoPullResponse } from "./git-api-lib.mjs";
+import {
+  buildGitApiResponse,
+  buildPlansResponse,
+  buildPullAllResponse,
+  buildRepoChangesResponse,
+  buildRepoPullResponse,
+  buildWorktreesResponse,
+} from "./git-api-lib.mjs";
 import { buildLaunchpadAppsResponse } from "./diagnostics-lib.mjs";
 import {
   createLaunchpadGitFixture,
@@ -131,11 +138,68 @@ test("git API hides protected repos until their checkout exists on this machine"
   await writeJson(omegaManifestPath, omegaManifest);
   await writeJson(betaManifestPath, betaManifest);
 
+  const protectedWorktreeRoot = join(
+    root,
+    "organizations",
+    "BetaCo_GEN3",
+    ".worktrees",
+    "workspace",
+    "knowledgebase",
+  );
+  await initGitRepo(join(protectedWorktreeRoot, "protected-review"), {
+    branch: "protected-review",
+  });
+  await writeJson(join(protectedWorktreeRoot, "protected-review.worktree.json"), {
+    schema_version: "companiesascode.worktree.v1",
+    organization: "BetaCo",
+    organization_path: "organizations/BetaCo_GEN3",
+    workspace: "workspace",
+    module: "knowledgebase",
+    module_path: "workspace/knowledgebase",
+    repo_kind: "module",
+    base_branch: "main",
+    branch: "protected-review",
+    mission_control_plan_code: "DEV-9999",
+    mission_control_plan_path: "mission-control/plans/2026/07/DEV-9999-protected.yaml",
+    created_at: new Date().toISOString(),
+    created_by: "fixture-agent",
+    status: "active",
+  });
+  await writeFile(
+    join(root, "organizations", "BetaCo_GEN3", "mission-control", "plans", "2026", "07", "DEV-9999-protected.yaml"),
+    "dev_code: DEV-9999\ntitle: Protected worktree\nstatus: in_progress\nlinks:\n  - path: workspace/knowledgebase\n",
+  );
+
   const before = await buildGitApiResponse({ companiesRoot: root });
   expect(before.repos.some((repo) => repo.key === "OmegaCo::infra")).toBe(false);
   expect(before.repos.some((repo) => repo.key === "BetaCo::knowledgebase")).toBe(false);
   expect(before.planned.some((repo) => repo.key === "OmegaCo::future-module")).toBe(false);
   expect(JSON.stringify(before)).not.toContain("workspace/knowledgebase");
+  expect(before.worktrees).toEqual([]);
+  expect(before.summary.worktree_count).toBe(0);
+
+  const protectedWorktrees = await buildWorktreesResponse({
+    companiesRoot: root,
+    organization: "BetaCo",
+    module: "knowledgebase",
+  });
+  expect(protectedWorktrees.worktrees).toEqual([]);
+  expect(protectedWorktrees.warnings).toEqual([]);
+  expect(JSON.stringify(protectedWorktrees)).not.toContain("protected-review");
+
+  const protectedPlans = await buildPlansResponse({
+    companiesRoot: root,
+    organization: "BetaCo",
+    module: "knowledgebase",
+  });
+  expect(protectedPlans.plans).toEqual([]);
+
+  try {
+    await buildRepoChangesResponse({ companiesRoot: root, repoKey: "BetaCo::knowledgebase" });
+    throw new Error("Protected changes response unexpectedly succeeded.");
+  } catch (error) {
+    expect(error).toMatchObject({ status: 404, code: "repo_not_found" });
+  }
 
   await initGitRepo(join(root, "organizations", "OmegaCo_GEN3", "infra"));
   const after = await buildGitApiResponse({ companiesRoot: root });
