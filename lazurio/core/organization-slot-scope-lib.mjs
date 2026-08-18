@@ -226,6 +226,16 @@ export function organizationSlotUiExposure(slot, normalizedPath = null) {
   return "module";
 }
 
+export function organizationSlotCatalogPresentation(slot, normalizedPath = null) {
+  const description = typeof slot?.description === "string"
+    ? slot.description.trim()
+    : "";
+  return {
+    description: description === "" ? null : description,
+    ui_exposure: organizationSlotUiExposure(slot, normalizedPath),
+  };
+}
+
 // Manifest deklaruje inventory a sync intent, nikoli oprávnění aktuálního
 // Principála. Chráněný slot se do každodenního Launchpad API promítne až když
 // na této mašině existuje jeho checkout (poslední známý offline stav bez TTL).
