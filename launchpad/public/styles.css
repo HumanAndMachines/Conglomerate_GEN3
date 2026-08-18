@@ -5924,3 +5924,71 @@ body {
   background: var(--lz-gray-50);
   filter: none;
 }
+
+/* Na mobilu jsou klidové provozní stavy jeden kompaktní souhrn, ne dvě
+   dominantní karty před obsahem. Stav s chybou nebo skutečnou akcí si dál
+   vezme celý řádek a zachová výraznější hierarchii. */
+@media (max-width: 760px) {
+  .global-update-slot:not(:empty) {
+    margin: var(--lz-space-12) 0 var(--lz-space-16);
+  }
+
+  .global-update-slot .update-banner-group {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--lz-space-8);
+  }
+
+  .global-update-slot .update-banner {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr);
+    min-height: 42px;
+    margin: 0;
+    padding: var(--lz-space-8);
+    gap: 6px;
+    border-width: 1px;
+    border-left-width: 3px;
+    border-radius: var(--lz-radius-sm);
+  }
+
+  .global-update-slot .update-banner-icon,
+  .global-update-slot .update-banner-success,
+  .global-update-slot .update-banner-spinner {
+    width: 18px;
+    height: 18px;
+  }
+
+  .global-update-slot .update-banner-text {
+    min-width: 0;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.25;
+  }
+
+  .global-update-slot .update-banner.is-blocked,
+  .global-update-slot .update-banner.is-updating,
+  .global-update-slot .update-banner:has(.update-banner-action:not([hidden])) {
+    grid-column: 1 / -1;
+    min-height: 0;
+    padding: var(--lz-space-12);
+    gap: var(--lz-space-8);
+    border-radius: var(--lz-radius-md);
+  }
+
+  .global-update-slot .update-banner.is-blocked .update-banner-text,
+  .global-update-slot .update-banner.is-updating .update-banner-text,
+  .global-update-slot .update-banner:has(.update-banner-action:not([hidden])) .update-banner-text {
+    font-size: 14px;
+  }
+
+  .global-update-slot .update-banner-action {
+    grid-column: 1 / -1;
+    width: 100%;
+    justify-self: stretch;
+  }
+}
+
+@media (max-width: 360px) {
+  .global-update-slot .update-banner-group {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

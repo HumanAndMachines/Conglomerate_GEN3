@@ -666,7 +666,9 @@ je kanonická součást UI, ne URL experiment ani skin konkrétní Organizace.
 Karta aktualizací je na desktopu první v pravém sloupci; na mobilu a v
 Personalspace se stejný prvek přesune nad hlavní layout, aby root update ani
 blokující zpráva nezmizely ve skrytém draweru. Blokovaný root stav má v tomto
-prvku přednost před souhrnem dostupných modulových aktualizací.
+prvku přednost před souhrnem dostupných modulových aktualizací. Na mobilu se
+klidový a načítací root/module stav skládají do jedné kompaktní dvousloupcové
+řady; chyba nebo stav se skutečnou akcí zůstává přes celou šířku.
 
 Celá karta je klikatelná a spouští **one-click open** (install → start → otevřít
 URL) s guardem na vnitřní ovládací prvky (`shouldOpenFromCardSurface`). Ikona,
