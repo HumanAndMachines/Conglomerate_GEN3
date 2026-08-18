@@ -64,18 +64,24 @@ generátor ingressu a brokeru jej spojuje s module lease registry a síťový
 obal dál vynucuje autentizaci i Team boundary.
 
 Hosted browser akce navíc vyžadují
-`LAZURIO_LAUNCHPAD_EXTERNAL_ORIGIN=https://<přesný-launchpad-host>`. Server
-důvěřuje tomuto originu pouze v hosted profilu, pouze přes svůj loopback
-listener, s browser metadata `Sec-Fetch-Site: same-origin` a s
+`LAZURIO_LAUNCHPAD_EXTERNAL_ORIGIN=https://<přesný-launchpad-host>` a interní
+`LAZURIO_LAUNCHPAD_AUTH_CHECK_URL=https://<přesný-auth-host>/oauth2/auth`. Server
+přijme tento origin pouze v hosted profilu, pouze přes svůj loopback listener,
+s browser metadata `Sec-Fetch-Site: same-origin` a s
 `X-Lazurio-GitHub-Login`, který smí po úspěšném OAuth/GitHub Team checku vložit
-ingress. Ingress před autentizací stejný příchozí header vždy odstraní. Tím
-hostovaný povrch používá stejné `/api/sync`, runtime, Git a update handlery jako
-localhost bez druhého IAM nebo druhé implementace akcí.
+ingress. Ingress před autentizací stejný příchozí header vždy odstraní. Protože
+samotné proxy hlavičky umí proces ve sdíleném loopback namespace napodobit,
+Launchpad před každou chráněnou akcí znovu ověří podepsanou HttpOnly session u
+stejného oauth2-proxy přes oddělený TLS-autentizovaný Team auth host a porovná
+jeho autoritativní login s ingress hlavičkou. Cookie ani OAuth token neloguje a
+auth check failuje zavřeně. Tím hostovaný
+povrch používá stejné `/api/sync`, runtime, Git a update handlery jako localhost
+bez druhého IAM nebo druhé implementace akcí.
 
 Personalspace, `/api/launchpad/identity` a otevření složky v lokálním OS zůstávají
-i v hosted profilu local-only. Chybějící nebo neplatný external origin je
-startup chyba; chybějící gateway identita, odlišný origin nebo cross-site
-request končí `403` před routingem.
+i v hosted profilu local-only. Chybějící nebo neplatný external origin či auth
+check URL je startup chyba; chybějící gateway identita nebo session, neúspěšný
+auth check, odlišný origin nebo cross-site request končí `403` před routingem.
 
 Hosted profil je privátní vývojový preview povrch uvnitř schváleného
 Tailscale/VPN access plane, nikoli produkční deployment. Zdroj lze editovat bez
@@ -760,11 +766,13 @@ Všechny mutující metody pod `/api/` procházejí před routingem jednotnou re
 trust kontrolou. Lokálně musí `Host` být `127.0.0.1` nebo `localhost`, případný
 `Origin` musí přesně odpovídat request originu a `Sec-Fetch-Site` smí být jen
 `same-origin` nebo `none`. Hosted profil přijme jen přesný nakonfigurovaný HTTPS
-origin, `Sec-Fetch-Site: same-origin` a gateway-authenticated GitHub login;
-backend listener zůstává loopback-only. Cross-origin, DNS-rebinding a
-neautentizované hosted požadavky končí `403` dřív, než se spustí Git, worktree,
-runtime nebo synchronizační akce. Nový mutující endpoint tuto centrální ochranu
-dědí automaticky; Personalspace a další local-only routy mají ještě užší gate.
+origin, `Sec-Fetch-Site: same-origin`, gateway-authenticated GitHub login a
+session, kterou Launchpad nezávisle znovu ověřil u interního oauth2-proxy;
+backend listener zůstává loopback-only. Cross-origin, DNS-rebinding,
+header-spoofed a neautentizované hosted požadavky končí `403` dřív, než se spustí
+Git, worktree, runtime nebo synchronizační akce. Nový mutující endpoint tuto
+centrální ochranu dědí automaticky; Personalspace a další local-only routy mají
+ještě užší gate.
 
 ## Plugin model
 

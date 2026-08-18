@@ -276,10 +276,11 @@ test("identity endpoint is local-only and a foreign root cannot reuse the port",
   expect(await new Response(otherRootLauncher.stderr).text()).toContain("EADDRINUSE");
 });
 
-test("authenticated hosted Launchpad can sync and pull while local-only surfaces stay closed", async () => {
+test("hosted Launchpad rejects forged gateway headers without a TLS-authenticated OAuth session", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const externalOrigin = "https://launchpad.management.example.test";
+  const authPort = await findFreePort();
   const { port } = await startLaunchpadServer(root, {
     env: {
       LAZURIO_WORKSPACE_PROFILE: "hosted",
@@ -291,41 +292,30 @@ test("authenticated hosted Launchpad can sync and pull while local-only surfaces
         services: [],
       }),
       LAZURIO_LAUNCHPAD_EXTERNAL_ORIGIN: externalOrigin,
+      // Nothing listens on this HTTPS endpoint. A local caller cannot replace
+      // the authenticated gateway with plain spoofed request headers.
+      LAZURIO_LAUNCHPAD_AUTH_CHECK_URL: `https://127.0.0.1:${authPort}/oauth2/auth`,
     },
   });
-  const hostedHeaders = {
+  const gatewayHeaders = {
     origin: externalOrigin,
     "sec-fetch-site": "same-origin",
     "x-lazurio-github-login": "annavesela",
   };
 
-  const sync = await fetch(`http://127.0.0.1:${port}/api/sync`, {
+  const forgedGatewayHeaders = await fetch(`http://127.0.0.1:${port}/api/sync`, {
     method: "POST",
-    headers: hostedHeaders,
+    headers: gatewayHeaders,
   });
-  expect(sync.status).toBe(200);
-  expect((await sync.json()).action).toBe("sync");
+  expect(forgedGatewayHeaders.status).toBe(403);
+  expect((await forgedGatewayHeaders.json()).error).toBe("mutating_request_forbidden");
 
-  const pull = await fetch(`http://127.0.0.1:${port}/api/git/pull-all?company=BetaCo`, {
+  const forgedSession = await fetch(`http://127.0.0.1:${port}/api/sync`, {
     method: "POST",
-    headers: { ...hostedHeaders, "content-type": "application/json" },
-    body: "{}",
+    headers: { ...gatewayHeaders, cookie: "_oauth2_proxy=forged" },
   });
-  expect(pull.status).toBe(200);
-  expect((await pull.json()).schema_version).toBe("companiesascode.launchpad.git_pull_all.v1");
-
-  const missingGatewayIdentity = await fetch(`http://127.0.0.1:${port}/api/sync`, {
-    method: "POST",
-    headers: { origin: externalOrigin, "sec-fetch-site": "same-origin" },
-  });
-  expect(missingGatewayIdentity.status).toBe(403);
-  expect((await missingGatewayIdentity.json()).error).toBe("mutating_request_forbidden");
-
-  const directLoopbackSync = await fetch(`http://127.0.0.1:${port}/api/sync`, {
-    method: "POST",
-  });
-  expect(directLoopbackSync.status).toBe(403);
-  expect((await directLoopbackSync.json()).error).toBe("mutating_request_forbidden");
+  expect(forgedSession.status).toBe(403);
+  expect((await forgedSession.json()).error).toBe("mutating_request_forbidden");
 
   const directLoopbackPull = await fetch(`http://127.0.0.1:${port}/api/git/pull-all?company=BetaCo`, {
     method: "POST",
@@ -336,24 +326,16 @@ test("authenticated hosted Launchpad can sync and pull while local-only surfaces
   expect((await directLoopbackPull.json()).error).toBe("mutating_request_forbidden");
 
   const personalspace = await fetch(`http://127.0.0.1:${port}/api/personalspace`, {
-    headers: hostedHeaders,
+    headers: gatewayHeaders,
   });
   expect(personalspace.status).toBe(403);
   expect((await personalspace.json()).error).toBe("personalspace_request_forbidden");
 
   const identity = await fetch(`http://127.0.0.1:${port}/api/launchpad/identity`, {
-    headers: hostedHeaders,
+    headers: gatewayHeaders,
   });
   expect(identity.status).toBe(403);
   expect((await identity.json()).error).toBe("identity_request_forbidden");
-
-  const openFolder = await fetch(`http://127.0.0.1:${port}/api/modules/open-folder`, {
-    method: "POST",
-    headers: { ...hostedHeaders, "content-type": "application/json" },
-    body: "{}",
-  });
-  expect(openFolder.status).toBe(403);
-  expect((await openFolder.json()).error).toBe("module_folder_request_forbidden");
 });
 
 test("apps cache keeps first paint Git-free and invalidates on force sync and failed mutation", async () => {

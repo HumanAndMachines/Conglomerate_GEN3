@@ -78,6 +78,7 @@ const hostedAppUrls = createHostedAppUrlAdapter({
 const requestTrust = createRequestTrustPolicy({
   profile: hostedAppUrls.profile,
   hostedExternalOrigin: process.env.LAZURIO_LAUNCHPAD_EXTERNAL_ORIGIN,
+  hostedAuthCheckUrl: process.env.LAZURIO_LAUNCHPAD_AUTH_CHECK_URL,
 });
 const runtimeManager = createRuntimeManager({ companiesRoot, launchpadRoot });
 const moduleFolderOpener = createModuleFolderOpener({ companiesRoot, getAppsResponse: buildAppsResponse });
@@ -206,7 +207,7 @@ function resolveOrganizationLogoPath(organization) {
 }
 
 async function serveOrganizationLogo(request, url, slug) {
-  if (!requestTrust.isTrustedWorkspaceRequest(request, url)) {
+  if (!await requestTrust.isTrustedWorkspaceRequest(request, url)) {
     return jsonResponse({ error: "cross_origin_logo_request_forbidden" }, 403);
   }
   const logoPath = organizationLogoPaths.get(slug);
@@ -832,11 +833,16 @@ function startServer(startPort) {
     idleTimeout: 120,
     async fetch(request) {
       const url = new URL(request.url);
+      let trustedWorkspaceRequest;
+      const isTrustedWorkspaceRequest = () => {
+        trustedWorkspaceRequest ??= requestTrust.isTrustedWorkspaceRequest(request, url);
+        return trustedWorkspaceRequest;
+      };
       try {
         if (url.pathname.startsWith("/api/personalspace") && !requestTrust.isTrustedLocalRequest(request, url)) {
           return jsonResponse({ error: "personalspace_request_forbidden" }, 403);
         }
-        if (isMutatingApiRequest(request, url) && !requestTrust.isTrustedWorkspaceRequest(request, url)) {
+        if (isMutatingApiRequest(request, url) && !await isTrustedWorkspaceRequest()) {
           return jsonResponse({ error: "mutating_request_forbidden" }, 403);
         }
         if (moduleFolderRoute(url.pathname) && !requestTrust.isTrustedLocalRequest(request, url)) {
@@ -877,7 +883,7 @@ function startServer(startPort) {
         // serializuje se s background fetchi přes withRemoteRefreshPaused.
         // I GET status je trusted-local: dělá git fetch (síť + credentials),
         // cizí origin ho nesmí spouštět ani jako drive-by bez čtení odpovědi.
-        if (url.pathname.startsWith("/api/update") && !requestTrust.isTrustedWorkspaceRequest(request, url)) {
+        if (url.pathname.startsWith("/api/update") && !await isTrustedWorkspaceRequest()) {
           return jsonResponse({ error: "update_request_forbidden" }, 403);
         }
         if (url.pathname === "/api/update/status" && request.method === "GET") {

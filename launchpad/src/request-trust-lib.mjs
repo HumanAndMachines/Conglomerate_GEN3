@@ -1,7 +1,14 @@
 const localBackendHosts = new Set(["127.0.0.1", "localhost"]);
 const githubLoginPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+const maxHostedCookieBytes = 16 * 1024;
+const hostedAuthCheckTimeoutMs = 2_000;
 
-export function createRequestTrustPolicy({ profile = "local", hostedExternalOrigin = "" } = {}) {
+export function createRequestTrustPolicy({
+  profile = "local",
+  hostedExternalOrigin = "",
+  hostedAuthCheckUrl = "",
+  fetchImpl = globalThis.fetch,
+} = {}) {
   const normalizedProfile = String(profile ?? "local").trim().toLowerCase() || "local";
   if (normalizedProfile !== "local" && normalizedProfile !== "hosted") {
     throw new Error("Launchpad request trust profile must be local or hosted.");
@@ -10,27 +17,61 @@ export function createRequestTrustPolicy({ profile = "local", hostedExternalOrig
   const hostedOrigin = normalizedProfile === "hosted"
     ? normalizeHostedLaunchpadOrigin(hostedExternalOrigin)
     : null;
+  const hostedAuthUrl = normalizedProfile === "hosted"
+    ? normalizeHostedAuthCheckUrl(hostedAuthCheckUrl, hostedOrigin)
+    : null;
   if (normalizedProfile === "local" && String(hostedExternalOrigin ?? "").trim() !== "") {
     throw new Error("LAZURIO_LAUNCHPAD_EXTERNAL_ORIGIN is valid only in the hosted Workspace profile.");
+  }
+  if (normalizedProfile === "local" && String(hostedAuthCheckUrl ?? "").trim() !== "") {
+    throw new Error("LAZURIO_LAUNCHPAD_AUTH_CHECK_URL is valid only in the hosted Workspace profile.");
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("Launchpad hosted auth verifier requires a fetch implementation.");
   }
 
   return Object.freeze({
     profile: normalizedProfile,
     hosted_origin: hostedOrigin,
+    hosted_auth_check_url: hostedAuthUrl,
     isTrustedLocalRequest,
-    isTrustedWorkspaceRequest(request, url) {
+    async isTrustedWorkspaceRequest(request, url) {
       if (normalizedProfile === "local") return isTrustedLocalRequest(request, url);
       if (!localBackendHosts.has(url.hostname)) return false;
 
       // The hosted browser never reaches this loopback listener directly. Caddy
       // authenticates the exact GitHub Team, strips an incoming identity header,
       // and only then injects X-Lazurio-GitHub-Login into the proxied request.
-      // Requiring that proof together with the catalogued public Origin keeps
-      // this an adapter for the existing GitHub boundary, not a second ACL.
+      // A local workspace process can forge those transport headers, so they are
+      // only routing invariants. Authorization is independently revalidated
+      // over a separately authenticated TLS route against oauth2-proxy with
+      // the browser's signed HttpOnly session cookie.
       const login = request.headers.get("x-lazurio-github-login") ?? "";
-      return request.headers.get("sec-fetch-site") === "same-origin"
-        && request.headers.get("origin") === hostedOrigin
-        && githubLoginPattern.test(login);
+      if (
+        request.headers.get("sec-fetch-site") !== "same-origin"
+        || request.headers.get("origin") !== hostedOrigin
+        || !githubLoginPattern.test(login)
+      ) {
+        return false;
+      }
+
+      const cookie = request.headers.get("cookie") ?? "";
+      if (!cookie || Buffer.byteLength(cookie, "utf8") > maxHostedCookieBytes) return false;
+
+      try {
+        const authResponse = await fetchImpl(hostedAuthUrl, {
+          method: "GET",
+          headers: { cookie },
+          redirect: "manual",
+          signal: AbortSignal.timeout(hostedAuthCheckTimeoutMs),
+        });
+        const authorizedLogin = authResponse.headers.get("x-auth-request-user") ?? "";
+        return authResponse.status >= 200
+          && authResponse.status < 300
+          && authorizedLogin === login;
+      } catch {
+        return false;
+      }
     },
   });
 }
@@ -77,4 +118,32 @@ function normalizeHostedLaunchpadOrigin(rawValue) {
     throw new Error("LAZURIO_LAUNCHPAD_EXTERNAL_ORIGIN must not use a loopback host.");
   }
   return url.origin;
+}
+
+function normalizeHostedAuthCheckUrl(rawValue, hostedOrigin) {
+  const candidate = String(rawValue ?? "").trim();
+  if (!candidate) {
+    throw new Error("LAZURIO_LAUNCHPAD_AUTH_CHECK_URL is required for the hosted Workspace profile.");
+  }
+  let url;
+  try {
+    url = new URL(candidate);
+  } catch {
+    throw new Error("LAZURIO_LAUNCHPAD_AUTH_CHECK_URL must be an absolute HTTPS URL.");
+  }
+  if (
+    url.protocol !== "https:"
+    || url.username
+    || url.password
+    || url.search
+    || url.hash
+    || url.pathname !== "/oauth2/auth"
+    || candidate !== url.href
+    || url.origin === hostedOrigin
+  ) {
+    throw new Error(
+      "LAZURIO_LAUNCHPAD_AUTH_CHECK_URL must be a distinct clean HTTPS /oauth2/auth endpoint.",
+    );
+  }
+  return url.href;
 }
