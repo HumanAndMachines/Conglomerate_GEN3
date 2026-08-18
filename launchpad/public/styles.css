@@ -40,10 +40,11 @@
   --c-success-bg: var(--lz-success-bg);
   --c-success-line: var(--lz-success-border);
   --c-success-dot: var(--lz-success);
-  --c-warn: var(--lz-warning);
-  --c-warn-bg: var(--lz-warning-bg);
-  --c-warn-line: var(--lz-warning-border);
-  --c-warn-dot: var(--lz-warning);
+  /* Pozornost používá čistou oranžovou, nikdy pyritový/olivový stupeň. */
+  --c-warn: var(--lz-expressive-orange-figure);
+  --c-warn-bg: color-mix(in srgb, var(--lz-expressive-orange) 9%, var(--lz-white));
+  --c-warn-line: color-mix(in srgb, var(--lz-expressive-orange) 32%, var(--lz-line));
+  --c-warn-dot: var(--lz-expressive-orange-figure);
   --c-danger: var(--lz-danger);
   --c-danger-bg: var(--lz-danger-bg);
   --c-danger-line: var(--lz-danger-border);
@@ -541,7 +542,7 @@ input:focus-visible,
 .status-warn {
   border-color: transparent;
   background: var(--c-warn-bg);
-  color: #9a5b00;
+  color: var(--text);
 }
 
 .status-fail {
@@ -613,7 +614,7 @@ input:focus-visible,
   padding: 10px 16px;
   background: color-mix(in srgb, var(--c-warn) 16%, var(--surface));
   border-bottom: 1px solid color-mix(in srgb, var(--c-warn) 40%, var(--line));
-  color: color-mix(in srgb, var(--c-warn) 72%, #78350f);
+  color: var(--text);
 }
 
 .update-banner-text {
@@ -626,8 +627,8 @@ input:focus-visible,
   padding: 4px 16px;
   border: 0;
   border-radius: 999px;
-  background: var(--c-warn);
-  color: #78350f;
+  background: var(--lz-ink);
+  color: var(--lz-white);
   font: inherit;
   font-size: 14px;
   font-weight: 600;
@@ -957,7 +958,7 @@ input:focus-visible,
 .hero.hero-warn .btn-secondary {
   border: 1px solid color-mix(in srgb, var(--c-warn) 38%, transparent);
   background: color-mix(in srgb, var(--c-warn) 13%, var(--surface));
-  color: color-mix(in srgb, var(--c-warn) 74%, #78350f);
+  color: var(--text);
 }
 
 .hero.hero-warn .btn-secondary:hover:not(:disabled) {
@@ -985,8 +986,8 @@ input:focus-visible,
   justify-content: center;
   border: 2px solid var(--surface);
   border-radius: var(--r-pill);
-  background: var(--c-warn);
-  color: #fff;
+  background: var(--lz-expressive-orange);
+  color: var(--lz-ink);
   font-size: 14px;
   font-weight: 600;
   line-height: 1;
@@ -1596,7 +1597,7 @@ input:focus-visible,
 
 .chip-prod {
   background: var(--c-warn-bg);
-  color: #9a5b00;
+  color: var(--text);
 }
 
 /* ---------- Personalspace section (private, in the main plane) ----------
@@ -1806,9 +1807,9 @@ input:focus-visible,
 }
 
 .app-card-icon {
-  --app-icon-color: #5f5147;
-  --app-icon-bg: #eadfd2;
-  --app-icon-border: #d3c0ad;
+  --app-icon-color: var(--lz-ink);
+  --app-icon-bg: var(--lz-paper);
+  --app-icon-border: var(--lz-line);
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -2395,7 +2396,7 @@ tbody tr.selected {
 .runtime-starting {
   border-color: transparent;
   background: var(--c-warn-bg);
-  color: #9a5b00;
+  color: var(--text);
 }
 
 .runtime-stopped,
@@ -3848,7 +3849,7 @@ button.runtime-stage.is-available:hover {
   border-color: color-mix(in srgb, var(--c-danger) 35%, var(--line));
 }
 .personalspace-app.is-attention {
-  border-color: color-mix(in srgb, var(--c-warn, #f59e0b) 40%, var(--line));
+  border-color: color-mix(in srgb, var(--c-warn, var(--lz-expressive-orange-figure)) 40%, var(--line));
 }
 /* GEN2-minimal dlaždice (port appCardu z GEN2-minimal karty): klik na plochu spustí a
    otevře; ⋯ menu musí překrýt sousední dlaždice. */
@@ -3962,8 +3963,8 @@ button.runtime-stage.is-available:hover {
   font-family: var(--font-mono);
 }
 .personalspace-slot-chip.is-missing_access {
-  border-color: color-mix(in srgb, var(--c-warn, #f59e0b) 45%, var(--line));
-  color: #9a5b00;
+  border-color: color-mix(in srgb, var(--c-warn, var(--lz-expressive-orange-figure)) 45%, var(--line));
+  color: var(--text);
 }
 
 /* gbrain */
@@ -4001,7 +4002,7 @@ button.runtime-stage.is-available:hover {
   overflow-wrap: anywhere;
 }
 .personalspace-gbrain-missing {
-  color: #9a5b00;
+  color: var(--text);
 }
 .personalspace-gbrain-browser {
   display: grid;
@@ -4575,8 +4576,8 @@ button.runtime-stage.is-available:hover {
 /* --- STAV: barvu nese tečka a linka, text je inkoust -----------------
    Barvy stavů byly tmavé ne kvůli výběru odstínů, ale protože je nesl TEXT
    a text na světlém podkladu musí mít 4,5:1 — to každý odstín stlačí ke
-   světlosti 0,30, kde je pyrit olivový a zelená lesní. Když barvu z textu
-   sundáme, uvolní se a smí být živá. */
+   světlosti 0,30, kde žlutá hnědne a zelená tmavne. Když barvu z textu
+   sundáme, uvolní se; pozornost pak nese čistá oranžová tečka a linka. */
 .chip {
   border-radius: var(--r-pill);
   border: 1px solid transparent;
@@ -4903,9 +4904,9 @@ body {
 }
 
 .chip-warn {
-  background: var(--lz-warning-bg);
-  border-color: var(--lz-warning-border);
-  color: var(--lz-warning);
+  background: var(--c-warn-bg);
+  border-color: var(--c-warn-line);
+  color: var(--text);
 }
 
 .chip-danger {
@@ -4934,7 +4935,7 @@ b {
 /* =========================================================
    Kanonický Lazurio Personalspace
    Osobní prostor používá stejnou typografii, hrany a stavový jazyk jako
-   Organization. Žlutá zůstává jen v Buddy ilustraci, ne v ovládání.
+   Organization. Buddy používá značkový ultramarín, ne zvláštní žlutou roli.
    ========================================================= */
 .space-logo-personal {
   border-color: var(--lz-blue-200);

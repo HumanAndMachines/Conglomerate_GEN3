@@ -380,8 +380,8 @@ Use one vocabulary across cards, detail panel and Doctor.
 | --- | --- | --- | --- | --- |
 | `running` | app health probe is OK | Open / Logs / Stop / Restart | n/a | green live badge |
 | `ready` | dependencies and package are usable; app can start | Start / Open / Repair | yes | neutral/ready |
-| `needs_install` | app is visible but `node_modules` or install artifacts are missing | Install | no | amber attention |
-| `stale_lockfile` | app has packages and can start, but package/lockfile timestamps suggest drift | Repair / Start | yes | amber repair warning |
+| `needs_install` | app is visible but `node_modules` or install artifacts are missing | Install | no | orange attention |
+| `stale_lockfile` | app has packages and can start, but package/lockfile timestamps suggest drift | Repair / Start | yes | orange repair warning |
 | `missing_package` | manifest points to missing/unreadable package | Doctor sync / fix manifest | no | red blocked |
 | `unknown_package_manager` | safe install command cannot be inferred | Doctor / terminal | no | red blocked |
 | `missing_access` | Organization/module exists in plan but local machine lacks checkout/access | request/access/sync | no | lock/access badge |
