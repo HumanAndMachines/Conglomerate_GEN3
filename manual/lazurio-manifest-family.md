@@ -133,9 +133,10 @@ runtime/process state, consistent with DEV-6439.
 One mount always produces at most one resource and at most one child Doctor.
 Two filenames never create two Organizations or two Personalspaces.
 
-An active write receipt takes precedence over the six stable content states and
-returns the orthogonal operation status `migration_in_progress`. Core must not
-misclassify a partially applied transaction as `projection_drift` or `conflict`.
+An active authoring or Machine-activation receipt takes precedence over the six
+stable content states and returns the orthogonal operation status
+`migration_in_progress`. Core must not misclassify a partially applied
+transaction as `projection_drift` or `conflict`.
 
 The legacy projection is required during the compatibility window because old
 supported Machines have hardcoded legacy structural gates and there is no
@@ -191,7 +192,7 @@ Contract:
 - keep `--finalize` blocked until a separate accepted mechanism proves the
   minimum reader version for every supported Machine cohort.
 
-### Cross-file write protocol
+### Authoring cross-file write protocol
 
 The CLI owns a recoverable transaction, because common filesystems cannot
 atomically replace two paths at once:
@@ -224,6 +225,39 @@ commit, template or another resource boundary.
 Windows atomic replacement, case-preserving repository names, separators and
 rollback are hard gates alongside macOS and Linux.
 
+### Machine activation protocol
+
+A reviewed migration commit is only the transport for a verified pair. It does
+not make an ordinary multi-path Git checkout an atomic activation. Every
+supported Machine therefore activates a target revision through the updater:
+
+1. Fetch the target revision without moving the active checkout. Inspect its
+   tree and diff before writing. If a manifest pair changes, an updater without
+   the required activation capability leaves the Machine on the previous
+   revision and fails closed; plain `git pull` or direct checkout is not a
+   supported activation path.
+2. Acquire the same resource-scoped lock and create a durable local activation
+   receipt with the previous and target revision, both pair hashes, staged
+   target blobs and rollback data. Put Core readers behind the in-progress
+   barrier and stop, drain or otherwise prove the absence of every legacy
+   process that can mutate either manifest.
+3. Update the checkout metadata and non-pair paths only while the resource is
+   inactive. Apply the two staged target blobs with the platform-proven
+   per-file atomic replacement from the authoring protocol. Legacy-only
+   read-only consumers may observe a complete old or new legacy file, but no
+   legacy mutation-capable process may run inside the activation window.
+4. Verify the target revision, both after-hashes, normalized parity and
+   projection hash before removing the receipt and restarting or exposing the
+   resource. Interruption resumes the recorded phase or restores the complete
+   previous revision; it never exposes a failed target as active.
+
+Before the first migration PR may merge, the rollout gate must prove that every
+supported updater entrypoint either implements this fetch-before-checkout
+activation or is fenced from advancing the resource. An offline or returning
+Machine upgrades the updater first; until then it remains on its last compatible
+revision. This is a Machine-local activation guard, not a content authority or
+tracked state store.
+
 ## Rollout
 
 ### 0. Accept the proposal
@@ -245,10 +279,13 @@ without becoming part of its implementation sequence.
 3. Move Git inventory, update and worktrees to it.
 4. Move Doctor composition to it and prove one child per mount.
 5. Move CLI to the same normalized model.
+6. Move root, Organization and Personalspace update entrypoints to the
+   fetch-before-checkout Machine activation protocol.
 
 No resource may enter `transition` until all mutation-capable consumers use the
-Core resolver. Each slice keeps existing files canonical and carries golden
-parity, real-Organization smoke and Windows CI.
+Core resolver and every supported Machine is covered by the activation rollout
+gate. Each slice keeps existing files canonical and carries golden parity,
+real-Organization smoke and Windows CI.
 
 ### 2. Distribute migration capability
 
@@ -266,7 +303,8 @@ PersonalspaceTemplate. OrganizationTemplate never reads or migrates it.
 Migrate one canary Organization in a plan-owned worktree. The PR contains the
 new canonical manifest and verified legacy projection. Old and new readers must
 produce the same normalized inventory. Then repeat with one reviewed PR per
-Organization; no automatic fleet write and no migration during pull/sync.
+Organization. Pull/sync never authors or regenerates a manifest; it may only
+activate the already reviewed pair through the Machine activation protocol.
 
 During `transition`, contributors edit the Lazurio file and regenerate the
 legacy projection. Editing the legacy file directly always produces
@@ -300,9 +338,12 @@ first migration PR.
    rollback and proof that readers never classify mixed generations as stable.
 8. Windows/macOS/Linux per-file atomic replacement, path, case and projection
    behavior.
-9. Read-only smoke over all available Organizations without cross-Organization
+9. Interruption after every Machine activation phase, rollback to the complete
+   previous revision, and proof that an incapable/offline Machine cannot advance
+   into the migration commit before its updater is compatible.
+10. Read-only smoke over all available Organizations without cross-Organization
    output.
-10. Template ownership: mechanisms managed; manifests resource-owned.
+11. Template ownership: mechanisms managed; manifests resource-owned.
 
 ## Non-goals
 
