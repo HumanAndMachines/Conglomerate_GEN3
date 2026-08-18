@@ -10,6 +10,7 @@ import {
   groupAppFamilies,
   groupFamiliesBySpace,
   groupWorkspaceFamiliesByTeam,
+  isProjectedModuleOpenTarget,
   matchesQuery,
   offersMoreThanLocalRun,
   productionUrl,
@@ -343,6 +344,30 @@ test("declared Module without a resolved default never promotes a valid sibling"
 
   expect(families[0].primary.id).toBe("website-v2");
   expect(families[0].applications.open_target_app_id).toBeNull();
+});
+
+test("filtered Module family never makes a surviving sibling a projected open target", () => {
+  const moduleApps = {
+    state: "declared",
+    open_target_app_id: "website-v2",
+    open_target_source: "declared-default",
+  };
+  const families = groupAppFamilies([
+    {
+      id: "website-v1",
+      company: "OmegaCo",
+      module: "website",
+      title: "Website v1",
+      module_catalog_path: "workspace/website",
+      module_apps: moduleApps,
+      module_app: { package: "app/v1/package.json", declared: true, default: false },
+    },
+  ]);
+
+  expect(families).toHaveLength(1);
+  expect(families[0].primary.id).toBe("website-v1");
+  expect(families[0].applications.open_target_app_id).toBe("website-v2");
+  expect(isProjectedModuleOpenTarget(families[0].primary, families[0].applications)).toBe(false);
 });
 
 test("Module family identity follows canonical catalog path instead of a coincidental slug", () => {

@@ -502,6 +502,11 @@ export function groupAppFamilies(apps) {
   });
 }
 
+export function isProjectedModuleOpenTarget(app, moduleApps = app?.module_apps ?? null) {
+  const targetId = moduleApps?.open_target_app_id;
+  return !targetId || targetId === app?.id;
+}
+
 // Human display name for the whole module tile — the longest shared word prefix
 // of the members' titles (so "Content catalog"/"Content editor" → "Content"),
 // falling back to a humanised module slug, then the single app's title.

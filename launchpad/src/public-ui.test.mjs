@@ -539,6 +539,8 @@ test("CAC-0044: karty jsou celé klikatelné a spouští one-click open s guarde
   expect(js).toContain("function shouldOpenFromCardSurface");
   expect(js).toContain('target.closest("button, a, summary, details, input, select, textarea")');
   expect(js).toContain("function openAppChain");
+  expect(js).toContain("isProjectedModuleOpenTarget(app, moduleApps)");
+  expect(js).toContain("Výchozí App je jiná varianta");
   expect(js).toContain("/open");
   // Rezervace tabu před akcí + průběh + klasifikace chyb.
   expect(js).toContain("function reserveResultTab");
