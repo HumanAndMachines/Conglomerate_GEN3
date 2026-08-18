@@ -485,7 +485,14 @@ export function groupAppFamilies(apps) {
     const declaredDefault = applications?.state === "declared"
       ? discovered.find((app) => app.module_app?.default)
       : null;
-    const primary = openTarget ?? declaredDefault ?? discovered[0];
+    // Apps outside a declared Module root do not have a Core projection. Keep
+    // their legacy deterministic highest-version primary; this is not a
+    // Module default and therefore does not compete with Core authority.
+    const unownedLegacyPrimary = applications === null
+      ? [...discovered]
+          .sort((a, b) => (appTitleVersion(b) ?? -1) - (appTitleVersion(a) ?? -1))[0]
+      : null;
+    const primary = openTarget ?? declaredDefault ?? unownedLegacyPrimary ?? discovered[0];
     // Core selects the primary target. Version order is presentation-only for
     // the remaining variant menu and never promotes a sibling to default.
     const members = [primary, ...discovered

@@ -304,6 +304,21 @@ test("explicit Module default_app outranks the legacy highest-version fallback",
   expect(families[0].primary.id).toBe("website-v2");
 });
 
+test("unowned legacy App family keeps the deterministic highest-version primary", () => {
+  const families = groupAppFamilies([
+    { id: "tool-v1", company: "OmegaCo", module: "tool", title: "Tool v1" },
+    { id: "tool-v3", company: "OmegaCo", module: "tool", title: "Tool v3" },
+    { id: "tool-v2", company: "OmegaCo", module: "tool", title: "Tool v2" },
+  ]);
+
+  expect(families[0].primary.id).toBe("tool-v3");
+  expect(families[0].members.map((member) => member.id)).toEqual([
+    "tool-v3",
+    "tool-v2",
+    "tool-v1",
+  ]);
+});
+
 test("declared Module without a resolved default never promotes a valid sibling", () => {
   const moduleApps = { state: "declared", open_target_app_id: null, open_target_source: null };
   const families = groupAppFamilies([
