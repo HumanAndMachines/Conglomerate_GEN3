@@ -1003,6 +1003,7 @@ test("manifest-only module cards keep semantic icon precedence over a broad cate
   expect(cardBlock).not.toContain('appIconSvg("module")');
   expect(cardBlock).toContain('desc.className = "app-card-desc"');
   expect(cardBlock).toContain("appDescription(detail)");
+  expect(js).toContain("description: module.description ?? null");
   expect(cardBlock).not.toContain('badges.append(chip("Workspace modul"');
   expect(cardBlock).not.toContain('path.className = "app-card-endpoint"');
 });

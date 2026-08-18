@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { tmpdir } from "os";
 import { join } from "path";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "fs/promises";
-import { buildDoctorReportFromAppsResponse, buildEnvironmentChecks, buildLaunchpadAppsResponse, buildLaunchpadDoctorReport, runtimeAppStatus, updateChannelCheck } from "./diagnostics-lib.mjs";
+import { appPlacementResolverForOrganization, buildDoctorReportFromAppsResponse, buildEnvironmentChecks, buildLaunchpadAppsResponse, buildLaunchpadDoctorReport, runtimeAppStatus, updateChannelCheck } from "./diagnostics-lib.mjs";
 import { createLaunchpadGitFixture, initGitRepo, runGit } from "./git-fixture-helpers.test.mjs";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
 
@@ -112,6 +112,87 @@ test("first-paint apps response can skip the global Git census", async () => {
 
   expect(response.apps.every((app) => app.git === undefined)).toBe(true);
   expect(response.warnings.some((warning) => warning.startsWith("git:"))).toBe(false);
+});
+
+test("explicit module presentation hides historical owners and keeps human descriptions", async () => {
+  const root = await createCompaniesWorkspaceFixture();
+  const companyRoot = join(root, "organizations", "CatalogCo_GEN3");
+  await mkdir(join(companyRoot, "manual"), { recursive: true });
+  await mkdir(join(companyRoot, "company", "colleagues"), { recursive: true });
+  await writeJson(join(companyRoot, "company.gen3.json"), {
+    organization_generation: "gen3",
+    company: { slug: "CatalogCo", display_name: "Catalog Co", github_org: "CatalogCo" },
+    teams: [{ slug: "office", display_name: "Office", default: true }],
+  });
+  await writeJson(join(companyRoot, "modules.manifest.json"), {
+    organization_generation: "gen3",
+    company: "CatalogCo",
+    module_slots: [
+      {
+        path: "workspace/current",
+        slug: "current",
+        name: "Aktivní modul",
+        description: "Srozumitelný popis modulu.",
+        required_roles: ["*"],
+        teams: ["office"],
+        git: { url: "git@github.com:CatalogCo/current.git", branch: "main" },
+        status: "active",
+      },
+      {
+        path: "workspace/history",
+        slug: "history",
+        name: "Historický owner",
+        required_roles: ["*"],
+        teams: ["office"],
+        git: { url: "git@github.com:CatalogCo/history.git", branch: "main" },
+        status: "active",
+        ui_exposure: "diagnostics-only",
+      },
+    ],
+  });
+  await writeJson(join(companyRoot, "TODO.tasks.json"), {});
+  await writeJson(join(companyRoot, "DONE.tasks.json"), {});
+  await writeJson(join(companyRoot, "ISSUES.open.json"), {});
+
+  const response = await buildLaunchpadAppsResponse({
+    companiesRoot: root,
+    launchpadRoot: join(root, "launchpad"),
+    runtimeManager: { appsWithRuntime: async (apps) => apps },
+  });
+  const organization = response.organizations.find((item) => item.slug === "CatalogCo");
+  const modules = organization?.teams.flatMap((team) => team.modules) ?? [];
+
+  expect(modules).toEqual([
+    expect.objectContaining({
+      slug: "current",
+      name: "Aktivní modul",
+      description: "Srozumitelný popis modulu.",
+    }),
+  ]);
+  expect(organization?.module_declarations).toContainEqual(
+    expect.objectContaining({ slug: "history", ui_exposure: "diagnostics-only" }),
+  );
+});
+
+test("module presentation metadata enriches an app without overriding its own description", () => {
+  const resolvePlacement = appPlacementResolverForOrganization({
+    path: "organizations/CatalogCo_GEN3",
+    teams: [{ slug: "office", default: true }],
+    module_declarations: [{
+      path: "workspace/current",
+      space: "workspace",
+      teams: ["office"],
+      description: "Popis z katalogu modulu.",
+    }],
+  });
+
+  expect(resolvePlacement({
+    package_path: "organizations/CatalogCo_GEN3/workspace/current/app/v1/package.json",
+  })).toMatchObject({ description: "Popis z katalogu modulu." });
+  expect(resolvePlacement({
+    package_path: "organizations/CatalogCo_GEN3/workspace/current/app/v1/package.json",
+    description: "Popis přímo z aplikace.",
+  })).toMatchObject({ description: "Popis přímo z aplikace." });
 });
 
 test("apps response materializes HTTPS endpoints from the module-owned lease", async () => {

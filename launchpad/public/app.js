@@ -2525,7 +2525,7 @@ function workspaceModulesInView(families) {
 
 function moduleMatchesQuery(module, query) {
   if (!query) return true;
-  return [module.name, module.slug, module.path, module.category, module.default_access]
+  return [module.name, module.description, module.slug, module.path, module.category, module.default_access]
     .filter(Boolean)
     .join(" ")
     .toLowerCase()
@@ -2575,6 +2575,7 @@ function workspaceModuleDetail(module, companySlug, { kind = "workspace-module",
     company: companySlug,
     company_display_name: organization?.display_name ?? companySlug,
     module: module.slug ?? module.path ?? "workspace-module",
+    description: module.description ?? null,
     surface: "internal",
     icon: null,
     tags: module.category ? [module.category] : [],

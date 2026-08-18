@@ -1404,7 +1404,7 @@ function classifyModuleSlotReadiness(slot, status, principalRoles = null) {
 
 // Top-level placement is a physical boundary. Manifest declarations only add
 // N:M Team intent to Workspace apps; GitHub remains the live access authority.
-function appPlacementResolverForOrganization(company) {
+export function appPlacementResolverForOrganization(company) {
   const declarations = Array.isArray(company.module_declarations) ? company.module_declarations : [];
   const defaultTeam = company.teams?.find((team) => team.default)?.slug
     ?? company.teams?.[0]?.slug
@@ -1434,12 +1434,22 @@ function appPlacementResolverForOrganization(company) {
       }
     }
     if (match?.space === "workspace" && match.launchpad_section === "organization") {
-      return { space: "root", teams: [], workspace: null };
+      return {
+        space: "root",
+        teams: [],
+        workspace: null,
+        description: app.description ?? match.description ?? null,
+      };
     }
     const teams = match?.space === "workspace" && match.teams?.length > 0
       ? match.teams
       : [defaultTeam];
-    return { space: "workspace", teams, workspace: teams[0] };
+    return {
+      space: "workspace",
+      teams,
+      workspace: teams[0],
+      description: app.description ?? match?.description ?? null,
+    };
   };
 }
 
@@ -1500,6 +1510,9 @@ function normalizeModuleSlot(slot) {
     workspace,
     launchpad_section: launchpadSection,
     category: slot.category ?? null,
+    description: typeof slot.description === "string" && slot.description.trim() !== ""
+      ? slot.description.trim()
+      : null,
     default_access: slot.default_access ?? null,
     required_roles: Array.isArray(slot.required_roles) ? slot.required_roles : [],
     classification: slot.classification ?? null,

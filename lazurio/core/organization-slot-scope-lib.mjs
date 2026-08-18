@@ -15,6 +15,7 @@ const organizationRootSlotPaths = new Set([
 const organizationDiagnosticsOnlySlotPaths = new Set([
   "mission-control/db",
 ]);
+const organizationSlotUiExposures = new Set(["module", "diagnostics-only"]);
 
 export function isOrganizationRootSlotPath(path) {
   const normalizedPath = normalizeOrganizationSlotPath(path);
@@ -205,6 +206,12 @@ export function organizationSlotTeams(slot, normalizedPath = null) {
 
 export function organizationSlotUiExposure(slot, normalizedPath = null) {
   const path = normalizeOrganizationSlotPath(normalizedPath ?? slot?.path);
+  const declaredExposure = typeof slot?.ui_exposure === "string"
+    ? slot.ui_exposure.trim().toLowerCase()
+    : "";
+  if (organizationSlotUiExposures.has(declaredExposure)) {
+    return declaredExposure;
+  }
   const sourceOfTruth = typeof slot?.source_of_truth === "string"
     ? slot.source_of_truth.trim().toLowerCase()
     : "";
