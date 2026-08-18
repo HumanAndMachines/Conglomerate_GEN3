@@ -1,4 +1,11 @@
-﻿$ErrorActionPreference = "Stop"
+﻿[CmdletBinding()]
+param(
+  [Parameter()]
+  [ValidateRange(1, 65535)]
+  [int]$Port = 4174
+)
+
+$ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $root
@@ -39,4 +46,4 @@ if (-not $bunExecutable) {
   exit 1
 }
 
-& $bunExecutable run launchpad
+& $bunExecutable run launchpad -- --port $Port
