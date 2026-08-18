@@ -123,6 +123,15 @@ test("samostatné panely a popovery sdílejí měkký Lazurio radius", async () 
   expect(styles).toMatch(/\.app-version-menu-panel\s*{[\s\S]*?position: static/);
 });
 
+test("mobilní klidové stavy tvoří kompaktní řadu a akční stav zůstává výrazný", async () => {
+  const styles = await source("styles.css");
+  const mobileStatus = styles.slice(styles.indexOf("/* Na mobilu jsou klidové provozní stavy"));
+  expect(mobileStatus).toMatch(/@media \(max-width: 760px\)[^]*?\.global-update-slot \.update-banner-group\s*{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  expect(mobileStatus).toMatch(/\.global-update-slot \.update-banner\s*{[^}]*min-height: 42px;[^}]*padding: var\(--lz-space-8\)/);
+  expect(mobileStatus).toMatch(/\.global-update-slot \.update-banner\.is-blocked,[^}]*:has\(\.update-banner-action:not\(\[hidden\]\)\)\s*{[^}]*grid-column: 1 \/ -1/);
+  expect(mobileStatus).toMatch(/@media \(max-width: 360px\)[^]*?grid-template-columns: minmax\(0, 1fr\)/);
+});
+
 test("Organizace, Workspace a Productionspace používají modrou záložku v bezpečném toku", async () => {
   const [styles, app] = await Promise.all([source("styles.css"), source("app.js")]);
   expect(styles).toMatch(/\.app-section-organization:not\(\.skeleton-section\),[\s\S]*?border-top-color: var\(--lz-blue-500\)/);
