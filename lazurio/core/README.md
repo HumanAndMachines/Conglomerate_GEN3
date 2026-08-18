@@ -15,6 +15,10 @@ Modulové aplikace.
 `resolveModuleApplications()` je jediný vlastník vazby deklarovaný Modul → jeho
 Apps → výchozí lokální open target. Konzumenti spojují záznamy přes kanonickou
 cestu kořene Modulu; katalogový slug ani UI pořadí nejsou identita.
+`server-identity-lib.mjs` vlastní oddělenou identitu Rootu, přesné instalace a
+běžící Server instance. Jediný deterministický digest runtime zdrojů je
+install generation pro source checkout i directory-only instalaci; Server jej
+zmrazí při bootu a launcher smí znovu použít jen exact compatible identitu.
 `ui_exposure` zůstává pouze prezentační policy; nevytváří identitu resource ani
 access autoritu. Další doménové vrstvy se přesunují samostatnými PR až nad
 zeleným parity baseline; fyzický přesun souboru sám nesmí měnit schéma ani
