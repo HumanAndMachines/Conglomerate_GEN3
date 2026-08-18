@@ -79,7 +79,7 @@ test("modulové ikony a hover hrany používají schválenou expresivní sadu", 
   expect(app).toContain('focusAccent: "var(--lz-expressive-orange-figure)"');
   expect(app).toContain('stroj: { color: "var(--lz-expressive-mint-figure)"');
   expect(app).toContain('obchod: { color: "var(--lz-expressive-vermilion-figure)"');
-  expect(app).toContain('kampan: { color: "var(--lz-expressive-yellow-figure)"');
+  expect(app).toContain('kampan: { color: "var(--lz-blue-700)"');
   expect(app).toContain('card.style.setProperty("--app-accent"');
   expect(app).toContain('card.style.setProperty("--app-focus-accent"');
   expect(app).toContain("return style.accent ?? style.color");
@@ -99,8 +99,22 @@ test("Personalspace používá zaoblené Lazurio objekty a stavové ikony", asyn
   expect(styles).toMatch(/\.buddy-card h2[\s\S]*?font-size: var\(--lz-size-display\)/);
   expect(personalspace).toContain('statusBadge("Buddy je nastavený"');
   expect(personalspace).toContain('statusBadge("Soukromé"');
-  expect(personalspace).toContain("var(--lz-persona-buddy)");
+  expect(personalspace).toContain("var(--lz-blue-500)");
   expect(personalspace).not.toContain('badge("Private"');
+});
+
+test("Launchpad nepoužívá pyritovou barevnou roli", async () => {
+  const [styles, app, personalspace] = await Promise.all([
+    source("styles.css"),
+    source("app.js"),
+    source("personalspace.js"),
+  ]);
+  const authoredSurface = `${styles}\n${app}\n${personalspace}`;
+  expect(authoredSurface).not.toContain("--lz-warning");
+  expect(authoredSurface).not.toContain("--lz-expressive-yellow");
+  expect(authoredSurface).not.toContain("--lz-persona-buddy");
+  expect(authoredSurface).not.toMatch(/#(?:ad8b00|876612|9a5b00|78350f|f59e0b)/i);
+  expect(styles).toContain("--c-warn: var(--lz-expressive-orange-figure)");
 });
 
 test("filtr aplikací používá jednu společnou Lazurio kapsli", async () => {

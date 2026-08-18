@@ -140,8 +140,8 @@ const mobileTopbarQuery = window.matchMedia("(max-width: 900px)");
 // z nichž žádný nic neznamená, porušuje pravidlo identity „v rozhraní barva
 // něco znamená"; rodina je vrstva systému, o které modul je, a to význam JE.
 //
-// Barvu nese POUZE dlaždice, kresba je inkoustová. Tmavý tón téhož odstínu
-// vychází u žluté vždycky olivově, ať se ladí jak chce.
+// Barvu nese POUZE dlaždice, kresba je inkoustová. Paleta záměrně neobsahuje
+// žlutý/pyritový stupeň; pozornost patří čisté oranžové stavové roli.
 // Obecné popisky, které samy neříkají, co se děje. Když je akce takhle
 // bezobsažná, převezme tlačítko popis problému — jinak by z karty zmizela
 // informace a zbyla nabídka kliknout neznámo proč.
@@ -205,7 +205,7 @@ const APP_ICON_STYLES = {
   },
   stroj: { color: "var(--lz-expressive-mint-figure)", background: "transparent", border: "transparent" },
   obchod: { color: "var(--lz-expressive-vermilion-figure)", background: "transparent", border: "transparent" },
-  kampan: { color: "var(--lz-expressive-yellow-figure)", background: "transparent", border: "transparent" },
+  kampan: { color: "var(--lz-blue-700)", background: "transparent", border: "transparent" },
 };
 
 // Org-agnostic lidské fallbacky drží karty čitelné i ve firmě, která ještě

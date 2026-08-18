@@ -454,7 +454,7 @@ function buddyPortraitPlaceholder() {
   const wrapper = document.createElement("span");
   wrapper.className = "buddy-portrait-placeholder";
   wrapper.setAttribute("aria-hidden", "true");
-  wrapper.innerHTML = '<svg viewBox="0 0 240 300" role="img"><circle cx="120" cy="104" r="65" fill="var(--lz-paper)"/><path d="M55 105c0-55 26-85 65-85 43 0 68 34 68 88-19-25-41-38-67-38-25 0-47 12-66 35Z" fill="var(--lz-ink)"/><path d="M72 107c0 52 18 83 48 83 31 0 49-31 49-83-15-17-32-25-49-25-17 0-33 8-48 25Z" fill="var(--lz-paper)" stroke="var(--lz-ink)" stroke-width="5"/><path d="M92 126h13m30 0h13" stroke="var(--lz-ink)" stroke-width="7" stroke-linecap="round"/><path d="M112 158c7 5 14 5 21 0" stroke="var(--lz-ink-muted)" stroke-width="5" stroke-linecap="round" fill="none"/><path d="M45 292c4-62 32-94 75-94 44 0 72 32 76 94" fill="var(--lz-ink)"/><path d="M108 200h24l12 92h-48Z" fill="var(--lz-persona-buddy)"/></svg>';
+  wrapper.innerHTML = '<svg viewBox="0 0 240 300" role="img"><circle cx="120" cy="104" r="65" fill="var(--lz-paper)"/><path d="M55 105c0-55 26-85 65-85 43 0 68 34 68 88-19-25-41-38-67-38-25 0-47 12-66 35Z" fill="var(--lz-ink)"/><path d="M72 107c0 52 18 83 48 83 31 0 49-31 49-83-15-17-32-25-49-25-17 0-33 8-48 25Z" fill="var(--lz-paper)" stroke="var(--lz-ink)" stroke-width="5"/><path d="M92 126h13m30 0h13" stroke="var(--lz-ink)" stroke-width="7" stroke-linecap="round"/><path d="M112 158c7 5 14 5 21 0" stroke="var(--lz-ink-muted)" stroke-width="5" stroke-linecap="round" fill="none"/><path d="M45 292c4-62 32-94 75-94 44 0 72 32 76 94" fill="var(--lz-ink)"/><path d="M108 200h24l12 92h-48Z" fill="var(--lz-blue-500)"/></svg>';
   return wrapper;
 }
 
