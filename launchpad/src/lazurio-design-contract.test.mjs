@@ -103,12 +103,12 @@ test("Personalspace používá zaoblené Lazurio objekty a stavové ikony", asyn
   expect(personalspace).not.toContain('badge("Private"');
 });
 
-test("filtr aplikací používá dvě samostatné Lazurio pilulky", async () => {
+test("filtr aplikací používá jednu společnou Lazurio kapsli", async () => {
   const styles = await source("styles.css");
-  expect(styles).toMatch(/#appsFilterControls \.segmented-control\s*{[\s\S]*?background: transparent/);
-  expect(styles).toMatch(/#appsFilterControls \.segment\s*{[\s\S]*?border-radius: var\(--lz-radius-pill\)/);
+  expect(styles).toMatch(/#appsFilterControls \.segmented-control\s*{[^}]*gap: 0;[^}]*border: 1px solid var\(--lz-line\);[^}]*border-radius: var\(--lz-radius-pill\);[^}]*background: var\(--lz-gray-50\)/);
+  expect(styles).toMatch(/#appsFilterControls \.segment\s*{[^}]*border: 0;[^}]*border-radius: var\(--lz-radius-pill\);[^}]*background: transparent/);
   expect(styles).toContain('#appsFilterControls .segment[aria-pressed="true"]');
-  expect(styles).toMatch(/#appsFilterControls \.segment\[aria-pressed="true"\],[\s\S]*?background: var\(--lz-ink\)[\s\S]*?color: var\(--lz-white\)/);
+  expect(styles).toMatch(/#appsFilterControls \.segment\[aria-pressed="true"\],[^}]*background: var\(--lz-ink\)[^}]*color: var\(--lz-white\)/);
   expect(styles).toMatch(/\.search-field:focus-within\s*{[\s\S]*?border-color: var\(--lz-gray-700\);[\s\S]*?background: var\(--lz-white\)/);
   expect(styles).toMatch(/\.search-field:focus-within\s*{[\s\S]*?outline: none;/);
   expect(styles).toMatch(/\.search-field input:focus-visible\s*{[\s\S]*?outline: none;/);
