@@ -275,6 +275,72 @@ test("identity endpoint is local-only and a foreign root cannot reuse the port",
   expect(await new Response(otherRootLauncher.stderr).text()).toContain("EADDRINUSE");
 });
 
+test("authenticated hosted Launchpad can sync and pull while local-only surfaces stay closed", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const externalOrigin = "https://launchpad.management.example.test";
+  const { port } = await startLaunchpadServer(root, {
+    env: {
+      LAZURIO_WORKSPACE_PROFILE: "hosted",
+      LAZURIO_TEAM_ID: "management",
+      LAZURIO_TEAM_SERVICE_CATALOG_JSON: JSON.stringify({
+        schema_version: "lazurio.team_service_catalog.v1",
+        team_id: "management",
+        generated_at: "2026-08-18T19:45:00Z",
+        services: [],
+      }),
+      LAZURIO_LAUNCHPAD_EXTERNAL_ORIGIN: externalOrigin,
+    },
+  });
+  const hostedHeaders = {
+    origin: externalOrigin,
+    "sec-fetch-site": "same-origin",
+    "x-lazurio-github-login": "annavesela",
+  };
+
+  const sync = await fetch(`http://127.0.0.1:${port}/api/sync`, {
+    method: "POST",
+    headers: hostedHeaders,
+  });
+  expect(sync.status).toBe(200);
+  expect((await sync.json()).action).toBe("sync");
+
+  const pull = await fetch(`http://127.0.0.1:${port}/api/git/pull-all?company=BetaCo`, {
+    method: "POST",
+    headers: { ...hostedHeaders, "content-type": "application/json" },
+    body: "{}",
+  });
+  expect(pull.status).toBe(200);
+  expect((await pull.json()).schema_version).toBe("companiesascode.launchpad.git_pull_all.v1");
+
+  const missingGatewayIdentity = await fetch(`http://127.0.0.1:${port}/api/sync`, {
+    method: "POST",
+    headers: { origin: externalOrigin, "sec-fetch-site": "same-origin" },
+  });
+  expect(missingGatewayIdentity.status).toBe(403);
+  expect((await missingGatewayIdentity.json()).error).toBe("mutating_request_forbidden");
+
+  const personalspace = await fetch(`http://127.0.0.1:${port}/api/personalspace`, {
+    headers: hostedHeaders,
+  });
+  expect(personalspace.status).toBe(403);
+  expect((await personalspace.json()).error).toBe("personalspace_request_forbidden");
+
+  const identity = await fetch(`http://127.0.0.1:${port}/api/launchpad/identity`, {
+    headers: hostedHeaders,
+  });
+  expect(identity.status).toBe(403);
+  expect((await identity.json()).error).toBe("identity_request_forbidden");
+
+  const openFolder = await fetch(`http://127.0.0.1:${port}/api/modules/open-folder`, {
+    method: "POST",
+    headers: { ...hostedHeaders, "content-type": "application/json" },
+    body: "{}",
+  });
+  expect(openFolder.status).toBe(403);
+  expect((await openFolder.json()).error).toBe("module_folder_request_forbidden");
+});
+
 test("apps cache keeps first paint Git-free and invalidates on force sync and failed mutation", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
@@ -681,10 +747,11 @@ async function readLaunchpadPort(server) {
 // vlastní Bun.serve se nenabindoval, waitForHealth dostal 200 z /health cizího
 // serveru a /api/git/repos pak vrátilo 404. OS přidělený port je garantovaně
 // volný, takže health probe i git routy trefí vždy NÁŠ server.
-async function startLaunchpadServer(root) {
+async function startLaunchpadServer(root, { env = {} } = {}) {
   const port = await findFreePort();
   const server = Bun.spawn(["bun", "src/server.mjs", "--root", root, "--port", String(port)], {
     cwd: join(import.meta.dirname, ".."),
+    env: { ...process.env, ...env },
     stdout: "pipe",
     stderr: "pipe",
   });
