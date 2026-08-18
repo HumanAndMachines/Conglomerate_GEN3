@@ -2588,7 +2588,7 @@ function workspaceModuleDetail(module, companySlug, { kind = "workspace-module",
     runtime_status: "unknown",
     dependencies: {
       state: dependencyState,
-      message: moduleApplicationMessage(moduleApps),
+      message: moduleApplicationMessage(moduleApps, module.status),
       can_start: false,
     },
     package_path: module.path ?? "-",
@@ -2597,12 +2597,18 @@ function workspaceModuleDetail(module, companySlug, { kind = "workspace-module",
     default_app: defaultApp,
     module_apps: moduleApps,
     is_readonly_system: !defaultApp,
-    readonly_reason: moduleApplicationMessage(moduleApps),
+    readonly_reason: moduleApplicationMessage(moduleApps, module.status),
   };
 }
 
-function moduleApplicationMessage(moduleApps) {
-  if (!moduleApps) return "Modul zatím nemá normalizovanou deklaraci Apps.";
+function moduleApplicationMessage(moduleApps, moduleStatus = "available") {
+  if (!moduleApps && moduleStatus === "missing_access") {
+    return "Stav Apps nelze ověřit, protože modul na tomto počítači není dostupný.";
+  }
+  if (!moduleApps && moduleStatus === "planned_slot") {
+    return "Stav Apps nelze ověřit, protože modul zatím není lokálně připravený.";
+  }
+  if (!moduleApps) return "Stav Apps modulu zatím není k dispozici.";
   if (moduleApps.state === "explicit-none") return "Modul výslovně deklaruje, že nemá žádnou App.";
   if (moduleApps.state === "unresolved-invalid") return "Deklarace Apps v lazurio.module.json není platná.";
   if (moduleApps.state === "declared" && !moduleApps.open_target_app_id) {
