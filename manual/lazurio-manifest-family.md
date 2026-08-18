@@ -1,6 +1,6 @@
 # Proposal: Lazurio manifest family
 
-Status: **architectural proposal; not an accepted decision; no runtime change**  
+Status: **architectural proposal; not an accepted decision; no runtime change**
 Decision owner: Lazurio maintainers
 Tracking: `DEV-6488`
 
@@ -48,9 +48,36 @@ become compatible before any repository migrates.
 | `lazurio.personalspace.json` | One Principal-owned Personalspace, its privacy boundary, subordinate manifests and optional Resident bindings | Organization membership or another Principal's context |
 
 `launchpad.gen3.json` remains Machine-root configuration. `modules.manifest.json`
-remains the sole Organization inventory and Git materialization authority in
-v1. The new Organization manifest points to it; it does not add another module
-list.
+remains the sole Organization repository-slot inventory and Git materialization
+authority in v1. The new Organization manifest points to it; it does not add
+another repository or Module list.
+
+### Repository inventory and catalog presentation
+
+An entry in `modules.manifest.json` declares an Organization-owned repository
+slot or nested materialization target. It does not, by itself, assert that every
+listed repository is a workspace Module. The target Module identity comes from
+`lazurio.module.json`; root repositories, Productionspace repositories and
+nested repository-db checkouts remain distinct resource kinds.
+
+The repository-slot entry may carry Organization-owned catalog metadata that
+Core normalizes for all consumers:
+
+- `name` and `description` provide the human-facing catalog identity; an
+  application-owned description remains more specific and takes precedence;
+- `ui_exposure: module | diagnostics-only` controls only the everyday Launchpad
+  catalog projection;
+- `diagnostics-only` keeps the slot in inventory, Git materialization and Doctor
+  diagnostics while excluding it from normal Module cards;
+- an absent or unknown presentation value preserves the slot's existing
+  Core-classified default (`module` for ordinary repository slots and
+  `diagnostics-only` for slots already classified that way); only a recognized,
+  reviewed value overrides that presentation default.
+
+These fields grant no access, do not change runtime ownership and cannot turn a
+non-Module repository into a Module. Lazurio Core owns their validation and
+normalization; Launchpad consumes the normalized presentation instead of
+parsing or defaulting these fields independently.
 
 ## `lazurio.organization.v1`
 
@@ -98,6 +125,8 @@ Lazurio Core owns:
 - candidate filename resolution and one-resource-per-mount deduplication;
 - schema validation;
 - legacy/current normalization into one canonical read model;
+- repository-slot kind and catalog-presentation normalization, including
+  `description` and `ui_exposure`;
 - semantic parity and conflict detection;
 - deterministic migration planning and legacy projection;
 - machine-readable states, errors and receipts.
@@ -106,8 +135,8 @@ Consumers use that Core result:
 
 - Lazurio CLI exposes Doctor and explicit migration commands and owns their
   Git/worktree preflight plus atomic filesystem execution;
-- Launchpad displays state and recovery actions but has no second parser and
-  never migrates during Synchronize;
+- Launchpad displays normalized catalog presentation, state and recovery
+  actions but has no second parser and never migrates during Synchronize;
 - a future Dashboard consumer may consume a versioned normalized JSON contract
   for authorized remote operations without becoming local authority;
 - OrganizationTemplate and PersonalspaceTemplate distribute scaffolds,
@@ -347,15 +376,18 @@ first migration PR.
    mixed-revision window.
 10. Read-only smoke over all available Organizations without cross-Organization
    output.
-11. Template ownership: mechanisms managed; manifests resource-owned.
+11. Catalog projection proving that `diagnostics-only` slots remain in Doctor
+    and materialization inventory but never become normal Module cards, while
+    Module and application descriptions preserve their declared precedence.
+12. Template ownership: mechanisms managed; manifests resource-owned.
 
 ## Non-goals
 
 - No file rename or runtime behavior change in this proposal PR.
 - No Forge, Cursor Origin, GitLab or self-hosted Forge implementation.
 - No new IAM, daemon, state store, Dashboard authority or Launchpad parser.
-- No migration of `modules.manifest.json`, `launchpad.gen3.json` or Module
-  runtime declarations.
+- No filename/schema migration of `modules.manifest.json`, no migration of
+  `launchpad.gen3.json` and no migration of Module runtime declarations.
 - No business/legal profile decomposition hidden inside filename migration.
 - No Personalspace rollout coupled to an Organization rollout.
 - No broad rename PR; implementation follows as small, reversible plans.
@@ -370,8 +402,9 @@ Reviewers should answer explicitly:
    `projection_drift` state until reader readiness is provable?
 4. Preserve current Organization-owned sections in v1, except eliminating the
    deprecated duplicate `modules[]` surface?
-5. Keep `modules.manifest.json` as the only v1 inventory/materialization
-   authority?
+5. Keep `modules.manifest.json` as the only v1 repository-slot inventory and
+   materialization authority, including Core-normalized catalog presentation,
+   without treating every listed repository as a Module?
 6. Keep local runtime fully independent of any Dashboard lookup index?
 7. Keep `--finalize` blocked pending a separate Machine-readiness mechanism?
 8. Accept Personalspace naming now but implement its migration separately?
