@@ -252,6 +252,8 @@ test("apps response materializes HTTPS endpoints from the module-owned lease", a
     company: "SecureCo",
     tcp_port_policy: { mode: "single" },
     port_leases: [{ id: "main", host: "127.0.0.1", port: 5450 }],
+    apps: ["app/v1/package.json"],
+    default_app: "app/v1/package.json",
   });
 
   const response = await buildLaunchpadAppsResponse({
@@ -263,6 +265,31 @@ test("apps response materializes HTTPS endpoints from the module-owned lease", a
   expect(response.apps[0]).toMatchObject({
     url: "https://127.0.0.1:5450",
     health_url: "https://127.0.0.1:5450/health",
+    module_app: {
+      package: "app/v1/package.json",
+      declared: true,
+      default: true,
+    },
+    module_apps: {
+      state: "declared",
+      open_target_app_id: "secureco-secure",
+      open_target_source: "declared-default",
+    },
+    module_catalog_path: "workspace/secure",
+    module_open_target: true,
+  });
+  const secureModule = response.organizations
+    .find((organization) => organization.slug === "SecureCo")
+    ?.teams.flatMap((team) => team.modules)
+    .find((module) => module.path === "workspace/secure");
+  expect(secureModule?.apps).toMatchObject({
+    state: "declared",
+    default_app: {
+      package_path: "app/v1/package.json",
+      app_id: "secureco-secure",
+      record: "valid",
+    },
+    open_target_app_id: "secureco-secure",
   });
   expect(response.port_registry_issues).toEqual([]);
   const report = buildDoctorReportFromAppsResponse(response);

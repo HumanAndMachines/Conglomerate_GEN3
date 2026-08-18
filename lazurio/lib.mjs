@@ -634,6 +634,7 @@ function selectedOrganizationProjection({
         ...(declaration.branch ? { declared_branch: declaration.branch } : {}),
         materialization: moduleMaterialization(declaration),
         access: providerAccessNotEvaluated(),
+        ...(declaration.apps ? { apps: structuredClone(declaration.apps) } : {}),
         git: gitProjection({
           repo,
           status: repo ? statusByKey.get(repo.key) : null,
@@ -665,6 +666,7 @@ function selectedOrganizationProjection({
       space: app.space,
       teams: [...(app.teams ?? [])].sort((left, right) => left.localeCompare(right)),
       package_path: app.package_path,
+      ...(app.module_app ? { module_app: structuredClone(app.module_app) } : {}),
       access: providerAccessNotEvaluated(),
     }))
     .sort((left, right) => left.id.localeCompare(right.id));

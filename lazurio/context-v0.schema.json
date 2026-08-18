@@ -323,7 +323,94 @@
         "declared_branch": { "type": "string", "minLength": 1 },
         "materialization": { "$ref": "#/definitions/state" },
         "access": { "$ref": "#/definitions/access_state" },
+        "apps": { "$ref": "#/definitions/module_apps" },
         "git": { "$ref": "#/definitions/git" }
+      }
+    },
+    "module_app_item": {
+      "type": "object",
+      "required": ["package_path", "app_id", "declared", "default", "record"],
+      "additionalProperties": false,
+      "properties": {
+        "package_path": { "$ref": "#/definitions/relative_path" },
+        "app_id": {
+          "anyOf": [
+            { "$ref": "#/definitions/slug" },
+            { "type": "null" }
+          ]
+        },
+        "declared": { "type": "boolean" },
+        "default": { "type": "boolean" },
+        "record": { "enum": ["valid", "invalid", "missing"] }
+      }
+    },
+    "module_default_app": {
+      "type": "object",
+      "required": ["package_path", "app_id", "record"],
+      "additionalProperties": false,
+      "properties": {
+        "package_path": { "$ref": "#/definitions/relative_path" },
+        "app_id": {
+          "anyOf": [
+            { "$ref": "#/definitions/slug" },
+            { "type": "null" }
+          ]
+        },
+        "record": { "enum": ["valid", "invalid", "missing"] }
+      }
+    },
+    "module_apps": {
+      "type": "object",
+      "required": [
+        "state",
+        "contract_path",
+        "items",
+        "default_app",
+        "open_target_app_id",
+        "open_target_source"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "state": { "enum": ["declared", "explicit-none", "legacy-missing", "unresolved-invalid"] },
+        "contract_path": {
+          "anyOf": [
+            { "$ref": "#/definitions/relative_path" },
+            { "type": "null" }
+          ]
+        },
+        "items": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/module_app_item" }
+        },
+        "default_app": {
+          "anyOf": [
+            { "$ref": "#/definitions/module_default_app" },
+            { "type": "null" }
+          ]
+        },
+        "open_target_app_id": {
+          "anyOf": [
+            { "$ref": "#/definitions/slug" },
+            { "type": "null" }
+          ]
+        },
+        "open_target_source": {
+          "anyOf": [
+            { "enum": ["declared-default", "legacy-fallback"] },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "module_app_membership": {
+      "type": "object",
+      "required": ["package", "declared", "default", "state"],
+      "additionalProperties": false,
+      "properties": {
+        "package": { "$ref": "#/definitions/relative_path" },
+        "declared": { "type": "boolean" },
+        "default": { "type": "boolean" },
+        "state": { "enum": ["explicit", "legacy-missing", "not-declared"] }
       }
     },
     "app": {
@@ -342,6 +429,7 @@
           "items": { "$ref": "#/definitions/slug" }
         },
         "package_path": { "$ref": "#/definitions/relative_path" },
+        "module_app": { "$ref": "#/definitions/module_app_membership" },
         "access": { "$ref": "#/definitions/access_state" }
       }
     },

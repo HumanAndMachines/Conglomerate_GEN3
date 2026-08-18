@@ -457,6 +457,9 @@ export function appTeams(app) {
 
 function appFamilyKey(app) {
   const section = appSpace(app);
+  if (app.module_catalog_path) {
+    return `${app.company}::${section}::p:${app.module_catalog_path}`;
+  }
   return app.module
     ? `${app.company}::${section}::m:${app.module}`
     : `${app.company}::${section}::i:${app.id}`;
@@ -474,16 +477,21 @@ export function groupAppFamilies(apps) {
     map.get(key).push(app);
   }
   return order.map((key) => {
-    // The Module contract is authoritative when it declares default_app.
-    // Legacy modules keep the existing highest-version fallback until they
-    // gain an explicit apps inventory. Equal versions retain discovery order.
-    const members = [...map.get(key)].sort((a, b) => {
-      const declaredDefault = Number(Boolean(b.module_app?.default)) - Number(Boolean(a.module_app?.default));
-      if (declaredDefault !== 0) return declaredDefault;
-      return (appTitleVersion(b) ?? -1) - (appTitleVersion(a) ?? -1);
-    });
-    const primary = members[0];
-    return { key, company: primary.company, module: primary.module ?? null, members, primary };
+    const discovered = [...map.get(key)];
+    const applications = discovered.find((app) => app.module_apps)?.module_apps ?? null;
+    const openTarget = applications?.open_target_app_id
+      ? discovered.find((app) => app.id === applications.open_target_app_id)
+      : null;
+    const declaredDefault = applications?.state === "declared"
+      ? discovered.find((app) => app.module_app?.default)
+      : null;
+    const primary = openTarget ?? declaredDefault ?? discovered[0];
+    // Core selects the primary target. Version order is presentation-only for
+    // the remaining variant menu and never promotes a sibling to default.
+    const members = [primary, ...discovered
+      .filter((app) => app !== primary)
+      .sort((a, b) => (appTitleVersion(b) ?? -1) - (appTitleVersion(a) ?? -1))];
+    return { key, company: primary.company, module: primary.module ?? null, members, primary, applications };
   });
 }
 

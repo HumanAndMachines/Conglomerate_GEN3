@@ -1002,7 +1002,7 @@ test("manifest-only module cards keep semantic icon precedence over a broad cate
   expect(cardBlock).toContain("appIconNode(detail)");
   expect(cardBlock).not.toContain('appIconSvg("module")');
   expect(cardBlock).toContain('desc.className = "app-card-desc"');
-  expect(cardBlock).toContain("appDescription(detail)");
+  expect(cardBlock).toContain("appDescription(detail.default_app)");
   expect(js).toContain("description: module.description ?? null");
   expect(cardBlock).not.toContain('badges.append(chip("Workspace modul"');
   expect(cardBlock).not.toContain('path.className = "app-card-endpoint"');
@@ -1059,6 +1059,12 @@ test("read-only app and system detail selection opens the right drawer", async (
   expect(workspaceModuleCard).toContain("workspaceModuleDetail");
   expect(workspaceModuleCard).toContain("selectReadonlyDetail(detail)");
   expect(workspaceModuleCard).toContain("openWorkspaceModuleFolder(detail)");
+  expect(workspaceModuleCard).toContain("openAppChain(detail.default_app)");
+  expect(workspaceModuleCard).not.toContain("if (openable) void openWorkspaceModuleFolder(detail)");
+  expect(js).toContain("Výchozí App deklarovaná v modulu není dostupná jako platná aplikace.");
+  const primaryNextAction = js.slice(js.indexOf("function primaryNextAction"), js.indexOf("function hasReclaimableStaticLease"));
+  expect(primaryNextAction).toContain('moduleApps?.state === "declared" && !moduleApps.open_target_app_id');
+  expect(primaryNextAction).not.toContain('app.kind === "workspace-module" && app.can_open_folder');
   const productionspaceCard = js.slice(js.indexOf("function productionspaceCard"), js.indexOf("function productionspaceDetail"));
   expect(productionspaceCard).toContain("productionspaceDetail");
   expect(productionspaceCard).toContain("selectReadonlyDetail(detail)");

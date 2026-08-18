@@ -261,8 +261,11 @@ function renderHumanContext(context) {
   }
   lines.push("  Moduly:");
   for (const module of organization.modules) {
+    const appSummary = module.apps
+      ? ` · Apps ${module.apps.state}${module.apps.open_target_app_id ? ` → ${module.apps.open_target_app_id}` : ""}`
+      : "";
     lines.push(
-      `    - ${module.slug} · ${module.path} · ${stateText(module.materialization)} · access ${stateText(module.access)} · git ${gitText(module.git)}`,
+      `    - ${module.slug} · ${module.path} · ${stateText(module.materialization)} · access ${stateText(module.access)} · git ${gitText(module.git)}${appSummary}`,
     );
   }
   lines.push("  Aplikace:");

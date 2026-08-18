@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "fs";
 import { readFile, readdir, stat } from "fs/promises";
-import { basename, join } from "path";
+import { basename, join, posix } from "path";
 import {
   discoverLaunchpadApps,
   organizationRelativePathIssue,
@@ -45,6 +45,10 @@ import {
   organizationSlotTeams,
   organizationSlotWorkspace,
 } from "../../lazurio/core/organization-slot-scope-lib.mjs";
+import {
+  normalizeModuleManifest,
+  resolveModuleApplications,
+} from "../../lazurio/core/module-contract-lib.mjs";
 
 const supportedPlatforms = {
   darwin: "macOS",
@@ -182,6 +186,11 @@ export async function buildLaunchpadAppsResponse({
     runtime_status: "stopped",
   }));
   const visibleApps = [...apps, ...invalidApps];
+  await attachModuleApplicationProjections({
+    companiesRoot,
+    organizations,
+    apps: visibleApps,
+  });
   const gitContext = includeGit
     ? await buildGitContext({ companiesRoot, gitStatusService })
     : { reposByKey: new Map(), warnings: [] };
@@ -837,6 +846,66 @@ async function readCompaniesConfig(companiesRoot) {
   const configPath = join(companiesRoot, "launchpad.gen3.json");
   if (!existsSync(configPath)) return null;
   return readJson(configPath);
+}
+
+async function attachModuleApplicationProjections({ companiesRoot, organizations, apps }) {
+  for (const organization of organizations) {
+    const declarations = Array.isArray(organization.module_declarations)
+      ? organization.module_declarations
+      : [];
+    const modules = declarations.filter(
+      (slot) => slot.ui_exposure === "module" && slot.space !== "productionspace",
+    );
+    const moduleRootPaths = declarations.map((slot) => posix.join(organization.path, slot.path));
+    for (const slot of modules) {
+      const moduleRootPath = posix.join(organization.path, slot.path);
+      const contractPath = posix.join(moduleRootPath, "lazurio.module.json");
+      const absoluteContractPath = join(companiesRoot, contractPath);
+      let module = null;
+      let contractIssues = [];
+      let observedContractPath = null;
+      if (slot.status === "available" && existsSync(absoluteContractPath)) {
+        observedContractPath = contractPath;
+        try {
+          const normalized = normalizeModuleManifest({
+            manifest: await readJson(absoluteContractPath),
+            modulePath: contractPath,
+          });
+          module = normalized.module;
+          contractIssues = normalized.issues;
+        } catch (error) {
+          contractIssues = [`${contractPath}: lazurio.module.json nejde přečíst: ${error.message}`];
+        }
+      }
+      const projection = resolveModuleApplications({
+        module,
+        moduleRootPath,
+        moduleRootPaths,
+        contractPath: observedContractPath,
+        contractIssues,
+        apps,
+      });
+      slot.apps = projection;
+
+      const appProjection = {
+        state: projection.state,
+        contract_path: projection.contract_path,
+        open_target_app_id: projection.open_target_app_id,
+        open_target_source: projection.open_target_source,
+      };
+      const itemByPackagePath = new Map(
+        projection.items.map((item) => [posix.join(moduleRootPath, item.package_path), item]),
+      );
+      for (const app of apps) {
+        const packagePath = String(app.package_path ?? "").replace(/\\/g, "/");
+        const item = itemByPackagePath.get(packagePath);
+        if (!item) continue;
+        app.module_apps = appProjection;
+        app.module_catalog_path = slot.path;
+        app.module_open_target = projection.open_target_app_id === app.id;
+      }
+    }
+  }
 }
 
 // Reads an organization's company.gen3.json to expose the three physical

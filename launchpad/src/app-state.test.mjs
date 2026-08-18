@@ -237,9 +237,10 @@ test("runtime filtr a kontrolní toggle jsou nezávislé osy a skládají průni
 });
 
 test("One module = one tile: versions AND named sub-apps collapse by company+module", () => {
+  const invoicesProjection = { state: "legacy-missing", open_target_app_id: "inv-v2", open_target_source: "legacy-fallback" };
   const apps = [
-    { id: "inv-v1", company: "OmegaCo", module: "invoices", title: "Invoices v1", runtime_status: "healthy", host: "127.0.0.1", port: 5294 },
-    { id: "inv-v2", company: "OmegaCo", module: "invoices", title: "Invoices v2", runtime_status: "stopped", host: "127.0.0.1", port: 5295 },
+    { id: "inv-v1", company: "OmegaCo", module: "invoices", title: "Invoices v1", runtime_status: "healthy", host: "127.0.0.1", port: 5294, module_apps: invoicesProjection },
+    { id: "inv-v2", company: "OmegaCo", module: "invoices", title: "Invoices v2", runtime_status: "stopped", host: "127.0.0.1", port: 5295, module_apps: invoicesProjection },
     { id: "content-catalog", company: "BetaCo", module: "content", title: "Content catalog", runtime_status: "healthy" },
     { id: "content-editor", company: "BetaCo", module: "content", title: "Content editor", runtime_status: "healthy" },
     { id: "mc-v3", company: "OmegaCo", module: "mission-control", title: "Mission Control v3", runtime_status: "healthy" },
@@ -278,12 +279,14 @@ test("One module = one tile: versions AND named sub-apps collapse by company+mod
 });
 
 test("explicit Module default_app outranks the legacy highest-version fallback", () => {
+  const moduleApps = { state: "declared", open_target_app_id: "website-v2", open_target_source: "declared-default" };
   const families = groupAppFamilies([
     {
       id: "website-v3",
       company: "OmegaCo",
       module: "website",
       title: "Website v3",
+      module_apps: moduleApps,
       module_app: { package: "app/v3/package.json", declared: true, default: false },
     },
     {
@@ -291,6 +294,7 @@ test("explicit Module default_app outranks the legacy highest-version fallback",
       company: "OmegaCo",
       module: "website",
       title: "Website v2",
+      module_apps: moduleApps,
       module_app: { package: "app/v2/package.json", declared: true, default: true },
     },
   ]);
@@ -298,6 +302,46 @@ test("explicit Module default_app outranks the legacy highest-version fallback",
   expect(families).toHaveLength(1);
   expect(families[0].members.map((member) => member.id)).toEqual(["website-v2", "website-v3"]);
   expect(families[0].primary.id).toBe("website-v2");
+});
+
+test("declared Module without a resolved default never promotes a valid sibling", () => {
+  const moduleApps = { state: "declared", open_target_app_id: null, open_target_source: null };
+  const families = groupAppFamilies([
+    {
+      id: "website-v1",
+      company: "OmegaCo",
+      module: "website",
+      title: "Website v1",
+      module_apps: moduleApps,
+      module_app: { package: "app/v1/package.json", declared: true, default: false },
+    },
+    {
+      id: "website-v2",
+      company: "OmegaCo",
+      module: "website",
+      title: "Website v2",
+      manifest_state: "invalid_manifest",
+      module_apps: moduleApps,
+      module_app: { package: "app/v2/package.json", declared: true, default: true },
+    },
+  ]);
+
+  expect(families[0].primary.id).toBe("website-v2");
+  expect(families[0].applications.open_target_app_id).toBeNull();
+});
+
+test("Module family identity follows canonical catalog path instead of a coincidental slug", () => {
+  const shared = {
+    company: "OmegaCo",
+    module: "same-runtime-id",
+    title: "Tool",
+    space: "workspace",
+  };
+  const families = groupAppFamilies([
+    { ...shared, id: "first", module_catalog_path: "workspace/first" },
+    { ...shared, id: "second", module_catalog_path: "workspace/second" },
+  ]);
+  expect(families).toHaveLength(2);
 });
 
 test("Module tiles split by physical boundary and Workspace modules project N:M into Teams", () => {
@@ -465,6 +509,13 @@ test("zdravá výchozí verze neutralizuje jen očekávaný mismatch staršího 
     port: 24_302,
     runtime_status: "healthy",
   };
+  const moduleApps = {
+    state: "legacy-missing",
+    open_target_app_id: "knowledgebase-v2",
+    open_target_source: "legacy-fallback",
+  };
+  rollback.module_apps = moduleApps;
+  current.module_apps = moduleApps;
 
   const healthyDefault = summarizeOrganizationSpaceHealth({
     organization: { slug: "Iotor", workspaces: [] },

@@ -12,6 +12,9 @@ První behavior-preserving řezy vlastní klasifikaci Organization repository
 slotů, jejich normalizovanou katalogovou prezentaci, kanonickou filesystem
 containment hranici, deklaraci Modulu a čistý kontrakt runtime deklarace
 Modulové aplikace.
+`resolveModuleApplications()` je jediný vlastník vazby deklarovaný Modul → jeho
+Apps → výchozí lokální open target. Konzumenti spojují záznamy přes kanonickou
+cestu kořene Modulu; katalogový slug ani UI pořadí nejsou identita.
 `ui_exposure` zůstává pouze prezentační policy; nevytváří identitu resource ani
 access autoritu. Další doménové vrstvy se přesunují samostatnými PR až nad
 zeleným parity baseline; fyzický přesun souboru sám nesmí měnit schéma ani
