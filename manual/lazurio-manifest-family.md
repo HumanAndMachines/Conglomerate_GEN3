@@ -140,11 +140,12 @@ complete reader-version evidence today. It is not a second authority:
 - edits target only the Lazurio manifest;
 - one command regenerates the legacy projection;
 - Core compares normalized semantics to prove lossless mapping and the
-  canonical-JSON projection hash to prove that the legacy file was generated;
+  canonical-JSON projection hash to prove exact equivalence to the
+  deterministic generator output;
 - canonical JSON uses deterministic serialization independent of indentation,
   LF/CRLF and host platform, so formatting-only drift is not a semantic error;
-- a manual legacy edit becomes `projection_drift` or `conflict`, never a second
-  authority;
+- a manual legacy edit that changes the canonical projection becomes
+  `projection_drift` or `conflict`, never a second authority;
 - extensions are preserved losslessly; only an unknown field that cannot be
   preserved or mapped blocks migration.
 
