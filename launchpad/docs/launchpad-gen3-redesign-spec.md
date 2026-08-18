@@ -663,6 +663,9 @@ ať UI nemusí řešit prázdné hodnoty.
 Shell používá tmavou inkoustovou hlavičku s bílými ikonami; dropdowny, panely
 a pracovní plocha pod ní zůstávají na světlém dokumentovém povrchu. Hlavička
 je kanonická součást UI, ne URL experiment ani skin konkrétní Organizace.
+Číselný odznak notifikací, vykřičník Doktoru a mobilní počet problémů používají
+stejnou výšku, ukotvení, typografii a tmavou oddělovací hranu; pouze barva a
+šířka nutná pro dvouciferný počet nesou odlišný význam a obsah.
 Karta aktualizací je na desktopu první v pravém sloupci; na mobilu a v
 Personalspace se stejný prvek přesune nad hlavní layout, aby root update ani
 blokující zpráva nezmizely ve skrytém draweru. Blokovaný root stav má v tomto

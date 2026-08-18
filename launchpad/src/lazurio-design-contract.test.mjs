@@ -56,6 +56,14 @@ test("tmavá hlavička je kanonická bez URL experimentu", async () => {
   expect(app).not.toContain("headerExperiment");
 });
 
+test("stavové odznaky v hlavičce sdílejí jednu geometrii", async () => {
+  const styles = await source("styles.css");
+  const badges = styles.slice(styles.indexOf("/* Stavové odznaky v hlavičce jsou jeden systém."));
+  expect(badges).toMatch(/\.topbar \.notifications-badge,[\s\S]*?\.topbar \.doctor-status-alert,[\s\S]*?\.topbar \.space-health-badge\s*{/);
+  expect(badges).toMatch(/top: -2px;[\s\S]*?right: -5px;[\s\S]*?min-width: 18px;[\s\S]*?height: 18px/);
+  expect(badges).toMatch(/border: 2px solid var\(--lz-gray-950\);[\s\S]*?font-size: 10px;[\s\S]*?font-variant-numeric: tabular-nums/);
+});
+
 test("výběr dlaždice drží důraz hranou a stav není barevný pruh", async () => {
   const [styles, app] = await Promise.all([source("styles.css"), source("app.js")]);
   const canonical = styles.slice(styles.indexOf("/* CAC-0095 — kanonická materiálová dlaždice."));
