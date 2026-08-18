@@ -239,13 +239,15 @@ supported Machine therefore activates a target revision through the updater:
 2. Acquire the same resource-scoped lock and create a durable local activation
    receipt with the previous and target revision, both pair hashes, staged
    target blobs and rollback data. Put Core readers behind the in-progress
-   barrier and stop, drain or otherwise prove the absence of every legacy
-   process that can mutate either manifest.
+   barrier and stop, drain or otherwise prove the absence of every supported
+   legacy process that can read or mutate any path in the resource. A read-only
+   legacy process is not exempt: it cannot honor the receipt and could combine
+   paths from different revisions.
 3. Update the checkout metadata and non-pair paths only while the resource is
    inactive. Apply the two staged target blobs with the platform-proven
-   per-file atomic replacement from the authoring protocol. Legacy-only
-   read-only consumers may observe a complete old or new legacy file, but no
-   legacy mutation-capable process may run inside the activation window.
+   per-file atomic replacement from the authoring protocol. No supported reader
+   or writer may observe the resource again until the whole target revision is
+   verified; no subset of paths is an active filesystem view.
 4. Verify the target revision, both after-hashes, normalized parity and
    projection hash before removing the receipt and restarting or exposing the
    resource. Interruption resumes the recorded phase or restores the complete
@@ -340,7 +342,9 @@ first migration PR.
    behavior.
 9. Interruption after every Machine activation phase, rollback to the complete
    previous revision, and proof that an incapable/offline Machine cannot advance
-   into the migration commit before its updater is compatible.
+   into the migration commit before its updater is compatible. Exercise a
+   concurrent legacy read-only consumer and prove it is fenced for the complete
+   mixed-revision window.
 10. Read-only smoke over all available Organizations without cross-Organization
    output.
 11. Template ownership: mechanisms managed; manifests resource-owned.
