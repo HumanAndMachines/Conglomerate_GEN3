@@ -211,6 +211,19 @@ bun run check
 bun run doctor
 ```
 
+### macOS: aplikace v Docku
+
+Zdrojově řízenou aplikaci `Launchpad GEN3` nainstaluješ nebo bezpečně obnovíš:
+
+```sh
+bun run install:macos-app
+```
+
+Instalátor naváže aplikaci na checkout, ze kterého byl spuštěný, předchozí
+aplikaci zachová jako časově označenou zálohu a nový bundle před výměnou ověří.
+Launcher nehádá port: použije stejný startovací kontrakt jako `bun run launchpad`,
+který otevře správnou existující instanci nebo vybere volný port.
+
 ### Windows: Start Menu a hlavní panel
 
 Sdílený Launchpad lze na Windows nainstalovat jako uživatelskou zkratku bez

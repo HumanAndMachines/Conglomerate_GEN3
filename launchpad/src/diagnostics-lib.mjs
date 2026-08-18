@@ -2164,29 +2164,20 @@ function workspaceDeclarationCheck(appsResponse) {
 }
 
 function runtimeChecks(appsResponse) {
-  if (appsResponse.failures.length > 0) {
-    return [
-      {
-        id: "launchpad.runtime",
-        status: "blocked",
-        severity: "runtime",
-        title: "Launchpad runtime",
-        message: "Runtime diagnostika se nedala provést, protože discovery není validní.",
-        paths: ["launchpad"],
-        links: [],
-        details: [],
-        blocked_reason:
-          `Discovery skončila s ${appsResponse.failures.length} chybami, takže runtime stav `
-          + "aplikací nešel změřit.",
-        remedy: "Oprav nálezy kontroly `launchpad.discovery` a spusť doctor znovu.",
-      },
+  const summary = runtimeSummaryCheck(appsResponse.apps);
+  if (appsResponse.failures.length > 0 && summary.status !== "fail") {
+    summary.status = "warn";
+    summary.message =
+      `Runtime dostupných aplikací byl změřen (${runtimeCountMessage(countBy(appsResponse.apps.map((app) => app.runtime_status ?? "unknown")))}); `
+      + `${formatCount(appsResponse.failures.length, "chyba discovery omezuje", "chyby discovery omezují", "chyb discovery omezuje")} pokrytí.`;
+    summary.details = [
+      `Změřeno aplikací: ${appsResponse.apps.length}.`,
+      `Nezměřené discovery chyby: ${appsResponse.failures.length}.`,
+      "Podrobnosti zůstávají v kontrole launchpad.discovery; validní Organizace nejsou blokované cizí chybou.",
     ];
   }
 
-  return [
-    runtimeSummaryCheck(appsResponse.apps),
-    ...appsResponse.apps.map(runtimeAppCheck),
-  ];
+  return [summary, ...appsResponse.apps.map(runtimeAppCheck)];
 }
 
 function runtimeSummaryCheck(apps) {

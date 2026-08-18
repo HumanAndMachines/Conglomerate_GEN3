@@ -358,6 +358,15 @@ function validateDeclaredModule({
   }
 
   if (!checkMaterializedGit || !isActiveModuleSlot(slot) || !existsSync(join(organizationRoot, path))) return;
+  const inTreeTransition = trimmedString(slot.status)?.toLowerCase() === "in_tree_transition"
+    && (canonicalPath.startsWith("workspace/") || canonicalPath.startsWith("modules/"));
+  const nestedGitMarker = join(organizationRoot, path, ".git");
+  if (inTreeTransition && !existsSync(nestedGitMarker)) {
+    warnings.push(
+      `${label}: ${source} je explicitní in_tree_transition workspace modul "${path}" vlastněný Organization super-repozitářem; samostatnou git URL dostane až při reviewované extrakci`,
+    );
+    return;
+  }
   const gitUrl = slot.git?.url ?? slot.repo ?? slot.repository ?? null;
   if (isMissingOrPlaceholderGitUrl(gitUrl)) {
     issues.push(
