@@ -3,7 +3,7 @@
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { basename, join, relative, resolve, sep } from "node:path";
-import { normalizeModuleManifest } from "../launchpad/src/module-contract-lib.mjs";
+import { normalizeModuleManifest } from "../lazurio/core/module-contract-lib.mjs";
 import {
   normalizeOrganizationSlotPath,
   organizationSlotScope,

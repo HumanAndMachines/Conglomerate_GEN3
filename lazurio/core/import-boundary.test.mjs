@@ -99,6 +99,31 @@ test("runtime declaration validation has one physical Core owner", async () => {
   ]);
 });
 
+test("Module declaration validation has one physical Core owner", async () => {
+  const moduleName = "module-contract-lib.mjs";
+  expect(existsSync(join(coreRoot, moduleName))).toBe(true);
+  expect(existsSync(join(repositoryRoot, "launchpad", "src", moduleName))).toBe(false);
+
+  const imports = await repositoryImports([
+    join(repositoryRoot, "lazurio"),
+    join(repositoryRoot, "launchpad", "src"),
+    join(repositoryRoot, "scripts"),
+  ]);
+  const consumers = imports
+    .filter(({ target }) => target === join(coreRoot, moduleName))
+    .map(({ importer }) => importer)
+    .sort();
+
+  expect(consumers).toEqual([
+    "launchpad/src/discovery-lib.mjs",
+    "launchpad/src/personalspace-lib.mjs",
+    "launchpad/src/runtime-lib.mjs",
+    "scripts/lazurio-module-inventory.mjs",
+    "scripts/lazurio-module-port.mjs",
+    "scripts/lazurio-runtime-migrate.mjs",
+  ]);
+});
+
 async function repositoryImports(roots) {
   const imports = [];
   for (const root of roots) {
