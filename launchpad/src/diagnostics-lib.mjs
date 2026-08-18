@@ -37,12 +37,12 @@ import {
   isOrganizationSlotContainerPath,
   normalizeOrganizationSlotPath,
   organizationRepositorySlotCollectionIssues,
+  organizationSlotCatalogPresentation,
   organizationSlotPathScope,
   organizationSlotProjectsToLocalMachine,
   organizationSlotRepositoryId,
   organizationSlotScope,
   organizationSlotTeams,
-  organizationSlotUiExposure,
   organizationSlotWorkspace,
 } from "../../lazurio/core/organization-slot-scope-lib.mjs";
 
@@ -1492,6 +1492,7 @@ function normalizeModuleSlot(slot) {
   const teams = organizationSlotTeams(slot, path);
   const workspace = organizationSlotWorkspace(slot, path);
   const launchpadSection = slot.launchpad_section === "organization" ? "organization" : null;
+  const catalogPresentation = organizationSlotCatalogPresentation(slot, path);
   if (space !== "root" && !workspace) return null;
   const repo =
     space === "root" ? slot.git?.url ?? null : slot.repo ?? slot.git?.url ?? null;
@@ -1510,16 +1511,14 @@ function normalizeModuleSlot(slot) {
     workspace,
     launchpad_section: launchpadSection,
     category: slot.category ?? null,
-    description: typeof slot.description === "string" && slot.description.trim() !== ""
-      ? slot.description.trim()
-      : null,
+    description: catalogPresentation.description,
     default_access: slot.default_access ?? null,
     required_roles: Array.isArray(slot.required_roles) ? slot.required_roles : [],
     classification: slot.classification ?? null,
     launchpad_port: slot.launchpad_port ?? null,
     repo,
     branch,
-    ui_exposure: organizationSlotUiExposure(slot, path),
+    ui_exposure: catalogPresentation.ui_exposure,
   };
 }
 
