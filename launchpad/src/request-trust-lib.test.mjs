@@ -33,6 +33,11 @@ test("hosted trust requires the exact configured origin and gateway-authenticate
   };
 
   expect(trust.isTrustedWorkspaceRequest(request(headers), backendUrl)).toBe(true);
+  expect(trust.isTrustedWorkspaceRequest(request(), backendUrl)).toBe(false);
+  expect(trust.isTrustedWorkspaceRequest(request({
+    origin: backendUrl.origin,
+    "sec-fetch-site": "same-origin",
+  }), backendUrl)).toBe(false);
   expect(trust.isTrustedWorkspaceRequest(request({ ...headers, origin: "https://evil.invalid" }), backendUrl)).toBe(false);
   expect(trust.isTrustedWorkspaceRequest(request({ ...headers, "sec-fetch-site": "cross-site" }), backendUrl)).toBe(false);
   expect(trust.isTrustedWorkspaceRequest(request({ ...headers, "x-lazurio-github-login": "" }), backendUrl)).toBe(false);

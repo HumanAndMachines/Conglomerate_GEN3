@@ -19,8 +19,8 @@ export function createRequestTrustPolicy({ profile = "local", hostedExternalOrig
     hosted_origin: hostedOrigin,
     isTrustedLocalRequest,
     isTrustedWorkspaceRequest(request, url) {
-      if (isTrustedLocalRequest(request, url)) return true;
-      if (normalizedProfile !== "hosted" || !localBackendHosts.has(url.hostname)) return false;
+      if (normalizedProfile === "local") return isTrustedLocalRequest(request, url);
+      if (!localBackendHosts.has(url.hostname)) return false;
 
       // The hosted browser never reaches this loopback listener directly. Caddy
       // authenticates the exact GitHub Team, strips an incoming identity header,

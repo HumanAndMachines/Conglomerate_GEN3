@@ -321,6 +321,20 @@ test("authenticated hosted Launchpad can sync and pull while local-only surfaces
   expect(missingGatewayIdentity.status).toBe(403);
   expect((await missingGatewayIdentity.json()).error).toBe("mutating_request_forbidden");
 
+  const directLoopbackSync = await fetch(`http://127.0.0.1:${port}/api/sync`, {
+    method: "POST",
+  });
+  expect(directLoopbackSync.status).toBe(403);
+  expect((await directLoopbackSync.json()).error).toBe("mutating_request_forbidden");
+
+  const directLoopbackPull = await fetch(`http://127.0.0.1:${port}/api/git/pull-all?company=BetaCo`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  expect(directLoopbackPull.status).toBe(403);
+  expect((await directLoopbackPull.json()).error).toBe("mutating_request_forbidden");
+
   const personalspace = await fetch(`http://127.0.0.1:${port}/api/personalspace`, {
     headers: hostedHeaders,
   });
