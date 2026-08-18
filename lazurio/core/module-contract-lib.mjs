@@ -250,6 +250,187 @@ export function resolveModuleAppDeclaration({ module, packagePath }) {
   };
 }
 
+/**
+ * Canonical Module -> Apps projection shared by CLI and UI adapters.
+ *
+ * `moduleRootPath` and every app package path are companies-root-relative POSIX
+ * paths. `moduleRootPaths` lets Core assign legacy packages to the most
+ * specific declared Module root, so a nested repository never becomes an App
+ * of its parent merely because it lives below the same filesystem prefix.
+ */
+export function resolveModuleApplications({
+  module = null,
+  moduleRootPath,
+  moduleRootPaths = [moduleRootPath],
+  contractPath = module?.module_path ?? null,
+  contractIssues = [],
+  apps = [],
+} = {}) {
+  const root = normalizedRelativePath(moduleRootPath);
+  const roots = [...new Set(moduleRootPaths.map(normalizedRelativePath).filter(Boolean))];
+  const normalizedContractPath = normalizedRelativePath(contractPath);
+  const ownedApps = apps
+    .map((app, index) => moduleApplicationRecord({ app, index, root, roots, contractPath: normalizedContractPath }))
+    .filter(Boolean);
+  const invalidContract = contractIssues.length > 0;
+
+  if (invalidContract) {
+    return moduleApplicationsProjection({
+      state: "unresolved-invalid",
+      contractPath: normalizedContractPath,
+      items: discoveredApplicationItems(ownedApps),
+    });
+  }
+
+  if (!module || module.apps === null || module.apps === undefined) {
+    const items = discoveredApplicationItems(ownedApps);
+    const openTarget = legacyOpenTarget(ownedApps);
+    return moduleApplicationsProjection({
+      state: "legacy-missing",
+      contractPath: normalizedContractPath,
+      items,
+      openTarget,
+    });
+  }
+
+  if (module.apps.length === 0) {
+    return moduleApplicationsProjection({
+      state: "explicit-none",
+      contractPath: normalizedContractPath,
+      items: discoveredApplicationItems(ownedApps),
+    });
+  }
+
+  const declared = new Set(module.apps);
+  const items = module.apps.map((packagePath) => declaredApplicationItem({
+    packagePath,
+    isDefault: module.default_app === packagePath,
+    matches: ownedApps.filter((candidate) => candidate.packagePath === packagePath),
+  }));
+  for (const candidate of ownedApps) {
+    if (declared.has(candidate.packagePath)) continue;
+    items.push(applicationItem(candidate, { declared: false, isDefault: false }));
+  }
+  const defaultApp = items.find((item) => item.default) ?? null;
+  const openTarget = defaultApp?.record === "valid" && defaultApp.app_id
+    ? { appId: defaultApp.app_id, source: "declared-default" }
+    : null;
+  return moduleApplicationsProjection({
+    state: "declared",
+    contractPath: normalizedContractPath,
+    items,
+    defaultApp,
+    openTarget,
+  });
+}
+
+function moduleApplicationsProjection({
+  state,
+  contractPath,
+  items,
+  defaultApp = null,
+  openTarget = null,
+}) {
+  return {
+    state,
+    contract_path: contractPath,
+    items,
+    default_app: defaultApp
+      ? {
+          package_path: defaultApp.package_path,
+          app_id: defaultApp.app_id,
+          record: defaultApp.record,
+        }
+      : null,
+    open_target_app_id: openTarget?.appId ?? null,
+    open_target_source: openTarget?.source ?? null,
+  };
+}
+
+function normalizedRelativePath(value) {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const normalized = posix.normalize(value.trim().replace(/\\/g, "/"));
+  if (normalized === "." || normalized === ".." || normalized.startsWith("../") || normalized.startsWith("/")) {
+    return null;
+  }
+  return normalized;
+}
+
+function pathWithin(root, candidate) {
+  return Boolean(root && candidate && (candidate === root || candidate.startsWith(`${root}/`)));
+}
+
+function owningModuleRoot(packagePath, roots) {
+  return roots
+    .filter((candidate) => pathWithin(candidate, packagePath))
+    .sort((left, right) => right.length - left.length)[0] ?? null;
+}
+
+function moduleApplicationRecord({ app, index, root, roots, contractPath }) {
+  const packagePath = normalizedRelativePath(app?.package_path);
+  if (!packagePath || !root || owningModuleRoot(packagePath, roots) !== root) return null;
+  const appContractPath = normalizedRelativePath(app?.module_contract?.module_path);
+  if (appContractPath && contractPath && appContractPath !== contractPath) return null;
+  const relativePackage = posix.relative(root, packagePath);
+  if (!relativePackage || relativePackage === ".." || relativePackage.startsWith("../")) return null;
+  return {
+    app,
+    index,
+    packagePath: app?.module_app?.package ?? relativePackage,
+    record: app?.manifest_state === "invalid_manifest" ? "invalid" : "valid",
+  };
+}
+
+function applicationItem(candidate, { declared, isDefault }) {
+  return {
+    package_path: candidate.packagePath,
+    app_id: candidate.record === "valid" && typeof candidate.app?.id === "string"
+      ? candidate.app.id
+      : null,
+    declared,
+    default: isDefault,
+    record: candidate.record,
+  };
+}
+
+function discoveredApplicationItems(candidates) {
+  return candidates.map((candidate) => applicationItem(candidate, {
+    declared: false,
+    isDefault: false,
+  }));
+}
+
+function declaredApplicationItem({ packagePath, isDefault, matches }) {
+  const valid = matches.filter((candidate) => candidate.record === "valid");
+  if (matches.length === 1 && valid.length === 1) {
+    return applicationItem(valid[0], { declared: true, isDefault });
+  }
+  return {
+    package_path: packagePath,
+    app_id: null,
+    declared: true,
+    default: isDefault,
+    record: matches.length === 0 ? "missing" : "invalid",
+  };
+}
+
+function legacyOpenTarget(candidates) {
+  const valid = candidates.filter(
+    (candidate) => candidate.record === "valid" && typeof candidate.app?.id === "string",
+  );
+  if (valid.length === 0) return null;
+  const ordered = [...valid].sort((left, right) => {
+    const versionDifference = legacyAppTitleVersion(right.app) - legacyAppTitleVersion(left.app);
+    return versionDifference || left.index - right.index;
+  });
+  return { appId: ordered[0].app.id, source: "legacy-fallback" };
+}
+
+function legacyAppTitleVersion(app) {
+  const match = String(app?.title ?? "").match(/\sv(\d+)$/i);
+  return match ? Number(match[1]) : -1;
+}
+
 function validateTcpPolicy(policy, label, issues) {
   if (!policy || typeof policy !== "object" || Array.isArray(policy)) {
     issues.push(`${label} musí být object`);

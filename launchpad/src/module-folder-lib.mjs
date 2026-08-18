@@ -1,6 +1,7 @@
 import { constants } from "fs";
 import { access, realpath, stat } from "fs/promises";
-import { isAbsolute, relative, resolve, win32 } from "path";
+import { isAbsolute, relative, resolve } from "path";
+import { trustedWindowsSystemExecutable } from "./windows-system-path-lib.mjs";
 
 export class ModuleFolderActionError extends Error {
   constructor(status, code, message) {
@@ -44,7 +45,10 @@ export function createModuleFolderOpener({
       if (!organization?.path) {
         throw new ModuleFolderActionError(404, "organization_not_found", "Organizace už není v Launchpadu dostupná.");
       }
-      const modules = (organization.workspaces ?? []).flatMap((workspace) => workspace.modules ?? []);
+      const modules = [
+        ...(organization.organization_modules ?? []),
+        ...(organization.workspaces ?? []).flatMap((workspace) => workspace.modules ?? []),
+      ];
       const module = modules.find((item) => item.path === modulePath);
       if (!module) {
         throw new ModuleFolderActionError(404, "module_not_found", "Modul už není v Organizaci deklarovaný.");
@@ -111,11 +115,7 @@ export function createModuleFolderOpener({
 export function folderOpenCommand(platform, path, env = process.env) {
   if (platform === "darwin") return ["/usr/bin/open", path];
   if (platform === "win32") {
-    const systemRoot = env.SystemRoot ?? env.WINDIR;
-    if (!systemRoot || !win32.isAbsolute(systemRoot)) {
-      throw new Error("SystemRoot/WINDIR musí být absolutní pro bezpečné spuštění explorer.exe.");
-    }
-    return [win32.join(systemRoot, "explorer.exe"), path];
+    return [trustedWindowsSystemExecutable(["explorer.exe"], env), path];
   }
   if (platform === "linux") return ["/usr/bin/xdg-open", path];
   return null;

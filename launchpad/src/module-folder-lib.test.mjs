@@ -155,9 +155,44 @@ test("používá bezpečné systémové příkazy bez shellové interpolace", ()
   ]);
   expect(() => folderOpenCommand("win32", "C:\\demo", { PATH: "C:\\fake-bin" }))
     .toThrow("SystemRoot/WINDIR");
+  expect(() => folderOpenCommand("win32", "C:\\demo", { SystemRoot: "\\\\attacker\\Windows" }))
+    .toThrow("absolute local Windows drive path");
+  expect(() => folderOpenCommand("win32", "C:\\demo", { SystemRoot: "C:\\Windows\\..\\Temp" }))
+    .toThrow("unsafe Windows path segment");
   expect(folderOpenCommand("linux", "/tmp/demo", { PATH: "/tmp/fake-bin" })).toEqual([
     "/usr/bin/xdg-open",
     "/tmp/demo",
   ]);
   expect(folderOpenCommand("freebsd", "/tmp/demo")).toBeNull();
+});
+
+test("otevře i dostupný modul prezentovaný jednou v Organization sekci", async () => {
+  const root = join(import.meta.dir, `.tmp-module-folder-${crypto.randomUUID()}`);
+  tempRoots.push(root);
+  const moduleRoot = join(root, "organizations", "Demo_GEN3", "design-system");
+  await mkdir(moduleRoot, { recursive: true });
+  const commands = [];
+  const opener = createModuleFolderOpener({
+    companiesRoot: root,
+    platform: "darwin",
+    spawnCommand: async (command) => {
+      commands.push(command);
+      return { ok: true };
+    },
+    accessExecutable: async () => {},
+    getAppsResponse: async () => ({
+      organizations: [{
+        slug: "Demo",
+        path: "organizations/Demo_GEN3",
+        organization_modules: [{ slug: "design-system", path: "design-system", status: "available" }],
+        workspaces: [],
+      }],
+    }),
+  });
+
+  await expect(opener.open({ organization: "Demo", modulePath: "design-system" })).resolves.toMatchObject({
+    action: "open_module_folder",
+    module: "design-system",
+  });
+  expect(commands).toEqual([["/usr/bin/open", moduleRoot]]);
 });

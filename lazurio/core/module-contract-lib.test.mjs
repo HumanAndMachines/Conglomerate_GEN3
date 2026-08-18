@@ -3,7 +3,8 @@ import {
   materializeRuntimeFromModule,
   normalizeModuleManifest,
   resolveModuleAppDeclaration,
-} from "../../lazurio/core/module-contract-lib.mjs";
+  resolveModuleApplications,
+} from "./module-contract-lib.mjs";
 
 const moduleManifest = {
   schema_version: "lazurio.module.v1",
@@ -70,6 +71,135 @@ test("runtime package must be explicitly listed once Module apps exist", () => {
   }).issues).toContain(
     "organizations/Example/workspace/presentation/editor/v1/package.json: package není uvedený v organizations/Example/workspace/presentation/lazurio.module.json#apps",
   );
+});
+
+test("Core resolves declared default App without relying on Module slug", () => {
+  const moduleRootPath = "organizations/Example/workspace/presentation";
+  const module = normalizeModuleManifest({
+    manifest: moduleManifest,
+    modulePath: `${moduleRootPath}/lazurio.module.json`,
+  }).module;
+  const projection = resolveModuleApplications({
+    module,
+    moduleRootPath,
+    contractPath: module.module_path,
+    apps: [{
+      id: "example-presentation-v1",
+      title: "Presentation v1",
+      module: "a-different-catalog-slug",
+      package_path: `${moduleRootPath}/app/v1/package.json`,
+      module_contract: module,
+      module_app: { package: "app/v1/package.json", declared: true, default: true, state: "explicit" },
+    }],
+  });
+
+  expect(projection).toEqual({
+    state: "declared",
+    contract_path: `${moduleRootPath}/lazurio.module.json`,
+    items: [{
+      package_path: "app/v1/package.json",
+      app_id: "example-presentation-v1",
+      declared: true,
+      default: true,
+      record: "valid",
+    }],
+    default_app: {
+      package_path: "app/v1/package.json",
+      app_id: "example-presentation-v1",
+      record: "valid",
+    },
+    open_target_app_id: "example-presentation-v1",
+    open_target_source: "declared-default",
+  });
+});
+
+test("declared default without a valid discovered record never falls back to a sibling", () => {
+  const manifest = structuredClone(moduleManifest);
+  manifest.apps = ["app/v1/package.json", "app/v2/package.json"];
+  manifest.default_app = "app/v2/package.json";
+  const moduleRootPath = "organizations/Example/workspace/presentation";
+  const module = normalizeModuleManifest({
+    manifest,
+    modulePath: `${moduleRootPath}/lazurio.module.json`,
+  }).module;
+  const projection = resolveModuleApplications({
+    module,
+    moduleRootPath,
+    apps: [
+      {
+        id: "example-presentation-v1",
+        title: "Presentation v1",
+        package_path: `${moduleRootPath}/app/v1/package.json`,
+        module_contract: module,
+        module_app: { package: "app/v1/package.json" },
+      },
+      {
+        id: "example-presentation-v2",
+        title: "Presentation v2",
+        package_path: `${moduleRootPath}/app/v2/package.json`,
+        module_contract: module,
+        module_app: { package: "app/v2/package.json" },
+        manifest_state: "invalid_manifest",
+      },
+    ],
+  });
+
+  expect(projection.state).toBe("declared");
+  expect(projection.default_app).toEqual({
+    package_path: "app/v2/package.json",
+    app_id: null,
+    record: "invalid",
+  });
+  expect(projection.open_target_app_id).toBeNull();
+  expect(projection.items.find((item) => item.package_path === "app/v1/package.json")?.record).toBe("valid");
+});
+
+test("Core distinguishes explicit no-App, legacy fallback and invalid contracts", () => {
+  const moduleRootPath = "organizations/Example/workspace/presentation";
+  const legacyApps = [
+    { id: "presentation-v1", title: "Presentation v1", package_path: `${moduleRootPath}/app/v1/package.json` },
+    { id: "presentation-v2", title: "Presentation v2", package_path: `${moduleRootPath}/app/v2/package.json` },
+  ];
+  expect(resolveModuleApplications({ moduleRootPath, apps: legacyApps })).toMatchObject({
+    state: "legacy-missing",
+    contract_path: null,
+    open_target_app_id: "presentation-v2",
+    open_target_source: "legacy-fallback",
+  });
+
+  const explicitNone = normalizeModuleManifest({
+    manifest: { ...moduleManifest, apps: [], default_app: undefined },
+    modulePath: `${moduleRootPath}/lazurio.module.json`,
+  }).module;
+  expect(resolveModuleApplications({ module: explicitNone, moduleRootPath, apps: legacyApps })).toMatchObject({
+    state: "explicit-none",
+    open_target_app_id: null,
+  });
+  expect(resolveModuleApplications({
+    module: explicitNone,
+    moduleRootPath,
+    contractIssues: ["invalid manifest"],
+    apps: legacyApps,
+  })).toMatchObject({
+    state: "unresolved-invalid",
+    open_target_app_id: null,
+  });
+});
+
+test("legacy App belongs only to the most specific declared Module root", () => {
+  const parent = "organizations/Example/workspace/presentation";
+  const child = `${parent}/db`;
+  const projection = resolveModuleApplications({
+    moduleRootPath: parent,
+    moduleRootPaths: [parent, child],
+    apps: [{
+      id: "nested-db-app",
+      title: "Nested DB App",
+      package_path: `${child}/app/package.json`,
+    }],
+  });
+  expect(projection.items).toEqual([]);
+  expect(projection.open_target_app_id).toBeNull();
 });
 
 test("module manifest is the sole owner of the materialized TCP endpoint", () => {

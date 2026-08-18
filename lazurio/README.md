@@ -24,6 +24,13 @@ Nevytváří nový registry ani druhý access model. Přítomnost checkoutu je p
 lokální pozorování; Organization, Team, modul i aplikace proto vždy nesou
 `access.status: not_evaluated`, dokud neproběhne živý provider readback.
 
+Skutečný Modul navíc nese normalizované `apps`: stav deklarace, položky,
+výchozí App a `open_target_app_id`. Hodnotu určuje výhradně Lazurio Core podle
+kanonické cesty kořene Modulu. `declared` nikdy nepovýší jinou App, když je
+deklarovaný default chybějící nebo nevalidní; `legacy-missing` zachovává
+deterministický přechodový fallback, `explicit-none` znamená vědomé `apps: []`.
+Launchpad i CLI čtou stejnou projekci a nevymýšlejí vlastní pořadí defaultu.
+
 Selektor vrací právě jednu Organization v jejím objeveném casingu. Neznámý,
 neplatný nebo nejednoznačný slug skončí chybou; Personalspace root Organization
 selektor nepřijímá. Všechny publikované cesty mají jedinou bázi — Launchpad

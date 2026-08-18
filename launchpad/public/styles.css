@@ -1711,6 +1711,15 @@ input:focus-visible,
   opacity: 0.85;
 }
 
+.manifest-module-card.is-openable {
+  cursor: pointer;
+}
+
+.manifest-module-folder-action {
+  align-self: flex-start;
+  margin-top: auto;
+}
+
 /* Unified organization card: surface contrast and state strips replace framing. */
 .app-card {
   position: relative;

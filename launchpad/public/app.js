@@ -2498,10 +2498,11 @@ function organizationModulesInView(families) {
   if (state.filters.company === "all" || state.filters.status !== "all" || state.filters.attentionOnly) return [];
   const organization = state.companies.find((company) => company.slug === state.filters.company);
   if (!organization) return [];
-  const appModules = new Set(families.map((family) => family.module).filter(Boolean));
+  const appModulePaths = new Set(families.flatMap((family) =>
+    family.members.map((app) => app.module_catalog_path).filter(Boolean)));
   const query = state.filters.query.trim().toLowerCase();
   return (organization.organization_modules ?? [])
-    .filter((module) => !appModules.has(module.slug))
+    .filter((module) => !appModulePaths.has(module.path))
     .filter((module) => moduleMatchesQuery(module, query));
 }
 
@@ -2510,14 +2511,15 @@ function workspaceModulesInView(families) {
   if (state.filters.status !== "all" || state.filters.attentionOnly) return [];
   const organization = state.companies.find((company) => company.slug === state.filters.company);
   if (!organization) return [];
-  const appModules = new Set(families.map((family) => family.module).filter(Boolean));
+  const appModulePaths = new Set(families.flatMap((family) =>
+    family.members.map((app) => app.module_catalog_path).filter(Boolean)));
   const query = state.filters.query.trim().toLowerCase();
   return (organization.teams ?? organization.workspaces ?? [])
     .map((team) => ({
       company: organization.slug,
       team: team.slug,
       modules: (team.modules ?? [])
-        .filter((module) => !appModules.has(module.slug))
+        .filter((module) => !appModulePaths.has(module.path))
         .filter((module) => moduleMatchesQuery(module, query)),
     }))
     .filter((section) => section.modules.length > 0);
@@ -2568,6 +2570,10 @@ function workspaceModuleDetail(module, companySlug, { kind = "workspace-module",
   const workspaceSlug = scope ?? module.teams?.[0] ?? module.workspace ?? "workspace";
   const organization = state.companies.find((company) => company.slug === companySlug);
   const dependencyState = module.status ?? "invalid_manifest";
+  const moduleApps = module.apps ?? null;
+  const defaultApp = moduleApps?.open_target_app_id
+    ? state.apps.find((app) => app.id === moduleApps.open_target_app_id) ?? null
+    : null;
   return {
     id: readonlyDetailKey(kind, companySlug, workspaceSlug, module.slug ?? module.path ?? module.name),
     kind,
@@ -2582,32 +2588,42 @@ function workspaceModuleDetail(module, companySlug, { kind = "workspace-module",
     runtime_status: "unknown",
     dependencies: {
       state: dependencyState,
-      message: module.status
-        ? "Modul je deklarovaný v organization manifestu, ale zatím nemá spustitelný app manifest."
-        : "Chybí app manifest pro lifecycle akce v Launchpadu.",
+      message: moduleApplicationMessage(moduleApps),
       can_start: false,
     },
     package_path: module.path ?? "-",
     cwd: module.path ?? "-",
     can_open_folder: module.status === "available",
-    is_readonly_system: true,
-    readonly_reason: module.status === "available"
-      ? "Modul nemá vlastní aplikaci, ale jeho lokální složku můžeš otevřít a pracovat s ní."
-      : "Modul nemá vlastní aplikaci a jeho lokální složka zatím není dostupná.",
+    default_app: defaultApp,
+    module_apps: moduleApps,
+    is_readonly_system: !defaultApp,
+    readonly_reason: moduleApplicationMessage(moduleApps),
   };
+}
+
+function moduleApplicationMessage(moduleApps) {
+  if (!moduleApps) return "Modul zatím nemá normalizovanou deklaraci Apps.";
+  if (moduleApps.state === "explicit-none") return "Modul výslovně deklaruje, že nemá žádnou App.";
+  if (moduleApps.state === "unresolved-invalid") return "Deklarace Apps v lazurio.module.json není platná.";
+  if (moduleApps.state === "declared" && !moduleApps.open_target_app_id) {
+    return "Výchozí App deklarovaná v modulu není dostupná jako platná aplikace.";
+  }
+  if (moduleApps.state === "legacy-missing") return "Modul zatím nemá explicitní deklaraci Apps.";
+  return "Modul má deklarovanou výchozí App.";
 }
 
 function workspaceModuleCard(module, companySlug, options = {}) {
   const detail = workspaceModuleDetail(module, companySlug, options);
   const selected = state.selectedReadonlyDetail?.id === detail.id;
-  const openable = detail.can_open_folder;
+  const opensApp = Boolean(detail.default_app);
+  const openable = opensApp || detail.can_open_folder;
   const card = document.createElement("article");
   card.className = `app-card system-card manifest-module-card ${openable ? "is-openable" : "is-readonly is-unavailable"} ${selected ? "selected" : ""}`.trim();
   card.style.setProperty("--app-accent", appIconAccent(appIconKey(detail)));
   card.style.setProperty("--app-focus-accent", appIconFocusAccent(appIconKey(detail)));
   card.dataset.readonlyDetailId = detail.id;
   card.tabIndex = 0;
-  card.setAttribute("aria-label", openable ? `Otevřít složku ${detail.title}` : `${detail.title} — detail`);
+  card.setAttribute("aria-label", opensApp ? `Otevřít aplikaci ${detail.title}` : `${detail.title} — detail`);
 
   const head = document.createElement("div");
   head.className = "app-card-head";
@@ -2624,25 +2640,36 @@ function workspaceModuleCard(module, companySlug, options = {}) {
   titleRow.append(title);
   const desc = document.createElement("p");
   desc.className = "app-card-desc";
-  desc.textContent = openable
-    ? appDescription(detail)
+  desc.textContent = opensApp
+    ? appDescription(detail.default_app)
     : module.status === "missing_access"
       ? "Modul není na tomto počítači dostupný."
-      : "Modul je zatím naplánovaný, ale ještě není připravený.";
+      : module.status === "available"
+        ? moduleApplicationMessage(detail.module_apps)
+        : "Modul je zatím naplánovaný, ale ještě není připravený.";
   titleBody.append(titleRow, desc);
   titleBlock.append(titleBody);
   head.append(titleBlock);
   card.append(head);
+  if (detail.can_open_folder) {
+    const folderAction = cardActionButton(
+      "Otevřít složku",
+      () => openWorkspaceModuleFolder(detail),
+      state.pendingAction === `${detail.id}:open-folder`,
+    );
+    folderAction.classList.add("btn", "btn-ghost", "manifest-module-folder-action");
+    card.append(folderAction);
+  }
   card.addEventListener("click", (event) => {
     if (!shouldOpenFromCardSurface(event.target)) return;
-    if (openable) void openWorkspaceModuleFolder(detail);
+    if (opensApp) void openAppChain(detail.default_app);
     else selectReadonlyDetail(detail);
   });
   card.addEventListener("keydown", (event) => {
     if (event.target !== card) return;
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
-    if (openable) void openWorkspaceModuleFolder(detail);
+    if (opensApp) void openAppChain(detail.default_app);
     else selectReadonlyDetail(detail);
   });
   return card;
@@ -2800,12 +2827,12 @@ function productionspaceInView() {
 // na vnitřní ovládací prvky (shouldOpenFromCardSurface). Ikona/popis jdou z app
 // manifestu s čitelnými fallbacky; ⋯ menu vysvětluje hlavní akci a nabízí
 // varianty; git chip s lidským textem se vykreslí, jen když je git read model.
-function appCard(app, family = { key: app.id, members: [app], primary: app }) {
+function appCard(app, family = { key: app.id, members: [app], primary: app, applications: app.module_apps ?? null }) {
   const members = family.members;
   const moduleName = familyTitle(members);
   const others = members.filter((member) => member.id !== app.id);
   const selected = members.some((member) => member.id === state.selectedAppId);
-  const nextAction = primaryNextAction(app);
+  const nextAction = primaryNextAction(app, family.applications);
   const readOnly = isProductionspace(app) || nextAction.type === "disabled";
   const opensForeignViewer = nextAction.type === "open"
     && app.runtime?.owner === "foreign-port"
@@ -3843,17 +3870,17 @@ function cardActionButton(label, onClick, disabled) {
   return button;
 }
 
-function primaryNextAction(app) {
+function primaryNextAction(app, moduleApps = app.module_apps ?? null) {
   const dependencyState = app.dependencies?.state;
   if (isProductionspace(app) || app.is_readonly_system) {
     return { type: "disabled", label: "Jen pro čtení" };
   }
+  if (moduleApps?.state === "declared" && !moduleApps.open_target_app_id) {
+    return { type: "disabled", label: "Výchozí App není připravená" };
+  }
   const sharedPortPeer = runningSharedPortPeer(app);
   if (sharedPortPeer) {
     return { type: "open_chain", label: "Otevřít a převzít port", peer: sharedPortPeer };
-  }
-  if (app.kind === "workspace-module" && app.can_open_folder) {
-    return { type: "folder", label: "Otevřít složku" };
   }
   // Jen legacy manifest bez static lease otevírá cizí viewer read-only.
   // Lazurio static lease při Open cizího vlastníka ukončí a spustí modul.

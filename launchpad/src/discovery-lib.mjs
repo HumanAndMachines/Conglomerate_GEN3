@@ -1173,6 +1173,8 @@ function invalidAppRecord({ app, packagePath, company, issues }) {
     discovery_source: company.discovery_source ?? null,
     cwd: posix.dirname(packagePath),
     tags: Array.isArray(app.tags) ? app.tags.filter((tag) => typeof tag === "string") : [],
+    module_contract: app.module_contract ?? null,
+    module_app: app.module_app ?? null,
     manifest_state: "invalid_manifest",
     manifest_issues: issues,
   };
@@ -1681,6 +1683,7 @@ export async function discoverLaunchpadApps(
       listeners: app.listeners ?? [],
       entrypoint_listener: app.entrypoint_listener ?? null,
       module_contract: app.module_contract ?? null,
+      module_app: app.module_app ?? null,
       runtime_contract: app.runtime_contract ?? null,
       plugin,
       package_path: packagePath,

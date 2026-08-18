@@ -115,6 +115,7 @@ test("Module declaration validation has one physical Core owner", async () => {
     .sort();
 
   expect(consumers).toEqual([
+    "launchpad/src/diagnostics-lib.mjs",
     "launchpad/src/discovery-lib.mjs",
     "launchpad/src/personalspace-lib.mjs",
     "launchpad/src/runtime-lib.mjs",
