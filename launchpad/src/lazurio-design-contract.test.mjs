@@ -62,7 +62,7 @@ test("výběr dlaždice drží důraz hranou a stav není barevný pruh", async 
   expect(canonical).toMatch(/\.apps-grid > \.app-card\.selected\s*{[\s\S]*?box-shadow:[\s\S]*?inset 3px 0 0 var\(--app-focus-accent, var\(--app-accent\)\)/);
   expect(styles).toMatch(/\.app-card\.is-running::before[\s\S]*?display: none/);
   expect(styles).toMatch(/\.app-section-organization,[\s\S]*?\.app-section-workspace[\s\S]*?border-radius: 0/);
-  expect(styles).toMatch(/\.skeleton-card[\s\S]*?border-radius: 0/);
+  expect(styles).toMatch(/\.skeleton-card[\s\S]*?border-radius: var\(--lz-radius-md\)/);
   expect(app).toContain('section.className = "app-section app-section-organization skeleton-section"');
   expect(app).toContain('section.setAttribute("aria-busy", "true")');
 });
@@ -89,10 +89,13 @@ test("modulové ikony a hover hrany používají schválenou expresivní sadu", 
   expect(styles).toMatch(/\.app-card-icon\s*{[\s\S]*?border: 0;[\s\S]*?background: transparent;[\s\S]*?color: var\(--app-icon-color\)/);
 });
 
-test("Personalspace používá ostré Lazurio plochy a stavové ikony", async () => {
+test("Personalspace používá zaoblené Lazurio objekty a stavové ikony", async () => {
   const [styles, personalspace] = await Promise.all([source("styles.css"), source("personalspace.js")]);
-  expect(styles).toMatch(/\.personalspace-overview[\s\S]*?border-radius: 0/);
-  expect(styles).toMatch(/\.buddy-card,[\s\S]*?\.personal-support-card[\s\S]*?border-radius: 0/);
+  expect(styles).toMatch(/\.personalspace-overview,[\s\S]*?\.personal-support-card,[\s\S]*?border-radius: var\(--lz-radius-md\)/);
+  expect(styles).toMatch(/\.buddy-portrait,[\s\S]*?\.personalspace-app-icon[\s\S]*?border-radius: var\(--lz-radius-sm\)/);
+  expect(styles).toMatch(/\.personalspace-overview\s*{[\s\S]*?overflow: hidden/);
+  expect(styles).toMatch(/\.personalspace-overview > \.buddy-card,[^}]*\.personalspace-overview > \.buddy-routines\s*{[^}]*border-radius: 0/);
+  expect(styles).toMatch(/\.personal-support-grid > \.personal-support-card\s*{[^}]*border-radius: 0/);
   expect(styles).toMatch(/\.buddy-card h2[\s\S]*?font-size: var\(--lz-size-display\)/);
   expect(personalspace).toContain('statusBadge("Buddy je nastavený"');
   expect(personalspace).toContain('statusBadge("Soukromé"');
@@ -109,6 +112,15 @@ test("filtr aplikací používá dvě samostatné Lazurio pilulky", async () => 
   expect(styles).toMatch(/\.search-field:focus-within\s*{[\s\S]*?border-color: var\(--lz-gray-700\);[\s\S]*?background: var\(--lz-white\)/);
   expect(styles).toMatch(/\.search-field:focus-within\s*{[\s\S]*?outline: none;/);
   expect(styles).toMatch(/\.search-field input:focus-visible\s*{[\s\S]*?outline: none;/);
+});
+
+test("samostatné panely a popovery sdílejí měkký Lazurio radius", async () => {
+  const styles = await source("styles.css");
+  expect(styles).toMatch(/\.space-switcher-menu,[^}]*\.detail-panel\s*{[^}]*border-radius: var\(--lz-radius-md\)/);
+  expect(styles).toMatch(/\.team-access-content\s*{[^}]*border-radius: var\(--lz-radius-md\)/);
+  expect(styles).toMatch(/\/\* --- BANNER O NOVÉ VERZI[^]*?\.update-banner\s*{[^}]*border-radius: var\(--lz-radius-md\)/);
+  expect(styles).toMatch(/\.recent-changes-sidebar > \.update-banner-group \.update-banner\s*{[^}]*border-radius: var\(--lz-radius-md\)/);
+  expect(styles).toMatch(/\.app-version-menu-panel\s*{[\s\S]*?position: static/);
 });
 
 test("Organizace, Workspace a Productionspace používají modrou záložku v bezpečném toku", async () => {
