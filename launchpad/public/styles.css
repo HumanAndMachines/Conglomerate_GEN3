@@ -3131,23 +3131,6 @@ tbody tr.selected {
   color: var(--lz-white);
 }
 
-.doctor-status-alert {
-  border-color: var(--lz-gray-950);
-}
-
-.notifications-badge,
-.doctor-status-alert {
-  top: -1px;
-  right: -4px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 3px;
-  border-width: 2px;
-  border-color: var(--lz-gray-950);
-  font-size: 10px;
-  line-height: 1;
-}
-
 /* Kanonické 24px Lazurio ikony se zobrazují ve 2× velikosti. Nearest-neighbour
    chrání sjednocenou pixelovou kresbu bez rozmazání. */
 .app-card-icon.is-pixel-art {
@@ -3565,6 +3548,26 @@ button.runtime-stage.is-available:hover {
 }
 .notifications-badge[hidden] {
   display: none;
+}
+
+/* Stavové odznaky v hlavičce jsou jeden systém. Číslo se smí roztáhnout do
+   kapsle, vykřičník zůstává kruh, ale výška, ukotvení, písmo a oddělovací
+   hrana jsou shodné. Barva dál rozlišuje informaci, pozornost a chybu. */
+.topbar .notifications-badge,
+.topbar .doctor-status-alert,
+.topbar .space-health-badge {
+  top: -2px;
+  right: -5px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border: 2px solid var(--lz-gray-950);
+  border-radius: var(--lz-radius-pill);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
 .notifications-panel {
