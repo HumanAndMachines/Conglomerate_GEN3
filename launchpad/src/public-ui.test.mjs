@@ -64,9 +64,10 @@ test("Launchpad public shell exposes a header space switcher and app cards", asy
   expect(css).not.toContain("0 18px 36px color-mix(in srgb, var(--lz-ink) 9%, transparent)");
   expect(css).not.toContain("0 2px 10px color-mix(in srgb, var(--lz-ink) 6%, transparent)");
   expect(css).toContain("/* CAC-0095 — kanonická materiálová dlaždice. */");
-  expect(css).toContain("column-gap: 0");
-  expect(css).toContain("row-gap: 0");
-  expect(css).toContain("border-radius: 0");
+  expect(css).toContain("column-gap: var(--lz-space-16)");
+  expect(css).toContain("row-gap: var(--lz-space-16)");
+  expect(css).toContain("border-radius: var(--lz-radius-md)");
+  expect(css).toContain("0 10px 24px -22px color-mix(in srgb, var(--lz-ink) 24%, transparent)");
   expect(css).toContain("background: transparent");
   expect(css).toContain(".app-card-icon.is-pixel-art img");
   expect(css).toContain("image-rendering: pixelated");
@@ -1222,7 +1223,7 @@ test("rozcestník automaticky nevybírá první aplikaci ani neukazuje běžný 
   expect(card).not.toContain("runtimeChip(app)");
 });
 
-test("Launchpad používá jednotný kompaktní modulový grid bez stínů", async () => {
+test("Launchpad používá jednotný kompaktní grid s jemně zvýšenými dlaždicemi", async () => {
   const [js, css] = await Promise.all([
     readFile(join(publicRoot, "app.js"), "utf8"),
     readFile(join(publicRoot, "styles.css"), "utf8"),
@@ -1247,6 +1248,7 @@ test("Launchpad používá jednotný kompaktní modulový grid bez stínů", asy
   expect(appCardRule).not.toContain("text-shadow");
   expect(appCardRule).not.toContain("drop-shadow");
   expect(appCardRule).not.toContain("--shadow-");
+  expect(css).toContain("box-shadow: 0 10px 24px -22px color-mix(in srgb, var(--lz-ink) 24%, transparent)");
 });
 
 test("Organization workspace má kompaktní uvítání s dynamickým názvem firmy", async () => {

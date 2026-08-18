@@ -5710,28 +5710,31 @@ body {
     opacity 340ms var(--tile-reveal-ease);
 }
 
-/* Souvislá modulová plocha: karty sdílejí jednu tenkou hranu a nemají mezi
-   sebou boční mezery. Hover mění jen vnitřní text a povrch, ne polohu karty. */
+/* Samostatné modulové dlaždice: teplý papír zůstává viditelný mezi kartami
+   a Lazurio radius vytváří měkčí, klidnější pracovní plochu. Hover mění jen
+   vnitřní text a povrch, ne polohu dlaždice. */
 .apps-grid {
-  column-gap: 0;
-  row-gap: 0;
+  column-gap: var(--lz-space-16);
+  row-gap: var(--lz-space-16);
   margin-inline: 0;
   padding: 0;
-  border: 1px solid var(--lz-line);
+  border: 0;
   border-radius: 0;
   background: transparent;
 }
 
-.apps-grid > .app-card:not(.selected):not(.has-open-menu),
 .apps-grid > .app-card {
   margin: 0;
-  border: 0;
-  border-radius: 0;
+  border: 1.5px solid var(--lz-line);
+  border-radius: var(--lz-radius-md);
   background-color: var(--lz-white);
   background-image: none;
-  box-shadow:
-    inset -1px 0 0 var(--lz-line),
-    inset 0 -1px 0 var(--lz-line);
+  box-shadow: 0 10px 24px -22px color-mix(in srgb, var(--lz-ink) 24%, transparent);
+}
+
+.apps-grid > .app-card:not(.has-open-menu):focus-within,
+.apps-grid > .app-card.selected {
+  border-color: var(--app-focus-accent, var(--app-accent));
 }
 
 /* Barevná vrstva nepatří do klidového povrchu. Plynule se přimíchá až při
@@ -5740,6 +5743,7 @@ body {
   content: "";
   position: absolute;
   inset: 0;
+  border-radius: inherit;
   z-index: 0;
   pointer-events: none;
   background-image:
@@ -5766,8 +5770,7 @@ body {
 .apps-grid > .app-card.selected {
   box-shadow:
     inset 3px 0 0 var(--app-focus-accent, var(--app-accent)),
-    inset -1px 0 0 var(--lz-line),
-    inset 0 -1px 0 var(--lz-line);
+    0 12px 28px -24px color-mix(in srgb, var(--lz-ink) 30%, transparent);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -5796,9 +5799,7 @@ body {
     transform: none;
     border-color: var(--lz-line);
     background: var(--lz-white);
-    box-shadow:
-      inset -1px 0 0 var(--lz-line),
-      inset 0 -1px 0 var(--lz-line);
+    box-shadow: 0 10px 24px -22px color-mix(in srgb, var(--lz-ink) 24%, transparent);
   }
 }
 
