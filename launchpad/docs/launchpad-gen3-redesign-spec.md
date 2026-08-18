@@ -675,8 +675,9 @@ note (co spouští hlavní akce) a položky variant „Otevřít &lt;varianta&gt
 popis · stav"; každá varianta se otevře stejným jedním klikem. Productionspace
 a blokující dependency stavy zůstávají read-only (jen selekce do detailu).
 
-Modulové karty tvoří souvislou hranatou mřížku bez mezer a bez border radiusu.
-V klidu mají čistý bílý povrch; na přesném ukazateli hover pouze odkryje popis
+Modulové karty tvoří samostatné dlaždice s 16px mezerou a kanonickým Lazurio
+radius tokenem. Na teplém papírovém podkladu mají čistý bílý povrch, jemnou
+hranu a velmi lehkou elevaci; na přesném ukazateli hover pouze odkryje popis
 a jemnou barevnou vrstvu uvnitř karty, bez posunu dlaždice nebo okolní mřížky.
 Na dotykovém zařízení je popis viditelný trvale a `prefers-reduced-motion`
 vypíná přechody. Výchozí modulové ikony jsou 24px pixelové PNG vykreslené ve

@@ -126,15 +126,18 @@ test("Organizace, Workspace a Productionspace používají modrou záložku v be
   expect(app).not.toContain("app-section-eyebrow");
 });
 
-test("kanonické modulové dlaždice tvoří souvislou hranatou mřížku", async () => {
+test("kanonické modulové dlaždice jsou samostatné zaoblené karty", async () => {
   const [styles, app] = await Promise.all([source("styles.css"), source("app.js")]);
   const base = styles.slice(styles.indexOf("/* Základ dlaždic podle produktové reference"));
   const canonical = styles.slice(styles.indexOf("/* CAC-0095 — kanonická materiálová dlaždice."));
   expect(base).toMatch(/\.app-card\s*{[\s\S]*?min-height: 16rem;[\s\S]*?padding: var\(--lz-space-24\)/);
   expect(base).toMatch(/\.app-title-block\s*{[\s\S]*?gap: 28px/);
   expect(base).toMatch(/\.app-card-desc\s*{[\s\S]*?font-size: 15px;[\s\S]*?line-height: 1\.55/);
-  expect(canonical).toMatch(/\.apps-grid\s*{[\s\S]*?column-gap: 0;[\s\S]*?row-gap: 0;[\s\S]*?border-radius: 0/);
-  expect(canonical).toMatch(/\.apps-grid > \.app-card\s*{[\s\S]*?border: 0;[\s\S]*?border-radius: 0/);
+  expect(canonical).toMatch(/\.apps-grid\s*{[\s\S]*?column-gap: var\(--lz-space-16\);[\s\S]*?row-gap: var\(--lz-space-16\);[\s\S]*?border: 0/);
+  expect(canonical).toMatch(/\.apps-grid > \.app-card\s*{[\s\S]*?border: 1\.5px solid var\(--lz-line\);[\s\S]*?border-radius: var\(--lz-radius-md\)/);
+  expect(canonical).toMatch(/\.apps-grid > \.app-card:not\(\.has-open-menu\):focus-within,[\s\S]*?\.apps-grid > \.app-card\.selected\s*{[\s\S]*?border-color: var\(--app-focus-accent, var\(--app-accent\)\)/);
+  expect(canonical).toMatch(/\.apps-grid > \.app-card::after\s*{[\s\S]*?border-radius: inherit/);
+  expect(canonical).toMatch(/box-shadow: 0 10px 24px -22px color-mix\(in srgb, var\(--lz-ink\) 24%, transparent\)/);
   expect(canonical).toMatch(/\.app-card:not\(\.selected\):not\(\.has-open-menu\):hover\s*{[\s\S]*?transform: none/);
   expect(canonical).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.apps-grid > \.app-card \.app-card-desc,[\s\S]*?\.apps-grid > \.app-card::after\s*{[\s\S]*?transition: none/);
   expect(styles).toMatch(/\.app-card-icon\.is-pixel-art img\s*{[\s\S]*?image-rendering: pixelated/);
