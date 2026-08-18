@@ -679,6 +679,11 @@ Modulové karty tvoří samostatné dlaždice s 16px mezerou a kanonickým Lazur
 radius tokenem. Na teplém papírovém podkladu mají čistý bílý povrch, jemnou
 hranu a velmi lehkou elevaci; na přesném ukazateli hover pouze odkryje popis
 a jemnou barevnou vrstvu uvnitř karty, bez posunu dlaždice nebo okolní mřížky.
+Stejný střední radius používají i další samostatné objekty na pracovní ploše:
+stavové karty v pravém sloupci, boční a detailní panely, popovery a karty
+Personalspace. Vnořené ikony používají menší radius. Strukturální obaly sekcí,
+vodicí linky, záložky a inline ⋯ panel uvnitř dlaždice zůstávají ostré, aby se
+neztratila hierarchie mezi objektem a konstrukcí rozhraní.
 Na dotykovém zařízení je popis viditelný trvale a `prefers-reduced-motion`
 vypíná přechody. Výchozí modulové ikony jsou 24px pixelové PNG vykreslené ve
 48 px s nearest-neighbour. Soubor se vybírá přes stejný obecný sémantický

@@ -2182,7 +2182,7 @@ a.primary-action:hover {
 .skeleton-card {
   min-height: 148px;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--lz-radius-md);
   background: linear-gradient(100deg, var(--lz-gray-50) 0%, var(--lz-paper) 40%, var(--lz-gray-50) 80%);
   background-size: 200% 100%;
   animation: shimmer 1.4s infinite linear;
@@ -4549,15 +4549,15 @@ button.runtime-stage.is-available:hover {
   `design-system-lazurio/temata/README.md`.
    ========================================================= */
 
-/* --- PLOCHY MAJÍ OSTRÝ ROH -------------------------------------------
-   Karta, panel a dlaždice jsou PLOCHY. Poloměr si nechává jen to, co se
-   mačká — pak je rozdíl mezi plochou a ovládacím prvkem vidět beze slov. */
+/* --- OBJEKTY JSOU MĚKKÉ, KONSTRUKCE ZŮSTÁVÁ OSTRÁ ---------------------
+   Samostatné karty a panely používají Lazurio radius. Strukturální obaly,
+   dělicí linky a inline části karet si nechávají ostrou hranu. */
 .app-card,
 .side-panel,
 .workspace-panel,
 .recent-module-modal,
 .notification-card {
-  border-radius: 0;
+  border-radius: var(--lz-radius-md);
 }
 
 /* --- IKONA MODULU: dlaždice v barvě rodiny --------------------------- */
@@ -4700,7 +4700,7 @@ button.runtime-stage.is-available:hover {
   background: linear-gradient(90deg, color-mix(in srgb, var(--c-accent-500) 11%, var(--paper)) 0%, var(--paper) 72%);
   border: 1px solid color-mix(in srgb, var(--c-accent-500) 38%, var(--line));
   border-left: 5px solid var(--c-accent-500);
-  border-radius: var(--r-xs);
+  border-radius: var(--lz-radius-md);
   gap: 14px;
   align-items: center;
 }
@@ -4844,11 +4844,10 @@ body {
 .space-switcher-menu,
 .space-profile-card,
 .notifications-panel,
-.app-version-menu-panel,
 .topbar-overflow-menu,
 .side-panel,
 .detail-panel {
-  border-radius: 0;
+  border-radius: var(--lz-radius-md);
 }
 
 .space-switcher-option,
@@ -4953,23 +4952,38 @@ b {
 .personalspace-friendly-empty,
 .personalspace-overview,
 .buddy-card,
-.buddy-portrait,
 .buddy-routines,
-.buddy-application,
-.buddy-routine,
 .personalspace-app,
-.personalspace-app-icon,
 .personalspace-apps-empty,
 .personal-support-card,
 .personalspace-gbrain-browser,
 .personalspace-gbrain-note {
-  border-radius: 0;
+  border-radius: var(--lz-radius-md);
+}
+
+.buddy-portrait,
+.buddy-application,
+.buddy-routine,
+.personalspace-app-icon {
+  border-radius: var(--lz-radius-sm);
 }
 
 .personalspace-overview {
   gap: 1px;
+  overflow: hidden;
   border: 1px solid var(--lz-line);
   background: var(--lz-line);
+}
+
+/* Vnější grid je jeden zaoblený objekt; jeho spojené buňky musí mít rovné
+   vnitřní švy. Ořez wrapperu zachová radius jen na skutečném obvodu. */
+.personalspace-overview > .buddy-card,
+.personalspace-overview > .buddy-routines {
+  border-radius: 0;
+}
+
+.personal-support-grid > .personal-support-card {
+  border-radius: 0;
 }
 
 .buddy-card,
@@ -5505,7 +5519,7 @@ body {
   gap: var(--lz-space-8);
   padding: var(--lz-space-16);
   border: 1px solid var(--lz-line);
-  border-radius: var(--lz-radius-sm);
+  border-radius: var(--lz-radius-md);
   background: var(--lz-white);
 }
 
@@ -5874,7 +5888,7 @@ body {
   background: var(--lz-white);
   border: 1.5px solid var(--lz-line);
   border-left-width: 1.5px;
-  border-radius: 0;
+  border-radius: var(--lz-radius-md);
 }
 
 .recent-changes-sidebar > .update-banner-group .update-banner.is-current {
