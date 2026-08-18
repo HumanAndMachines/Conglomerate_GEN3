@@ -999,6 +999,9 @@ test("manifest-only module cards keep semantic icon precedence over a broad cate
 
   expect(detailBlock).toContain("icon: null");
   expect(detailBlock).toContain("tags: module.category ? [module.category] : []");
+  expect(detailBlock).toContain("moduleApplicationMessage(moduleApps, module.status)");
+  expect(detailBlock).toContain("Stav Apps nelze ověřit, protože modul na tomto počítači není dostupný.");
+  expect(detailBlock).toContain("Stav Apps nelze ověřit, protože modul zatím není lokálně připravený.");
   expect(cardBlock).toContain("appIconNode(detail)");
   expect(cardBlock).not.toContain('appIconSvg("module")');
   expect(cardBlock).toContain('desc.className = "app-card-desc"');
