@@ -49,3 +49,18 @@ macTest("macOS instalátor vytvoří podepsanou aplikaci navázanou na aktuáln�
   const signature = Bun.spawnSync(["codesign", "--verify", "--deep", "--strict", target]);
   expect(signature.exitCode, signature.stderr.toString()).toBe(0);
 });
+
+macTest("macOS instalátor bez argumentu použije zapisovatelný uživatelský Applications adresář", async () => {
+  const fixtureHome = await mkdtemp(join(tmpdir(), "launchpad-macos-installer-home-"));
+  tempRoots.push(fixtureHome);
+  const result = Bun.spawnSync(["/bin/bash", installer], {
+    cwd: root,
+    env: { ...process.env, HOME: fixtureHome },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  expect(result.exitCode, result.stderr.toString()).toBe(0);
+  const target = join(fixtureHome, "Applications", "Launchpad GEN3.app");
+  expect(await readFile(join(target, "Contents", "Resources", "root-path"), "utf8")).toBe(`${root}\n`);
+});

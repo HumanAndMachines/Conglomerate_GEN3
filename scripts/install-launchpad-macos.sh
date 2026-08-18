@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SOURCE_DIR="$ROOT/scripts/macos"
-TARGET="${1:-/Applications/Launchpad GEN3.app}"
+TARGET="${1:-$HOME/Applications/Launchpad GEN3.app}"
 BUILD_DIR="$(mktemp -d)"
 BUILD_APP="$BUILD_DIR/Launchpad GEN3.app"
 
