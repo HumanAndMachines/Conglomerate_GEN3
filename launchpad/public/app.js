@@ -10,6 +10,7 @@ import {
   groupFamiliesBySpace,
   groupWorkspaceFamiliesByTeam,
   isAttentionState,
+  isProjectedModuleOpenTarget,
   offersMoreThanLocalRun,
   reconcileDetailDrawerState,
   replacePersonalspaceResponse,
@@ -3883,6 +3884,9 @@ function primaryNextAction(app, moduleApps = app.module_apps ?? null) {
   }
   if (moduleApps?.state === "declared" && !moduleApps.open_target_app_id) {
     return { type: "disabled", label: "Výchozí App není připravená" };
+  }
+  if (!isProjectedModuleOpenTarget(app, moduleApps)) {
+    return { type: "disabled", label: "Výchozí App je jiná varianta" };
   }
   const sharedPortPeer = runningSharedPortPeer(app);
   if (sharedPortPeer) {
