@@ -133,6 +133,10 @@ runtime/process state, consistent with DEV-6439.
 One mount always produces at most one resource and at most one child Doctor.
 Two filenames never create two Organizations or two Personalspaces.
 
+An active write receipt takes precedence over the six stable content states and
+returns the orthogonal operation status `migration_in_progress`. Core must not
+misclassify a partially applied transaction as `projection_drift` or `conflict`.
+
 The legacy projection is required during the compatibility window because old
 supported Machines have hardcoded legacy structural gates and there is no
 complete reader-version evidence today. It is not a second authority:
@@ -161,6 +165,9 @@ lazurio migrate organization-manifest --finalize --write
 lazurio migrate personalspace-manifest
 lazurio migrate personalspace-manifest --write
 lazurio migrate personalspace-manifest --finalize --write
+
+lazurio migrate <resource>-manifest --recover --write
+lazurio migrate <resource>-manifest --rollback --write
 ```
 
 Contract:
@@ -170,7 +177,9 @@ Contract:
   expected branch; it never edits a primary checkout;
 - Personalspace `--write` uses an owner-private task/worktree contract and
   never depends on an Organization Mission Control;
-- create the Lazurio manifest and legacy projection atomically;
+- execute the Lazurio manifest and legacy projection change through the
+  recoverable cross-file transaction below; never claim filesystem-level
+  multi-file atomicity;
 - validate schemas, normalized parity, root Git provenance, template kind and
   subordinate manifest references;
 - never commit, push, merge or mutate Forge/Dashboard state;
@@ -181,6 +190,36 @@ Contract:
   writes;
 - keep `--finalize` blocked until a separate accepted mechanism proves the
   minimum reader version for every supported Machine cohort.
+
+### Cross-file write protocol
+
+The CLI owns a recoverable transaction, because common filesystems cannot
+atomically replace two paths at once:
+
+1. Acquire an exclusive resource-scoped write lock. Create a worktree-local,
+   ignored transaction directory under
+   `.lazurio/transactions/<resource>/<transaction-id>/` containing a durable
+   receipt, both before-images, both complete staged after-images and their
+   semantic and canonical projection hashes.
+2. Validate the staged pair before touching either target. The receipt records
+   the expected sequence `prepared` → `canonical_applied` → `legacy_applied` →
+   `verified` and is durably advanced before and after each replacement.
+3. Replace each target from the same filesystem with a platform-proven
+   per-file atomic rename. A finalization transaction represents legacy removal
+   as an atomic move to its before-image, not an unrecorded deletion.
+4. Core checks for an active receipt before opening either manifest. New
+   cross-file readers return `migration_in_progress`, expose the exact recovery
+   action and perform no mutation. Legacy-only readers see either the complete
+   old or complete new legacy file; they never parse a partial file.
+5. Remove the receipt and before-images only after both targets match the
+   after-hashes, normalized parity passes and the transaction reaches
+   `verified`. After interruption, the same CLI version resumes from the
+   recorded phase or restores both before-images; it never guesses from file
+   presence alone.
+
+All cross-file and mutation-capable consumers must use the Core receipt check
+before any resource enters `transition`. Transaction directories never enter a
+commit, template or another resource boundary.
 
 Windows atomic replacement, case-preserving repository names, separators and
 rollback are hard gates alongside macOS and Linux.
@@ -257,8 +296,10 @@ first migration PR.
 4. One resource and one child Doctor when both files exist.
 5. Old-reader compatibility against generated projections.
 6. Unknown-field and lossy-mapping refusal.
-7. Atomic interruption and Git rollback.
-8. Windows/macOS/Linux path, case and projection behavior.
+7. Interruption after every transaction phase, deterministic resume, full
+   rollback and proof that readers never classify mixed generations as stable.
+8. Windows/macOS/Linux per-file atomic replacement, path, case and projection
+   behavior.
 9. Read-only smoke over all available Organizations without cross-Organization
    output.
 10. Template ownership: mechanisms managed; manifests resource-owned.
