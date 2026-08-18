@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { constants, existsSync, lstatSync, realpathSync } from "fs";
 import { open, readFile } from "fs/promises";
 import { isAbsolute, join, normalize, relative, resolve } from "path";
@@ -51,6 +51,12 @@ import {
   resolveGitExecutableSync,
   safeGitCommandEnv,
 } from "./git-lib.mjs";
+import {
+  buildServerIdentity,
+  classifyServerIdentity,
+  computeServerInstallGeneration,
+  computeServerRootId,
+} from "../../lazurio/core/server-identity-lib.mjs";
 
 const defaultHost = "127.0.0.1";
 const defaultPort = 4174;
@@ -61,7 +67,16 @@ const publicRoot = join(launchpadRoot, "public");
 const options = parseArgs(Bun.argv.slice(2));
 const companiesRoot = resolve(options.root ?? join(launchpadRoot, ".."));
 const canonicalCompaniesRoot = realpathSync(companiesRoot);
-const launchpadRootId = createHash("sha256").update(canonicalCompaniesRoot).digest("hex");
+const lazurioCodeRoot = resolve(launchpadRoot, "..");
+const launchpadRootId = computeServerRootId(canonicalCompaniesRoot);
+const launchpadInstallGeneration = computeServerInstallGeneration(lazurioCodeRoot);
+const launchpadServerIdentity = buildServerIdentity({
+  rootId: launchpadRootId,
+  installGeneration: launchpadInstallGeneration,
+  instanceId: randomUUID(),
+  pid: process.pid,
+  startedAt: new Date().toISOString(),
+});
 const host = options.host ?? defaultHost;
 const port = Number(options.port ?? process.env.PORT ?? defaultPort);
 const explicitPort = options.port !== undefined;
@@ -97,6 +112,8 @@ const appsResponseCache = createGenerationSafeResponseCache({
 // aplikace. Local-only (server běží jen na 127.0.0.1). Osobní data se nikdy
 // nepropisují do org /api/apps ani /api/doctor shared výstupu.
 const personalspaceRuntimeManager = createPersonalspaceRuntimeManager({ companiesRoot, launchpadRoot });
+let serverShutdownState = "running";
+let activeMutatingRequests = 0;
 
 if (!Number.isInteger(port) || port < 1024 || port > 65535) {
   console.error(`Neplatný port: ${options.port ?? process.env.PORT}`);
@@ -108,16 +125,29 @@ if (!allowedHosts.has(host)) {
   process.exit(1);
 }
 
-const startResult = await startLaunchpadWithPortPolicy({
-  requestedPort: port,
-  host,
-  explicitPort,
-  shouldOpen: Boolean(options.open),
-  shouldReuse: Boolean(options.open || options.reuse),
-  startServer,
-  isRunningExpectedLaunchpad: (url) => isRunningLaunchpad(url, launchpadRootId),
-  openExisting: openBrowser,
-});
+let startResult;
+try {
+  startResult = await startLaunchpadWithPortPolicy({
+    requestedPort: port,
+    host,
+    explicitPort,
+    shouldOpen: Boolean(options.open),
+    shouldReuse: Boolean(options.open || options.reuse),
+    startServer,
+    inspectRunningLaunchpad: (url) => inspectRunningLaunchpad(url, {
+      rootId: launchpadRootId,
+      installGeneration: launchpadInstallGeneration,
+    }),
+    shutdownStaleLaunchpad: requestStaleLaunchpadShutdown,
+    openExisting: openBrowser,
+  });
+} catch (error) {
+  if (String(error?.code ?? "").startsWith("LAZURIO_")) {
+    console.error(error.message);
+    process.exit(1);
+  }
+  throw error;
+}
 if (startResult.mode === "reused") {
   const action = options.open ? "otevírám existující instanci" : "používám existující instanci bez otevření systémového browseru";
   console.log(`Launchpad GEN3 už běží na ${startResult.url}; ${action}.`);
@@ -454,16 +484,52 @@ function parseArgs(args) {
   return parsed;
 }
 
-async function isRunningLaunchpad(url, expectedRootId) {
+async function inspectRunningLaunchpad(url, expected) {
+  const current = await probeServerIdentity(url, "/api/lazurio/server-identity");
+  if (current.status === "probe_failed") return current;
+  if (current.status === "unrecognized") return current;
+  if (current.status === "found") {
+    const status = classifyServerIdentity({ observed: current.identity, expected });
+    return { status, identity: current.identity };
+  }
+
+  const legacy = await probeServerIdentity(url, "/api/launchpad/identity");
+  if (legacy.status === "probe_failed") return legacy;
+  if (legacy.status === "found") {
+    const status = classifyServerIdentity({ legacyObserved: legacy.identity, expected });
+    return { status, identity: legacy.identity };
+  }
+  return { status: "unrecognized" };
+}
+
+async function probeServerIdentity(url, pathname) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await fetch(new URL(pathname, url), { signal: AbortSignal.timeout(1_500) });
+      if (response.status === 404) return { status: "missing" };
+      if (!response.ok) return { status: "probe_failed" };
+      const identity = await response.json().catch(() => null);
+      return identity ? { status: "found", identity } : { status: "unrecognized" };
+    } catch {
+      if (attempt === 1) return { status: "unrecognized" };
+    }
+  }
+  return { status: "unrecognized" };
+}
+
+async function requestStaleLaunchpadShutdown(url, observation) {
+  const instanceId = observation?.identity?.instance_id;
+  if (typeof instanceId !== "string") return false;
   try {
-    const identityUrl = new URL("/api/launchpad/identity", url);
-    const response = await fetch(identityUrl, { signal: AbortSignal.timeout(1_500) });
+    const response = await fetch(new URL("/api/lazurio/server-shutdown", url), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ instance_id: instanceId }),
+      signal: AbortSignal.timeout(2_000),
+    });
     if (!response.ok) return false;
-    const identity = await response.json();
-    return (
-      identity?.schema_version === "companiesascode.launchpad.identity.v1" &&
-      identity?.root_id === expectedRootId
-    );
+    const result = await response.json().catch(() => null);
+    return result?.stopping === true && result?.instance_id === instanceId;
   } catch {
     return false;
   }
@@ -823,6 +889,40 @@ async function runtimeRequestOptions(request) {
   };
 }
 
+async function handleServerShutdown(request) {
+  const payload = await request.json().catch(() => null);
+  if (!payload || payload.instance_id !== launchpadServerIdentity.instance_id) {
+    return jsonResponse({
+      error: "server_instance_mismatch",
+      message: "Server shutdown musí potvrdit přesnou běžící instanci.",
+    }, 409);
+  }
+  if (serverShutdownState !== "running") {
+    return jsonResponse({
+      error: "server_shutdown_in_progress",
+      message: "Lazurio Server už se zastavuje.",
+    }, 409);
+  }
+  if (activeMutatingRequests > 0) {
+    return jsonResponse({
+      error: "server_busy",
+      message: "Lazurio Server právě dokončuje mutující operaci; shutdown opakuj po jejím skončení.",
+    }, 409);
+  }
+
+  serverShutdownState = "stopping";
+  setTimeout(() => {
+    console.error(`[lazurio] stopping Server instance ${launchpadServerIdentity.instance_id}\n`);
+    server.stop(true);
+    process.exit(0);
+  }, 50);
+  return jsonResponse({
+    schema_version: "lazurio.server.shutdown.v1",
+    instance_id: launchpadServerIdentity.instance_id,
+    stopping: true,
+  });
+}
+
 function startServer(startPort) {
   return Bun.serve({
     hostname: host,
@@ -830,12 +930,23 @@ function startServer(startPort) {
     idleTimeout: 120,
     async fetch(request) {
       const url = new URL(request.url);
+      let trackedMutation = false;
       try {
         if (url.pathname.startsWith("/api/personalspace") && !isTrustedLocalRequest(request, url)) {
           return jsonResponse({ error: "personalspace_request_forbidden" }, 403);
         }
         if (isMutatingApiRequest(request, url) && !isTrustedLocalRequest(request, url)) {
           return jsonResponse({ error: "mutating_request_forbidden" }, 403);
+        }
+        if (url.pathname === "/api/lazurio/server-shutdown" && request.method === "POST") {
+          return handleServerShutdown(request);
+        }
+        if (isMutatingApiRequest(request, url)) {
+          if (serverShutdownState !== "running") {
+            return jsonResponse({ error: "server_shutdown_in_progress" }, 503);
+          }
+          activeMutatingRequests += 1;
+          trackedMutation = true;
         }
         // Personalspace lane (CAC-0048) — kontroluj PŘED generickými /api/apps
         // a /api/... routami, ať se osobní prostor nikdy nesmíchá s org lane.
@@ -854,6 +965,12 @@ function startServer(startPort) {
         if (moduleFolderRoute(url.pathname)) return handleModuleFolderRoute(request);
         const gitRoute = gitApiRoute(url.pathname);
         if (gitRoute) return handleGitApiRoute(request, url, gitRoute);
+        if (url.pathname === "/api/lazurio/server-identity" && request.method === "GET") {
+          if (!isTrustedLocalRequest(request, url)) {
+            return jsonResponse({ error: "identity_request_forbidden" }, 403);
+          }
+          return jsonResponse(launchpadServerIdentity);
+        }
         // Root identity is metadata-only and local. Relaunch uses the hashed
         // canonical root to avoid opening another Organization/Personalspace
         // instance that happens to own the same port.
@@ -905,6 +1022,8 @@ function startServer(startPort) {
         return serveStatic(url.pathname);
       } catch (error) {
         return jsonResponse({ error: "launchpad_error", message: error.message }, 500);
+      } finally {
+        if (trackedMutation) activeMutatingRequests -= 1;
       }
     },
   });
