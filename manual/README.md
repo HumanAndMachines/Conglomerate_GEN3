@@ -38,6 +38,10 @@ Maintenance agent před zásahem ověřuje:
   per-machine OAuth custody, cutover ze sdíleného integračního brokeru, approval
   policy, ClickUp a komunitní Google Workspace příklad.
 - `manual/first-client-organization-rollout.md` — obecný rollout runbook pro první klientskou Organization: repo hranice, mount, manifesty, Doctor/Launchpad support-loop gate, Install/Repair smoke a rollback.
+- `manual/lazurio-manifest-family.md` — nezávazný architektonický proposal
+  rodiny `lazurio.organization.json`, `lazurio.module.json` a
+  `lazurio.personalspace.json`; popisuje kompatibilní reader-first rollout,
+  nic zatím nepřejmenovává ani nemění runtime.
 - `manual/desktop-execution-agent-collaboration.md` — baseline spolupráce Buddy a workspace-local AI kolegů s Claude/Codex Desktop App agenty: Desktop agent dělá maximum práce, Buddy drží QA gate a reviewer routing.
 - `manual/worktree-management.md` — cílový CAC-0065 kontrakt pro standardizované
   Conglomerate a Organization worktree environments, manifestovou dependency
