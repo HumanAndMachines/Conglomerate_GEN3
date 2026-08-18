@@ -10,7 +10,8 @@ composition. Směr závislosti je vždy opačný: surfaces importují Core.
 
 První behavior-preserving řezy vlastní klasifikaci Organization repository
 slotů, jejich normalizovanou katalogovou prezentaci, kanonickou filesystem
-containment hranici a čistý kontrakt runtime deklarace Modulové aplikace.
+containment hranici, deklaraci Modulu a čistý kontrakt runtime deklarace
+Modulové aplikace.
 `ui_exposure` zůstává pouze prezentační policy; nevytváří identitu resource ani
 access autoritu. Další doménové vrstvy se přesunují samostatnými PR až nad
 zeleným parity baseline; fyzický přesun souboru sám nesmí měnit schéma ani

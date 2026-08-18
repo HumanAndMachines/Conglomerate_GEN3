@@ -8,7 +8,7 @@ import {
   runtimeScriptPortAuthorityIssues,
   runtimeSourcePortAuthorityIssues,
 } from "./discovery-lib.mjs";
-import { materializeRuntimeFromModule, normalizeModuleManifest } from "./module-contract-lib.mjs";
+import { materializeRuntimeFromModule, normalizeModuleManifest } from "../../lazurio/core/module-contract-lib.mjs";
 import { normalizePackageRuntime } from "../../lazurio/core/runtime-contract-lib.mjs";
 import { recordAppOpen } from "./usage-lib.mjs";
 import { buildWorktreeIndex } from "./worktree-lib.mjs";

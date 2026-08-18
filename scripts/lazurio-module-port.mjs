@@ -4,7 +4,7 @@ import { existsSync } from "fs";
 import { readdir, writeFile } from "fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "path";
 import { acquireModuleRuntimeLock } from "../launchpad/src/module-runtime-lock-lib.mjs";
-import { normalizeModuleManifest } from "../launchpad/src/module-contract-lib.mjs";
+import { normalizeModuleManifest } from "../lazurio/core/module-contract-lib.mjs";
 import {
   nextFreeModulePort,
   normalizePortRegistry,

@@ -6,7 +6,7 @@ import { normalizePackageRuntime } from "../../lazurio/core/runtime-contract-lib
 import {
   materializeRuntimeFromModule,
   normalizeModuleManifest,
-} from "./module-contract-lib.mjs";
+} from "../../lazurio/core/module-contract-lib.mjs";
 import {
   normalizePortRegistry,
   validateModuleLeasesAgainstRegistry,

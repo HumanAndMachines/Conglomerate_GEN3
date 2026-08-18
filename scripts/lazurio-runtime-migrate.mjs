@@ -3,7 +3,7 @@
 import { existsSync } from "fs";
 import { readdir, rename, writeFile } from "fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "path";
-import { normalizeModuleManifest } from "../launchpad/src/module-contract-lib.mjs";
+import { normalizeModuleManifest } from "../lazurio/core/module-contract-lib.mjs";
 import {
   normalizePortRegistry,
   validateModuleLeasesAgainstRegistry,

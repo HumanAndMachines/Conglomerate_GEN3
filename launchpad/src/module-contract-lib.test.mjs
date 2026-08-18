@@ -3,7 +3,7 @@ import {
   materializeRuntimeFromModule,
   normalizeModuleManifest,
   resolveModuleAppDeclaration,
-} from "./module-contract-lib.mjs";
+} from "../../lazurio/core/module-contract-lib.mjs";
 
 const moduleManifest = {
   schema_version: "lazurio.module.v1",

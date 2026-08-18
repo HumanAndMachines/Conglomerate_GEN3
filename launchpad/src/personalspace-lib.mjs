@@ -25,7 +25,7 @@ import { readdir } from "fs/promises";
 import { dirname, join, relative, resolve, sep } from "path";
 import { readJson, readLocalOverrideConfig, validateAppManifest } from "./discovery-lib.mjs";
 import { normalizePackageRuntime } from "../../lazurio/core/runtime-contract-lib.mjs";
-import { materializeRuntimeFromModule, normalizeModuleManifest } from "./module-contract-lib.mjs";
+import { materializeRuntimeFromModule, normalizeModuleManifest } from "../../lazurio/core/module-contract-lib.mjs";
 
 const launchpadRoot = join(import.meta.dirname, "..");
 const appSchemaPath = join(launchpadRoot, "schemas", "launchpad-app.schema.json");
