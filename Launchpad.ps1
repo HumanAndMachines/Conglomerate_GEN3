@@ -40,3 +40,9 @@ if (-not $bunExecutable) {
 }
 
 & $bunExecutable run launchpad
+$launchpadExitCode = $LASTEXITCODE
+if ($launchpadExitCode -ne 0) {
+  Read-Host "Stiskni Enter pro zavření"
+  exit $launchpadExitCode
+}
+exit 0
