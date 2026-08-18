@@ -5120,24 +5120,25 @@ b {
   box-shadow: inset 2px 0 0 var(--lz-ink);
 }
 
-/* Filtr aplikací: dvě samostatné pilulky, ne segment v podbarveném pouzdře. */
+/* Filtr aplikací je jedna kapsle: společný obal drží vztah obou voleb a
+   černý vnitřní segment ukazuje právě aktivní pohled. */
 #appsFilterControls .segmented-control {
-  gap: var(--lz-space-8);
+  gap: 0;
   min-height: auto;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  overflow: visible;
-  background: transparent;
+  padding: 3px;
+  border: 1px solid var(--lz-line);
+  border-radius: var(--lz-radius-pill);
+  overflow: hidden;
+  background: var(--lz-gray-50);
 }
 
 #appsFilterControls .segment {
   min-width: auto;
-  min-height: 42px;
+  min-height: 36px;
   padding: 0 var(--lz-space-16);
-  border: 1px solid var(--lz-line);
+  border: 0;
   border-radius: var(--lz-radius-pill);
-  background: var(--lz-white);
+  background: transparent;
   color: var(--lz-ink-muted);
   box-shadow: none;
   font-size: var(--lz-size-meta);
@@ -5146,7 +5147,6 @@ b {
 
 #appsFilterControls .segment[aria-pressed="true"],
 #appsFilterControls .segment.is-active {
-  border-color: var(--lz-ink);
   background: var(--lz-ink);
   color: var(--lz-white);
   box-shadow: none;
@@ -5154,7 +5154,7 @@ b {
 
 #appsFilterControls .segment:hover:not(.is-active),
 #appsFilterControls .segment:focus-visible:not(.is-active) {
-  background: var(--lz-gray-50);
+  background: var(--lz-white);
   color: var(--lz-ink);
 }
 
