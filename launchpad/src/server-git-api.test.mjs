@@ -259,8 +259,9 @@ test("identity endpoint is local-only and a foreign root cannot reuse the port",
   const { port } = await startLaunchpadServer(root);
 
   const identity = await getJson(port, "/api/launchpad/identity");
-  expect(identity.schema_version).toBe("companiesascode.launchpad.identity.v1");
+  expect(identity.schema_version).toBe("companiesascode.launchpad.identity.v2");
   expect(identity.root_id).toMatch(/^[a-f0-9]{64}$/);
+  expect(identity.source_id).toMatch(/^[a-f0-9]{64}$/);
 
   const crossOriginIdentity = await fetch(`http://127.0.0.1:${port}/api/launchpad/identity`, {
     headers: { origin: "https://evil.invalid", "sec-fetch-site": "cross-site" },

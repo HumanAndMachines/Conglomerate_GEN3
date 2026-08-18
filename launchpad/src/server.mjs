@@ -52,6 +52,7 @@ import {
   safeGitCommandEnv,
 } from "./git-lib.mjs";
 import { createRequestTrustPolicy } from "./request-trust-lib.mjs";
+import { createLaunchpadSourceId } from "./source-identity-lib.mjs";
 
 const defaultHost = "127.0.0.1";
 const defaultPort = 4174;
@@ -63,6 +64,7 @@ const options = parseArgs(Bun.argv.slice(2));
 const companiesRoot = resolve(options.root ?? join(launchpadRoot, ".."));
 const canonicalCompaniesRoot = realpathSync(companiesRoot);
 const launchpadRootId = createHash("sha256").update(canonicalCompaniesRoot).digest("hex");
+const launchpadSourceId = await createLaunchpadSourceId(launchpadRoot);
 const host = options.host ?? defaultHost;
 const port = Number(options.port ?? process.env.PORT ?? defaultPort);
 const explicitPort = options.port !== undefined;
@@ -120,7 +122,10 @@ const startResult = await startLaunchpadWithPortPolicy({
   shouldOpen: Boolean(options.open),
   shouldReuse: Boolean(options.open || options.reuse),
   startServer,
-  isRunningExpectedLaunchpad: (url) => isRunningLaunchpad(url, launchpadRootId),
+  isRunningExpectedLaunchpad: (url) => isRunningLaunchpad(url, {
+    rootId: launchpadRootId,
+    sourceId: launchpadSourceId,
+  }),
   openExisting: openBrowser,
 });
 if (startResult.mode === "reused") {
@@ -450,15 +455,16 @@ function parseArgs(args) {
   return parsed;
 }
 
-async function isRunningLaunchpad(url, expectedRootId) {
+async function isRunningLaunchpad(url, { rootId: expectedRootId, sourceId: expectedSourceId }) {
   try {
     const identityUrl = new URL("/api/launchpad/identity", url);
     const response = await fetch(identityUrl, { signal: AbortSignal.timeout(1_500) });
     if (!response.ok) return false;
     const identity = await response.json();
     return (
-      identity?.schema_version === "companiesascode.launchpad.identity.v1" &&
-      identity?.root_id === expectedRootId
+      identity?.schema_version === "companiesascode.launchpad.identity.v2" &&
+      identity?.root_id === expectedRootId &&
+      identity?.source_id === expectedSourceId
     );
   } catch {
     return false;
@@ -861,8 +867,9 @@ function startServer(startPort) {
             return jsonResponse({ error: "identity_request_forbidden" }, 403);
           }
           return jsonResponse({
-            schema_version: "companiesascode.launchpad.identity.v1",
+            schema_version: "companiesascode.launchpad.identity.v2",
             root_id: launchpadRootId,
+            source_id: launchpadSourceId,
           });
         }
         // Update lane Conglomerate rootu (decision 0059, draft 0080): oddělená

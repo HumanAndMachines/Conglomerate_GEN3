@@ -63,6 +63,20 @@ je chyba. Katalog je navigační projekce, nikoli ACL ani portová autorita:
 generátor ingressu a brokeru jej spojuje s module lease registry a síťový
 obal dál vynucuje autentizaci i Team boundary.
 
+Hosted browser akce navíc vyžadují
+`LAZURIO_LAUNCHPAD_EXTERNAL_ORIGIN=https://<přesný-launchpad-host>`. Server
+důvěřuje tomuto originu pouze v hosted profilu, pouze přes svůj loopback
+listener, s browser metadata `Sec-Fetch-Site: same-origin` a s
+`X-Lazurio-GitHub-Login`, který smí po úspěšném OAuth/GitHub Team checku vložit
+ingress. Ingress před autentizací stejný příchozí header vždy odstraní. Tím
+hostovaný povrch používá stejné `/api/sync`, runtime, Git a update handlery jako
+localhost bez druhého IAM nebo druhé implementace akcí.
+
+Personalspace, `/api/launchpad/identity` a otevření složky v lokálním OS zůstávají
+i v hosted profilu local-only. Chybějící nebo neplatný external origin je
+startup chyba; chybějící gateway identita, odlišný origin nebo cross-site
+request končí `403` před routingem.
+
 Hosted profil je privátní vývojový preview povrch uvnitř schváleného
 Tailscale/VPN access plane, nikoli produkční deployment. Zdroj lze editovat bez
 běžící aplikace a Launchpad spouští dev proces pouze pro UI/API/MCP preview,
@@ -122,6 +136,13 @@ nehádej ani nehardcoduj; výchozí `127.0.0.1:4174` je jen příklad a Launchpa
 kolizi zvolí jiný port. Tento Organization/Personalspace slice je první část
 širšího Builder Bridge kontraktu pro stabilní odkazy na moduly, Doctor a
 worktrees.
+
+Launcher reusuje existující lokální instanci jen když sedí jak hash kanonického
+rootu, tak hash skutečných runtime/public source bytes. Po pullu nebo editaci
+Launchpadu proto stará instance nepředstírá aktuální manifestové a UI chování:
+na implicitním portu se spustí nový proces na prvním volném portu a launcher
+ohlásí jeho skutečný origin. Explicitně obsazený port dál failuje místo tichého
+přesměrování.
 
 ## Discovery model
 
@@ -735,12 +756,15 @@ preconditions, side effects, failure mode, access boundary a ověření.
 Launchpad v1 binduje jen na `127.0.0.1` nebo `localhost`. Vzdálený přístup
 má řešit bezpečný tunel, ne vystavení serveru na `0.0.0.0`.
 
-Všechny mutující metody pod `/api/` procházejí před routingem jednotnou
-local-request kontrolou: `Host` musí být `127.0.0.1` nebo `localhost`, případný
+Všechny mutující metody pod `/api/` procházejí před routingem jednotnou request
+trust kontrolou. Lokálně musí `Host` být `127.0.0.1` nebo `localhost`, případný
 `Origin` musí přesně odpovídat request originu a `Sec-Fetch-Site` smí být jen
-`same-origin` nebo `none`. Cross-origin a DNS-rebinding požadavky končí `403`
-dřív, než se spustí Git, worktree, runtime nebo synchronizační akce. Nový
-mutující endpoint tuto centrální ochranu dědí automaticky.
+`same-origin` nebo `none`. Hosted profil přijme jen přesný nakonfigurovaný HTTPS
+origin, `Sec-Fetch-Site: same-origin` a gateway-authenticated GitHub login;
+backend listener zůstává loopback-only. Cross-origin, DNS-rebinding a
+neautentizované hosted požadavky končí `403` dřív, než se spustí Git, worktree,
+runtime nebo synchronizační akce. Nový mutující endpoint tuto centrální ochranu
+dědí automaticky; Personalspace a další local-only routy mají ještě užší gate.
 
 ## Plugin model
 
