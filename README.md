@@ -220,12 +220,24 @@ administrátorských práv:
 bun run install:windows-shortcut
 ```
 
-Instalátor vytvoří položku `HumanAndMachine Launchpad GEN3` ve Start Menu,
-nastaví pracovní složku na tento Conglomerate root, použije dodanou ikonu a
-požádá Windows o připnutí na hlavní panel. Existující aktivní zkratku
-se stejným názvem instalátor nahradí; její původní podobu nejdřív zachová
-v oddělené záloze pro Start Menu nebo taskbar pod
+Instalátor atomicky připraví stabilní uživatelský bootstrap a konfiguraci pod
+`%LOCALAPPDATA%\HumanAndMachine\Launchpad`, vytvoří položku
+`HumanAndMachine Launchpad GEN3` ve Start Menu a požádá Windows o připnutí na
+hlavní panel. Zkratka neukazuje přímo do pohyblivého checkoutu: bootstrap
+načte canonical root z `install.json` a spustí jeho `Launchpad.ps1`, který
+zůstává jediným vlastníkem Bun resolution a startu Launchpadu. Instalace
+z linked worktree — bez ohledu na název jeho složky — nebo přes junction se
+odmítne; canonical cíl je primary checkout nebo podporovaný directory-only
+root. Port ani druhý lifecycle stav se do instalace nezapisují. Nový
+`install.json` se aktivuje až po validaci bootstrapu a všech požadovaných
+zkratek; selhání reinstalace zachová předchozí aktivní pointer. Existující
+aktivní zkratku se stejným názvem instalátor nahradí; její původní podobu
+nejdřív zachová v oddělené záloze pro Start Menu nebo taskbar pod
 `%LOCALAPPDATA%\HumanAndMachine\Launchpad\shortcut-backups\<timestamp>`.
+
+Při prvním přechodu ze starého serveru může nový launcher vyžádat jeho ruční
+ukončení a opakované spuštění. Chybová zpráva i návratový kód zůstanou v okně
+viditelné; instalátor starý proces ani jeho port sám nepřebírá.
 
 Windows 11 může programové připnutí na hlavní panel podle místní policy
 odmítnout. V takovém případě zůstane ověřená položka ve Start Menu: vyhledej
