@@ -211,11 +211,17 @@ test("apps response materializes HTTPS endpoints from the module-owned lease", a
     organization_generation: "gen3",
     company: "SecureCo",
     github_org: "SecureCo",
-    module_slots: [{
-      path: "workspace/secure",
-      teams: ["workspace"],
-      git: { url: "git@github.com:SecureCo/secure.git", branch: "main" },
-    }],
+    module_slots: [
+      {
+        path: "workspace/secure",
+        teams: ["workspace"],
+        git: { url: "git@github.com:SecureCo/secure.git", branch: "main" },
+      },
+      {
+        path: "workspace/planned",
+        teams: ["workspace"],
+      },
+    ],
   });
   await writeJson(join(appRoot, "package.json"), {
     name: "@secureco/secure",
@@ -291,6 +297,12 @@ test("apps response materializes HTTPS endpoints from the module-owned lease", a
     },
     open_target_app_id: "secureco-secure",
   });
+  const plannedModule = response.organizations
+    .find((organization) => organization.slug === "SecureCo")
+    ?.teams.flatMap((team) => team.modules)
+    .find((module) => module.path === "workspace/planned");
+  expect(plannedModule).toMatchObject({ status: "planned_slot" });
+  expect(plannedModule?.apps).toBeUndefined();
   expect(response.port_registry_issues).toEqual([]);
   const report = buildDoctorReportFromAppsResponse(response);
   const check = report.checks.find((item) => item.id === "launchpad.port_ownership");

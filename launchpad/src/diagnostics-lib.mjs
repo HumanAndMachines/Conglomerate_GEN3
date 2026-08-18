@@ -858,13 +858,17 @@ async function attachModuleApplicationProjections({ companiesRoot, organizations
     );
     const moduleRootPaths = declarations.map((slot) => posix.join(organization.path, slot.path));
     for (const slot of modules) {
+      // Without a local checkout neither lazurio.module.json nor its absence
+      // was observed. Do not turn an unavailable/planned Module into the
+      // materially different legacy-missing contract state.
+      if (slot.status !== "available") continue;
       const moduleRootPath = posix.join(organization.path, slot.path);
       const contractPath = posix.join(moduleRootPath, "lazurio.module.json");
       const absoluteContractPath = join(companiesRoot, contractPath);
       let module = null;
       let contractIssues = [];
       let observedContractPath = null;
-      if (slot.status === "available" && existsSync(absoluteContractPath)) {
+      if (existsSync(absoluteContractPath)) {
         observedContractPath = contractPath;
         try {
           const normalized = normalizeModuleManifest({
