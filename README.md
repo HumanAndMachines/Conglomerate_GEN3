@@ -220,6 +220,35 @@ bun run check
 bun run doctor
 ```
 
+### macOS: aplikace pro Dock
+
+Z primárního Lazurio checkoutu nainstaluj stabilní uživatelskou aplikaci bez
+administrátorských práv:
+
+```sh
+bun run install:macos-app
+```
+
+Instalátor vytvoří ad-hoc podepsanou aplikaci
+`~/Applications/HumanAndMachine Launchpad.app`, takže nepotřebuje vývojářský
+certifikát ani zápis do systémového `/Applications`. Aplikace drží pouze
+kanonickou cestu rootu a otevírá jeho `Launchpad.command`; Bun resolution,
+Server identity/install-generation, bezpečné nahrazení stale instance i porty
+tak dál vlastní jediný Lazurio/Launchpad runtime. macOS instalace nezavádí
+LaunchAgent, daemon ani druhou lifecycle autoritu.
+
+Reinstalace publikuje celý app bundle nativní atomickou macOS výměnou, takže
+cesta připnutá v Docku během updatu nezmizí. Předchozí aplikaci zachová jako
+jedinou skrytou, ne-launchovatelnou rollback zálohu; další reinstalace ji
+bezpečně nahradí novou předchozí verzí. Instalace z linked worktree se odmítne;
+podporovaný je primární Git checkout, primární checkout se samostatným Git
+metadata adresářem a directory-only root AI Kolegy/Buddyho. Pokud na stroji
+zůstává historická `/Applications/Launchpad GEN3.app` nebo
+`~/Applications/Launchpad GEN3.app`, instalátor ji nemaže ani nepřepisuje a
+výslovně upozorní, že Dock má používat novou uživatelskou aplikaci. Do Docku ji
+připneš přetažením z uživatelské složky `Applications`; instalátor Dock sám
+nemění.
+
 ### Windows: Start Menu a hlavní panel
 
 Sdílený Launchpad lze na Windows nainstalovat jako uživatelskou zkratku bez
