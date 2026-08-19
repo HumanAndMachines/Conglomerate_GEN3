@@ -237,10 +237,11 @@ Server identity/install-generation, bezpečné nahrazení stale instance i porty
 tak dál vlastní jediný Lazurio/Launchpad runtime. macOS instalace nezavádí
 LaunchAgent, daemon ani druhou lifecycle autoritu.
 
-Reinstalace publikuje celý app bundle nativní atomickou macOS výměnou, takže
-cesta připnutá v Docku během updatu nezmizí. Předchozí aplikaci zachová jako
-jedinou skrytou, ne-launchovatelnou rollback zálohu; další reinstalace ji
-bezpečně nahradí novou předchozí verzí. Instalace z linked worktree se odmítne;
+Reinstalace se mezi souběžnými procesy serializuje a publikuje celý app bundle
+nativní atomickou macOS výměnou, takže cesta připnutá v Docku během updatu
+nezmizí. Předchozí aplikaci zachová jako jedinou skrytou, ne-launchovatelnou
+rollback zálohu; starší zálohu odstraní až po úspěšném ověření nové generace.
+Instalace z linked worktree se odmítne;
 podporovaný je primární Git checkout, primární checkout se samostatným Git
 metadata adresářem a directory-only root AI Kolegy/Buddyho. Pokud na stroji
 zůstává historická `/Applications/Launchpad GEN3.app` nebo
