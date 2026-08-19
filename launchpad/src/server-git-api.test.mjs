@@ -314,6 +314,83 @@ test("identity endpoint is local-only and a foreign root cannot reuse the port",
   expect(await new Response(otherRootLauncher.stderr).text()).toContain("EADDRINUSE");
 });
 
+test("hosted Launchpad rejects forged gateway headers without a TLS-authenticated OAuth session", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const externalOrigin = "https://launchpad.management.example.test";
+  const authPort = await findFreePort();
+  const { port } = await startLaunchpadServer(root, {
+    env: {
+      LAZURIO_WORKSPACE_PROFILE: "hosted",
+      LAZURIO_TEAM_ID: "management",
+      LAZURIO_TEAM_SERVICE_CATALOG_JSON: JSON.stringify({
+        schema_version: "lazurio.team_service_catalog.v1",
+        team_id: "management",
+        generated_at: "2026-08-18T19:45:00Z",
+        services: [],
+      }),
+      LAZURIO_LAUNCHPAD_EXTERNAL_ORIGIN: externalOrigin,
+      LAZURIO_LAUNCHPAD_AUTH_COOKIE_NAME: "__Secure-lazurio-management-workspace",
+      // Nothing listens on this HTTPS endpoint. A local caller cannot replace
+      // the authenticated gateway with plain spoofed request headers.
+      LAZURIO_LAUNCHPAD_AUTH_CHECK_URL: `https://127.0.0.1:${authPort}/oauth2/auth`,
+    },
+  });
+  const gatewayHeaders = {
+    origin: externalOrigin,
+    "sec-fetch-site": "same-origin",
+    "x-lazurio-github-login": "annavesela",
+  };
+
+  const forgedGatewayHeaders = await fetch(`http://127.0.0.1:${port}/api/sync`, {
+    method: "POST",
+    headers: gatewayHeaders,
+  });
+  expect(forgedGatewayHeaders.status).toBe(403);
+  expect((await forgedGatewayHeaders.json()).error).toBe("mutating_request_forbidden");
+
+  const forgedSession = await fetch(`http://127.0.0.1:${port}/api/sync`, {
+    method: "POST",
+    headers: { ...gatewayHeaders, cookie: "_oauth2_proxy=forged" },
+  });
+  expect(forgedSession.status).toBe(403);
+  expect((await forgedSession.json()).error).toBe("mutating_request_forbidden");
+
+  const directLoopbackPull = await fetch(`http://127.0.0.1:${port}/api/git/pull-all?company=BetaCo`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  expect(directLoopbackPull.status).toBe(403);
+  expect((await directLoopbackPull.json()).error).toBe("mutating_request_forbidden");
+
+  const personalspace = await fetch(`http://127.0.0.1:${port}/api/personalspace`, {
+    headers: gatewayHeaders,
+  });
+  expect(personalspace.status).toBe(403);
+  expect((await personalspace.json()).error).toBe("personalspace_request_forbidden");
+
+  const identity = await fetch(`http://127.0.0.1:${port}/api/launchpad/identity`, {
+    headers: gatewayHeaders,
+  });
+  expect(identity.status).toBe(403);
+  expect((await identity.json()).error).toBe("identity_request_forbidden");
+
+  const serverIdentity = await fetch(`http://127.0.0.1:${port}/api/lazurio/server-identity`, {
+    headers: gatewayHeaders,
+  });
+  expect(serverIdentity.status).toBe(403);
+  expect((await serverIdentity.json()).error).toBe("identity_request_forbidden");
+
+  const shutdown = await fetch(`http://127.0.0.1:${port}/api/lazurio/server-shutdown`, {
+    method: "POST",
+    headers: { ...gatewayHeaders, "content-type": "application/json" },
+    body: JSON.stringify({ instance_id: "00000000-0000-4000-8000-000000000000" }),
+  });
+  expect(shutdown.status).toBe(403);
+  expect((await shutdown.json()).error).toBe("server_shutdown_forbidden");
+});
+
 test("instance-bound local shutdown rejects stale callers and releases the exact port", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
@@ -782,10 +859,11 @@ async function readLaunchpadPort(server) {
 // vlastní Bun.serve se nenabindoval, waitForHealth dostal 200 z /health cizího
 // serveru a /api/git/repos pak vrátilo 404. OS přidělený port je garantovaně
 // volný, takže health probe i git routy trefí vždy NÁŠ server.
-async function startLaunchpadServer(root) {
+async function startLaunchpadServer(root, { env = {} } = {}) {
   const port = await findFreePort();
   const server = Bun.spawn(["bun", "src/server.mjs", "--root", root, "--port", String(port)], {
     cwd: join(import.meta.dirname, ".."),
+    env: { ...process.env, ...env },
     stdout: "pipe",
     stderr: "pipe",
   });

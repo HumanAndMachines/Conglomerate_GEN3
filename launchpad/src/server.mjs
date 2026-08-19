@@ -51,6 +51,7 @@ import {
   resolveGitExecutableSync,
   safeGitCommandEnv,
 } from "./git-lib.mjs";
+import { createRequestTrustPolicy } from "./request-trust-lib.mjs";
 import {
   buildServerIdentity,
   classifyServerIdentity,
@@ -86,6 +87,12 @@ const hostedAppUrls = createHostedAppUrlAdapter({
   expectedTeamId: process.env.LAZURIO_TEAM_ID,
   serviceCatalogJson: process.env.LAZURIO_TEAM_SERVICE_CATALOG_JSON,
   compatibilityUrlsJson: process.env.LAUNCHPAD_HOSTED_APP_URLS_JSON,
+});
+const requestTrust = createRequestTrustPolicy({
+  profile: hostedAppUrls.profile,
+  hostedExternalOrigin: process.env.LAZURIO_LAUNCHPAD_EXTERNAL_ORIGIN,
+  hostedAuthCheckUrl: process.env.LAZURIO_LAUNCHPAD_AUTH_CHECK_URL,
+  hostedAuthCookieName: process.env.LAZURIO_LAUNCHPAD_AUTH_COOKIE_NAME,
 });
 const runtimeManager = createRuntimeManager({ companiesRoot, launchpadRoot });
 const moduleFolderOpener = createModuleFolderOpener({ companiesRoot, getAppsResponse: buildAppsResponse });
@@ -226,7 +233,7 @@ function resolveOrganizationLogoPath(organization) {
 }
 
 async function serveOrganizationLogo(request, url, slug) {
-  if (!isTrustedLocalRequest(request, url)) {
+  if (!await requestTrust.isTrustedWorkspaceRequest(request, url)) {
     return jsonResponse({ error: "cross_origin_logo_request_forbidden" }, 403);
   }
   const logoPath = organizationLogoPaths.get(slug);
@@ -253,15 +260,6 @@ async function serveOrganizationLogo(request, url, slug) {
   } finally {
     await logoFile?.close();
   }
-}
-
-function isTrustedLocalRequest(request, url) {
-  if (!allowedHosts.has(url.hostname)) return false;
-  const fetchSite = request.headers.get("sec-fetch-site");
-  const origin = request.headers.get("origin");
-  if (fetchSite && fetchSite !== "same-origin" && fetchSite !== "none") return false;
-  if (origin && origin !== url.origin) return false;
-  return true;
 }
 
 function isMutatingApiRequest(request, url) {
@@ -930,16 +928,27 @@ function startServer(startPort) {
     idleTimeout: 120,
     async fetch(request) {
       const url = new URL(request.url);
+      let trustedWorkspaceRequest;
+      const isTrustedWorkspaceRequest = () => {
+        trustedWorkspaceRequest ??= requestTrust.isTrustedWorkspaceRequest(request, url);
+        return trustedWorkspaceRequest;
+      };
       let trackedMutation = false;
       try {
-        if (url.pathname.startsWith("/api/personalspace") && !isTrustedLocalRequest(request, url)) {
+        if (url.pathname.startsWith("/api/personalspace") && !requestTrust.isTrustedLocalRequest(request, url)) {
           return jsonResponse({ error: "personalspace_request_forbidden" }, 403);
         }
-        if (isMutatingApiRequest(request, url) && !isTrustedLocalRequest(request, url)) {
+        if (url.pathname === "/api/lazurio/server-shutdown" && request.method === "POST") {
+          if (!requestTrust.isTrustedLocalRequest(request, url)) {
+            return jsonResponse({ error: "server_shutdown_forbidden" }, 403);
+          }
+          return handleServerShutdown(request);
+        }
+        if (isMutatingApiRequest(request, url) && !await isTrustedWorkspaceRequest()) {
           return jsonResponse({ error: "mutating_request_forbidden" }, 403);
         }
-        if (url.pathname === "/api/lazurio/server-shutdown" && request.method === "POST") {
-          return handleServerShutdown(request);
+        if (moduleFolderRoute(url.pathname) && !requestTrust.isTrustedLocalRequest(request, url)) {
+          return jsonResponse({ error: "module_folder_request_forbidden" }, 403);
         }
         if (isMutatingApiRequest(request, url)) {
           if (serverShutdownState !== "running") {
@@ -966,7 +975,7 @@ function startServer(startPort) {
         const gitRoute = gitApiRoute(url.pathname);
         if (gitRoute) return handleGitApiRoute(request, url, gitRoute);
         if (url.pathname === "/api/lazurio/server-identity" && request.method === "GET") {
-          if (!isTrustedLocalRequest(request, url)) {
+          if (!requestTrust.isTrustedLocalRequest(request, url)) {
             return jsonResponse({ error: "identity_request_forbidden" }, 403);
           }
           return jsonResponse(launchpadServerIdentity);
@@ -975,7 +984,7 @@ function startServer(startPort) {
         // canonical root to avoid opening another Organization/Personalspace
         // instance that happens to own the same port.
         if (url.pathname === "/api/launchpad/identity" && request.method === "GET") {
-          if (!isTrustedLocalRequest(request, url)) {
+          if (!requestTrust.isTrustedLocalRequest(request, url)) {
             return jsonResponse({ error: "identity_request_forbidden" }, 403);
           }
           return jsonResponse({
@@ -988,7 +997,7 @@ function startServer(startPort) {
         // serializuje se s background fetchi přes withRemoteRefreshPaused.
         // I GET status je trusted-local: dělá git fetch (síť + credentials),
         // cizí origin ho nesmí spouštět ani jako drive-by bez čtení odpovědi.
-        if (url.pathname.startsWith("/api/update") && !isTrustedLocalRequest(request, url)) {
+        if (url.pathname.startsWith("/api/update") && !await isTrustedWorkspaceRequest()) {
           return jsonResponse({ error: "update_request_forbidden" }, 403);
         }
         if (url.pathname === "/api/update/status" && request.method === "GET") {
