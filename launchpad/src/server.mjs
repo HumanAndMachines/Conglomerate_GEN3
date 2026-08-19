@@ -92,6 +92,7 @@ const requestTrust = createRequestTrustPolicy({
   profile: hostedAppUrls.profile,
   hostedExternalOrigin: process.env.LAZURIO_LAUNCHPAD_EXTERNAL_ORIGIN,
   hostedAuthCheckUrl: process.env.LAZURIO_LAUNCHPAD_AUTH_CHECK_URL,
+  hostedAuthCookieName: process.env.LAZURIO_LAUNCHPAD_AUTH_COOKIE_NAME,
 });
 const runtimeManager = createRuntimeManager({ companiesRoot, launchpadRoot });
 const moduleFolderOpener = createModuleFolderOpener({ companiesRoot, getAppsResponse: buildAppsResponse });

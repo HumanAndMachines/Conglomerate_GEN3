@@ -1,12 +1,15 @@
 const localBackendHosts = new Set(["127.0.0.1", "localhost"]);
 const githubLoginPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
-const maxHostedCookieBytes = 16 * 1024;
+const cookieNamePattern = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+const maxHostedCookieHeaderBytes = 16 * 1024;
+const maxHostedCookieNameBytes = 256;
 const hostedAuthCheckTimeoutMs = 2_000;
 
 export function createRequestTrustPolicy({
   profile = "local",
   hostedExternalOrigin = "",
   hostedAuthCheckUrl = "",
+  hostedAuthCookieName = "",
   fetchImpl = globalThis.fetch,
 } = {}) {
   const normalizedProfile = String(profile ?? "local").trim().toLowerCase() || "local";
@@ -20,11 +23,17 @@ export function createRequestTrustPolicy({
   const hostedAuthUrl = normalizedProfile === "hosted"
     ? normalizeHostedAuthCheckUrl(hostedAuthCheckUrl, hostedOrigin)
     : null;
+  const hostedCookieName = normalizedProfile === "hosted"
+    ? normalizeHostedAuthCookieName(hostedAuthCookieName)
+    : null;
   if (normalizedProfile === "local" && String(hostedExternalOrigin ?? "").trim() !== "") {
     throw new Error("LAZURIO_LAUNCHPAD_EXTERNAL_ORIGIN is valid only in the hosted Workspace profile.");
   }
   if (normalizedProfile === "local" && String(hostedAuthCheckUrl ?? "").trim() !== "") {
     throw new Error("LAZURIO_LAUNCHPAD_AUTH_CHECK_URL is valid only in the hosted Workspace profile.");
+  }
+  if (normalizedProfile === "local" && String(hostedAuthCookieName ?? "").trim() !== "") {
+    throw new Error("LAZURIO_LAUNCHPAD_AUTH_COOKIE_NAME is valid only in the hosted Workspace profile.");
   }
   if (typeof fetchImpl !== "function") {
     throw new Error("Launchpad hosted auth verifier requires a fetch implementation.");
@@ -55,8 +64,8 @@ export function createRequestTrustPolicy({
         return false;
       }
 
-      const cookie = request.headers.get("cookie") ?? "";
-      if (!cookie || Buffer.byteLength(cookie, "utf8") > maxHostedCookieBytes) return false;
+      const cookie = selectHostedAuthCookie(request.headers.get("cookie") ?? "", hostedCookieName);
+      if (!cookie) return false;
 
       try {
         const authResponse = await fetchImpl(hostedAuthUrl, {
@@ -146,4 +155,39 @@ function normalizeHostedAuthCheckUrl(rawValue, hostedOrigin) {
     );
   }
   return url.href;
+}
+
+function normalizeHostedAuthCookieName(rawValue) {
+  const candidate = String(rawValue ?? "").trim();
+  if (!candidate) {
+    throw new Error("LAZURIO_LAUNCHPAD_AUTH_COOKIE_NAME is required for the hosted Workspace profile.");
+  }
+  if (
+    candidate !== rawValue
+    || Buffer.byteLength(candidate, "utf8") > maxHostedCookieNameBytes
+    || !cookieNamePattern.test(candidate)
+  ) {
+    throw new Error("LAZURIO_LAUNCHPAD_AUTH_COOKIE_NAME must be one exact HTTP cookie name.");
+  }
+  return candidate;
+}
+
+function selectHostedAuthCookie(rawHeader, expectedName) {
+  if (
+    !rawHeader
+    || Buffer.byteLength(rawHeader, "utf8") > maxHostedCookieHeaderBytes
+  ) {
+    return null;
+  }
+
+  let selected = null;
+  for (const rawPair of rawHeader.split(";")) {
+    const pair = rawPair.trim();
+    const separator = pair.indexOf("=");
+    if (separator <= 0 || pair.slice(0, separator).trim() !== expectedName) continue;
+    const value = pair.slice(separator + 1).trim();
+    if (!value || selected !== null) return null;
+    selected = `${expectedName}=${value}`;
+  }
+  return selected;
 }

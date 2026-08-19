@@ -330,6 +330,7 @@ test("hosted Launchpad rejects forged gateway headers without a TLS-authenticate
         services: [],
       }),
       LAZURIO_LAUNCHPAD_EXTERNAL_ORIGIN: externalOrigin,
+      LAZURIO_LAUNCHPAD_AUTH_COOKIE_NAME: "__Secure-lazurio-management-workspace",
       // Nothing listens on this HTTPS endpoint. A local caller cannot replace
       // the authenticated gateway with plain spoofed request headers.
       LAZURIO_LAUNCHPAD_AUTH_CHECK_URL: `https://127.0.0.1:${authPort}/oauth2/auth`,
