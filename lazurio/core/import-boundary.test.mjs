@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import { dirname, join, relative, resolve, sep } from "node:path";
+import { serverInstallGenerationInputPaths } from "./server-identity-lib.mjs";
 
 const coreRoot = import.meta.dirname;
 const repositoryRoot = resolve(coreRoot, "..", "..");
@@ -123,6 +124,52 @@ test("Module declaration validation has one physical Core owner", async () => {
     "scripts/lazurio-module-port.mjs",
     "scripts/lazurio-runtime-migrate.mjs",
   ]);
+});
+
+test("Server identity and install-generation compatibility have one Core owner", async () => {
+  const moduleName = "server-identity-lib.mjs";
+  expect(existsSync(join(coreRoot, moduleName))).toBe(true);
+  expect(existsSync(join(repositoryRoot, "launchpad", "src", moduleName))).toBe(false);
+
+  const imports = await repositoryImports([
+    join(repositoryRoot, "lazurio"),
+    join(repositoryRoot, "launchpad", "src"),
+    join(repositoryRoot, "scripts"),
+  ]);
+  const consumers = imports
+    .filter(({ target }) => target === join(coreRoot, moduleName))
+    .map(({ importer }) => importer)
+    .sort();
+
+  expect(consumers).toEqual(["launchpad/src/server.mjs"]);
+});
+
+test("Server install generation covers the complete local import closure", async () => {
+  const included = new Set(serverInstallGenerationInputPaths(repositoryRoot));
+  const pending = [join(repositoryRoot, "launchpad", "src", "server.mjs")];
+  const visited = new Set();
+  const findings = [];
+
+  while (pending.length > 0) {
+    const path = pending.pop();
+    if (visited.has(path)) continue;
+    visited.add(path);
+    const repositoryPath = relative(repositoryRoot, path).split(sep).join("/");
+    if (!included.has(repositoryPath)) findings.push(`${repositoryPath} is outside the Server generation`);
+
+    const source = await readFile(path, "utf8");
+    for (const { path: specifier } of scanImports(source, path)) {
+      if (!specifier.startsWith(".")) continue;
+      const target = resolve(dirname(path), specifier);
+      if (!isInside(repositoryRoot, target)) {
+        findings.push(`${repositoryPath} imports ${specifier} outside the repository`);
+        continue;
+      }
+      pending.push(target);
+    }
+  }
+
+  expect(findings).toEqual([]);
 });
 
 async function repositoryImports(roots) {

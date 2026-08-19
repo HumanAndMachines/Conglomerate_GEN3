@@ -1,4 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
+import { realpathSync } from "fs";
 import { cp, mkdir, readFile, rm, symlink, writeFile } from "fs/promises";
 import { createServer } from "net";
 import { join } from "path";
@@ -12,6 +13,7 @@ import {
   writeJson,
 } from "./git-fixture-helpers.test.mjs";
 import { platformTestTimeout } from "./test-platform-setup.mjs";
+import { computeServerRootId } from "../../lazurio/core/server-identity-lib.mjs";
 
 const tempRoots = [];
 const servers = [];
@@ -256,17 +258,53 @@ test("identity endpoint is local-only and a foreign root cannot reuse the port",
   const root = await createLaunchpadGitFixture();
   const otherRoot = await createLaunchpadGitFixture();
   tempRoots.push(root, otherRoot);
-  const { port } = await startLaunchpadServer(root);
+  const { server, port } = await startLaunchpadServer(root);
 
-  const identity = await getJson(port, "/api/launchpad/identity");
-  expect(identity.schema_version).toBe("companiesascode.launchpad.identity.v2");
-  expect(identity.root_id).toMatch(/^[a-f0-9]{64}$/);
-  expect(identity.source_id).toMatch(/^[a-f0-9]{64}$/);
+  const legacyIdentity = await getJson(port, "/api/launchpad/identity");
+  expect(legacyIdentity).toEqual({
+    schema_version: "companiesascode.launchpad.identity.v1",
+    root_id: legacyIdentity.root_id,
+  });
+  expect(legacyIdentity.root_id).toMatch(/^[a-f0-9]{64}$/);
+
+  const identity = await getJson(port, "/api/lazurio/server-identity");
+  expect(identity).toMatchObject({
+    schema_version: "lazurio.server.identity.v1",
+    product: "lazurio-launchpad-server",
+    root_id: legacyIdentity.root_id,
+    pid: server.pid,
+  });
+  expect(identity.install_generation).toMatch(/^[a-f0-9]{64}$/);
+  expect(identity.instance_id).toMatch(/^[a-f0-9-]{36}$/);
+  expect(Number.isFinite(Date.parse(identity.started_at))).toBe(true);
 
   const crossOriginIdentity = await fetch(`http://127.0.0.1:${port}/api/launchpad/identity`, {
     headers: { origin: "https://evil.invalid", "sec-fetch-site": "cross-site" },
   });
   expect(crossOriginIdentity.status).toBe(403);
+  const crossOriginServerIdentity = await fetch(`http://127.0.0.1:${port}/api/lazurio/server-identity`, {
+    headers: { origin: "https://evil.invalid", "sec-fetch-site": "cross-site" },
+  });
+  expect(crossOriginServerIdentity.status).toBe(403);
+  const crossOriginShutdown = await fetch(`http://127.0.0.1:${port}/api/lazurio/server-shutdown`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: "https://evil.invalid",
+      "sec-fetch-site": "cross-site",
+    },
+    body: JSON.stringify({ instance_id: identity.instance_id }),
+  });
+  expect(crossOriginShutdown.status).toBe(403);
+  expect((await fetch(`http://127.0.0.1:${port}/health`)).status).toBe(200);
+
+  const sameRootLauncher = Bun.spawn(
+    ["bun", "src/server.mjs", "--root", root, "--port", String(port), "--reuse"],
+    { cwd: join(import.meta.dirname, ".."), stdout: "pipe", stderr: "pipe" },
+  );
+  expect(await sameRootLauncher.exited).toBe(0);
+  expect(await new Response(sameRootLauncher.stdout).text()).toContain("používám existující instanci");
+  expect((await getJson(port, "/api/lazurio/server-identity")).instance_id).toBe(identity.instance_id);
 
   const otherRootLauncher = Bun.spawn(
     ["bun", "src/server.mjs", "--root", otherRoot, "--port", String(port), "--open"],
@@ -336,6 +374,82 @@ test("hosted Launchpad rejects forged gateway headers without a TLS-authenticate
   });
   expect(identity.status).toBe(403);
   expect((await identity.json()).error).toBe("identity_request_forbidden");
+
+  const serverIdentity = await fetch(`http://127.0.0.1:${port}/api/lazurio/server-identity`, {
+    headers: gatewayHeaders,
+  });
+  expect(serverIdentity.status).toBe(403);
+  expect((await serverIdentity.json()).error).toBe("identity_request_forbidden");
+
+  const shutdown = await fetch(`http://127.0.0.1:${port}/api/lazurio/server-shutdown`, {
+    method: "POST",
+    headers: { ...gatewayHeaders, "content-type": "application/json" },
+    body: JSON.stringify({ instance_id: "00000000-0000-4000-8000-000000000000" }),
+  });
+  expect(shutdown.status).toBe(403);
+  expect((await shutdown.json()).error).toBe("server_shutdown_forbidden");
+});
+
+test("instance-bound local shutdown rejects stale callers and releases the exact port", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const { server, port } = await startLaunchpadServer(root);
+  const identity = await getJson(port, "/api/lazurio/server-identity");
+
+  const mismatch = await postJson(port, "/api/lazurio/server-shutdown", {
+    instance_id: "00000000-0000-4000-8000-000000000000",
+  }, 409);
+  expect(mismatch.error).toBe("server_instance_mismatch");
+  expect((await fetch(`http://127.0.0.1:${port}/health`)).status).toBe(200);
+
+  const accepted = await postJson(port, "/api/lazurio/server-shutdown", {
+    instance_id: identity.instance_id,
+  });
+  expect(accepted).toEqual({
+    schema_version: "lazurio.server.shutdown.v1",
+    instance_id: identity.instance_id,
+    stopping: true,
+  });
+  expect(await server.exited).toBe(0);
+  await expect(fetch(`http://127.0.0.1:${port}/health`)).rejects.toThrow();
+});
+
+test("launcher replaces a stale same-root Server on the same port", async () => {
+  const root = await createLaunchpadGitFixture();
+  tempRoots.push(root);
+  const port = await findFreePort();
+  const instanceId = "2a6db6d3-ad60-42b7-b6a8-e522ac838284";
+  const rootId = computeServerRootId(realpathSync(root));
+  const blockerPath = join(root, "stale-server.mjs");
+  await writeFile(blockerPath, staleServerFixtureSource());
+  const blocker = Bun.spawn(["bun", blockerPath], {
+    cwd: root,
+    env: {
+      ...process.env,
+      PORT: String(port),
+      ROOT_ID: rootId,
+      INSTANCE_ID: instanceId,
+    },
+    stdout: "ignore",
+    stderr: "pipe",
+  });
+  await waitForHealth(port, blocker);
+
+  const launcher = Bun.spawn(
+    ["bun", "src/server.mjs", "--root", root, "--port", String(port), "--reuse"],
+    { cwd: join(import.meta.dirname, ".."), stdout: "pipe", stderr: "pipe" },
+  );
+  servers.push(launcher);
+  try {
+    expect(await readLaunchpadPort(launcher)).toBe(port);
+    await waitForHealth(port, launcher);
+    const identity = await getJson(port, "/api/lazurio/server-identity");
+    expect(identity.instance_id).not.toBe(instanceId);
+    expect(identity.install_generation).not.toBe("0".repeat(64));
+  } finally {
+    if (blocker.exitCode === null) blocker.kill();
+    await blocker.exited;
+  }
 });
 
 test("apps cache keeps first paint Git-free and invalidates on force sync and failed mutation", async () => {
@@ -818,6 +932,41 @@ function fixtureServerSource() {
     "  },",
     "});",
     "console.log(`fixture listening ${server.port}`);",
+    "setInterval(() => {}, 2147483647);",
+    "",
+  ].join("\n");
+}
+
+function staleServerFixtureSource() {
+  return [
+    "Bun.serve({",
+    "  hostname: '127.0.0.1',",
+    "  port: Number(process.env.PORT),",
+    "  async fetch(request) {",
+    "    const url = new URL(request.url);",
+    "    if (url.pathname === '/health') return Response.json({ status: 'ok' });",
+    "    if (url.pathname === '/api/lazurio/server-identity') {",
+    "      return Response.json({",
+    "        schema_version: 'lazurio.server.identity.v1',",
+    "        product: 'lazurio-launchpad-server',",
+    "        root_id: process.env.ROOT_ID,",
+    "        install_generation: '0'.repeat(64),",
+    "        instance_id: process.env.INSTANCE_ID,",
+    "        pid: process.pid,",
+    "        started_at: '2026-08-18T19:00:00.000Z',",
+    "      });",
+    "    }",
+    "    if (url.pathname === '/api/lazurio/server-shutdown' && request.method === 'POST') {",
+    "      const payload = await request.json();",
+    "      if (payload.instance_id !== process.env.INSTANCE_ID) {",
+    "        return Response.json({ error: 'mismatch' }, { status: 409 });",
+    "      }",
+    "      setTimeout(() => process.exit(0), 25);",
+    "      return Response.json({ instance_id: process.env.INSTANCE_ID, stopping: true });",
+    "    }",
+    "    return Response.json({ error: 'not_found' }, { status: 404 });",
+    "  },",
+    "});",
     "setInterval(() => {}, 2147483647);",
     "",
   ].join("\n");
