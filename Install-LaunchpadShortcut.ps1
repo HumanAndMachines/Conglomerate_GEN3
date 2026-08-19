@@ -71,6 +71,35 @@ function Test-PathContainsReparsePoint {
     return $false
 }
 
+function Test-GitFileMarksLinkedWorktree {
+    param([Parameter(Mandatory = $true)][string]$MarkerPath)
+
+    $markerContents = [System.IO.File]::ReadAllText($MarkerPath).Trim()
+    $markerMatch = [regex]::Match(
+        $markerContents,
+        '^gitdir:\s*(.+)$',
+        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+    )
+    if (-not $markerMatch.Success) {
+        throw "Launchpad Git metadata marker is invalid: $MarkerPath"
+    }
+    $gitDirectoryValue = $markerMatch.Groups[1].Value.Trim()
+    if ([string]::IsNullOrWhiteSpace($gitDirectoryValue)) {
+        throw "Launchpad Git metadata marker is invalid: $MarkerPath"
+    }
+    $gitDirectory = if ([System.IO.Path]::IsPathRooted($gitDirectoryValue)) {
+        Get-FullPath -Path $gitDirectoryValue
+    }
+    else {
+        Get-FullPath -Path (Join-Path (Split-Path -Parent $MarkerPath) $gitDirectoryValue)
+    }
+    if (-not (Test-Path -LiteralPath $gitDirectory -PathType Container)) {
+        throw "Launchpad Git metadata directory is not available: $gitDirectory"
+    }
+
+    return (Test-Path -LiteralPath (Join-Path $gitDirectory 'commondir') -PathType Leaf)
+}
+
 function New-BackupRunRoot {
     param(
         [Parameter(Mandatory = $true)][string]$BackupBaseRoot,
@@ -106,6 +135,25 @@ function Backup-ExistingShortcut {
     $backupPath = Join-Path $BackupRoot ([System.IO.Path]::GetFileName($ShortcutPath))
     [System.IO.File]::Copy($ShortcutPath, $backupPath, $false)
     return $backupPath
+}
+
+function Restore-ShortcutSnapshot {
+    param(
+        [Parameter(Mandatory = $true)][string]$ShortcutPath,
+        [Parameter(Mandatory = $true)][bool]$HadShortcut,
+        [string]$BackupPath
+    )
+
+    if ($HadShortcut) {
+        if ([string]::IsNullOrWhiteSpace($BackupPath) -or -not (Test-Path -LiteralPath $BackupPath -PathType Leaf)) {
+            throw "Launchpad shortcut rollback is missing its recovery file: $ShortcutPath"
+        }
+        Publish-AtomicFile -SourcePath $BackupPath -DestinationPath $ShortcutPath
+        return
+    }
+    if (Test-Path -LiteralPath $ShortcutPath -PathType Leaf) {
+        Remove-Item -LiteralPath $ShortcutPath -Force
+    }
 }
 
 function New-AtomicTemporaryPath {
@@ -304,11 +352,11 @@ if (Test-PathContainsReparsePoint -Path $resolvedRoot) {
 $gitMarkerPath = Join-Path $resolvedRoot '.git'
 if (Test-Path -LiteralPath $gitMarkerPath) {
     $gitMarker = Get-Item -LiteralPath $gitMarkerPath -Force
-    if (-not $gitMarker.PSIsContainer) {
-        throw "Launchpad refuses a linked Git worktree root: $resolvedRoot"
-    }
     if (($gitMarker.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
         throw "Launchpad refuses an indirect Git metadata root: $resolvedRoot"
+    }
+    if (-not $gitMarker.PSIsContainer -and (Test-GitFileMarksLinkedWorktree -MarkerPath $gitMarkerPath)) {
+        throw "Launchpad refuses a linked Git worktree root: $resolvedRoot"
     }
 }
 
@@ -383,55 +431,87 @@ if ($PSCmdlet.ShouldProcess($resolvedRoot, 'Install per-user HumanAndMachine Lau
     Publish-AtomicFile -SourcePath $sourceBootstrapPath -DestinationPath $installedBootstrapPath
     Publish-AtomicFile -SourcePath $sourceIconPath -DestinationPath $iconPath
     $backupRoot = $null
-    if (
-        (Test-Path -LiteralPath $startMenuShortcut -PathType Leaf) -or
-        (-not $StartMenuOnly -and (Test-Path -LiteralPath $taskbarShortcut -PathType Leaf))
-    ) {
+    $startMenuHadShortcut = Test-Path -LiteralPath $startMenuShortcut -PathType Leaf
+    $taskbarHadShortcut = -not $StartMenuOnly -and (Test-Path -LiteralPath $taskbarShortcut -PathType Leaf)
+    if ($startMenuHadShortcut -or $taskbarHadShortcut) {
         $backupRoot = New-BackupRunRoot -BackupBaseRoot $backupBaseRoot -BackupTime $BackupTime
     }
-    if ($null -ne $backupRoot) {
-        $backup = Backup-ExistingShortcut -ShortcutPath $startMenuShortcut -BackupRoot (Join-Path $backupRoot 'start-menu')
-        if ($null -ne $backup) { $backups.Add($backup) }
-    }
-    New-LaunchpadShortcut -ShortcutPath $startMenuShortcut -BootstrapPath $installedBootstrapPath -ConfigPath $installConfigPath -InstalledRoot $InstallRoot -PowerShellPath $powerShellPath -IconPath $iconPath
-
-    if (-not $StartMenuOnly) {
+    $startMenuBackup = $null
+    $taskbarBackup = $null
+    $startMenuMutationStarted = $false
+    $taskbarMutationStarted = $false
+    try {
         if ($null -ne $backupRoot) {
-            $backup = Backup-ExistingShortcut -ShortcutPath $taskbarShortcut -BackupRoot (Join-Path $backupRoot 'taskbar')
-            if ($null -ne $backup) { $backups.Add($backup) }
+            $startMenuBackup = Backup-ExistingShortcut -ShortcutPath $startMenuShortcut -BackupRoot (Join-Path $backupRoot 'start-menu')
+            if ($null -ne $startMenuBackup) { $backups.Add($startMenuBackup) }
         }
-        New-LaunchpadShortcut -ShortcutPath $taskbarShortcut -BootstrapPath $installedBootstrapPath -ConfigPath $installConfigPath -InstalledRoot $InstallRoot -PowerShellPath $powerShellPath -IconPath $iconPath
-        $taskbarStatus = 'shortcut_installed'
-        if (-not $SkipShellPin) {
+        $startMenuMutationStarted = $true
+        New-LaunchpadShortcut -ShortcutPath $startMenuShortcut -BootstrapPath $installedBootstrapPath -ConfigPath $installConfigPath -InstalledRoot $InstallRoot -PowerShellPath $powerShellPath -IconPath $iconPath
+
+        if (-not $StartMenuOnly) {
+            if ($null -ne $backupRoot) {
+                $taskbarBackup = Backup-ExistingShortcut -ShortcutPath $taskbarShortcut -BackupRoot (Join-Path $backupRoot 'taskbar')
+                if ($null -ne $taskbarBackup) { $backups.Add($taskbarBackup) }
+            }
+            $taskbarMutationStarted = $true
+            New-LaunchpadShortcut -ShortcutPath $taskbarShortcut -BootstrapPath $installedBootstrapPath -ConfigPath $installConfigPath -InstalledRoot $InstallRoot -PowerShellPath $powerShellPath -IconPath $iconPath
+            $taskbarStatus = 'shortcut_installed'
+            if (-not $SkipShellPin) {
+                try {
+                    $shellApplication = New-Object -ComObject Shell.Application
+                    $startMenuFolder = $shellApplication.Namespace((Split-Path -Parent $startMenuShortcut))
+                    $startMenuItem = $startMenuFolder.ParseName((Split-Path -Leaf $startMenuShortcut))
+                    $startMenuItem.InvokeVerb('taskbarpin')
+                    $taskbarStatus = 'pin_requested'
+                }
+                catch {
+                    $taskbarStatus = 'shortcut_installed_shell_pin_unavailable'
+                }
+            }
+        }
+
+        $startMenuValid = Test-LaunchpadShortcut -ShortcutPath $startMenuShortcut -BootstrapPath $installedBootstrapPath -ConfigPath $installConfigPath -InstalledRoot $InstallRoot -PowerShellPath $powerShellPath -IconPath $iconPath
+        $taskbarValid = if ($StartMenuOnly) { $null } else {
+            Test-LaunchpadShortcut -ShortcutPath $taskbarShortcut -BootstrapPath $installedBootstrapPath -ConfigPath $installConfigPath -InstalledRoot $InstallRoot -PowerShellPath $powerShellPath -IconPath $iconPath
+        }
+        $bootstrapValid = (Get-Sha256Digest -Path $installedBootstrapPath) -eq
+            (Get-Sha256Digest -Path $sourceBootstrapPath)
+        if (-not $startMenuValid -or (-not $StartMenuOnly -and -not $taskbarValid) -or -not $bootstrapValid) {
+            throw 'Launchpad per-user installation validation failed before activation.'
+        }
+
+        $installConfig = [pscustomobject]@{
+            schema_version = $installSchema
+            root = $resolvedRoot
+            installed_at = (Get-Date).ToString('o')
+        } | ConvertTo-Json -Depth 3
+        $configValid = Publish-VerifiedInstallConfig -DestinationPath $installConfigPath -Contents $installConfig -ExpectedRoot $resolvedRoot -ExpectedSchema $installSchema
+    }
+    catch {
+        $installFailure = $_.Exception
+        $shortcutRollbackFailures = New-Object System.Collections.Generic.List[string]
+        if ($taskbarMutationStarted) {
             try {
-                $shellApplication = New-Object -ComObject Shell.Application
-                $startMenuFolder = $shellApplication.Namespace((Split-Path -Parent $startMenuShortcut))
-                $startMenuItem = $startMenuFolder.ParseName((Split-Path -Leaf $startMenuShortcut))
-                $startMenuItem.InvokeVerb('taskbarpin')
-                $taskbarStatus = 'pin_requested'
+                Restore-ShortcutSnapshot -ShortcutPath $taskbarShortcut -HadShortcut $taskbarHadShortcut -BackupPath $taskbarBackup
             }
             catch {
-                $taskbarStatus = 'shortcut_installed_shell_pin_unavailable'
+                $shortcutRollbackFailures.Add("taskbar: $($_.Exception.Message)")
             }
         }
+        if ($startMenuMutationStarted) {
+            try {
+                Restore-ShortcutSnapshot -ShortcutPath $startMenuShortcut -HadShortcut $startMenuHadShortcut -BackupPath $startMenuBackup
+            }
+            catch {
+                $shortcutRollbackFailures.Add("start-menu: $($_.Exception.Message)")
+            }
+        }
+        if ($shortcutRollbackFailures.Count -gt 0) {
+            $recoveryFiles = if ($backups.Count -eq 0) { 'none' } else { $backups -join ', ' }
+            throw "Launchpad installation failed and shortcut rollback was incomplete ($($shortcutRollbackFailures -join '; ')). Recovery files: $recoveryFiles. Original failure: $($installFailure.Message)"
+        }
+        throw $installFailure
     }
-
-    $startMenuValid = Test-LaunchpadShortcut -ShortcutPath $startMenuShortcut -BootstrapPath $installedBootstrapPath -ConfigPath $installConfigPath -InstalledRoot $InstallRoot -PowerShellPath $powerShellPath -IconPath $iconPath
-    $taskbarValid = if ($StartMenuOnly) { $null } else {
-        Test-LaunchpadShortcut -ShortcutPath $taskbarShortcut -BootstrapPath $installedBootstrapPath -ConfigPath $installConfigPath -InstalledRoot $InstallRoot -PowerShellPath $powerShellPath -IconPath $iconPath
-    }
-    $bootstrapValid = (Get-Sha256Digest -Path $installedBootstrapPath) -eq
-        (Get-Sha256Digest -Path $sourceBootstrapPath)
-    if (-not $startMenuValid -or (-not $StartMenuOnly -and -not $taskbarValid) -or -not $bootstrapValid) {
-        throw 'Launchpad per-user installation validation failed before activation.'
-    }
-
-    $installConfig = [pscustomobject]@{
-        schema_version = $installSchema
-        root = $resolvedRoot
-        installed_at = (Get-Date).ToString('o')
-    } | ConvertTo-Json -Depth 3
-    $configValid = Publish-VerifiedInstallConfig -DestinationPath $installConfigPath -Contents $installConfig -ExpectedRoot $resolvedRoot -ExpectedSchema $installSchema
 }
 
 [pscustomobject]@{

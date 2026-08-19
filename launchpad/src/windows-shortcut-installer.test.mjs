@@ -48,9 +48,11 @@ test("Windows installer drží jediný per-user bootstrap kontrakt bez druhé ru
   expect(contents).toContain("[System.Security.Cryptography.SHA256]::Create()");
   expect(contents).not.toContain("Get-FileHash");
   expect(contents).toContain("Launchpad refuses a linked Git worktree root");
+  expect(contents).toContain("Join-Path $gitDirectory 'commondir'");
   expect(contents).toContain("Publish-VerifiedInstallConfig -DestinationPath $installConfigPath");
   expect(contents).toContain("Publish-AtomicTemporaryFile -TemporaryPath $rollbackPath -DestinationPath $DestinationPath");
   expect(contents).toContain("Previous config recovery file: $rollbackPath");
+  expect(contents).toContain("Restore-ShortcutSnapshot -ShortcutPath $startMenuShortcut");
   const dualSeparatorSplit = "-split '[\\\\/]'";
   expect(contents.split(dualSeparatorSplit)).toHaveLength(3);
   expect(contents).toContain("$shortcut.Arguments -eq $expectedArguments");
@@ -119,6 +121,30 @@ windowsTest("Windows installer odmítne linked worktree mimo .worktrees", async 
   expect(await Bun.file(join(fixture.install, "install.json")).exists()).toBe(false);
 }, 30_000);
 
+windowsTest("Windows installer přijme primary checkout se separate Git directory", async () => {
+  const fixture = await shortcutFixture("separate-git-dir");
+  const separateGitDirectory = join(fixture.fixtureRoot, "primary.git");
+  const initialized = Bun.spawnSync([
+    "git",
+    "init",
+    "--separate-git-dir",
+    separateGitDirectory,
+    fixture.root,
+  ], {
+    cwd: fixture.fixtureRoot,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (initialized.exitCode !== 0) {
+    throw new Error(`Separate Git directory fixture failed: ${initialized.stderr.toString()}`);
+  }
+
+  const result = runInstaller(fixture, ["-StartMenuOnly", "-SkipShellPin"]);
+  expectSuccessfulProcess(result);
+  expect(JSON.parse(await readFile(join(fixture.install, "install.json"), "utf8")).root.toLowerCase())
+    .toBe(fixture.root.toLowerCase());
+}, 30_000);
+
 windowsTest("Windows installer odmítne root přes junction bez zápisu", async () => {
   const fixture = await shortcutFixture("junction");
   const junctionRoot = join(fixture.fixtureRoot, "root-junction");
@@ -161,6 +187,20 @@ windowsTest("selhání shortcutu zachová předchozí aktivační pointer", asyn
   const result = runInstaller(fixture, ["-StartMenuOnly", "-SkipShellPin"]);
   expect(result.exitCode).not.toBe(0);
   expect(JSON.parse(await readFile(join(fixture.install, "install.json"), "utf8"))).toEqual(previousConfig);
+  expect(await findAtomicTemps(fixture.install)).toEqual([]);
+}, 30_000);
+
+windowsTest("selhání první aktivace vrátí přesnou legacy zkratku", async () => {
+  const fixture = await shortcutFixture("legacy-shortcut-rollback");
+  const startMenuShortcut = join(fixture.startMenu, shortcutName);
+  await createLegacyShortcut(startMenuShortcut, fixture.root);
+  const legacyBytes = await readFile(startMenuShortcut);
+  await mkdir(join(fixture.install, "install.json"), { recursive: true });
+
+  const result = runInstaller(fixture, ["-StartMenuOnly", "-SkipShellPin"]);
+  expect(result.exitCode).not.toBe(0);
+  expect(`${result.stdout}\n${result.stderr}`).toContain("install config path is not a regular file");
+  expect(await readFile(startMenuShortcut)).toEqual(legacyBytes);
   expect(await findAtomicTemps(fixture.install)).toEqual([]);
 }, 30_000);
 
@@ -242,13 +282,7 @@ async function shortcutFixture(name, { createShortcutRoots = true } = {}) {
 }
 
 function runInstaller(fixture, extraArgs) {
-  const powershell = join(
-    process.env.SystemRoot ?? "C:\\Windows",
-    "System32",
-    "WindowsPowerShell",
-    "v1.0",
-    "powershell.exe",
-  );
+  const powershell = windowsPowerShell();
   const usesExplicitRoot = extraArgs.includes("-RootPath");
   return Bun.spawnSync([
     powershell,
@@ -274,6 +308,46 @@ function runInstaller(fixture, extraArgs) {
       LOCALAPPDATA: join(fixture.fixtureRoot, "local-app-data"),
     },
   });
+}
+
+function windowsPowerShell() {
+  return join(
+    process.env.SystemRoot ?? "C:\\Windows",
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+}
+
+function quotePowerShellLiteral(value) {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+function createLegacyShortcut(shortcutPath, canonicalRoot) {
+  const launchpadPath = join(canonicalRoot, "Launchpad.ps1");
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    "$shell = New-Object -ComObject WScript.Shell",
+    `$shortcut = $shell.CreateShortcut(${quotePowerShellLiteral(shortcutPath)})`,
+    `$shortcut.TargetPath = ${quotePowerShellLiteral(windowsPowerShell())}`,
+    `$shortcut.Arguments = ${quotePowerShellLiteral(`-NoProfile -ExecutionPolicy Bypass -File "${launchpadPath}"`)}`,
+    `$shortcut.WorkingDirectory = ${quotePowerShellLiteral(canonicalRoot)}`,
+    "$shortcut.Description = 'Legacy Launchpad shortcut'",
+    "$shortcut.Save()",
+  ].join("; ");
+  const result = Bun.spawnSync([
+    windowsPowerShell(),
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-Command",
+    script,
+  ], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  expectSuccessfulProcess(result);
 }
 
 async function findAtomicTemps(path) {

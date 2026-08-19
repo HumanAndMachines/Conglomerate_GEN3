@@ -228,9 +228,13 @@ načte canonical root z `install.json` a spustí jeho `Launchpad.ps1`, který
 zůstává jediným vlastníkem Bun resolution a startu Launchpadu. Instalace
 z linked worktree — bez ohledu na název jeho složky — nebo přes junction se
 odmítne; canonical cíl je primary checkout nebo podporovaný directory-only
-root. Port ani druhý lifecycle stav se do instalace nezapisují. Nový
+root. Primary checkout se samostatným stabilním Git metadata adresářem
+(`--separate-git-dir`) zůstává podporovaný; linked worktree se rozpozná podle
+Git admin struktury, ne jen podle názvu cesty nebo existence `.git` souboru.
+Port ani druhý lifecycle stav se do instalace nezapisují. Nový
 `install.json` se aktivuje až po validaci bootstrapu a všech požadovaných
-zkratek; selhání reinstalace zachová předchozí aktivní pointer. Existující
+zkratek; selhání reinstalace zachová předchozí aktivní pointer a atomicky vrátí
+i každou zkratku, jejíž nahrazení už začalo. Existující
 aktivní zkratku se stejným názvem instalátor nahradí; její původní podobu
 nejdřív zachová v oddělené záloze pro Start Menu nebo taskbar pod
 `%LOCALAPPDATA%\HumanAndMachine\Launchpad\shortcut-backups\<timestamp>`.
