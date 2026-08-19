@@ -9,9 +9,14 @@ BUILD_ROOT=""
 BUILD_APP=""
 BACKUP_PATH=""
 FAILED_PATH=""
+LOCK_PATH=""
+PREVIOUS_BACKUP_PATH=""
 TARGET=""
 HAD_TARGET=false
 PUBLISHED_TARGET=false
+PRESERVE_BUILD_ROOT=false
+REPLACEMENT_STARTED=false
+SHLOCK_ACQUIRED=false
 
 show_error() {
   printf 'Launchpad macOS install: %s\n' "$1" >&2
@@ -19,6 +24,10 @@ show_error() {
 
 cleanup() {
   if [[ -n "$BUILD_ROOT" && -d "$BUILD_ROOT" ]]; then
+    if [[ "$PRESERVE_BUILD_ROOT" == true ]]; then
+      show_error "nouzové recovery artefakty zůstávají zachované v: $BUILD_ROOT"
+      return
+    fi
     case "$BUILD_ROOT" in
       */.humanandmachine-launchpad-install.*) rm -rf -- "$BUILD_ROOT" ;;
       *) show_error "Odmítám uklidit neočekávanou dočasnou cestu: $BUILD_ROOT" ;;
@@ -35,12 +44,37 @@ rollback() {
     elif [[ "$HAD_TARGET" == false && -n "$BUILD_ROOT" ]]; then
       mv "$TARGET" "$BUILD_ROOT/failed-first-install.app" || true
     fi
+  elif [[ "$REPLACEMENT_STARTED" == true && "$HAD_TARGET" == true && -n "$TARGET" && -d "$TARGET" && ! -L "$TARGET" && -d "$BACKUP_PATH" && ! -L "$BACKUP_PATH" ]]; then
+    if ! replace_app "$TARGET" "$BACKUP_PATH" "$(basename "$FAILED_PATH")"; then
+      show_error "obnovení po nedokončené atomické výměně selhalo; recovery data zůstávají zachovaná."
+      PRESERVE_BUILD_ROOT=true
+    fi
   fi
   if [[ "$HAD_TARGET" == true && -n "$TARGET" && ! -e "$TARGET" && ! -L "$TARGET" && -d "$BACKUP_PATH" && ! -L "$BACKUP_PATH" ]]; then
     mv "$BACKUP_PATH" "$TARGET" || show_error "nouzové obnovení původní aplikace selhalo; zůstává v $BACKUP_PATH."
   fi
-  if [[ -n "$FAILED_PATH" && -d "$FAILED_PATH" && ! -L "$FAILED_PATH" ]]; then
+  if [[ -n "$PREVIOUS_BACKUP_PATH" && -d "$PREVIOUS_BACKUP_PATH" && ! -L "$PREVIOUS_BACKUP_PATH" ]]; then
+    if [[ ! -e "$BACKUP_PATH" && ! -L "$BACKUP_PATH" ]]; then
+      mv "$PREVIOUS_BACKUP_PATH" "$BACKUP_PATH" || PRESERVE_BUILD_ROOT=true
+    else
+      show_error "předchozí rollback nelze bezpečně vrátit; zůstává v $PREVIOUS_BACKUP_PATH."
+      PRESERVE_BUILD_ROOT=true
+    fi
+  fi
+  if [[ "$PRESERVE_BUILD_ROOT" == false && -n "$FAILED_PATH" && -d "$FAILED_PATH" && ! -L "$FAILED_PATH" ]]; then
     rm -rf -- "$FAILED_PATH"
+  fi
+}
+
+release_lock() {
+  if [[ "$SHLOCK_ACQUIRED" == true && -n "$LOCK_PATH" && -f "$LOCK_PATH" && ! -L "$LOCK_PATH" ]]; then
+    local owner=""
+    IFS= read -r owner < "$LOCK_PATH" || true
+    if [[ "$owner" == "$$" ]]; then
+      rm -f -- "$LOCK_PATH"
+    else
+      show_error "shlock owner se změnil; cizí lock nemažu: $LOCK_PATH"
+    fi
   fi
 }
 
@@ -58,6 +92,7 @@ finish() {
     rollback
   fi
   cleanup
+  release_lock
   exit "$status"
 }
 trap finish EXIT
@@ -149,12 +184,41 @@ if [[ -e "$TARGET" && ! -d "$TARGET" ]]; then
 fi
 BACKUP_PATH="$TARGET_PARENT/.humanandmachine-launchpad-rollback"
 FAILED_PATH="$TARGET_PARENT/.humanandmachine-launchpad-failed"
-for managed_path in "$BACKUP_PATH" "$FAILED_PATH"; do
+LOCK_PATH="$TARGET_PARENT/.humanandmachine-launchpad-install.lock"
+for managed_path in "$BACKUP_PATH" "$FAILED_PATH" "$LOCK_PATH"; do
+  if [[ "$managed_path" == "$LOCK_PATH" ]]; then
+    if [[ -L "$managed_path" || ( -e "$managed_path" && ! -f "$managed_path" ) ]]; then
+      show_error "spravovaná lock cesta instalátoru nemá bezpečný souborový typ: $managed_path"
+      exit 1
+    fi
+    continue
+  fi
   if [[ -L "$managed_path" || ( -e "$managed_path" && ! -d "$managed_path" ) ]]; then
     show_error "spravovaná cesta instalátoru nemá bezpečný adresářový typ: $managed_path"
     exit 1
   fi
 done
+
+if [[ -x /usr/bin/lockf ]]; then
+  exec 9>"$LOCK_PATH"
+  if [[ -L "$LOCK_PATH" || ! -f "$LOCK_PATH" ]]; then
+    show_error "instalační lock není bezpečný běžný soubor: $LOCK_PATH"
+    exit 1
+  fi
+  if ! /usr/bin/lockf -t 30 9; then
+    show_error "jiná instalace Launchpadu stále běží; zkus to znovu po jejím dokončení."
+    exit 1
+  fi
+elif [[ -x /usr/bin/shlock ]]; then
+  if ! /usr/bin/shlock -f "$LOCK_PATH" -p "$$"; then
+    show_error "jiná instalace Launchpadu stále běží; zkus to znovu po jejím dokončení."
+    exit 1
+  fi
+  SHLOCK_ACQUIRED=true
+else
+  show_error "macOS nemá dostupný systémový lockf ani shlock; instalaci nelze bezpečně serializovat."
+  exit 1
+fi
 
 for source in launchpad-bootstrap.sh replace-app.jxa Info.plist; do
   if [[ ! -f "$SOURCE_DIR/$source" || -L "$SOURCE_DIR/$source" ]]; then
@@ -165,6 +229,7 @@ done
 
 BUILD_ROOT="$(mktemp -d "$TARGET_PARENT/.humanandmachine-launchpad-install.XXXXXX")"
 BUILD_APP="$BUILD_ROOT/$APP_NAME"
+PREVIOUS_BACKUP_PATH="$BUILD_ROOT/previous-rollback"
 mkdir -p "$BUILD_APP/Contents/MacOS" "$BUILD_APP/Contents/Resources"
 cp "$SOURCE_DIR/launchpad-bootstrap.sh" "$BUILD_APP/Contents/MacOS/launchpad-bootstrap"
 cp "$SOURCE_DIR/Info.plist" "$BUILD_APP/Contents/Info.plist"
@@ -179,11 +244,12 @@ printf '%s\n' "$INSTALL_SCHEMA" > "$BUILD_APP/Contents/Resources/install-schema"
 if [[ -d "$TARGET" ]]; then
   HAD_TARGET=true
   if [[ -d "$BACKUP_PATH" ]]; then
-    rm -rf -- "$BACKUP_PATH"
+    mv "$BACKUP_PATH" "$PREVIOUS_BACKUP_PATH"
   fi
   if [[ -d "$FAILED_PATH" ]]; then
     rm -rf -- "$FAILED_PATH"
   fi
+  REPLACEMENT_STARTED=true
   replace_app "$TARGET" "$BUILD_APP" "$(basename "$BACKUP_PATH")"
 else
   mv "$BUILD_APP" "$TARGET"
