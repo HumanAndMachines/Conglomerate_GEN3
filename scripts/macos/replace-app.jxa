@@ -1,0 +1,29 @@
+ObjC.import("Foundation");
+
+function run(argv) {
+  if (argv.length !== 3) {
+    throw new Error("replace-app expects target, replacement, and backup name");
+  }
+
+  const target = $.NSURL.fileURLWithPath(argv[0]);
+  const replacement = $.NSURL.fileURLWithPath(argv[1]);
+  const backupName = argv[2];
+  const resultingUrl = Ref();
+  const error = Ref();
+  const replaced = $.NSFileManager.defaultManager
+    .replaceItemAtURLWithItemAtURLBackupItemNameOptionsResultingItemURLError(
+      target,
+      replacement,
+      backupName,
+      $.NSFileManagerItemReplacementWithoutDeletingBackupItem,
+      resultingUrl,
+      error,
+    );
+
+  if (!replaced) {
+    const detail = error[0] ? ObjC.unwrap(error[0].localizedDescription) : "unknown Foundation error";
+    throw new Error(`atomic app replacement failed: ${detail}`);
+  }
+
+  return argv[0];
+}
