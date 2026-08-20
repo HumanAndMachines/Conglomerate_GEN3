@@ -425,6 +425,11 @@ export function createRuntimeManager({
     const childEnv = runtimeProcessEnv(app, {
       PORT: String(app.port),
       HOST: app.host,
+      // Astro 7 auto-backgrounds dev/preview servers when it detects an AI
+      // agent. Launchpad is already the process supervisor, so its child must
+      // take Astro's supervised-child path and remain attached to this PID.
+      ASTRO_DEV_BACKGROUND: "1",
+      ASTRO_PREVIEW_BACKGROUND: "1",
       LAZURIO_RUNTIME_SCHEMA_VERSION: app.runtime_contract?.schema_version ?? "companyascode.launchpad_app.v1",
       LAZURIO_RUNTIME_APP_ID: app.id,
       LAZURIO_RUNTIME_ENTRYPOINT_ID: app.entrypoint_listener?.id ?? "entrypoint",
