@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "bun run preservation:test && bun run personalspace:test && bun run worktrees:test && bun run runtime:migrate:test && bun run git-policy:test && bun run agent-skills:test && bun run integrations:contracts:test && bun run lazurio:test && bun run resident:test && bun run doctor:agent-skills && bun run --cwd launchpad check",
+    "check": "bun run preservation:test && bun run personalspace:test && bun run worktrees:test && bun run runtime:migrate:test && bun run git-policy:test && bun run agent-skills:test && bun run integrations:contracts:test && bun run mission-control:smoke:test && bun run lazurio:test && bun run resident:test && bun run doctor:agent-skills && bun run --cwd launchpad check",
     "doctor": "bun run --cwd launchpad doctor",
     "doctor:task": "bun run --cwd launchpad doctor:task",
     "doctor:json": "bun run --cwd launchpad doctor:json",
@@ -30,6 +30,8 @@
     "repair:agent-skills": "bun scripts/agent-skills-entrypoint.mjs repair",
     "agent-skills:test": "bun test scripts/agent-skills-entrypoint.test.mjs scripts/agent-builder-validator.test.mjs",
     "integrations:contracts:test": "bun test scripts/external-app-integrations-contract.test.mjs",
+    "mission-control:smoke": "bun scripts/mission-control-trust-smoke.mjs",
+    "mission-control:smoke:test": "bun test scripts/mission-control-trust-smoke.test.mjs",
     "git-policy:test": "bun test scripts/pr-preflight.test.mjs launchpad/src/task-preflight-lib.test.mjs",
     "check:strict": "bun run preservation:test && bun run personalspace:test && bun run worktrees:test && bun run --cwd launchpad check:strict",
     "install:windows-shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File ./Install-LaunchpadShortcut.ps1",
