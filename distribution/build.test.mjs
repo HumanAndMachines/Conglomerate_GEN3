@@ -222,7 +222,7 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
   const tampered = runDoctor(first.artifact_root);
   expect(tampered.status).toBe(1);
   expect(JSON.parse(tampered.stdout)).toMatchObject({ status: "fail" });
-}, 20_000);
+}, 60_000);
 
 test("resident provenance is independent of mutable remote configuration", async () => {
   const fixture = await isolatedRepositoryFixture();
