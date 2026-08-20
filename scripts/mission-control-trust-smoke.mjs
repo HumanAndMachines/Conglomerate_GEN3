@@ -19,6 +19,14 @@ const RETIRED_ROOT_FILES = [
   "scripts/mission-control-ledger-mirror.mjs",
 ];
 
+// Audit ceiling, not an ACL: GitHub grants remain the only write authority.
+// Crossing it stops the trusted-process smoke until the Organization Admin
+// upgrades provider enforcement before widening the write circle further.
+export const TRUSTED_PROCESS_MAX_WRITERS = 10;
+const GITHUB_REPOSITORY_PATTERN =
+  /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
+const GITHUB_LOGIN_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+
 function json(path) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
@@ -89,6 +97,42 @@ export function evaluateProtection(response) {
   };
 }
 
+export function evaluateTrustedProcessCircle({
+  enforcementMode,
+  writers,
+  outsideLogins = [],
+  membershipProbeFailures = [],
+  maxWriters = TRUSTED_PROCESS_MAX_WRITERS,
+}) {
+  if (enforcementMode !== "trusted-process") return [];
+  const problems = [];
+  if (writers.length > maxWriters) {
+    problems.push(
+      `Trusted-process write okruh má ${writers.length} writerů; před rozšířením nad ${maxWriters} musí Organization Admin aktivovat provider-enforced ochranu`,
+    );
+  }
+  const automationLogins = writers
+    .filter((entry) => entry?.type !== "User")
+    .map((entry) => entry?.login)
+    .filter(Boolean);
+  if (automationLogins.length > 0) {
+    problems.push(
+      `Trusted-process nesmí mít automatizovaného writera bez provider enforcement: ${automationLogins.join(", ")}`,
+    );
+  }
+  if (outsideLogins.length > 0) {
+    problems.push(
+      `Trusted-process nesmí mít outside writera bez provider enforcement: ${outsideLogins.join(", ")}`,
+    );
+  }
+  for (const failure of membershipProbeFailures) {
+    problems.push(
+      `Nelze ověřit Organization membership writera ${failure.login}: ${failure.message}`,
+    );
+  }
+  return problems;
+}
+
 export function evaluateRootLedgers(organizationRoot, dataState, taskSources) {
   const problems = [];
   const active = dataState === "active";
@@ -140,7 +184,13 @@ function parseRepo(value) {
   const text = String(value ?? "").replace(/\.git$/, "");
   const ssh = text.match(/github\.com:([^/]+\/[^/]+)$/);
   const https = text.match(/github\.com\/([^/]+\/[^/]+)$/);
-  return ssh?.[1] ?? https?.[1] ?? (text.includes("/") && !text.includes(":" ) ? text : null);
+  const identity =
+    ssh?.[1] ??
+    https?.[1] ??
+    (text.includes("/") && !text.includes(":") ? text : null);
+  return identity && GITHUB_REPOSITORY_PATTERN.test(identity)
+    ? identity
+    : null;
 }
 
 function gh(endpoint) {
@@ -152,6 +202,44 @@ function gh(endpoint) {
     value = null;
   }
   return { status: result.status ?? 1, value, stderr: result.stderr.trim() };
+}
+
+function ghPaginatedArray(endpoint) {
+  const result = spawnSync(
+    "gh",
+    ["api", "--paginate", "--slurp", endpoint],
+    { encoding: "utf8" },
+  );
+  let pages = null;
+  try {
+    pages = result.stdout ? JSON.parse(result.stdout) : null;
+  } catch {
+    pages = null;
+  }
+  return {
+    status: result.status ?? 1,
+    value:
+      Array.isArray(pages) && pages.every((page) => Array.isArray(page))
+        ? pages.flat()
+        : null,
+    stderr: result.stderr.trim(),
+  };
+}
+
+function organizationMembership(githubOrg, login) {
+  if (
+    !GITHUB_LOGIN_PATTERN.test(String(githubOrg ?? "")) ||
+    !GITHUB_LOGIN_PATTERN.test(String(login ?? ""))
+  ) {
+    return { kind: "blocked", message: "neplatná GitHub identita" };
+  }
+  const response = gh(`orgs/${githubOrg}/members/${login}`);
+  if (response.status === 0) return { kind: "member" };
+  const message = response.value?.message ?? response.stderr;
+  if (response.value?.status === "404" || /not found/i.test(message)) {
+    return { kind: "outside" };
+  }
+  return { kind: "blocked", message: message || "GitHub API selhalo" };
 }
 
 function remoteText(repo, path, ref) {
@@ -167,7 +255,11 @@ function branchProtection(repo) {
   if (response.value?.status === "404" || message === "Branch not protected") {
     return { kind: "unconfigured", message };
   }
-  if (/upgrade to github pro|enable this feature/i.test(message)) {
+  if (
+    /upgrade to github (?:pro|team)|enable this feature|only available for .*repositor/i.test(
+      message,
+    )
+  ) {
     return { kind: "unsupported", message };
   }
   return { kind: "blocked", message };
@@ -229,8 +321,16 @@ function inspectOrganization(organizationRoot) {
     parseRepo(dataSlot?.repository_db?.repo) ??
     parseRepo(dataSlot?.repository_db?.url) ??
     parseRepo(dataSlot?.git?.url) ??
-    (githubOrg ? `${githubOrg}/mission-control-data` : null);
-  const repository = dataRepo ? gh(`repos/${dataRepo}`) : { status: 1, value: null };
+    (githubOrg ? parseRepo(`${githubOrg}/mission-control-data`) : null);
+  const dataRepoOwner = dataRepo?.split("/")[0] ?? null;
+  const ownerMatches =
+    typeof githubOrg === "string" &&
+    typeof dataRepoOwner === "string" &&
+    dataRepoOwner.toLowerCase() === githubOrg.toLowerCase();
+  const repository =
+    dataRepo && ownerMatches
+      ? gh(`repos/${dataRepo}`)
+      : { status: 1, value: null };
   const repositoryExists = repository.status === 0;
   const dataState = classifyDataState(dataSlot, repositoryExists);
   const result = {
@@ -243,6 +343,14 @@ function inspectOrganization(organizationRoot) {
     errors: [],
     notes: [],
   };
+
+  if (!dataRepo) {
+    result.errors.push("Mission Control data slot nemá platnou GitHub repo identitu");
+  } else if (!ownerMatches) {
+    result.errors.push(
+      `Mission Control data repo ${dataRepo} nepatří GitHub Organization ${githubOrg ?? "<missing>"}`,
+    );
+  }
 
   if (["missing-slot", "incomplete"].includes(dataState)) {
     result.errors.push(`Mission Control data stav je ${dataState}`);
@@ -276,17 +384,42 @@ function inspectOrganization(organizationRoot) {
         result.errors.push("Mission Control data config na v3 není validní JSON");
       }
     }
-    const collaborators = gh(`repos/${dataRepo}/collaborators?affiliation=all&per_page=100`);
-    if (collaborators.status !== 0 || !Array.isArray(collaborators.value)) {
-      result.errors.push("Nelze ověřit živý GitHub write okruh data repa");
-    } else {
-      result.writers = collaborators.value.filter(
-        (entry) => entry?.permissions?.push || entry?.permissions?.maintain || entry?.permissions?.admin,
-      ).length;
-    }
     const protection = evaluateProtection(branchProtection(dataRepo));
     result.enforcement_mode = protection.mode;
     if (dataState === "active") result.errors.push(...protection.problems);
+    const collaborators = ghPaginatedArray(
+      `repos/${dataRepo}/collaborators?affiliation=all&per_page=100`,
+    );
+    if (collaborators.status !== 0 || !Array.isArray(collaborators.value)) {
+      result.errors.push("Nelze ověřit živý GitHub write okruh data repa");
+    } else {
+      const writers = collaborators.value.filter(
+        (entry) => entry?.permissions?.push || entry?.permissions?.maintain || entry?.permissions?.admin,
+      );
+      result.writers = writers.length;
+      const outsideLogins = [];
+      const membershipProbeFailures = [];
+      for (const writer of writers.filter((entry) => entry?.type === "User")) {
+        const membership = organizationMembership(githubOrg, writer.login);
+        if (membership.kind === "outside") outsideLogins.push(writer.login);
+        if (membership.kind === "blocked") {
+          membershipProbeFailures.push({
+            login: writer.login,
+            message: membership.message,
+          });
+        }
+      }
+      if (dataState === "active") {
+        result.errors.push(
+          ...evaluateTrustedProcessCircle({
+            enforcementMode: protection.mode,
+            writers,
+            outsideLogins,
+            membershipProbeFailures,
+          }),
+        );
+      }
+    }
   }
 
   if (appSlot && normalizedSlotStatus(appSlot) === "active") {
@@ -296,8 +429,21 @@ function inspectOrganization(organizationRoot) {
   return result;
 }
 
+export function defaultWorkspaceRoot() {
+  const scriptRoot = fileURLToPath(new URL("../", import.meta.url));
+  const result = spawnSync("git", ["worktree", "list", "--porcelain", "-z"], {
+    cwd: scriptRoot,
+    encoding: "utf8",
+  });
+  const primary = result.stdout
+    ?.split("\0")
+    .find((entry) => entry.startsWith("worktree "))
+    ?.slice("worktree ".length);
+  return result.status === 0 && primary ? resolve(primary) : resolve(scriptRoot);
+}
+
 function parseArgs(argv) {
-  const args = { json: false, workspaceRoot: fileURLToPath(new URL("../", import.meta.url)) };
+  const args = { json: false, workspaceRoot: defaultWorkspaceRoot() };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === "--json") args.json = true;
     else if (argv[i] === "--workspace-root") args.workspaceRoot = resolve(argv[++i]);
@@ -308,12 +454,25 @@ function parseArgs(argv) {
 
 export function runSmoke(workspaceRoot) {
   const organizationsRoot = join(workspaceRoot, "organizations");
-  return readdirSync(organizationsRoot, { withFileTypes: true })
+  if (!existsSync(organizationsRoot)) {
+    throw new Error(`Chybí Lazurio organizations mountpoint: ${organizationsRoot}`);
+  }
+  const roots = readdirSync(organizationsRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => join(organizationsRoot, entry.name))
     .filter((root) => existsSync(join(root, "company.gen3.json")))
+    .filter(
+      (root) =>
+        json(join(root, "company.gen3.json"))?.organization_kind !==
+        "template",
+    )
     .sort()
-    .map(inspectOrganization);
+  if (roots.length === 0) {
+    throw new Error(
+      `Mission Control trust smoke odmítá false-green běh bez Organizací: ${organizationsRoot}`,
+    );
+  }
+  return roots.map(inspectOrganization);
 }
 
 function main() {
@@ -336,4 +495,13 @@ function main() {
   if (failed.length > 0) process.exitCode = 1;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    main();
+  } catch (error) {
+    console.error(
+      `Mission Control trust smoke: FAIL (${error instanceof Error ? error.message : String(error)})`,
+    );
+    process.exitCode = 1;
+  }
+}
