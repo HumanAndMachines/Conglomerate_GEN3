@@ -3,8 +3,8 @@ import {
   UPDATE_CLI_USAGE,
   formatUpdateLaneReport,
   parseUpdateCliArgs,
-  runUpdateLane,
 } from "./update-cli-lib.mjs";
+import { runIsolatedLazurioUpdate } from "./lazurio-update-runner-lib.mjs";
 
 const parsed = parseUpdateCliArgs(Bun.argv.slice(2));
 if (!parsed.ok) {
@@ -18,7 +18,7 @@ if (parsed.options.help) {
 }
 
 const rootPath = resolve(parsed.options.root ?? join(import.meta.dirname, "..", ".."));
-const result = await runUpdateLane({ rootPath, options: parsed.options });
+const result = await runIsolatedLazurioUpdate({ rootPath });
 
 if (parsed.options.json) console.log(JSON.stringify(result, null, 2));
 else console.log(formatUpdateLaneReport(result));

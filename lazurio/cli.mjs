@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 
 import { renderHumanDoctorReport } from "../launchpad/src/doctor-output-lib.mjs";
 import { DOCTOR_EXIT_CODES } from "../launchpad/src/doctor-surface-lib.mjs";
+import { formatUpdateLaneReport } from "../launchpad/src/update-cli-lib.mjs";
+import { runIsolatedLazurioUpdate } from "../launchpad/src/lazurio-update-runner-lib.mjs";
 import { buildLazurioContext, buildLazurioDoctorReport } from "./lib.mjs";
 import {
   buildLazurioSearchStatus,
@@ -48,6 +50,12 @@ async function run(argv) {
       error.lazurioExitCode ??= DOCTOR_EXIT_CODES.no_report;
       throw error;
     }
+  }
+
+  if (options.command === "update") {
+    const report = await runIsolatedLazurioUpdate({ rootPath: options.root });
+    console.log(options.json ? JSON.stringify(report, null, 2) : formatUpdateLaneReport(report));
+    return report.ok ? 0 : 1;
   }
 
   if (options.command === "search") {
@@ -223,11 +231,12 @@ function requiredInlineValue(arg, name) {
 
 function usage() {
   return [
-    "Lazurio CLI v0 (unstable, read-only)",
+    "Lazurio CLI v0 (unstable)",
     "",
     "Použití:",
     "  lazurio context [--organization <slug>] [--json] [--root <cesta>]",
     "  lazurio doctor [--json] [--root <cesta>]",
+    "  lazurio update [--json] [--root <cesta>]",
     "  lazurio search <dotaz> [--mode exact|lexical|semantic|hybrid] [--scope lazurio] [--limit N] [--json] [--root <cesta>]",
     "  lazurio search --status [--scope lazurio] [--json] [--root <cesta>]",
     "  lazurio search --update [--embed] [--scope lazurio] [--json] [--root <cesta>]",

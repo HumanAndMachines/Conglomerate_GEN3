@@ -160,7 +160,8 @@ Launchpad skládá dostupné Organizace scan-first:
    allowlist ani authored business registry.
 2. `organizations/*/company.gen3.json` je autorita lokálních Organization
    mountů (decision 0042). Když checkout přibude pod `organizations/`, objeví
-   se akcí **Synchronizovat** (`POST /api/sync`) nebo po restartu Launchpadu.
+   se po explicitní akci **Synchronizovat** (`POST /api/sync`) nebo po restartu
+   Launchpadu.
 3. Uvnitř každé namountované Organizace je
    `modules.manifest.json#module_slots[]` autorita dostupných, omezených a
    plánovaných modulových repozitářů.
@@ -169,15 +170,16 @@ Pro aktualizaci musí `company.gen3.json#company.repository` deklarovat Git URL
 Organization rootu. Každý aktivní modul pak deklaruje vlastní `git.url`,
 `git.branch` a cílovou `path` v `modules.manifest.json#module_slots[]`.
 
-`Synchronizovat` je read-only rediscovery už existujících lokálních mountů.
-Mutační **Stáhnout změny** u aktivní Organizace v Launchpadu a
-`bun run update --org <slug>` (CLI)
-provádějí manifest-driven materializaci ve dvou fázích: nejdřív bezpečně
-fast-forwardnou Organization root, potom z nového manifestu sestaví čerstvý
-inventář a chybějící aktivní Workspace/root sloty naklonují na přesně
-deklarovanou větev. `planned_slot` bez Git souřadnic se nikdy neklonuje.
-Když aktuální GitHub identita repo nebo branch nedokáže načíst, checkout
-zůstane `missing_access`; Launchpad žádný paralelní ACL ani grant nevytváří.
+První render a quiet refresh jsou GET-only: čtou lokální snapshot bez fetch a
+bez Git mutace. **Synchronizovat** a CLI `lazurio update` volají tentýž jediný
+sekvenční engine. Ten provede Lazurio Root → Organization Rooty → z čerstvého
+manifestu sestavené Workspace Moduly. Existující checkouty převádí výhradně na
+clean `main` přes ff-only; chybějící aktivní Workspace Modul naklonuje atomicky
+na deklarovaný `main`. `planned_slot` bez Git souřadnic se nikdy neklonuje.
+Když aktuální GitHub identita repo nebo branch nedokáže načíst, výsledek je
+`blocked` s access handoffem; Launchpad žádný paralelní ACL ani grant nevytváří.
+Productionspace, Personalspace, worktrees a root-space repository-db jsou mimo
+obecný update engine.
 
 Launchpad čte Launchpad GEN3 root a Organization GEN3 manifesty:
 
@@ -573,9 +575,9 @@ Web shell v1 je pracovní dashboard nad discovery a runtime daty. Poskytuje:
 
 - `/` statické UI
 - `/api/apps` pro nalezené aplikace, firmy, cesty a discovery chyby
-- `POST /api/sync` pro Synchronizovat: znovu projede lokální auto-discovery a
-  vrátí čerstvý apps response (decision 0042); nový lokální mount se objeví bez
-  restartu Launchpadu
+- `GET /api/update/status` pro lokální, no-fetch update snapshot
+- `POST /api/update` a `POST /api/sync` pro jediný explicitní Lazurio update;
+  Sync po doběhnutí vrátí i čerstvou lokální aplikační projekci (decision 0129)
 - `/api/doctor` pro strukturovaný Doctor report nad discovery a runtime
   checks
 - `/health` pro health samotného Launchpadu
@@ -636,10 +638,11 @@ kdy akci blokuje připravenost appky.
 UI v1 je wireframe. Design není finální, ale každý ovládací prvek musí mít
 jasný mechanismus:
 
-- `Synchronizovat` volá `POST /api/sync` (nový průchod lokálního discovery) a
-  znovu čte `/api/doctor`; tichý refresh běží po 15 sekundách pouze ve viditelné
-  a fokusované kartě. Při `document.hidden` nebo ztrátě fokusu se úplně zastaví
-  a po návratu proběhne jeden okamžitý refresh.
+- `Synchronizovat` volá `POST /api/sync`, tedy jediný update engin nad celou
+  spravovanou hierarchií, a potom znovu čte lokální aplikace i Doctor. Tichý
+  refresh je GET-only a běží po 15 sekundách pouze ve viditelné a fokusované
+  kartě. Při `document.hidden` nebo ztrátě fokusu se úplně zastaví a po návratu
+  proběhne jeden okamžitý refresh.
 - `Otevřít` otevře URL z manifestu, aplikaci nestartuje.
 - Filtry mění jen lokální pohled nad načteným API výstupem.
 - Detail aplikace ukazuje source-of-truth cestu a manifest data.
@@ -686,49 +689,24 @@ jasný mechanismus:
   Organizations jej mohou stabilně vlastnit, ale na jedné mašině běží daný
   listener vždy jen jednou a další explicitní Start/Open jej převezme.
 - `Logs` čte lokální log mimo Git.
-- `Stáhnout novější verzi` nejdřív ověří, že lokální `origin` a upstream
-  odpovídají repozitáři a větvi deklarovaným v Organization manifestu. Potom
-  fetchne pouze tuto manifestovou větev, zapamatuje si její přesný commit a
-  provede lokální `git merge --ff-only <ověřený-commit>` na čistém
-  expected-branch checkoutu. Mutace proto nikdy znovu nečte pohyblivý
-  `origin`/upstream.
-- `Stáhnout a zachovat změny` je explicitní autostash flow pro checkout s
-  incoming commity a bez outgoing commitů: odloží tracked i untracked změny,
-  provede fast-forward, obnoví i staged stav a stash smaže až po úspěšném
-  obnovení. Při konfliktu je nová verze stažená, konflikt zůstane viditelný a
-  bezpečnostní stash se nesmaže.
-- `Stáhnout změny` je jedna přímá builder akce pro právě otevřenou Organizaci.
-  Samostatný řádek pod stavem Lazurio ukazuje, v kolika modulech jsou nové
-  změny. V první fázi stáhne Organization root repo; ve druhé znovu načte jeho
-  manifest, aktualizuje existující Workspace/root sloty a chybějící
-  aktivní sloty bezpečně naklonuje. GitHub credentials kolegy zůstávají access
-  autoritou; nedostupný checkout se ohlásí jako `missing_access`, `planned_slot`
-  se nematerializuje. Pro bezpečně autostashovatelné drafty použije stejné
-  recovery flow a každý blocker izoluje, aby nezastavil ostatní repozitáře.
-  Productionspace, wrong-branch, outgoing a diverged checkouty přeskočí a
-  vypíše je v souhrnu. Klonování nespouští package skripty; app-scoped
-  dependencies instaluje až explicitní `Install`/`Otevřít` runtime flow.
+- **Synchronizovat** je jediná Git update akce pro netechnického Buildera.
+  Engine ověří přesný origin, fetchne `main`, uloží případné tracked,
+  untracked i binary změny do pojmenovaného a ověřeného recovery stashe a
+  tento stash automaticky neobnovuje ani nemaže. Cizí branch přepne zpět na
+  `main`, ale její commity zachová. Potom provede jen `pull --ff-only
+  --no-rebase` a stav znovu ověří. Lokální main commity, diverged historie,
+  nebezpečný detached stav nebo rozpracovaný merge/rebase/am vrátí `blocked`
+  s přesným tlačítkem/promptem **Vyřešit s Codexem**. Každé nové spuštění stav
+  znovu zjistí; nevzniká plan/apply/resume ani skrytý update journal.
+- Nový commit v Organization rootu může změnit manifest. Engine ho proto po
+  root update načte znovu a teprve pak sekvenčně aktualizuje nebo atomicky
+  materializuje Workspace Moduly. Klonování ani update nikdy nespouští
+  libovolné package skripty; `bun install --frozen-lockfile --ignore-scripts`
+  je povolený jen tam, kde repo deklaruje `package.json` a Bun lockfile.
 
-Aktivní Organization pohled shrnuje Git aktualizace do jednoduchého stavového
-řádku přímo pod stavem Lazurio. Při dostupných změnách ukáže počet modulů
-a jediné tlačítko **Stáhnout změny**; technické stavy jednotlivých modulů dál
-zůstávají na jejich kartách a v detailu.
-
-Když se stažení nepovede, modulová karta drží chybu jako trvalý recovery
-warning a instruuje uživatele, aby její screenshot vložil agentovi do Codexu.
-Launchpad sám při `Stáhnout` stále nikdy nerebasuje: používá pouze `ff-only`
-a explicitní autostash. Pokud ale Git read model zjistí rebase rozpracovaný
-jiným nástrojem nebo agentem, karta nabídne guarded **Abortnout rebase**.
-`POST /api/git/repos/<repo-key>/rebase-abort` před mutací znovu ověří deklarovaný
-Organization/workspace scope i živý rebase marker, spustí jen `git rebase
---abort` a výsledek znovu přečte; nikdy nepoužívá `reset --hard` ani nemaže
-stash.
-
-`git am` používá na disku podobný marker jako apply-backend rebase. Launchpad
-ho proto klasifikuje samostatně: ukáže trvalé recovery varování a žádost
-o screenshot pro Agenta, ale nenabídne `git rebase --abort`. Skutečný
-apply-backend rebase zůstává rozpoznaný jako rebase a guarded abort pro něj
-funguje.
+Pokud Git read model zjistí rozpracovaný rebase nebo `git am`, Launchpad stav
+jen klasifikuje a nabídne přesný handoff do Codexu. Obecný algoritmus žádnou
+z těchto operací automaticky nedokončuje ani neabortuje.
 
 ### Čerstvost Git stavu
 

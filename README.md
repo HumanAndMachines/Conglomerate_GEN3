@@ -2,7 +2,13 @@
 
 Sdílený framework repo pro **Lazurio**: jedno místo na počítači člověka nebo AI kolegy, odkud se načítá jeho osobní kontext a více GitHub-like Organizací.
 
-Tenhle root není jedna firma ani klientské workspace repo. Je to společný framework, který vyvíjí Rozjedeme.ai a který je na GitHubu hostovaný jako `HumanAndMachines/Lazurio`, protože organizace `HumanAndMachine` byla zabraná. Drží sdílený Launchpad, Guide, šablony, manuály, privátní `personalspace/` mountpoint a lokální mountpointy Organizací; Organizace v něm zůstávají oddělené access hranice a vlastní git repozitáře.
+Tenhle root není jedna firma ani klientské workspace repo. Je to společný
+framework vyvíjený Rozjedeme.ai. Historická GitHub organization zůstává
+`HumanAndMachines` a canonical repo `HumanAndMachines/Lazurio`; tyto interní
+identity nejsou uživatelský název systému. Root drží sdílený Launchpad, Guide,
+šablony, manuály, privátní `personalspace/` mountpoint a lokální mountpointy
+Organizací; Organizace v něm zůstávají oddělené access hranice a vlastní Git
+repozitáře.
 
 Cílové základy budoucího `Lazurio/Lazurio` drží
 [ARCHITECTURE.md](ARCHITECTURE.md): čtyři základní pojmy `Owner`, `Machine`,
@@ -12,8 +18,8 @@ od cíle mohou lišit do dokončení migrace `CAC-0092`.
 
 ## Lazurio CLI v0
 
-První interní řez Lazurio CLI je záměrně read-only a nestabilní. Agentovi
-zpřístupňuje bezpečnou projekci identity Principála, aktuální Mašiny a stavu
+První interní řez Lazurio CLI je nestabilní. Read-only příkazy Agentovi
+zpřístupňují bezpečnou projekci identity Principála, aktuální Mašiny a stavu
 Personalspace, na explicitní selektor jednu lokálně objevenou Organization a
 úzký manifest-scoped search pilot pro Lazurio; nečte SOUL, obsah GBrainu, chat,
 sessions, secrets ani mandáty.
@@ -26,6 +32,7 @@ Ve vývojovém checkoutu se CLI spouští přes Bun:
 bun run lazurio -- context --json
 bun run lazurio -- context --organization HumanAndMachine-ai
 bun run lazurio -- doctor
+bun run lazurio -- update
 bun run lazurio -- search "český dotaz"
 bun run lazurio -- search --status
 ```
@@ -36,14 +43,17 @@ s `launchpad.gen3.json`, nebo samostatný Personalspace root na Buddy VPS s
 Launchpad rootu používá existující strukturované Doctor jádro, v Personalspace
 rootu spouští přesně doctor command deklarovaný jeho manifestem. CLI v0 není
 distribuční package, veřejné Core API, MCP server ani write surface.
+Jediný mutační příkaz `lazurio update` sekvenčně aktualizuje Lazurio Root →
+Organization Rooty → Workspace Moduly na clean `main` přes ff-only; jeho přesný
+kontrakt drží [manual/lazurio-runtime-install-interface.md](manual/lazurio-runtime-install-interface.md).
 Organization selektor nepředstírá membership ani effective permissions:
 Organization, Team, modul i aplikace ve výstupu drží provider access
 `not_evaluated` a oddělují jej od lokální přítomnosti checkoutu.
 
 ## Rezidentní distribuce
 
-`distribution/` drží build kontrakt pro celý non-Git Lazurio Root profilu
-Buddy a později AI Kolegy. Z čistého exact source commitu generuje jediný root
+`distribution/` drží build kontrakt pro non-Git Lazurio Root profilů Buddy a
+Workspace. Z čistého exact source commitu generuje jediný root
 `AGENTS.md`, manifest s hashi payloadu, public-safe offline manuál, Resident
 Doctor a deterministický per-platformní USTAR artefakt. Profilové fragmenty se
 ve source nejmenují `AGENTS.md`, takže v development checkoutu nejsou aktivní.
@@ -63,7 +73,7 @@ lifecycle enginem.
 Search ve výchozím `exact` režimu čte aktuální filesystem přes `rg`, takže vidí
 i novou neindexovanou změnu v explicitně deklarovaném nested repu, přestože
 jeho Organization mount ignoruje parent root Git. Nespouští však plošné
-`rg --no-ignore` nad Konglomerátem: povolené zdroje skládá z Launchpad discovery,
+`rg --no-ignore` nad Lazuriem: povolené zdroje skládá z Launchpad discovery,
 Organization manifestu a verzovaného pilotního registru. QMD lane je volitelný
 lokální index pro `lexical`, `semantic` a `hybrid`; jeho stav a čerstvost ukáže
 `search --status` a rozbitý QMD neblokuje exact lane. Úplný kontrakt, bezpečnostní
@@ -151,11 +161,10 @@ adapter publikovaný a cross-repo otestovaný.
 
 ## Hlavní pojmy
 
-- Lazurio — současný název systému a sdíleného frameworku.
-- Konglomerát — lokální celek více Organizací pod jedním Launchpad rootem na jedné mašině; dostupné Organizace se auto-discoverují z `organizations/*/company.gen3.json`, `launchpad.gen3.json` drží jen sdílená root metadata; `planned` sloty jsou per-machine v gitignored `launchpad.gen3.local.json`.
+- Lazurio root — lokální celek více Organizací pod jedním Launchpadem na jedné mašině; dostupné Organizace se auto-discoverují z `organizations/*/company.gen3.json`, `launchpad.gen3.json` drží jen sdílená root metadata; `planned` sloty jsou per-machine v gitignored `launchpad.gen3.local.json`.
 - `launchpad/` — sdílený **builder-first Launchpad GEN3** (decision 0047 v manual/decision-register.md, reviduje CEO-first 0024): surface pro Buildery Organizace (Organization Builder) — spouštění aplikací z `main` i z worktrees podle Mission Control plánů (decision 0049), read-only přehled productionspace a dynamické načítání Organizací/Workspaces/modulů se stavy `available` / `missing_access` / `planned_slot`; Admin Organizace (Organization Admin), vstup Uživatelů Organizace (Organization User) do produkčních workspace aplikací a deploy/server konfigurace patří do Lazurio Dashboardu.
 - `guide/` — sdílený netechnický onboarding kurz do práce s digitální kanceláří a AI kolegy; technická cesta „mapa systému“ (Launchpad root, Organizace, workspaces, productionspace, personalspace) je plánovaná budoucí část kurzu.
-- `launchpad.gen3.json` — strojově čitelná sdílená root metadata (root, lokální povrchy), ne allowlist Organizací; Organizace i šablony se auto-discoverují skenem disku a `planned` sloty s personalspace ownerem žijí per-machine v gitignored `launchpad.gen3.local.json`. Flow pro nový Organization modul je „manifest se stáhne přes `Pullnout vše` / `bun run update --org` → GitHub přístup dovolí checkout bezpečně naklonovat → rediscovery ho ukáže v Launchpadu“ (decision 0042 v `manual/decision-register.md`, implementační plán CAC-0015).
+- `launchpad.gen3.json` — strojově čitelná sdílená root metadata (root, lokální povrchy), ne allowlist Organizací; Organizace i šablony se auto-discoverují skenem disku a `planned` sloty s personalspace ownerem žijí per-machine v gitignored `launchpad.gen3.local.json`. Nový Organization Modul se po stažení čerstvého manifestu přes `lazurio update` bezpečně materializuje podle živého GitHub přístupu a rediscovery jej ukáže v Launchpadu (decisions 0042/0129).
 - `personalspace/` — integrální privátní mountpoint Lazurio rootu pro
   owner repa lidí a AI kolegů. Nepatří do GitHub organizace firmy, funguje i
   bez Buddyho a drží osobní moduly i Gbrain custody mimo firemní pravdu.
@@ -221,8 +230,8 @@ bun run install:windows-shortcut
 ```
 
 Instalátor atomicky připraví stabilní uživatelský bootstrap a konfiguraci pod
-`%LOCALAPPDATA%\HumanAndMachine\Launchpad`, vytvoří položku
-`Lazurio Launchpad` ve Start Menu a požádá Windows o připnutí na
+`%LOCALAPPDATA%\HumanAndMachine\Launchpad` (legacy interní instalační cesta),
+vytvoří položku `Lazurio Launchpad` ve Start Menu a požádá Windows o připnutí na
 hlavní panel. Zkratka neukazuje přímo do pohyblivého checkoutu: bootstrap
 načte canonical root z `install.json` a spustí jeho `Launchpad.ps1`, který
 zůstává jediným vlastníkem Bun resolution a startu Launchpadu. Instalace

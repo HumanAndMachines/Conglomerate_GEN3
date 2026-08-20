@@ -19,11 +19,14 @@ autoritu.
 1. Primární checkout `<Lazurio>` je reference pro Launchpad/Doctor.
    Neměň v něm trackovaný obsah, nezakládej v něm feature branch a drž ho na
    `main`, pokud tomu nebrání už existující zachovaná práce. Před převzetím
-   každého tasku v něm spusť `bun run doctor:task`. Freshness lane provede
-   bounded fetch `origin/main`; clean-behind main aktualizuj guarded lane
-   `bun run update` (ff-only) a gate zopakuj. Dirty/ahead/diverged/wrong-branch
-   stav zachovej a oprav přes worktree — automatický `pull --rebase
-   --autostash` není default a `--preserve` je jen explicitní volba.
+   každého tasku v něm spusť `bun run doctor:task`. Jediný `lazurio update`
+   provede bounded fetch a sekvenčně srovná spravovanou hierarchii na clean
+   `main` jen fast-forwardem. Náhodné dirty změny uloží do ověřeného recovery
+   stashe bez automatického obnovení, cizí branch přepne na `main` a její
+   commity zachová. Ahead/diverged main, nebezpečný detached stav a
+   rozpracovaný merge/rebase/am zůstanou blocked s promptem pro Codex; Agent je
+   nikdy neopravuje resetem ani přepisem historie. Productionspace,
+   Personalspace, worktrees a root-space repository-db update nepřekračuje.
 2. Než něco vytvoříš, spusť `bun run worktrees:status`. Audit čte Git registry,
    takže ukáže i linked worktrees mimo root. Je to informativní inventura;
    `bun run worktrees:check` je fail-closed kontrola umístění, metadat a Git
@@ -63,8 +66,11 @@ autoritu.
 5. Nevytvářej nové worktrees v `/tmp`, vedle repa, v
    `~/.hermes/worktrees`, `.claude/worktrees`, `.codex-tmp`,
    `.pr-worktrees`, legacy `.worktrees/<code>` ani uvnitř jiného repa.
-6. Pokud primary není na `main` nebo je dirty, nic nezahazuj. Zachovej cizí
-   práci a nový worktree založ z ověřeného `origin/main`.
+6. Pokud primary není na `main` nebo je dirty, nic ručně nezahazuj ani
+   neobnovuj. `lazurio update` zachová cizí branch/commity a případnou
+   necommitnutou práci uloží do pojmenovaného recovery stashe. Nový task
+   přesto zakládej výhradně v worktree z ověřeného `origin/main`; pokud update
+   vrátí blocked, použij jeho Codex prompt a zachovej všechny commity i stashe.
 7. Ještě před otevřením nebo předáním PR napiš rozhodnutelný popis: motivaci a
    relevantní souvislosti, cílový stav a přínos merge, skutečný rozsah včetně
    vědomě vynechaných částí, ověření a zbývající rizika, blokery či navazující

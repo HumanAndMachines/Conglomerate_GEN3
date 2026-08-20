@@ -34,10 +34,12 @@ hádání.
 
 ## Názvosloví
 
-**Lazurio** je aktuální název systému a sdíleného frameworku. Historické
-produktové názvy zůstávají pouze v auditních záznamech rozhodnutí. GitHub
-organization je `HumanAndMachines` (singulární `HumanAndMachine` bylo
-zabrané); canonical repo rootu je `HumanAndMachines/Lazurio`.
+**Lazurio** je aktuální uživatelský název systému. Dřívější názvy
+„HumanAndMachine“ a „Conglomerate“ jsou deprecated a v nové komunikaci směrem
+k uživateli se nepoužívají (decision 0128 v manual/decision-register.md).
+Historická GitHub organization zůstává záměrně `HumanAndMachines` a canonical
+repo rootu `HumanAndMachines/Lazurio`; interní identity se rebrandem
+nepřepisují.
 
 ## Model spolupráce: Principál a Agenti
 
@@ -250,12 +252,18 @@ neinteraktivní běhy bez přímého App chatu s Kolegou.
    (`local_execution: forbidden`). Hranici i zjištění, jestli Principál
    Buddyho má, drží [`manual/hosted-buddy-vps.md`](manual/hosted-buddy-vps.md).
 2. **Ověř Git stav.** Před taskem spusť v primárním checkoutu
-   `bun run doctor:task`; clean main pozadu aktualizuje guarded lane
-   `bun run update` (agent startující v Organizaci:
-   `bun run update --org <slug>` z rootu). Dirty, ahead, diverged nebo
-   wrong-branch stav nikdy nepřepisuj — zachovej práci a oprav přes
-   worktree. Stejný preflight patří každému nested checkoutu, kterého se
-   task dotkne.
+   `bun run doctor:task`; jednotný `lazurio update` pak sekvenčně srovná
+   Lazurio Root → Organization Rooty → Workspace Moduly na clean `main` a
+   použije výhradně fast-forward. Náhodné tracked i untracked změny v primárním
+   checkoutu uloží do ověřeného recovery stashe a neobnovuje je; cizí branch
+   přepne zpět na `main`, její commity ale zachová. Lokální commity na `main`,
+   diverged historii, detached stav bez bezpečné vazby a rozpracovaný
+   merge/rebase/am neopravuje algoritmem: vrátí přesný prompt „Vyřešit s
+   Codexem“. Productionspace, Personalspace, worktrees a root-space
+   repository-db jsou z obecného update/doctor mechanismu vyloučené. Agent
+   přesto nikdy nezačíná práci v primárním checkoutu; pro všechny změny používá
+   task/PR worktree. Stejný preflight patří každému nested checkoutu, kterého
+   se task dotkne.
 3. **Drž worktree disciplínu.** Primární checkout zůstává na `main` a nemění
    se v něm trackovaný obsah. Postup, kanonickou cestu
    `.worktrees/root/<canonical-plan-basename>/` se sidecarem, PR lifecycle

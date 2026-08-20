@@ -2,7 +2,12 @@
 
 Tento manuál je source of truth pro maintenance agenty, kteří udržují **Lazurio root**.
 
-Lazurio je současný název systému a sdíleného frameworku. Tento root (`HumanAndMachines/Lazurio`) není jedna firma ani klientská organizace; je to sdílený framework pro Launchpad, Guide, templates, manuály, privátní `personalspace/` a lokální mountpointy GitHub-like organizací v `organizations/`.
+Lazurio je současný název systému a sdíleného frameworku. Tento root
+(`HumanAndMachines/Lazurio`) není jedna firma ani klientská
+Organizace; je to sdílený framework pro Launchpad, Guide, templates, manuály,
+privátní `personalspace/` a lokální mountpointy GitHub-like Organizací v
+`organizations/`. Provider/repo identita zůstává historická a není
+uživatelským názvem systému (decision 0128).
 
 ## Maintenance účel
 

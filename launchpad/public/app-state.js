@@ -59,13 +59,14 @@ export function createLatestDataLoadCoordinator({ run } = {}) {
   let inFlight = null;
   let queuedFresh = null;
 
-  function start({ quiet }) {
+  function start({ quiet, sync }) {
     const requestGeneration = generation;
-    const entry = { quiet, promise: null };
+    const entry = { quiet, sync, promise: null };
     inFlight = entry;
     try {
       entry.promise = Promise.resolve(run({
         quiet,
+        sync,
         requestGeneration,
         isCurrent: () => requestGeneration === generation,
       }));
@@ -78,14 +79,14 @@ export function createLatestDataLoadCoordinator({ run } = {}) {
       const queued = queuedFresh;
       queuedFresh = null;
       if (!queued) return;
-      const next = start({ quiet: queued.quiet });
+      const next = start({ quiet: queued.quiet, sync: queued.sync });
       next.then(queued.resolve, queued.reject);
     };
     entry.promise.then(settle, settle);
     return entry.promise;
   }
 
-  function queueFresh({ quiet }) {
+  function queueFresh({ quiet, sync }) {
     if (!queuedFresh) {
       let resolve;
       let reject;
@@ -93,22 +94,21 @@ export function createLatestDataLoadCoordinator({ run } = {}) {
         resolve = resolvePromise;
         reject = rejectPromise;
       });
-      // Když supersedujeme ruční sync, zachováme silnější non-quiet lane
-      // včetně forced /api/sync a následného Doctora.
-      queuedFresh = { quiet: quiet && inFlight.quiet, promise, resolve, reject };
+      queuedFresh = { quiet: quiet && inFlight.quiet, sync: Boolean(sync), promise, resolve, reject };
     } else {
       queuedFresh.quiet = queuedFresh.quiet && quiet;
+      queuedFresh.sync = queuedFresh.sync || Boolean(sync);
     }
     return queuedFresh.promise;
   }
 
-  function load({ quiet = false, fresh = !quiet } = {}) {
+  function load({ quiet = false, fresh = !quiet, sync = false } = {}) {
     if (fresh) generation += 1;
     if (inFlight) {
       if (!fresh) return inFlight.promise;
-      return queueFresh({ quiet });
+      return queueFresh({ quiet, sync });
     }
-    return start({ quiet });
+    return start({ quiet, sync });
   }
 
   return { load };

@@ -14,6 +14,7 @@
     "lazurio": "bun lazurio/cli.mjs",
     "lazurio:test": "bun test --cwd lazurio --timeout 15000 lazurio.test.mjs search.test.mjs parity.test.mjs core/import-boundary.test.mjs core/module-contract-lib.test.mjs core/server-identity-lib.test.mjs",
     "resident:build": "bun distribution/build.mjs",
+    "workspace-runtime:build": "bun distribution/build.mjs --profile workspace",
     "resident:test": "bun test --timeout 60000 distribution/build.test.mjs distribution/updater.test.mjs distribution/buddy-service.test.mjs distribution/buddy-rollout.test.mjs provisioning/ansible-contract.test.mjs tests/bridge",
     "resident:operator:test": "bun test provisioning/ansible-contract.test.mjs",
     "resident:install": "bun distribution/runtime/updater.mjs install",

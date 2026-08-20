@@ -70,6 +70,17 @@ test("install generation hashes one deterministic cross-platform source set", as
   ]);
 });
 
+test("installed runtime generation comes from the immutable artifact digest", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lazurio-runtime-generation-"));
+  tempRoots.push(root);
+  const digest = "d".repeat(64);
+  await writeFile(join(root, "lazurio.resident.json"), JSON.stringify({
+    schema_version: "lazurio.resident.manifest.v1",
+    payload: { digest },
+  }));
+  expect(computeServerInstallGeneration(root)).toBe(digest);
+});
+
 test("classifier never reuses stale, foreign, malformed, or legacy same-root servers", () => {
   const expected = {
     rootId: "1".repeat(64),

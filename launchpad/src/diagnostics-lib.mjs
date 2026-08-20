@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "fs";
+import { existsSync } from "fs";
 import { readFile, readdir, stat } from "fs/promises";
 import { basename, join, posix } from "path";
 import {
@@ -6,7 +6,6 @@ import {
   organizationRelativePathIssue,
   readJson,
 } from "./discovery-lib.mjs";
-import { UPDATE_CHANNELS, selectHighestStableTag } from "./update-lib.mjs";
 import { buildGitApiResponse, compactGitSummaryForApp } from "./git-api-lib.mjs";
 import {
   createRuntimeManager,
@@ -835,7 +834,7 @@ export function buildEnvironmentChecks({ companiesRoot, companies = [], template
     ...toolChecks,
     gitRootCheck(companiesRoot),
     gitWorktreeCheck(companiesRoot),
-    updateChannelCheck(companiesRoot),
+    lazurioUpdateCheck(companiesRoot),
     gitSubmodulesCheck(companiesRoot),
     gitRepoMountsCheck(companiesRoot, repoMounts),
     gitignoreProtectionCheck(companiesRoot, repoMounts),
@@ -1725,46 +1724,17 @@ function gitWorktreeCheck(companiesRoot) {
   };
 }
 
-// Anti-stuck check update kanálu (decision 0059, draft 0080). Read-only:
-// čte jen lokální refs a config, NIKDY nefetchuje ani nemutuje — mutační
-// update je samostatný guarded tool (/api/update), ne Doctor check.
-export function updateChannelCheck(companiesRoot) {
+// Read-only kontrola stejného invariantu jako jediný `lazurio update`. Čte
+// pouze lokální refs; nikdy nefetchuje ani nemutuje a nevytváří stable/nightly
+// kanál jako druhou update autoritu (decision 0129).
+export function lazurioUpdateCheck(companiesRoot) {
   const base = {
-    id: "update.channel",
+    id: "update.lazurio",
     severity: "local-state",
-    title: "Update kanál",
-    paths: ["launchpad.gen3.local.json"],
+    title: "Lazurio update",
+    paths: ["."],
     links: [],
   };
-
-  let channel = "stable";
-  let configState = "defaulted";
-  const configPath = join(companiesRoot, "launchpad.gen3.local.json");
-  if (existsSync(configPath)) {
-    try {
-      const configured = JSON.parse(readFileSync(configPath, "utf8"))?.update_channel;
-      if (configured !== undefined && configured !== null && configured !== "") {
-        if (UPDATE_CHANNELS.includes(configured)) {
-          channel = configured;
-          configState = "configured";
-        } else {
-          return {
-            ...base,
-            status: "warn",
-            message: `Neplatný update_channel ${JSON.stringify(configured)}; platí stable. Povolené hodnoty: ${UPDATE_CHANNELS.join(", ")}.`,
-            details: [],
-          };
-        }
-      }
-    } catch {
-      return {
-        ...base,
-        status: "warn",
-        message: "launchpad.gen3.local.json nejde přečíst jako JSON; update kanál platí stable.",
-        details: [],
-      };
-    }
-  }
 
   const branch = runGit(["branch", "--show-current"], companiesRoot);
   if (!branch.ok || branch.stdout !== "main") {
@@ -1772,53 +1742,28 @@ export function updateChannelCheck(companiesRoot) {
       ...base,
       status: "warn",
       message: branch.ok && branch.stdout
-        ? `Root checkout je na branchi ${branch.stdout}, ne na main — update kanálu je zablokovaný.`
-        : "Root checkout není na branchi main (detached HEAD nebo nečitelný stav) — update kanálu je zablokovaný.",
-      details: ["Kontrakt: primární checkout zůstává na main; práce patří do worktrees (AGENTS.md)."],
+        ? `Root checkout je na branchi ${branch.stdout}; lazurio update zachová její commity a vrátí primární checkout na main.`
+        : "Root checkout je detached nebo nečitelný; bezpečný další krok určí lazurio update, případně připraví Codex prompt.",
+      details: ["Kontrakt: primární checkout zůstává na main; veškerá práce patří do task/PR worktrees."],
     };
   }
 
-  let targetSha = null;
-  let targetLabel = null;
-  if (channel === "nightly") {
-    const originMain = runGit(["rev-parse", "--verify", "origin/main^{commit}"], companiesRoot);
-    if (originMain.ok) {
-      targetSha = originMain.stdout;
-      targetLabel = "origin/main";
-    }
-  } else {
-    const tags = runGit(["tag", "--list"], companiesRoot);
-    const tag = tags.ok ? selectHighestStableTag(tags.stdout.split("\n").filter(Boolean)) : null;
-    if (!tag) {
-      return {
-        ...base,
-        status: "warn",
-        message: "Stable kanál zatím nemá žádný release tag vMAJOR.MINOR.PATCH — update nemá cíl.",
-        details: ["Kanál lze dočasně přepnout na nightly v launchpad.gen3.local.json."],
-      };
-    }
-    const tagSha = runGit(["rev-parse", "--verify", `${tag}^{commit}`], companiesRoot);
-    if (tagSha.ok) {
-      targetSha = tagSha.stdout;
-      targetLabel = tag;
-    }
-  }
-
-  if (!targetSha) {
+  const originMain = runGit(["rev-parse", "--verify", "origin/main^{commit}"], companiesRoot);
+  if (!originMain.ok) {
     return {
       ...base,
       status: "warn",
-      message: `Cíl kanálu ${channel} nejde lokálně přečíst (poslední známý stav chybí).`,
-      details: ["Doctor nefetchuje; stav se zpřesní po akci Aktualizovat nebo git fetch."],
+      message: "Lokální snapshot origin/main chybí; přesný vzdálený stav ověří až explicitní lazurio update.",
+      details: ["Doctor je GET/read-only a záměrně nefetchuje."],
     };
   }
 
-  const relation = runGit(["rev-list", "--left-right", "--count", `HEAD...${targetSha}`], companiesRoot);
+  const relation = runGit(["rev-list", "--left-right", "--count", `HEAD...${originMain.stdout}`], companiesRoot);
   if (!relation.ok) {
     return {
       ...base,
       status: "warn",
-      message: `Vztah HEAD a cíle kanálu ${channel} (${targetLabel}) nejde ověřit.`,
+      message: "Vztah local main a lokálního snapshotu origin/main nejde ověřit.",
       details: [relation.stderr || relation.error || "git rev-list selhal"],
     };
   }
@@ -1827,25 +1772,31 @@ export function updateChannelCheck(companiesRoot) {
     return {
       ...base,
       status: "warn",
-      message: `Root se rozešel s cílem kanálu ${channel} (${targetLabel}): ${ahead} vlastních commitů, ${behind} chybějících.`,
-      details: ["Fail-closed stav — vyřeš s Agentem; žádný reset --hard."],
+      message: `Root má diverged historii: ${ahead} lokálních a ${behind} vzdálených commitů v posledním snapshotu.`,
+      details: ["lazurio update vrátí přesný Codex prompt; žádný reset --hard."],
+    };
+  }
+  if (ahead > 0) {
+    return {
+      ...base,
+      status: "warn",
+      message: `Local main obsahuje ${ahead} ${ahead === 1 ? "commit" : "commitů"} mimo poslední origin/main.`,
+      details: ["lazurio update historii nepřepíše a předá stav Codexu."],
     };
   }
   if (behind > 0) {
     return {
       ...base,
       status: "warn",
-      message: `Kanál ${channel} má novější verzi (${targetLabel}); root je ${behind} commitů pozadu — spusť Aktualizovat.`,
+      message: `Lazurio root je podle lokálního snapshotu ${behind} ${behind === 1 ? "commit" : "commitů"} pozadu — spusť lazurio update.`,
       details: [],
     };
   }
   return {
     ...base,
     status: "ok",
-    message: ahead > 0
-      ? `Kanál ${channel} (${configState === "defaulted" ? "default" : "nastaveno"}): root je ${ahead} commitů před posledním známým cílem (${targetLabel}) — žádný downgrade se neprovádí.`
-      : `Kanál ${channel} (${configState === "defaulted" ? "default" : "nastaveno"}): root odpovídá poslednímu známému cíli (${targetLabel}).`,
-    details: [],
+    message: "Lazurio root je clean main na posledním lokálním snapshotu origin/main.",
+    details: ["GitHub se ověřuje jen explicitním lazurio update, ne Doctorem."],
   };
 }
 

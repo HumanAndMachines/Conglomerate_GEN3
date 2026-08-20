@@ -1,0 +1,56 @@
+{
+  "schema_version": "lazurio.resident.profile.v1",
+  "id": "workspace",
+  "status": "pilot",
+  "principal_contract": "human-or-ai-colleague-workspace",
+  "identity_source": "workspace-session",
+  "root_instructions": "distribution/profiles/workspace/root-instructions.md",
+  "public_manual": "manual/lazurio-runtime-install-interface.md",
+  "allowed_role_overlays": [],
+  "trust_model": {
+    "communication_boundary": "authenticated-colleague-workspace",
+    "machine_owner_is_adversary": false,
+    "local_payload_edits": "forbidden-runtime-mutable-working-root-separate",
+    "agent_sandbox": "workspace-runtime",
+    "sandbox_substrate_mutability": "runtime-read-only-working-root-mutable",
+    "parallel_lazurio_acl": false
+  },
+  "authority": {
+    "provider": "live-github-rights",
+    "text_labels_grant_access": false,
+    "transaction_specific_consent_required": true
+  },
+  "runtime": {
+    "root_mode": "installed-non-git",
+    "source_contribution": "separate-working-checkout-only",
+    "communication_bridge": "launchpad-and-local-agent-surfaces",
+    "bridge_service_identity": null,
+    "mutable_mounts": [
+      "organizations",
+      "personalspace"
+    ]
+  },
+  "health_checks": [
+    "artifact-integrity",
+    "profile-boundary",
+    "platform-compatibility",
+    "no-git-root",
+    "runtime-working-root-separation"
+  ],
+  "behavior_invariants": [
+    "same-local-and-hosted-mental-model",
+    "runtime-working-root-separation",
+    "working-root-main-only",
+    "update-explicit-only",
+    "get-first-no-fetch",
+    "live-github-rights",
+    "draft-and-escalate",
+    "deny-foreign-personalspace",
+    "do-not-export-private-content",
+    "productionspace-update-excluded",
+    "root-repository-db-update-excluded",
+    "no-runtime-self-update",
+    "no-parallel-authorization-layer",
+    "text-labels-grant-no-access"
+  ]
+}

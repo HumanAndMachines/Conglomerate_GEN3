@@ -34,6 +34,7 @@ import {
   isCodexPortConflict,
   openCodexPortConflictDialog,
   openCodexRuntimeIssueDialog,
+  openCodexUpdateDialog,
 } from "./codex-handoff.js";
 import { runtimeRecoveryModel } from "./runtime-recovery.js";
 import {
@@ -80,7 +81,6 @@ const state = {
   gitStatusLoaded: false,
   gitStatusError: false,
   gitChangesByRepo: new Map(),
-  gitRecoveryByRepo: new Map(),
   runtimeActionErrors: new Map(),
   runtimeSourcesByApp: new Map(),
   openingApps: new Set(),
@@ -130,8 +130,8 @@ const LEGACY_THEME_MODE_STORAGE = "launchpad-theme";
 const OPEN_STARTING_WAIT_MS = 120_000;
 const OPEN_STARTING_POLL_MS = 1_500;
 const ACTIVE_POLL_INTERVAL_MS = 15_000;
-// Root update status dělá git fetch (síť); v quiet pollu se obnovuje nejvýš
-// jednou za tenhle interval, aby update indikace nezastarala na dobu session.
+// Update status je lokální snapshot bez síťové mutace. Během delší session ho
+// obnovujeme zřídka; fetch a změnu checkoutů spouští jen explicitní Sync.
 const UPDATE_STATUS_REFRESH_INTERVAL_MS = 5 * 60_000;
 let lastUpdateStatusAt = 0;
 const mobilePanelQuery = window.matchMedia("(max-width: 900px)");
@@ -313,9 +313,6 @@ const elements = {
   updateBannerGroup: document.querySelector("#updateBannerGroup"),
   updateBannerText: document.querySelector("#updateBannerText"),
   updateBannerAction: document.querySelector("#updateBannerAction"),
-  moduleUpdateBanner: document.querySelector("#moduleUpdateBanner"),
-  moduleUpdateBannerText: document.querySelector("#moduleUpdateBannerText"),
-  moduleUpdateBannerAction: document.querySelector("#moduleUpdateBannerAction"),
   reloadButton: document.querySelector("#reloadButton"),
   hero: document.querySelector("#hero"),
   heroTitle: document.querySelector("#heroTitle"),
@@ -371,10 +368,12 @@ initPersonalspace({
 
 elements.reloadButton.addEventListener("click", () => {
   closeMobileOverflow();
-  loadData();
+  loadData({ sync: true });
 });
-elements.updateBannerAction?.addEventListener("click", () => runRootUpdate());
-elements.moduleUpdateBannerAction?.addEventListener("click", () => pullOrganizationRepositories());
+elements.updateBannerAction?.addEventListener("click", () => {
+  const prompt = state.updateStatus?.next_action?.prompt;
+  if (prompt) openCodexUpdateDialog(prompt);
+});
 elements.heroCta.addEventListener("click", () => runHeroAction());
 elements.doctorStatus.addEventListener("click", () => {
   closeMobileOverflow();
@@ -579,8 +578,7 @@ document.addEventListener("click", (event) => {
 
 renderSkeleton();
 await loadData();
-// Update pill se načítá až po hlavních datech — status dělá git fetch a nesmí
-// blokovat první vykreslení prostoru.
+// Metadata-only GET: žádný fetch ani mutace při prvním renderu.
 loadUpdateStatus();
 initActiveWindowPolling();
 
@@ -736,7 +734,7 @@ function scheduleQuietPoll({ immediate = false } = {}) {
     try {
       await loadData({ quiet: true });
       // Update indikace nesmí zůstat na stavu z načtení stránky: jednou za
-      // UPDATE_STATUS_REFRESH_INTERVAL_MS ji quiet poll obnoví včetně fetche.
+      // UPDATE_STATUS_REFRESH_INTERVAL_MS obnovíme bezpečný lokální snapshot.
       if (Date.now() - lastUpdateStatusAt >= UPDATE_STATUS_REFRESH_INTERVAL_MS) {
         loadUpdateStatus();
       }
@@ -746,8 +744,12 @@ function scheduleQuietPoll({ immediate = false } = {}) {
   }, immediate ? 0 : ACTIVE_POLL_INTERVAL_MS);
 }
 
-async function runLoadData({ quiet = false, isCurrent = () => true } = {}) {
+async function runLoadData({ quiet = false, sync = false, isCurrent = () => true } = {}) {
   const firstSuccessfulScopeLoad = !launchpadScopeDataReady;
+  if (sync) {
+    state.updatePending = true;
+    renderUpdatePill();
+  }
   if (!quiet) {
     state.doctorRunState = "running";
     renderDoctorStatus(currentSpaceHealth());
@@ -755,13 +757,10 @@ async function runLoadData({ quiet = false, isCurrent = () => true } = {}) {
     elements.reloadButton.classList.add("is-busy");
   }
   try {
-    // Uživatelská akce je Synchronizovat (decision 0042): POST /api/sync znovu
-    // projede lokální auto-discovery; Doctor se spustí odděleně po prvním
-    // paintu. Tiché 15s pozadí je lehké:
-    // nevolá Doctor, běží jen v aktivním okně a nepřekrývá se s dalším loadem,
-    // aby neucpalo runtime akce.
+    // První render i quiet refresh jsou GET-only. Pouze explicitní kliknutí na
+    // Synchronizovat spustí jediný společný update engine přes POST /api/sync.
     const [appsResponse, personalspaceResponse] = await Promise.all(
-      quiet
+      !sync
         ? [
             fetchJson("/api/apps"),
             fetchPersonalspaceSafe(),
@@ -779,6 +778,7 @@ async function runLoadData({ quiet = false, isCurrent = () => true } = {}) {
     state.companies = appsResponse.companies ?? [];
     state.failures = appsResponse.failures ?? [];
     state.warnings = appsResponse.warnings ?? [];
+    if (appsResponse.update) state.updateStatus = appsResponse.update;
     state.loadError = null;
     // Transportní výpadek oddělené personalspace lane zachová poslední stav.
     // Jakákoli úspěšná HTTP odpověď je ale aktuální autorita i s ok:false:
@@ -827,6 +827,10 @@ async function runLoadData({ quiet = false, isCurrent = () => true } = {}) {
     }
     render();
   } finally {
+    if (sync) {
+      state.updatePending = false;
+      renderUpdatePill();
+    }
     if (!quiet) {
       elements.reloadButton.disabled = false;
       elements.reloadButton.classList.remove("is-busy");
@@ -942,21 +946,6 @@ function gitRepoForApp(app) {
     if (byModule) return byModule;
   }
   return null;
-}
-
-function canAutostashPull(git) {
-  return git?.status === "draft_changes"
-    && Number(git.counts?.incoming) > 0
-    && Number(git.counts?.outgoing) === 0;
-}
-
-// Zrcadlí serverový builderPullScopeAllowed (git-api-lib): UI nesmí nabídnout
-// Stáhnout tam, kde API pull odmítne — Organization root, org root-space
-// sloty a workspace moduly ano; productionspace je z Launchpadu read-only.
-function builderPullScopeAllowedForRepo(git) {
-  return git?.repo_kind === "organization_root"
-    || git?.repo_kind === "root_repo"
-    || (git?.repo_kind === "module" && git?.workspace !== "productionspace");
 }
 
 // Anotuje každou appku booleanem git_attention podle git read modelu, ať toggle
@@ -1798,7 +1787,6 @@ function applySpaceMenuState() {
 function renderScopeControls() {
   const personal = state.filters.scope === "personal";
   mountUpdateBannerGroup();
-  elements.moduleUpdateBanner?.toggleAttribute("hidden", personal);
   elements.hero.classList.toggle("hidden", personal);
   elements.personalPrivacyBadge?.toggleAttribute("hidden", !personal);
   elements.appsToolbar.classList.toggle("hidden", personal);
@@ -2930,8 +2918,8 @@ function appCard(app, family = { key: app.id, members: [app], primary: app, appl
 
   card.append(head);
   if (inlineMenuPanel) card.append(inlineMenuPanel);
-  // Sofistikovaný warning panel jen když je co řešit: stáhnout novější verzi,
-  // nainstalovat/opravit balíčky, nebo vysvětlit blokující/failed stav. Žádná
+  // Sofistikovaný warning panel jen když je co řešit: synchronizovat novější
+  // verzi, nainstalovat/opravit balíčky, nebo vysvětlit blokující/failed stav. Žádná
   // velká trvalá tlačítka — hlavní akce (otevřít) je klik na celou dlaždici.
   if (warning && warning.kind !== "fact" && warning.placement !== "top-action") {
     card.append(cardWarningNode(warning));
@@ -3077,7 +3065,7 @@ function runtimeStageNode(app, stage, feedback) {
 // Warning model karty (owner request 2026-07-05): v čistém stavu vrací null,
 // jinak strukturovaný popis toho, co je potřeba vyřešit. Priorita: blokující
 // dependency stav > chybějící/zastaralé balíčky > spadlé spuštění > novější
-// verze na mainu. Jen „nainstalovat" a „stáhnout" nesou přímou akci; zbytek
+// verze na mainu. Jen instalace závislostí nese přímou akci; zbytek
 // vysvětluje a posílá do detailu.
 function isUntrustedPortOwner(app) {
   return ["foreign-port", "unknown-port"].includes(app.runtime?.owner);
@@ -3111,27 +3099,14 @@ function cardWarningModel(app, gitRepo) {
   if (isProductionspace(app)) return null;
   const dependencyState = app.dependencies?.state;
   const sharedPortPeer = runningSharedPortPeer(app);
-  const recovery = gitRepo ? state.gitRecoveryByRepo.get(gitRepo.key) : null;
-  const canAbortRebase = Boolean(
-    gitRepo?.operation?.can_abort_rebase
-    || recovery?.canAbortRebase,
-  );
-
-  if (["rebase_in_progress", "git_am_in_progress"].includes(gitRepo?.status) || recovery) {
+  if (["rebase_in_progress", "git_am_in_progress"].includes(gitRepo?.status)) {
     return {
       tone: "danger",
-      title: ["rebase_in_progress", "git_am_in_progress"].includes(gitRepo?.status)
-        ? "Git operace zůstala rozpracovaná"
-        : "Stažení změn se nepovedlo",
+      title: "Git operace zůstala rozpracovaná",
       message: [
-        recovery?.message ?? gitRepo?.message,
+        gitRepo?.message,
         "Udělejte screenshot této hlášky a vložte ho agentovi do Codexu. Agent problém bezpečně dořeší.",
       ].filter(Boolean).join(" "),
-      actionLabel: canAbortRebase ? "Abortnout rebase" : null,
-      run: canAbortRebase
-        ? () => abortGitRebase({ git: gitRepo, label: appBaseTitle(app), pendingKey: `${app.id}:git-rebase-abort` })
-        : null,
-      pending: `${app.id}:git-rebase-abort`,
     };
   }
 
@@ -3185,14 +3160,6 @@ function cardWarningModel(app, gitRepo) {
       run: () => revealAppDetail(app),
     };
   }
-
-  // Nové vzdálené změny patří do jediného souhrnného hlášení pod hlavičkou.
-  // Dlaždice zůstává rozcestník; aktualizace se nestahuje po modulech.
-  if (
-    gitRepo
-    && builderPullScopeAllowedForRepo(gitRepo)
-    && (canAutostashPull(gitRepo) || gitRepo.status === "pull_available")
-  ) return null;
 
   if (gitRepo?.status === "push_required") {
     return {
@@ -4297,28 +4264,6 @@ function detailSummaryModel(app, git) {
     };
   }
 
-  if (git?.status === "pull_available" && builderPullScopeAllowedForRepo(git)) {
-    return {
-      tone: "warn",
-      title: `Nová verze - ${newCommitCountLabel(incoming)}`,
-      message: "Můžete ji bezpečně stáhnout.",
-      action: summaryButton("Stáhnout", () => pullLatestRepoVersion(app, git), `${app.id}:git-pull`),
-    };
-  }
-
-  if (builderPullScopeAllowedForRepo(git) && canAutostashPull(git)) {
-    return {
-      tone: "warn",
-      title: `Nová verze - ${newCommitCountLabel(incoming)}`,
-      message: "Můžete ji stáhnout. Vaše změny zůstanou zachované.",
-      action: summaryButton(
-        "Stáhnout",
-        () => pullLatestRepoVersion(app, git, { autostash: true }),
-        `${app.id}:git-pull`,
-      ),
-    };
-  }
-
   if (git?.status === "draft_changes") {
     const changesLoaded = Boolean(git.key && state.gitChangesByRepo.has(git.key));
     return {
@@ -4595,24 +4540,6 @@ function renderGitBuilderActions(app) {
   changesCard.append(builderActionButton("Ukázat změny", () => showRepoChanges(app, git)));
   actions.append(changesCard);
 
-  if (git.status === "pull_available" && builderPullScopeAllowedForRepo(git)) {
-    const pullCard = builderActionCard(
-      "Stáhnout novější verzi",
-      "Bezpečný fast-forward pull je dostupný jen pro čistý main checkout bez lokálních draftů.",
-    );
-    pullCard.append(builderActionButton("Stáhnout novější verzi", () => pullLatestRepoVersion(app, git)));
-    actions.append(pullCard);
-  } else if (builderPullScopeAllowedForRepo(git) && canAutostashPull(git)) {
-    const pullCard = builderActionCard(
-      "Stáhnout a zachovat změny",
-      "Launchpad odloží tracked i untracked změny, stáhne pouze fast-forward a změny znovu obnoví. Konflikt zůstane viditelný a stash se nesmaže.",
-    );
-    pullCard.append(
-      builderActionButton("Stáhnout a zachovat změny", () => pullLatestRepoVersion(app, git, { autostash: true })),
-    );
-    actions.append(pullCard);
-  }
-
   section.append(actions);
   return section;
 }
@@ -4665,101 +4592,27 @@ async function showRepoChanges(app, git) {
   }
 }
 
-async function pullLatestRepoVersion(app, git, { autostash = false } = {}) {
-  return pullGitRepository({
-    git,
-    label: appBaseTitle(app),
-    autostash,
-    pendingKey: `${app.id}:git-pull`,
-  });
-}
-
-async function pullGitRepository({ git, label, autostash = false, pendingKey = `git-pull:${git.key}` }) {
-  const confirmation = autostash
-    ? `Stáhnout novější verzi pro ${label} a zachovat lokální změny? Launchpad je odloží do bezpečného stash, provede pouze fast-forward a znovu je obnoví.`
-    : `Stáhnout novější verzi pro ${label}? Launchpad dovolí pouze bezpečný fast-forward.`;
-  if (!window.confirm(confirmation)) return;
-  state.pendingAction = pendingKey;
-  render();
-  try {
-    const action = autostash ? "pull-autostash" : "pull";
-    const payload = await fetchJson(`/api/git/repos/${encodeURIComponent(git.key)}/${action}`, { method: "POST" });
-    state.gitChangesByRepo.delete(git.key);
-    state.gitRecoveryByRepo.delete(git.key);
-    const stashNote = payload.stash_preserved ? " Bezpečnostní kopie zůstala ve stash stacku." : "";
-    toast(`${label}: novější verze stažená (${payload.after?.head?.short_sha ?? "aktuální"}).${stashNote}`, "success", 7000);
-  } catch (error) {
-    state.gitRecoveryByRepo.set(git.key, {
-      code: error.code,
-      message: error.message,
-      canAbortRebase: Boolean(error.payload?.recovery?.can_abort_rebase),
-    });
-    toast(`${label}: ${error.message}`, "error", 9000);
-  } finally {
-    await loadData({ quiet: true, fresh: true });
-    state.pendingAction = null;
-    render();
-  }
-}
-
-async function abortGitRebase({ git, label, pendingKey = `git-rebase-abort:${git.key}` }) {
-  if (!window.confirm(`Abortnout probíhající rebase pro ${label}? Git vrátí checkout do stavu před zahájením rebase.`)) return;
-  state.pendingAction = pendingKey;
-  render();
-  try {
-    const payload = await fetchJson(`/api/git/repos/${encodeURIComponent(git.key)}/rebase-abort`, { method: "POST" });
-    state.gitRecoveryByRepo.delete(git.key);
-    toast(`${label}: rebase byl bezpečně abortnut.`, "success", 7000);
-  } catch (error) {
-    state.gitRecoveryByRepo.set(git.key, {
-      code: error.code,
-      message: error.message,
-      canAbortRebase: Boolean(error.payload?.recovery?.can_abort_rebase),
-    });
-    toast(`${label}: ${error.message}`, "error", 9000);
-  } finally {
-    await loadData({ quiet: true, fresh: true });
-    state.pendingAction = null;
-    render();
-  }
-}
-
-// Update lane Lazurio rootu (decision 0059, draft 0080) — oddělená od
-// per-repo org pullů; pill v top baru ukazuje kanál, verzi a akční stav a
-// globální banner dělá dostupný update nepřehlédnutelný ve všech scope.
+// Bezpečný GET-first snapshot. Vzdálený GitHub se kontroluje až explicitním
+// Synchronizovat, které volá tentýž engine jako `lazurio update`.
 async function loadUpdateStatus() {
   lastUpdateStatusAt = Date.now();
   const payload = await fetchJsonSafe("/api/update/status");
   state.updateStatus = payload && !payload.error
     ? payload
     : {
-        state: "check_failed",
+        state: "blocked",
         message: payload?.message ?? "Stav aktualizace se nepodařilo ověřit.",
       };
   renderUpdatePill();
 }
 
-function formatCommitCountCz(value) {
-  const number = Number(value ?? 0);
-  if (number === 1) return "1 commit";
-  if (number >= 2 && number <= 4) return `${number} commity`;
-  return `${number} commitů`;
-}
-
-// Aktuální stav je tichý. Dostupná aktualizace dostane akci; zablokované nebo
-// chybové stavy zůstávají viditelné jako vysvětlení bez falešného tlačítka.
 function renderUpdateBanner() {
   const banner = elements.updateBanner;
   if (!banner) return;
   const status = state.updateStatus;
-  const behind = status?.counts?.behind ?? 0;
-  const actionable = status && (
-    status.state === "update_available"
-    || (status.state === "dirty_worktree" && status.can_update_with_autostash)
-  );
 
   if (!status) {
-    elements.updateBannerText.textContent = "Kontroluji dostupné změny…";
+    elements.updateBannerText.textContent = "Načítám lokální stav Lazurio…";
     elements.updateBannerAction.hidden = true;
     elements.updateBannerAction.disabled = true;
     banner.classList.remove("is-blocked", "is-updating", "is-current");
@@ -4767,210 +4620,43 @@ function renderUpdateBanner() {
     return;
   }
 
-  if (status && status.state !== "up_to_date" && !actionable) {
+  if (status.state === "blocked") {
     elements.updateBannerText.textContent = status.message ?? "Stav aktualizace se nepodařilo ověřit.";
-    elements.updateBannerAction.hidden = true;
-    elements.updateBannerAction.disabled = true;
+    elements.updateBannerAction.hidden = !status.next_action?.prompt;
+    elements.updateBannerAction.disabled = !status.next_action?.prompt;
+    elements.updateBannerAction.textContent = "Vyřešit s Codexem";
     banner.classList.remove("is-updating", "is-current");
     banner.classList.add("is-blocked");
     banner.hidden = false;
     return;
   }
 
-  if (status.state === "up_to_date") {
+  if (status.state === "current") {
     banner.classList.remove("is-blocked", "is-updating");
     banner.classList.add("is-current");
-    elements.updateBannerText.textContent = "Lazurio je aktuální.";
+    elements.updateBannerText.textContent = status.checked_remote === false
+      ? "Lazurio je připravené k synchronizaci."
+      : "Lazurio je aktuální.";
     elements.updateBannerAction.hidden = true;
     elements.updateBannerAction.disabled = true;
     banner.hidden = false;
     return;
   }
-  const preserve = status.state === "dirty_worktree";
-  elements.updateBannerAction.hidden = false;
+  elements.updateBannerAction.hidden = true;
   banner.classList.remove("is-blocked", "is-current");
   elements.updateBannerText.textContent = state.updatePending
-    ? "Stahuju novou verzi… Stránka se po dokončení sama znovu načte."
-    : preserve
-      ? `Nová verze Lazuria je k dispozici (${formatCommitCountCz(behind)}). Lokální změny se při aktualizaci bezpečně zachovají.`
-      : `Nová verze Lazuria je k dispozici — ${formatCommitCountCz(behind)} ke stažení.`;
+    ? "Synchronizuji Lazurio…"
+    : "Lazurio bylo při poslední synchronizaci aktualizované.";
   elements.updateBannerAction.textContent = state.updatePending
     ? "Aktualizuju…"
-    : preserve ? "Aktualizovat (zachovat změny)" : "Aktualizovat";
+    : "Synchronizovat";
   elements.updateBannerAction.disabled = Boolean(state.updatePending);
   banner.classList.toggle("is-updating", Boolean(state.updatePending));
   banner.hidden = false;
 }
 
-function activeOrganizationGitRepositories() {
-  if (state.filters.scope !== "org" || state.filters.company === "all") return [];
-  const organization = state.filters.company;
-  const repositories = new Map();
-  for (const repo of state.gitReposByModule.values()) {
-    if (!repo || repo.organization !== organization || !builderPullScopeAllowedForRepo(repo)) continue;
-    repositories.set(repo.key ?? `${repo.organization}::${repo.module ?? repo.repo_kind}`, repo);
-  }
-  return [...repositories.values()];
-}
-
-function pullableGitUpdate(repo) {
-  return repo?.status === "pull_available" || canAutostashPull(repo);
-}
-
-function moduleUpdateLocation(count) {
-  return count === 1 ? "v 1 modulu" : `ve ${count} modulech`;
-}
-
-// Modulové změny mají vlastní jednoduchý řádek pod stavem Lazuria.
-// Počet se odvozuje z unikátních repo modulů, ne z počtu jejich app verzí.
-function renderModuleUpdateBanner() {
-  const banner = elements.moduleUpdateBanner;
-  const text = elements.moduleUpdateBannerText;
-  const action = elements.moduleUpdateBannerAction;
-  if (!banner || !text || !action || state.filters.scope === "personal") return;
-
-  const repositories = activeOrganizationGitRepositories();
-  const rootRepo = repositories.find((repo) => repo.repo_kind === "organization_root") ?? null;
-  const modules = repositories.filter((repo) => repo.repo_kind !== "organization_root");
-  const moduleUpdates = modules.filter(pullableGitUpdate);
-  const rootUpdate = pullableGitUpdate(rootRepo);
-  const pending = state.pendingAction === "git:pull-organization";
-  const checkFailed = state.gitStatusError || repositories.some((repo) =>
-    repo.status === "check_failed" || repo.freshness?.remote_refresh_state === "error");
-  const refreshing = repositories.some((repo) => repo.freshness?.remote_refresh_state === "refreshing");
-
-  banner.hidden = false;
-  banner.classList.remove("is-blocked", "is-updating", "is-current");
-  action.hidden = true;
-  action.disabled = true;
-  action.textContent = "Stáhnout změny";
-
-  if (pending) {
-    text.textContent = moduleUpdates.length > 0
-      ? `Stahuji změny ${moduleUpdateLocation(moduleUpdates.length)}…`
-      : "Stahuji změny Organizace…";
-    banner.classList.add("is-updating");
-    action.hidden = false;
-    return;
-  }
-
-  if (!state.gitStatusLoaded) {
-    text.textContent = state.gitStatusError
-      ? "Stav modulů se nepodařilo ověřit."
-      : "Kontroluji změny v modulech…";
-    if (state.gitStatusError) banner.classList.add("is-blocked");
-    return;
-  }
-
-  if (checkFailed) {
-    text.textContent = "Stav modulů se nepodařilo ověřit.";
-    banner.classList.add("is-blocked");
-    return;
-  }
-
-  if (moduleUpdates.length > 0) {
-    text.textContent = `Změny jsou připravené ${moduleUpdateLocation(moduleUpdates.length)}.`;
-    action.hidden = false;
-    action.disabled = false;
-    return;
-  }
-
-  if (rootUpdate) {
-    text.textContent = "Je připravená změna Organizace.";
-    action.hidden = false;
-    action.disabled = false;
-    return;
-  }
-
-  if (refreshing) {
-    text.textContent = "Kontroluji změny v modulech…";
-    return;
-  }
-
-  text.textContent = "Moduly jsou aktuální.";
-  banner.classList.add("is-current");
-}
-
 function renderUpdatePill() {
   renderUpdateBanner();
-  renderModuleUpdateBanner();
-}
-
-async function runRootUpdate() {
-  const status = state.updateStatus;
-  if (!status || state.updatePending) return;
-  let mode = null;
-  if (status.state === "update_available") {
-    if (!window.confirm(`Aktualizovat Lazurio root na cíl kanálu ${status.channel} (${status.target?.ref ?? ""})? Provede se bezpečný fast-forward; po dokončení restartuj Launchpad.`)) return;
-    mode = "ff_only";
-  } else if (status.state === "dirty_worktree" && status.can_update_with_autostash) {
-    if (!window.confirm("Tracked soubory mají lokální změny. Aktualizovat a zachovat změny? Změny se bezpečně odloží a po fast-forwardu obnoví; při konfliktu zůstanou ve stash zálohách.")) return;
-    mode = "preserve_changes";
-  } else {
-    toast(status.message ?? "Aktualizace teď není bezpečně proveditelná.", "info", 8_000);
-    return;
-  }
-  state.updatePending = true;
-  renderUpdatePill();
-  let reloading = false;
-  try {
-    const payload = await fetchJson("/api/update", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ mode }),
-    });
-    if (payload.ok && payload.updated) {
-      // Hladký update (CAC-0083): stránka se po stažení sama reloadne, aby
-      // kolega nikdy nezůstal viset ve staré verzi UI. Spinner běží až do
-      // reloadu. Restart server procesu zůstává na launcheru/binárce (0059).
-      reloading = true;
-      toast(`Aktualizace hotová: ${payload.from_commit?.slice(0, 7)} → ${payload.to_commit?.slice(0, 7)}. Načítám novou verzi…`, "success", 8_000);
-      window.setTimeout(() => window.location.reload(), 1_200);
-    } else if (payload.ok) {
-      toast(payload.message ?? "Root je aktuální.", "success", 8_000);
-    } else {
-      toast(payload.message ?? "Aktualizace se nespustila.", "error", 12_000);
-    }
-    state.updateStatus = payload.after ?? state.updateStatus;
-  } catch (error) {
-    toast(`Aktualizace selhala: ${error.message}`, "error", 12_000);
-  } finally {
-    if (!reloading) {
-      await loadData({ quiet: true, fresh: true });
-      state.updatePending = false;
-      renderUpdatePill();
-      loadUpdateStatus();
-    }
-  }
-}
-
-async function pullOrganizationRepositories() {
-  const organization = state.filters.scope === "org" ? state.filters.company : null;
-  if (!organization || organization === "all") return;
-  state.pendingAction = "git:pull-organization";
-  render();
-  try {
-    const payload = await fetchJson(`/api/git/pull-all?company=${encodeURIComponent(organization)}`, { method: "POST" });
-    const summary = payload.summary ?? {};
-    const attention = (summary.conflict_count ?? 0) + (summary.failed_count ?? 0);
-    const missingAccess = summary.missing_access_count ?? 0;
-    const otherSkipped = Math.max(0, (summary.skipped_count ?? 0) - missingAccess);
-    const message = [
-      `${summary.updated_count ?? 0} aktualizováno`,
-      `${summary.materialized_count ?? 0} nově naklonováno`,
-      `${summary.up_to_date_count ?? 0} už aktuálních`,
-      otherSkipped > 0 ? `${otherSkipped} přeskočeno` : null,
-      missingAccess > 0 ? `${missingAccess} bez přístupu` : null,
-      attention > 0 ? `${attention} vyžaduje pomoc` : null,
-    ].filter(Boolean).join(" · ");
-    toast(`Stažení změn: ${message}.`, attention > 0 ? "error" : "success", 10_000);
-  } catch (error) {
-    toast(`Stažení změn: ${error.message}`, "error", 10_000);
-  } finally {
-    await loadData({ quiet: true, fresh: true });
-    state.pendingAction = null;
-    render();
-  }
 }
 
 function selectedRuntimeSourceForApp(app) {

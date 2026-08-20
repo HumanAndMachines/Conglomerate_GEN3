@@ -202,8 +202,8 @@ export async function discoverMountedOrganizations(companiesRoot, warnings = nul
     let companyConfig;
     try {
       companyConfig = await readJson(companyConfigPath);
-    } catch {
-      // Ignore malformed auto-discovery candidates; diagnostics owns config validation.
+    } catch (error) {
+      warnings?.push(`${path}: company.gen3.json nejde přečíst; Organization byla vynechána z Git inventáře — ${error.message}`);
       continue;
     }
     // Stejný strojový marker jako discovery-lib (organizationKind): template mount

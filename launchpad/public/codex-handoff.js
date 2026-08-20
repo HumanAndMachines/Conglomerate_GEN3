@@ -89,6 +89,16 @@ export function openCodexRuntimeIssueDialog(app, issue) {
   });
 }
 
+export function openCodexUpdateDialog(prompt) {
+  if (typeof document === "undefined" || typeof prompt !== "string" || !prompt.trim()) return false;
+  return openCodexHandoffDialog({
+    app: { id: "lazurio-update" },
+    title: "Vyřešit Lazurio update s Codexem",
+    intro: "Lazurio zachovalo bezpečný stav a připravilo přesný kontext blokace. Codex opraví Git historii nebo operaci bez ztráty práce.",
+    prompt,
+  });
+}
+
 function openCodexHandoffDialog({ app, title, intro, prompt }) {
   ensureStylesheet();
   ensureDialog();

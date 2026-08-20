@@ -20,6 +20,11 @@
       "descriptor": "distribution/profiles/buddy/profile.json",
       "root_instructions": "distribution/profiles/buddy/root-instructions.md",
       "evals": "distribution/profile-evals/buddy.json"
+    },
+    "workspace": {
+      "descriptor": "distribution/profiles/workspace/profile.json",
+      "root_instructions": "distribution/profiles/workspace/root-instructions.md",
+      "evals": "distribution/profile-evals/workspace.json"
     }
   },
   "source_includes": [
@@ -46,6 +51,7 @@
     "lazurio/lib.mjs",
     "lazurio/search-lib.mjs",
     "manual/lazurio-resident-profiles.md",
+    "manual/lazurio-runtime-install-interface.md",
     "manual/update-installed-resident.md",
     "bridge/"
   ],
