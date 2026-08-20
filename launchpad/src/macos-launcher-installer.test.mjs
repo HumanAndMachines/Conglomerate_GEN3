@@ -85,6 +85,9 @@ test("macOS app is only a per-user bootstrap to the canonical human launcher", a
   const replacement = await readFile(join(sourceRoot, "scripts", "macos", "replace-app.jxa"), "utf8");
 
   expect(installer).toContain('TARGET_PARENT="$HOME_CANONICAL/Applications"');
+  expect(installer).toContain('APP_NAME="Lazurio Launchpad.app"');
+  expect(installer).not.toContain("HumanAndMachine Launchpad");
+  expect(bootstrap).not.toContain("HumanAndMachine Launchpad");
   expect(installer).toContain("lazurio.launchpad.macos_install.v1");
   expect(bootstrap).toContain('LAUNCHER="$CANONICAL_ROOT/Launchpad.command"');
   expect(bootstrap).toContain('/usr/bin/open "$LAUNCHER"');
@@ -120,13 +123,13 @@ macTest("default install succeeds without admin rights and produces a verified u
 
   const result = await install(root, home);
   expect(result.exitCode, result.stderr.toString()).toBe(0);
-  const app = join(home, "Applications", "HumanAndMachine Launchpad.app");
+  const app = join(home, "Applications", "Lazurio Launchpad.app");
   expect(await readFile(join(app, "Contents", "Resources", "root-path"), "utf8")).toBe(`${await realpath(root)}\n`);
   expect(await readFile(join(app, "Contents", "Resources", "install-schema"), "utf8")).toBe("lazurio.launchpad.macos_install.v1\n");
 
   const bundleId = spawn(["/usr/bin/plutil", "-extract", "CFBundleIdentifier", "raw", join(app, "Contents", "Info.plist")]);
   expect(bundleId.exitCode).toBe(0);
-  expect(bundleId.stdout.toString().trim()).toBe("com.humanandmachine.launchpad");
+  expect(bundleId.stdout.toString().trim()).toBe("com.lazurio.launchpad");
   const signature = spawn(["/usr/bin/codesign", "--verify", "--deep", "--strict", app]);
   expect(signature.exitCode, signature.stderr.toString()).toBe(0);
 });
@@ -140,15 +143,15 @@ macTest("reinstall preserves the previous app as a rollback backup", async () =>
   expect((await install(root, home)).exitCode).toBe(0);
 
   const apps = await readdir(join(home, "Applications"));
-  expect(apps).toContain("HumanAndMachine Launchpad.app");
-  expect(apps.filter((name) => name === ".humanandmachine-launchpad-rollback").length).toBe(1);
+  expect(apps).toContain("Lazurio Launchpad.app");
+  expect(apps.filter((name) => name === ".lazurio-launchpad-rollback").length).toBe(1);
   expect(apps.filter((name) => name.includes("backup-")).length).toBe(0);
 });
 
 macTest("native replacement primitive restores the prior app without removing the live path", async () => {
   const parent = await mkdtemp(join(tmpdir(), "lazurio-macos-atomic-replace-"));
   tempRoots.push(parent);
-  const target = join(parent, "HumanAndMachine Launchpad.app");
+  const target = join(parent, "Lazurio Launchpad.app");
   const replacement = join(parent, "replacement.app");
   const rollback = join(parent, ".rollback");
   await mkdir(target);
@@ -176,8 +179,8 @@ macTest("failed reinstall restores both the live app and the previously retained
   expect((await install(root, home)).exitCode).toBe(0);
 
   const apps = join(home, "Applications");
-  const target = join(apps, "HumanAndMachine Launchpad.app");
-  const rollback = join(apps, ".humanandmachine-launchpad-rollback");
+  const target = join(apps, "Lazurio Launchpad.app");
+  const rollback = join(apps, ".lazurio-launchpad-rollback");
   await writeFile(join(target, "current-generation"), "keep-current\n");
   await writeFile(join(rollback, "older-generation"), "keep-older\n");
 
@@ -190,7 +193,7 @@ macTest("failed reinstall restores both the live app and the previously retained
   expect(result.exitCode).not.toBe(0);
   expect(await readFile(join(target, "current-generation"), "utf8")).toBe("keep-current\n");
   expect(await readFile(join(rollback, "older-generation"), "utf8")).toBe("keep-older\n");
-  expect((await readdir(apps)).filter((name) => (name.startsWith(".humanandmachine-launchpad-install.") && name !== ".humanandmachine-launchpad-install.lock") || name === ".humanandmachine-launchpad-failed")).toEqual([]);
+  expect((await readdir(apps)).filter((name) => (name.startsWith(".lazurio-launchpad-install.") && name !== ".lazurio-launchpad-install.lock") || name === ".lazurio-launchpad-failed")).toEqual([]);
 });
 
 macTest("failure before native replacement never promotes an older rollback over the live app", async () => {
@@ -201,8 +204,8 @@ macTest("failure before native replacement never promotes an older rollback over
   expect((await install(root, home)).exitCode).toBe(0);
 
   const apps = join(home, "Applications");
-  const target = join(apps, "HumanAndMachine Launchpad.app");
-  const rollback = join(apps, ".humanandmachine-launchpad-rollback");
+  const target = join(apps, "Lazurio Launchpad.app");
+  const rollback = join(apps, ".lazurio-launchpad-rollback");
   await writeFile(join(target, "current-generation"), "keep-current\n");
   await writeFile(join(rollback, "older-generation"), "keep-older\n");
 
@@ -216,7 +219,7 @@ macTest("failure before native replacement never promotes an older rollback over
   expect(result.exitCode).not.toBe(0);
   expect(await readFile(join(target, "current-generation"), "utf8")).toBe("keep-current\n");
   expect(await readFile(join(rollback, "older-generation"), "utf8")).toBe("keep-older\n");
-  expect((await readdir(apps)).filter((name) => (name.startsWith(".humanandmachine-launchpad-install.") && name !== ".humanandmachine-launchpad-install.lock") || name === ".humanandmachine-launchpad-failed")).toEqual([]);
+  expect((await readdir(apps)).filter((name) => (name.startsWith(".lazurio-launchpad-install.") && name !== ".lazurio-launchpad-install.lock") || name === ".lazurio-launchpad-failed")).toEqual([]);
 });
 
 for (const partialState of ["target-missing", "swap-reported-failed"]) {
@@ -228,8 +231,8 @@ for (const partialState of ["target-missing", "swap-reported-failed"]) {
     expect((await install(root, home)).exitCode).toBe(0);
 
     const apps = join(home, "Applications");
-    const target = join(apps, "HumanAndMachine Launchpad.app");
-    const rollback = join(apps, ".humanandmachine-launchpad-rollback");
+    const target = join(apps, "Lazurio Launchpad.app");
+    const rollback = join(apps, ".lazurio-launchpad-rollback");
     await writeFile(join(target, "current-generation"), "keep-current\n");
     await writeFile(join(rollback, "older-generation"), "keep-older\n");
 
@@ -253,7 +256,7 @@ function run(argv) {
       expect(helper.split(returnLine).length - 1).toBe(1);
       await writeFile(helperPath, helper.replace(
         returnLine,
-        '  if (backupName === ".humanandmachine-launchpad-rollback") { throw new Error("injected failure after swap"); }\n  return argv[0];\n',
+        '  if (backupName === ".lazurio-launchpad-rollback") { throw new Error("injected failure after swap"); }\n  return argv[0];\n',
       ));
     }
 
@@ -261,7 +264,7 @@ function run(argv) {
     expect(result.exitCode).not.toBe(0);
     expect(await readFile(join(target, "current-generation"), "utf8")).toBe("keep-current\n");
     expect(await readFile(join(rollback, "older-generation"), "utf8")).toBe("keep-older\n");
-    expect((await readdir(apps)).filter((name) => (name.startsWith(".humanandmachine-launchpad-install.") && name !== ".humanandmachine-launchpad-install.lock") || name === ".humanandmachine-launchpad-failed")).toEqual([]);
+    expect((await readdir(apps)).filter((name) => (name.startsWith(".lazurio-launchpad-install.") && name !== ".lazurio-launchpad-install.lock") || name === ".lazurio-launchpad-failed")).toEqual([]);
   });
 }
 
@@ -275,9 +278,9 @@ lockfTest("concurrent installers serialize one shared per-user target", async ()
   expect(exits, errors.join("\n")).toEqual([0, 0, 0]);
 
   const apps = join(home, "Applications");
-  expect(await Bun.file(join(apps, "HumanAndMachine Launchpad.app", "Contents", "Resources", "root-path")).exists()).toBe(true);
-  expect((await readdir(apps)).filter((name) => name === ".humanandmachine-launchpad-rollback").length).toBe(1);
-  expect(spawn(["/usr/bin/codesign", "--verify", "--deep", "--strict", join(apps, "HumanAndMachine Launchpad.app")]).exitCode).toBe(0);
+  expect(await Bun.file(join(apps, "Lazurio Launchpad.app", "Contents", "Resources", "root-path")).exists()).toBe(true);
+  expect((await readdir(apps)).filter((name) => name === ".lazurio-launchpad-rollback").length).toBe(1);
+  expect(spawn(["/usr/bin/codesign", "--verify", "--deep", "--strict", join(apps, "Lazurio Launchpad.app")]).exitCode).toBe(0);
 });
 
 lockfTest("installer waits for an externally held native lock before publishing", async () => {
@@ -286,7 +289,7 @@ lockfTest("installer waits for an externally held native lock before publishing"
   tempRoots.push(home);
   const apps = join(home, "Applications");
   await mkdir(apps);
-  const lockPath = join(apps, ".humanandmachine-launchpad-install.lock");
+  const lockPath = join(apps, ".lazurio-launchpad-install.lock");
   const holder = Bun.spawn(["/usr/bin/lockf", "-k", "-t", "0", lockPath, "/bin/sleep", "1"], {
     stdout: "pipe",
     stderr: "pipe",
@@ -296,11 +299,11 @@ lockfTest("installer waits for an externally held native lock before publishing"
 
   const installer = installAsync(root, home);
   expect(await waitForChildCommand(installer.pid, "lockf")).toBe(true);
-  expect(await Bun.file(join(apps, "HumanAndMachine Launchpad.app")).exists()).toBe(false);
+  expect(await Bun.file(join(apps, "Lazurio Launchpad.app")).exists()).toBe(false);
 
   expect(await holder.exited, await new Response(holder.stderr).text()).toBe(0);
   expect(await installer.exited, await new Response(installer.stderr).text()).toBe(0);
-  expect(await Bun.file(join(apps, "HumanAndMachine Launchpad.app", "Contents", "Resources", "root-path")).exists()).toBe(true);
+  expect(await Bun.file(join(apps, "Lazurio Launchpad.app", "Contents", "Resources", "root-path")).exists()).toBe(true);
 });
 
 macTest("linked worktree cannot become the installed canonical root", async () => {
@@ -323,7 +326,7 @@ macTest("linked worktree cannot become the installed canonical root", async () =
   const result = await install(linked, home);
   expect(result.exitCode).not.toBe(0);
   expect(result.stderr.toString()).toContain("linked worktree");
-  expect(await Bun.file(join(home, "Applications", "HumanAndMachine Launchpad.app")).exists()).toBe(false);
+  expect(await Bun.file(join(home, "Applications", "Lazurio Launchpad.app")).exists()).toBe(false);
 });
 
 macTest("primary checkout with a separate Git directory remains installable", async () => {
@@ -349,7 +352,7 @@ macTest("a symlink target is rejected without touching its destination", async (
   const external = join(home, "external-app");
   await mkdir(external);
   await writeFile(join(external, "sentinel"), "keep\n");
-  const target = join(home, "Applications", "HumanAndMachine Launchpad.app");
+  const target = join(home, "Applications", "Lazurio Launchpad.app");
   await mkdir(dirname(target), { recursive: true });
   await symlink(external, target);
 
@@ -372,5 +375,5 @@ macTest("a symlinked user Applications directory cannot redirect installation", 
   expect(result.exitCode).not.toBe(0);
   expect(result.stderr.toString()).toContain("Applications adresář nesmí být symlink");
   expect(await readFile(join(external, "sentinel"), "utf8")).toBe("keep\n");
-  expect(await Bun.file(join(external, "HumanAndMachine Launchpad.app")).exists()).toBe(false);
+  expect(await Bun.file(join(external, "Lazurio Launchpad.app")).exists()).toBe(false);
 });
