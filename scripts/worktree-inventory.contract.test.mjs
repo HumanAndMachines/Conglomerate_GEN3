@@ -444,13 +444,19 @@ test("runs the canonical CLI validator in repository-db cwd with injection env s
   await mkdir(scriptsRoot, { recursive: true });
   await writeFile(
     validatorPath,
-    `import { dirname, resolve } from "node:path";
+    `import { realpathSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 const expectedCwd = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const actualRealCwd = realpathSync.native(process.cwd());
+const expectedRealCwd = realpathSync.native(expectedCwd);
+const sameCwd = process.platform === "win32"
+  ? actualRealCwd.toLowerCase() === expectedRealCwd.toLowerCase()
+  : actualRealCwd === expectedRealCwd;
 const leaked = ["GIT_DIR", "NODE_OPTIONS", "NODE_PATH", "BUN_CONFIG_PRELOAD", "BUN_OPTIONS"]
   .filter((key) => process.env[key]);
-if (process.cwd() !== expectedCwd || leaked.length > 0) {
-  console.error(JSON.stringify({ cwd: process.cwd(), expectedCwd, leaked }));
+if (!sameCwd || leaked.length > 0) {
+  console.error(JSON.stringify({ actualRealCwd, expectedRealCwd, leaked }));
   process.exit(1);
 }
 `,
