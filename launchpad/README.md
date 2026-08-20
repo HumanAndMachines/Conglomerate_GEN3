@@ -386,7 +386,7 @@ V multi-company rootu platí:
   mašině pak listener používají po jednom a Start/Open přebírá jeho vlastnictví.
 - více verzí nebo worktrees jedné aplikace musí odkazovat na shodný pojmenovaný
   lease a současně běží nejvýše jedna varianta.
-- `lazurio.port-registry.json` v Conglomerate rootu je jediná autorita
+- `lazurio.port-registry.json` v Lazurio rootu je jediná autorita
   nepřekrývajících se Organization bloků. Creator pod OS-level lockem jednou
   přidělí volný module port; Organization manifest blok neduplikuje.
 - chybějící module lease, inline/dynamický runtime port, odlišný Module ID na
@@ -698,7 +698,7 @@ jasný mechanismus:
   obnovení. Při konfliktu je nová verze stažená, konflikt zůstane viditelný a
   bezpečnostní stash se nesmaže.
 - `Stáhnout změny` je jedna přímá builder akce pro právě otevřenou Organizaci.
-  Samostatný řádek pod stavem Conglomerate ukazuje, v kolika modulech jsou nové
+  Samostatný řádek pod stavem Lazurio ukazuje, v kolika modulech jsou nové
   změny. V první fázi stáhne Organization root repo; ve druhé znovu načte jeho
   manifest, aktualizuje existující Workspace/root sloty a chybějící
   aktivní sloty bezpečně naklonuje. GitHub credentials kolegy zůstávají access
@@ -710,7 +710,7 @@ jasný mechanismus:
   dependencies instaluje až explicitní `Install`/`Otevřít` runtime flow.
 
 Aktivní Organization pohled shrnuje Git aktualizace do jednoduchého stavového
-řádku přímo pod stavem Conglomerate. Při dostupných změnách ukáže počet modulů
+řádku přímo pod stavem Lazurio. Při dostupných změnách ukáže počet modulů
 a jediné tlačítko **Stáhnout změny**; technické stavy jednotlivých modulů dál
 zůstávají na jejich kartách a v detailu.
 
@@ -799,7 +799,7 @@ Doctor musí hlídat:
 - validitu `lazurio.runtime.v1` a read-compatible legacy manifestů jako warnings pro jednotlivé stale appky
   a jako hard failure jen pro root/security/konfliktní validní runtime případy
 - owner-aware kolize materializovaných lease, chybějící module manifesty a
-  odchylky od centrálního Conglomerate port registru
+  odchylky od centrálního Lazurio port registru
 - existenci `dev_script`
 - existenci a validitu read-only plugin manifestu, pokud je uvedený
 - u Organizací, které přijaly agent-skills entrypoint kontrakt, že

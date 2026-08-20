@@ -1,8 +1,8 @@
 # Guide GEN3
 
-`guide/` je sdílený interaktivní průvodce **HumanAndMachine GEN3 / Conglomerate** rootem.
+`guide/` je sdílený interaktivní průvodce **Lazurio rootem**.
 
-Vychází z funkčně nejdál dotažené GEN2 guide předlohy: Astro aplikace, `content/` kurz, lekce, kvízy, úkoly a achievementy. Do Conglomerate se ale přenáší **mechanismus**, ne firemní obsah ani data předlohy.
+Vychází z funkčně nejdál dotažené GEN2 guide předlohy: Astro aplikace, `content/` kurz, lekce, kvízy, úkoly a achievementy. Do Lazuria se ale přenáší **mechanismus**, ne firemní obsah ani data předlohy.
 
 ## Účel
 
@@ -14,7 +14,7 @@ Guide je netechnický úvod pro nové kolegy: jak v prvních dnech pracovat s di
 - jak se práce bezpečně uloží a co dělat, když se něco rozbije;
 - jak přidávat vlastní poznatky a postupy a pomáhat kolegům.
 
-Technická cesta „mapa systému“ (Conglomerate / Launchpad root, Organizace, Workspace, Productionspace, source of truth, klientský rollout) je plánovaná budoucí část kurzu; dnes tato témata drží root `MAP.md` a `manual/`.
+Technická cesta „mapa systému“ (Lazurio / Launchpad root, Organizace, Workspace, Productionspace, source of truth, klientský rollout) je plánovaná budoucí část kurzu; dnes tato témata drží root `MAP.md` a `manual/`.
 
 ## Spuštění
 

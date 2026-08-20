@@ -11,7 +11,7 @@ existujícího owner repa.
    `<login>/<login>_GEN3`.
 2. Zkontroluj pracovní strom a vytvoř běžnou review branch; nemaž ani
    nepřepisuj historii.
-3. Ověř, že repo ani parent Conglomerate neobsahují `.gitmodules` nebo
+3. Ověř, že repo ani parent Lazurio neobsahují `.gitmodules` nebo
    gitlinky.
 4. Zastav aktivní gbrain writery a nezkopíruj secrets, OAuth/session data,
    runtime databázi ani index.
@@ -49,7 +49,7 @@ Personalspace.
 1. Vytvoř nebo ověř samostatné private `<login>/<login>-gbrain`.
 2. Naklonuj jej do gitignored `gbrain/`; nepřidávej submodule.
 3. Ověř, že owner repo ignoruje `gbrain/` i `secrets/`.
-4. Z kořene Conglomerate spusť:
+4. Z kořene Lazurio spusť:
 
    ```text
    bun run doctor

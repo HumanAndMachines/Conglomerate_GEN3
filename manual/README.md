@@ -1,8 +1,8 @@
-# HumanAndMachine GEN3 / Conglomerate root Manual
+# Lazurio root Manual
 
-Tento manuál je source of truth pro maintenance agenty, kteří udržují **HumanAndMachine GEN3 / Conglomerate root**.
+Tento manuál je source of truth pro maintenance agenty, kteří udržují **Lazurio root**.
 
-HumanAndMachine GEN3 je současný název systému dříve označovaného jako Conglomerate GEN3. Tento root (`HumanAndMachines/Lazurio`) není jedna firma ani klientská organizace; je to sdílený framework pro Launchpad, Guide, templates, manuály, privátní `personalspace/` a lokální mountpointy GitHub-like organizací v `organizations/`.
+Lazurio je současný název systému a sdíleného frameworku. Tento root (`HumanAndMachines/Lazurio`) není jedna firma ani klientská organizace; je to sdílený framework pro Launchpad, Guide, templates, manuály, privátní `personalspace/` a lokální mountpointy GitHub-like organizací v `organizations/`.
 
 ## Maintenance účel
 
@@ -20,7 +20,7 @@ Maintenance agent před zásahem ověřuje:
 - `package.json` — root workflow pro `bun run check`, `bun run doctor` a spuštění Launchpadu.
 - `AGENTS.md` — rozhodovací pravidla pro agenty před vstupem do organizace.
 - `MAP.md` — lidský rozcestník.
-- `launchpad/` — sdílený builder-first Launchpad GEN3 (decision 0047 v manual/decision-register.md, reviduje CEO-first 0024): surface pro Buildery Organizace (Organization Builder) — spouštění aplikací z `main` i z worktrees podle Mission Control plánů (decision 0049), read-only přehled productionspace a dynamické načítání Organizací/Workspaces/modulů se stavy `available` / `missing_access` / `planned_slot`; Admin Organizace (Organization Admin), vstup Uživatelů Organizace (Organization User) do produkčních workspace aplikací a deploy/server konfigurace patří do Conglomerate Dashboardu GEN3.
+- `launchpad/` — sdílený builder-first Launchpad GEN3 (decision 0047 v manual/decision-register.md, reviduje CEO-first 0024): surface pro Buildery Organizace (Organization Builder) — spouštění aplikací z `main` i z worktrees podle Mission Control plánů (decision 0049), read-only přehled productionspace a dynamické načítání Organizací/Workspaces/modulů se stavy `available` / `missing_access` / `planned_slot`; Admin Organizace (Organization Admin), vstup Uživatelů Organizace (Organization User) do produkčních workspace aplikací a deploy/server konfigurace patří do Lazurio Dashboardu.
 - `guide/` — sdílený netechnický onboarding kurz do práce s digitální kanceláří a AI kolegy; mechanismy rootu a Organizací drží `manual/` a MAP.md, dokud nevznikne plánovaná cesta „mapa systému“.
 - `organizations/README.md` — jediné trackované vysvětlení lokálního Organization mountpointu; konkrétní `organizations/*` jsou gitignored nested repos.
 - `personalspace/` — privátní osobní repo mimo GitHub organizace.
@@ -44,7 +44,7 @@ Maintenance agent před zásahem ověřuje:
   nic zatím nepřejmenovává ani nemění runtime.
 - `manual/desktop-execution-agent-collaboration.md` — baseline spolupráce Buddy a workspace-local AI kolegů s Claude/Codex Desktop App agenty: Desktop agent dělá maximum práce, Buddy drží QA gate a reviewer routing.
 - `manual/worktree-management.md` — cílový CAC-0065 kontrakt pro standardizované
-  Conglomerate a Organization worktree environments, manifestovou dependency
+  Lazurio a Organization worktree environments, manifestovou dependency
   hydrataci, Launchpad read model a PR-aware bezpečný cleanup; do implementace
   je výrazně označený jako plán, ne jako aktivní CLI návod.
 - `manual/doctor-composable-surface.md` — společný surface doctorů (decision
@@ -122,7 +122,7 @@ runtime/cache cesty, ne custody source of truth.
   per-machine postup jako Codex část standardu; přímé STDIO/HTTP varianty
   Docker nepotřebují.
 - [First-client Organization rollout](first-client-organization-rollout.md) — od čistého root preflightu přes klientský Organization mount po zelený Doctor/Launchpad handoff.
-- [GEN2 → GEN3 migration manual](gen2-to-gen3-migration.md) — převod GEN2 workspace do Organization modelu včetně pravidla, že obecný Organization-local `guide/` se maže a nahrazuje shared `Conglomerate/guide`.
+- [GEN2 → GEN3 migration manual](gen2-to-gen3-migration.md) — převod GEN2 workspace do Organization modelu včetně pravidla, že obecný Organization-local `guide/` se maže a nahrazuje shared `Lazurio/guide`.
 - [Workspace module version lifecycle](workspace-module-version-lifecycle.md) — standard `v0`/`v1`/`v2`/`v3` pro standardní workspace moduly, repository-db v3 writer/draft/publish pipeline, template propagation a Pricebook v3 dogfood.
 - [Doctor worktree management](worktree-management.md) — shaping manuál a
   implementační řezy CAC-0065 pro jeden Organization environment se skutečnými

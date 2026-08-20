@@ -15,7 +15,7 @@ import { join } from "node:path";
 
 const root = join(import.meta.dirname, "..", "..");
 const installer = join(root, "Install-LaunchpadShortcut.ps1");
-const shortcutName = "HumanAndMachine Launchpad GEN3.lnk";
+const shortcutName = "Lazurio Launchpad.lnk";
 const installSchema = "lazurio.launchpad.windows_install.v1";
 const tempRoots = [];
 const linkedWorktrees = [];

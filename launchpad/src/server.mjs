@@ -992,7 +992,7 @@ function startServer(startPort) {
             root_id: launchpadRootId,
           });
         }
-        // Update lane Conglomerate rootu (decision 0059, draft 0080): oddělená
+        // Update lane Lazurio rootu (decision 0059, draft 0080): oddělená
         // od org git inventáře; mutace jde přes trusted-local guard výše a
         // serializuje se s background fetchi přes withRemoteRefreshPaused.
         // I GET status je trusted-local: dělá git fetch (síť + credentials),

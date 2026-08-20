@@ -232,7 +232,7 @@ test("Doctor nepřeskočí přijatý kontrakt kvůli rozbitému skills junctionu
   expect(check.details[0]).toContain("repair_needed/entrypoint_wrong_link");
 });
 
-test("Doctor kontroluje i root checkout Conglomerate (includeRoot default)", async () => {
+test("Doctor kontroluje i root checkout Lazurio (includeRoot default)", async () => {
   const companiesRoot = await mkdtemp(join(tmpdir(), "agent-skills-root-"));
   tempRoots.push(companiesRoot);
   await writeSkill(companiesRoot, "root-skill");

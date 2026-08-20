@@ -1,6 +1,6 @@
-# Conglomerate Guide App v1
+# Lazurio Guide App v1
 
-Astro renderer pro sdílený HumanAndMachine GEN3 Guide.
+Astro renderer pro sdílený Lazurio Guide.
 
 ## Spuštění
 
@@ -16,4 +16,4 @@ Lokální URL: `http://127.0.0.1:5281`.
 
 Aplikace přebírá funkční pattern z GEN2 guide předlohy: mapa cesty, lekce, kvízy, úkoly, achievementy a jednoduchý progres v browseru.
 
-Obsah se ale čte z `guide/content/` a je obecný pro Conglomerate GEN3.
+Obsah se ale čte z `guide/content/` a je obecný pro Lazurio.

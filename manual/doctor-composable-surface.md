@@ -7,7 +7,7 @@ najde, spustí a agreguje. Zdroj pravidla: decision **0118** v lokálním
 
 ## Pravidlo
 
-Doctor není jeden program. **Root doctor** v kořeni Conglomerate nese
+Doctor není jeden program. **Root doctor** v kořeni Lazurio nese
 *standardizované* kontroly, které platí pro každý checkout. Každé namountované
 repo — Organizace, Personalspace — si nese **vlastní nezávislý doctor**, který
 root najde a zavolá.
@@ -180,7 +180,7 @@ v CLI a v UI by znamenal dvě různé odpovědi o téže mašině.
 **`doctor.self_conformance` a app id — dluh zůstává otevřený, i když dnes
 neměří.** Původní znění tohohle odstavce tvrdilo, že `self_conformance` na dnešní
 mašině hlásí `fail`, protože dvacet kontrol `launchpad.runtime.<app id>` má id
-s velkými písmeny. **Změřeno 2026-07-30** proti reálnému Conglomerate rootu
+s velkými písmeny. **Změřeno 2026-07-30** proti reálnému Lazurio rootu
 (10 mountů, 8 Organizací, 62 kontrol `launchpad.runtime.*`): žádné z vydaných
 `checks[].id` dnes pattern `^[a-z0-9]+([._-][a-z0-9]+)*$` neporušuje a
 `self_conformance` je `ok`. Nic se tím ale neopravilo a nic se tu neuvolnilo:
@@ -200,15 +200,17 @@ páruje) a `checks[].id` má `additionalProperties: false`, takže se app id ned
 poslat vedle jako pole. Dokud o tom nerozhodne vlastník, je správný stav hlasitá
 vada, ne uvolněný pattern.
 
-**Adoption baseline je bajt na bajt.** Veřejné Lazurio převzalo surface na
-`main` jako tři přesně otisknuté soubory bez lokální odchylky:
+**Adoption baseline a současné odchylky jsou přesně otisknuté.** Veřejné
+Lazurio převzalo surface na `main` jako tři přesně otisknuté soubory:
 `doctor-report.schema.json`, `doctor-surface-lib.mjs` a
 `json-schema-mini.mjs`. Dvě root-only povinnosti — svázání identity dítěte s
 mountem a přepočet exit kódu z celého reportu — nejsou kontrakt všech doctorů,
 proto zůstávají v `doctor-children-lib.mjs`. Hlídá to
-`doctor-surface-vendor.test.mjs`: otisky, nulové odchylky a kontrolní test,
-který záznam schválně rozbije. Další změna sdíleného surfacu se autoruje přímo
-v Lazuriu a v témže PR aktualizuje baseline receipt.
+`doctor-surface-vendor.test.mjs`: otisky, pojmenované odchylky a kontrolní test,
+který záznam schválně rozbije. Současný receipt navíc jmenovitě připouští jen
+značkový komentář a zobrazovaný titul Lazurio bez změny validačního chování.
+Další změna sdíleného surfacu se autoruje přímo v Lazuriu a v témže PR
+aktualizuje baseline receipt.
 
 Co ten test **neumí** a co je napsané i v samotném záznamu: nechodí na síť.
 Pozná drift proti záznamu, ne to, zda je navržená změna kompatibilní. Aktuálnost

@@ -74,7 +74,7 @@ export function createModuleFolderOpener({
         || !organizationRelativePath
         || !isWithin(realCompaniesRoot, organizationRoot)
       ) {
-        throw new ModuleFolderActionError(403, "module_path_forbidden", "Cesta Organizace není bezpečně uvnitř Conglomerate rootu.");
+        throw new ModuleFolderActionError(403, "module_path_forbidden", "Cesta Organizace není bezpečně uvnitř Lazurio rootu.");
       }
       const moduleRoot = await realpath(resolve(organizationRoot, module.path)).catch(() => null);
       if (!moduleRoot || !isWithin(organizationRoot, moduleRoot)) {

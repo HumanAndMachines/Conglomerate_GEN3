@@ -17,11 +17,11 @@ export async function allocateModulePort({ conglomerateRoot, moduleRoot, company
   const root = resolve(conglomerateRoot);
   const targetRoot = resolve(moduleRoot);
   if (!existsSync(join(root, "organizations"))) {
-    throw new Error(`${root} není primární Conglomerate root: chybí organizations/; předej explicitní --conglomerate-root`);
+    throw new Error(`${root} není primární Lazurio root: chybí organizations/; předej explicitní --conglomerate-root`);
   }
   const declaredRoots = await declaredModuleRoots(root);
   if (!declaredRoots.has(targetRoot)) {
-    throw new Error(`${targetRoot} není modul deklarovaný v primárním Conglomerate rootu; creator nesmí alokovat lease do worktree ani nedeklarovaného slotu`);
+    throw new Error(`${targetRoot} není modul deklarovaný v primárním Lazurio rootu; creator nesmí alokovat lease do worktree ani nedeklarovaného slotu`);
   }
   const target = join(targetRoot, "lazurio.module.json");
   if (existsSync(target)) throw new Error(`${target} už existuje; přidělený module lease se automaticky nepřepisuje`);

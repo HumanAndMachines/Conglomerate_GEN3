@@ -1,5 +1,5 @@
 // Decision 0104: .claude/skills je Git-tracked byte-for-byte mirror kanonického
-// .agents/skills. Tenhle skript je lokální doctor/repair lane Conglomerate
+// .agents/skills. Tenhle skript je lokální doctor/repair lane Lazuria
 // rootu (adaptace referenční implementace z OrganizationTemplate_GEN3):
 //   bun run doctor:agent-skills  — read-only parity check (drift => exit 1)
 //   bun run repair:agent-skills  — deterministická regenerace mirroru

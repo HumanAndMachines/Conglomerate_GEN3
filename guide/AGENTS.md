@@ -1,10 +1,10 @@
 # AGENTS.md — pravidla pro agenta v `guide/`
 
-Tento scope je sdílený **HumanAndMachine GEN3 / Conglomerate root Guide**, ne Guide jedné Organizace.
+Tento scope je sdílený **Guide Lazurio rootu**, ne Guide jedné Organizace.
 
 ## Co `guide/` vlastní
 
-- `guide/content/` drží obecný onboarding kurz pro HumanAndMachine GEN3.
+- `guide/content/` drží obecný onboarding kurz pro Lazurio.
 - `guide/app/v1/` je Astro renderer převzatý mechanismem z GEN2 guide.
 - Root docs (`README.md`, `AGENTS.md`, `ARCHITECTURE.md`, `CHANGELOG.md`) drží metadata a pravidla Guide vrstvy.
 

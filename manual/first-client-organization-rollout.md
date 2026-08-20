@@ -1,6 +1,6 @@
 # First-client Organization rollout runbook
 
-Tento runbook je obecný closeout postup pro první klientský **HumanAndMachine GEN3** rollout z prázdného nebo čerstvě migrovaného klienta do lokálního `Conglomerate/` rootu. Podporuje dvě explicitní cesty: **GitHub-first**, kdy už klient schválil cílovou GitHub Organization a repo, a **local-first**, kdy se Organization připraví a ověří lokálně bez remote `origin` a GitHub hranice se připojí až později za účasti klienta.
+Tento runbook je obecný closeout postup pro první klientský **Lazurio** rollout z prázdného nebo čerstvě migrovaného klienta do lokálního `Lazurio/` rootu. Podporuje dvě explicitní cesty: **GitHub-first**, kdy už klient schválil cílovou GitHub Organization a repo, a **local-first**, kdy se Organization připraví a ověří lokálně bez remote `origin` a GitHub hranice se připojí až později za účasti klienta.
 
 Cíl: nový klient má vlastní Organization repo, je lokálně namountovaný pod `organizations/<ClientOrg>_GEN3/`, Launchpad ho objeví bez hardcodovaných root portů a `bun run check` + `bun run doctor` v rootu projdou bez support-loop warningů.
 
@@ -33,7 +33,7 @@ Vyplň před tím, než vytvoříš nebo mountneš klientský checkout:
 | Klientské podklady | Hledej ve schválené delivery/sales knowledgebase dodavatele a souvisejících deal/quote/proposal záznamech; vendor-specific cesty patří do AGENTS.md dané dodavatelské Organizace, ne do sdíleného runbooku. Do nové Organizace přenášej jen relevantní, netajný delivery kontext, ne raw interní reasoning ani secrets |
 | Shared Guide | bere se z `guide/` veřejného Lazurio rootu, nekopíruje se ani neforkuje do klientské Organizace |
 | Productionspace | co je release/produkční systém a nesmí být běžný workspace modul |
-| Zastřešující Admin Organizace | Nastav absolutní `ADMIN_ORGANIZATION_ROOT`, například `/Users/example/Conglomerate/organizations/AdminOrganization_GEN3`; musí být přímý Organization child tohoto Conglomerate rootu. |
+| Zastřešující Admin Organizace | Nastav absolutní `ADMIN_ORGANIZATION_ROOT`, například `/Users/example/Conglomerate/organizations/AdminOrganization_GEN3`; musí být přímý Organization child tohoto Lazurio rootu. |
 | Organization template checkout | Nastav absolutní `ORGANIZATION_TEMPLATE_ROOT` přesně na `$ADMIN_ORGANIZATION_ROOT/productionspace/OrganizationTemplate_GEN3`; checkout musí používat kanonický SSH origin. |
 
 ## Rollout fáze
@@ -49,23 +49,23 @@ preflight_gen3_rollout() {
 cd /path/to/Conglomerate || return 1
 conglomerate_root="$(pwd -P)" || return 1
 git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || {
-  echo "Conglomerate root nemá čitelný Git common directory" >&2
+  echo "Lazurio root nemá čitelný Git common directory" >&2
   return 1
 }
 primary_conglomerate_root="$(cd "$git_common_dir/.." && pwd -P)" || return 1
 git status --short --branch
 git fetch --no-tags origin main || return 1
 current_branch="$(git symbolic-ref --short HEAD 2>/dev/null)" || {
-  echo "Conglomerate root nesmí být detached" >&2
+  echo "Lazurio root nesmí být detached" >&2
   return 1
 }
 test -z "$(git status --porcelain)" || {
-  echo "Conglomerate root musí být čistý" >&2
+  echo "Lazurio root musí být čistý" >&2
   return 1
 }
 if [ "$current_branch" = "main" ]; then
   test "$(git rev-parse HEAD)" = "$(git rev-parse FETCH_HEAD)" || {
-    echo "Conglomerate main musí být na exact čerstvém origin/main" >&2
+    echo "Lazurio main musí být na exact čerstvém origin/main" >&2
     return 1
   }
 else
@@ -116,7 +116,7 @@ jq -e '(.organization_kind // "organization") == "organization"' "$admin_organiz
 admin_relative="${admin_organization_root#"$primary_conglomerate_root"/organizations/}"
 case "$admin_relative" in
   ""|*/*)
-    echo "ADMIN_ORGANIZATION_ROOT musí být přímý child tohoto Conglomerate organizations/" >&2
+    echo "ADMIN_ORGANIZATION_ROOT musí být přímý child tohoto Lazurio organizations/" >&2
     return 1
     ;;
 esac
@@ -216,7 +216,7 @@ Pokračuj jen pokud:
 
 - root checkout je na aktuálním `main` nebo je změna v izolovaném worktree/PR;
 - `bun run check` projde;
-- `bun run doctor` je `ok - Conglomerate`;
+- `bun run doctor` je `ok - Lazurio`;
 - explicitní preflight výše potvrdí existenci a Git stav všech čtyř required
   template checkoutů; Doctor pouze discovery-reportuje ty přítomné a nemá
   hardcodovaný allowlist, kterým by jejich absenci vynucoval;
@@ -394,7 +394,7 @@ Nesmí vzniknout:
 
 ### 3. Manifest a port pravidla
 
-Conglomerate root drží jediný registry nepřekrývajících se Organization bloků,
+Lazurio root drží jediný registry nepřekrývajících se Organization bloků,
 nikoli přesné app porty. Přesný port vlastní kořen modulu:
 
 ```json
@@ -588,7 +588,7 @@ Neprováděj Install/Repair na Productionspace systémech bez explicitního scop
 
 Před předáním prvnímu klientovi musí člověk umět odpovědět na tři otázky bez čtení zdrojového kódu:
 
-1. Co je tento lokální Conglomerate/Launchpad root?
+1. Co je tento lokální Lazurio/Launchpad root?
 2. Která Organization je klient a kde je její source of truth?
 3. Která appka/modul je první bezpečný pilot a jak poznám, že je připravená?
 
@@ -620,7 +620,7 @@ Lokální odmountování klientského checkoutu není destruktivní vůči remot
 Použij pro první klientský closeout. Pole označené `pokud ...` dokládej jen tehdy, když daný krok patřil do zvoleného rollout režimu; neprovedenou GitHub nebo runtime akci neprezentuj jako selhání ani jako hotovou práci.
 
 ```md
-## HumanAndMachine GEN3 first-client rollout evidence
+## Lazurio first-client rollout evidence
 
 - Rollout mode: `github-first` / `local-first`
 - Root: `<path>`
@@ -657,7 +657,7 @@ GEN3 je ready pro prvního klienta, když:
   `MissionControlTemplate`, `KnowledgebaseTemplate` a
   `DesignSystemTemplate`; Mission Control i Design System template mají
   ověřené GitHub `is_template=true`;
-- Guide je ze shared Conglomerate rootu;
+- Guide je ze shared Lazurio rootu;
 - secrets custody je metadata-only ověřená, bez úniku hodnot;
 - existuje jasný rollback bez mazání klientských dat;
 - jakákoli zbývající práce je zapsaná v klientské Organization Mission Control / TODO ledgeru, ne jen v chatu.

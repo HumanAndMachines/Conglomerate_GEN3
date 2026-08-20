@@ -4,7 +4,7 @@ Status: seed operating concept from the founder's 2026-07-04 product correction;
 
 ## Core correction
 
-`personalspace/` is not just a private folder or secret custody mount. It is the private human/Buddy layer of HumanAndMachine GEN3 and needs a module model analogous to Organization `workspace/` modules, with stricter privacy and per-person ownership.
+`personalspace/` is not just a private folder or secret custody mount. It is the private human/Buddy layer of Lazurio and needs a module model analogous to Organization `workspace/` modules, with stricter privacy and per-person ownership.
 
 ## Product implications
 
@@ -14,7 +14,7 @@ Status: seed operating concept from the founder's 2026-07-04 product correction;
    - Those applications are per-user/per-colleague by default, not shared Organization apps.
    - Personalspace modules must never be auto-merged into Organization discovery or company source-of-truth.
 
-2. **Conglomerate Dashboard is not only admin configuration.**
+2. **Lazurio Dashboard is not only admin configuration.**
    - It is also the user-facing entrypoint into production workspace applications.
    - It owns Admin Organizace (Organization Admin) flows: Organization configuration, colleagues, AI colleagues, access, plans, billing, and policy.
    - It also needs deployment/server configuration flows: admins configure deploy targets for workspace applications; personalspace application deploys/settings may be controlled by the relevant admin, builder, or user depending on ownership and tier.
@@ -55,9 +55,9 @@ Current ecosystem options worth evaluating, based on 2026-07-04 quick verificati
 - **Obsidian Git plugin** — Git integration inside Obsidian with scheduled commit/pull/push; good fit for desktop/local clones, but mobile support is marked unstable by the plugin.
 - **Self-hosted LiveSync** — community plugin that syncs through CouchDB-compatible or object-storage backends and supports E2E encryption; explicitly not compatible with official Obsidian Sync.
 - **Remotely Save** — community plugin for S3-compatible storage, WebDAV, Dropbox, OneDrive, Google Drive, etc.; it warns to back up before use.
-- **Official Obsidian Sync** — useful if Obsidian-hosted sync is acceptable, but it is not the self-hosted HumanAndMachine server path.
+- **Official Obsidian Sync** — useful if Obsidian-hosted sync is acceptable, but it is not the self-hosted Lazurio server path.
 
-For HumanAndMachine, the strategic path is probably: Git-backed vault as source of truth + hosted GBrain service for agents + optional Obsidian sync adapter for human editing convenience.
+For Lazurio, the strategic path is probably: Git-backed vault as source of truth + hosted GBrain service for agents + optional Obsidian sync adapter for human editing convenience.
 
 ## Access and safety invariants
 

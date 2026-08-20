@@ -15,7 +15,7 @@ if (
   throw new Error("guide/lazurio.module.json must declare a valid main lease");
 }
 
-// Interaktivní průvodce Conglomerate GEN3. SSR mód zachovává
+// Interaktivní průvodce Lazuriem. SSR mód zachovává
 // GEN2 guide pattern; content je obecný root-level onboarding. Runtime scripts
 // kontrolují Launchpad injection před spuštěním Astro; samotný config zůstává
 // statický, protože Astro podporuje objektový defineConfig kontrakt.

@@ -113,7 +113,7 @@ test("odmítne chybějící checkout a symlink mimo Organizaci", async () => {
   });
 });
 
-test("odmítne Organization mount, jehož realpath uniká mimo Conglomerate root", async () => {
+test("odmítne Organization mount, jehož realpath uniká mimo Lazurio root", async () => {
   const root = join(import.meta.dir, `.tmp-module-folder-${crypto.randomUUID()}`);
   tempRoots.push(root);
   const companiesRoot = join(root, "conglomerate");

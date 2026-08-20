@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lazurio.ai/schemas/lazurio-port-registry.v1.json",
-  "title": "Conglomerate Organization port block registry",
+  "title": "Lazurio Organization port block registry",
   "type": "object",
   "required": ["schema_version", "allocation_strategy", "organization_blocks"],
   "properties": {

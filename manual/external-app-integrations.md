@@ -1,6 +1,6 @@
 # Napojení na externí aplikace: lokální MCP a CLI standard
 
-Tento manuál je kanonický standard HumanAndMachine GEN3 pro připojování
+Tento manuál je kanonický standard Lazurio pro připojování
 Worker Agentů a Kolegů na externí aplikace (Gmail, Slack, Jira, Canva…).
 Definuje závazné defaultní chování, žebříček výběru integrace, kde žijí
 definice a kde přihlašovací artefakty. Harness-specifické detaily drží
@@ -290,7 +290,7 @@ instalací zkontroluj aktuální dokumentaci poskytovatele.
 
 Externí aplikace a jejich MCP/CLI ekosystém se mění rychleji, než je kdokoli
 schopen průběžně přetestovávat. Tenhle manuál i runbooky jsou **komunitní
-standard HumanAndMachine** a žijí z reálných instalací — nikdo je centrálně
+standard Lazurio** a žijí z reálných instalací — nikdo je centrálně
 denně neověřuje. Proto pro každého agenta platí:
 
 1. Když se Kolega během napojování na čemkoli zasekne, nebo narazíš na
@@ -307,7 +307,7 @@ denně neověřuje. Proto pro každého agenta platí:
    katalogu dané Organizace; do root runbooků jde jen generalizované a
    anonymizované poučení — nikdy org data.
 
-Oprava poslaná upstream se dostane ke všem uživatelům HumanAndMachine;
+Oprava poslaná upstream se dostane ke všem uživatelům Lazurio;
 poznatek zamčený v jedné mašině nebo jednom chatu je ztracený.
 
 ## Odebrání, rotace, incident a closeout

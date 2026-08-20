@@ -311,7 +311,7 @@ function New-LaunchpadShortcut {
     $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$BootstrapPath`" -ConfigPath `"$ConfigPath`""
     $shortcut.WorkingDirectory = $InstalledRoot
     $shortcut.IconLocation = "$IconPath,0"
-    $shortcut.Description = 'HumanAndMachine GEN3 Launchpad'
+    $shortcut.Description = 'Lazurio Launchpad'
     $shortcut.Save()
 }
 
@@ -385,7 +385,7 @@ if ([string]::IsNullOrWhiteSpace($StartMenuRoot)) {
     if ([string]::IsNullOrWhiteSpace($programsRoot)) {
         throw 'Windows Start Menu path could not be resolved. Pass -StartMenuRoot explicitly.'
     }
-    $StartMenuRoot = Join-Path $programsRoot 'HumanAndMachine'
+    $StartMenuRoot = Join-Path $programsRoot 'Lazurio'
 }
 if ([string]::IsNullOrWhiteSpace($TaskbarRoot)) {
     if ([string]::IsNullOrWhiteSpace($env:APPDATA)) {
@@ -407,7 +407,7 @@ $assetRoot = Join-Path $InstallRoot 'assets'
 $iconPath = Join-Path $assetRoot 'launchpad.ico'
 $installedBootstrapPath = Join-Path $InstallRoot 'Launchpad-Bootstrap.ps1'
 $installConfigPath = Join-Path $InstallRoot 'install.json'
-$shortcutName = 'HumanAndMachine Launchpad GEN3.lnk'
+$shortcutName = 'Lazurio Launchpad.lnk'
 $startMenuShortcut = Join-Path $StartMenuRoot $shortcutName
 $taskbarShortcut = Join-Path $TaskbarRoot $shortcutName
 $backupBaseRoot = Join-Path $InstallRoot 'shortcut-backups'
@@ -419,7 +419,7 @@ $taskbarValid = $null
 $configValid = $null
 $bootstrapValid = $null
 
-if ($PSCmdlet.ShouldProcess($resolvedRoot, 'Install per-user HumanAndMachine Launchpad bootstrap and shortcuts')) {
+if ($PSCmdlet.ShouldProcess($resolvedRoot, 'Install per-user Lazurio Launchpad bootstrap and shortcuts')) {
     $installApplied = $true
     if (-not (Test-Path -LiteralPath $InstallRoot -PathType Container)) {
         New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null

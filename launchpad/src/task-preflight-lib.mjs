@@ -27,7 +27,7 @@ export async function taskPreflightGitCheck(companiesRoot, { gitRunner = runGit 
   const topLevel = await local(["rev-parse", "--show-toplevel"]);
   if (!topLevel.ok || await canonicalPath(topLevel.stdout) !== await canonicalPath(cwd)) {
     return failure(
-      "Task preflight neběží v primárním Conglomerate Git rootu.",
+      "Task preflight neběží v primárním Lazurio Git rootu.",
       [topLevel.stderr || topLevel.error || `nalezený root: ${topLevel.stdout || "-"}`],
     );
   }

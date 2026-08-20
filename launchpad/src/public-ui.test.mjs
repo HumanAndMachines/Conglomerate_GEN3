@@ -1305,7 +1305,7 @@ test("CAC-0083: dostupný root update je nepřehlédnutelný — banner ve všec
   expect(js).toContain("function formatCommitCountCz");
   expect(js).toContain("formatCommitCountCz(behind)");
   expect(js).toContain('status.state === "up_to_date"');
-  expect(js).toContain('elements.updateBannerText.textContent = "Conglomerate je aktuální."');
+  expect(js).toContain('elements.updateBannerText.textContent = "Lazurio je aktuální."');
   expect(js).not.toContain("Všechny aplikace jsou aktuální");
   expect(js).toContain('state: "check_failed"');
   expect(js).toContain('elements.updateBannerText.textContent = "Kontroluji dostupné změny…"');

@@ -4,7 +4,7 @@
 // rather than trying to authorize chat participants a second time.
 //
 // WHAT THE BRIDGE IS ALLOWED TO OPEN, AND WHY THE LIST IS THIS SHORT. The whole
-// Conglomerate tree lives on this host: the Principal's modules, their private
+// Lazurio tree lives on this host: the Principal's modules, their private
 // `<login>-gbrain` memory, their secrets directory. Of that entire tree the
 // bridge may open exactly ONE directory — `<personalspace>/<login>_GEN3/buddy`,
 // the profile — and it runs under its own uid `buddy-bridge`, in no group but

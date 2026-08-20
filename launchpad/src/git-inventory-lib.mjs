@@ -63,7 +63,7 @@ export async function buildGitInventory({ companiesRoot, organizations = null } 
         || !isSamePath(expectedRealOrganizationRoot, rootBoundary.targetRealPath)
       ) {
         warnings.push(
-          `${normalized.path}: mount vynechán z git inventáře — kanonická cesta se přes symlink/junction dostává mimo Conglomerate root nebo ji nejde bezpečně ověřit`,
+          `${normalized.path}: mount vynechán z git inventáře — kanonická cesta se přes symlink/junction dostává mimo Lazurio root nebo ji nejde bezpečně ověřit`,
         );
         continue;
       }

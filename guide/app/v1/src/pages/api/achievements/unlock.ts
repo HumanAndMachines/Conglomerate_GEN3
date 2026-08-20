@@ -21,7 +21,7 @@ export const POST: APIRoute = async ({ request }) => {
 
   const slug = body.slug ?? whoami().slug;
   if (!slug) {
-    // Shared Conglomerate Guide is intentionally usable before a colleague has
+    // Shared Lazurio Guide is intentionally usable before a colleague has
     // a writable profile directory. Persist completion in browser localStorage;
     // treat server-side achievement persistence as optional enhancement.
     return Response.json({

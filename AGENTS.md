@@ -1,8 +1,8 @@
-# Conglomerate / Launchpad GEN3 root — pravidla pro agenty
+# Lazurio root — pravidla pro agenty
 
 ## Co je tenhle root
 
-Conglomerate root je **obal nad `organizations/` a `personalspace/`** na jedné
+Lazurio root je **obal nad `organizations/` a `personalspace/`** na jedné
 mašině: jedno místo, odkud se načítá osobní kontext Principála a víc
 GitHub-like Organizací. Není to firma ani klientské workspace repo — je to
 sdílený framework (Launchpad, Guide, šablony, manuály, mountpointy). Každá
@@ -34,16 +34,15 @@ hádání.
 
 ## Názvosloví
 
-**HumanAndMachine GEN3** je aktuální název systému dříve označovaného jako
-Conglomerate GEN3; „Conglomerate GEN3“ dnes označuje jen produkt pro pracovní
-záležitosti (decision 0039 v manual/decision-register.md). GitHub
+**Lazurio** je aktuální název systému a sdíleného frameworku. Historické
+produktové názvy zůstávají pouze v auditních záznamech rozhodnutí. GitHub
 organization je `HumanAndMachines` (singulární `HumanAndMachine` bylo
 zabrané); canonical repo rootu je `HumanAndMachines/Lazurio`.
 
 ## Model spolupráce: Principál a Agenti
 
 <!-- Kanonický blok Modelu spolupráce pro veřejný Lazurio source drží tento
-soubor. Měň ho reviewovaným PR v Lazurio source a do generovaných rezidentních
+soubor. Měň ho reviewovaným PR v source Lazuria a do generovaných rezidentních
 rootů ho propaguj pouze verzovaným profile buildem. Organization-specific
 plánování a know-how patří do Mission Controlu a Knowledgebase dané Organizace,
 ne do skryté externí autority tohoto veřejného repa. -->
@@ -86,7 +85,7 @@ ohraničené hranice** a **definované procesy**.
 Tenhle text je úplný sám o sobě — řiď se jím i bez dalších odkazů. Shrnutí
 navazujících rozhodnutí (mj. `0089`–`0094` a `0112`) drží lokální registr
 `manual/decision-register.md`; plné decision records žijí u maintainerů
-frameworku a k práci v Conglomerate nejsou potřeba.
+frameworku a k práci v Lazuriu nejsou potřeba.
 
 ### Slovník person: pět pojmů
 
@@ -215,7 +214,7 @@ lokálnímu kontextu, který Agent čte a ve kterém Kolegovi pomáhá; produkto
 vstup pro Kolegu proto začíná v chatu, ne ručním hledáním URL.
 
 Agent používá skutečný zdravý origin, který ohlásí `bun run launchpad:serve`
-spuštěný v Conglomerate rootu. Tento agentní launcher zdravou existující
+spuštěný v Lazurio rootu. Tento agentní launcher zdravou existující
 instanci znovu použije nebo Launchpad spustí, ale nikdy sám neotevře systémový
 browser. Agent nesmí pro tento chat-first krok spouštět `bun run launchpad`,
 `Launchpad.command`, `launchpad.sh` ani jiný human launcher s OS openerem.
@@ -293,7 +292,7 @@ Root upravuj jen když se mění:
   nasazený stav > GLOSSARY > `AGENTS.md` daného scope pro pracovní postup >
   kontrakty > Guide (decision 0040). Lokální public-safe projekcí decision
   records je `manual/decision-register.md`; plné records drží maintaineři
-  frameworku a uživatel Conglomerate je k běžné práci nepotřebuje.
+  frameworku a uživatel Lazuria je k běžné práci nepotřebuje.
 - Nemíchej cílový a aktuální stav: `ARCHITECTURE.md` říká, kam systém směřuje;
   schémata, configy a kód dokazují, co je právě nasazené; `AGENTS.md` říká, jak
   v daném scope pracuje Agent. Výslovně evidovaná migrace smí dočasně držet
@@ -341,9 +340,8 @@ Root upravuj jen když se mění:
 
 ## Organization GEN3 model
 
-Rozjedeme.ai vyvíjí HumanAndMachine. Systém definuje dva navazující produkty:
-**Conglomerate GEN3** pro pracovní záležitosti (firmy, Organizace, Teamy,
-moduly) a **Buddy GEN3** pro osobní záležitosti (decision 0039). Organizace
+Rozjedeme.ai vyvíjí Lazurio. Lazurio zastřešuje pracovní záležitosti
+(firmy, Organizace, Teamy a moduly) i osobní produkt Buddy. Organizace
 odpovídá GitHub Organization: jedna firma = jedno super-repo = jedna GitHub
 organizace = jedna access hranice. Uvnitř Organizace:
 
@@ -361,7 +359,7 @@ organizace = jedna access hranice. Uvnitř Organizace:
   osobním GitHub účtu, včetně gbrainu (decision 0046).
 
 Detailní datový model drží `MAP.md`; shrnutí navazujících rozhodnutí
-`manual/decision-register.md`. Každý pojem nutný pro práci v Conglomerate je
+`manual/decision-register.md`. Každý pojem nutný pro práci v Lazuriu je
 vysvětlený v tomto repu — privátní zdroje maintainerů jsou jen provenience.
 
 ## Izolace
@@ -395,7 +393,7 @@ Launchpad je **builder-first** root surface (decision 0047): spouští
 aplikace z `main` i z worktrees podle Mission Control plánů (decision 0049),
 dynamicky načítá Organizace/Teamy/moduly a productionspace ukazuje jen
 read-only; admin konfigurace a vstup Organization Users do produkčních
-aplikací patří do Conglomerate Dashboardu GEN3. Porty jsou module-owned
+aplikací patří do Lazurio Dashboardu. Porty jsou module-owned
 (přiděluje je `lazurio.module.v1`, konkrétní runtime je pouze používá);
 shared Launchpad nikdy nedrží hardcodovaný port map jedné Organizace. Platný
 static module lease dává `Start`/`Open` autoritu tvrdě převzít každý bezpečně

@@ -195,7 +195,7 @@ test("inventory odmítne existující root, workspace i productionspace checkout
   expect(inventory.warnings.filter((warning) => warning.includes("symlink/junction"))).toHaveLength(3);
 });
 
-test("inventory odmítne Organization mount přes symlink nebo Windows junction mimo Conglomerate root", async () => {
+test("inventory odmítne Organization mount přes symlink nebo Windows junction mimo Lazurio root", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const organizationRoot = join(root, "organizations", "OmegaCo_GEN3");
@@ -220,7 +220,7 @@ test("inventory odmítne Organization mount přes symlink nebo Windows junction 
 
   expect(inventory.repos.some((repo) => repo.organization === "OmegaCo")).toBe(false);
   expect(inventory.warnings.join("\n")).toContain(
-    "mount vynechán z git inventáře — kanonická cesta se přes symlink/junction dostává mimo Conglomerate root",
+    "mount vynechán z git inventáře — kanonická cesta se přes symlink/junction dostává mimo Lazurio root",
   );
 });
 

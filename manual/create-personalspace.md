@@ -1,6 +1,6 @@
 # Vytvoření vlastního Personalspace GEN3
 
-Personalspace je integrální privátní vrstva Conglomerate GEN3. Conglomerate je
+Personalspace je integrální privátní vrstva Lazurio. Lazurio je
 veřejný direct-pull framework a není GitHub template; pro osobní repo je
 připravený `HumanAndMachines/PersonalspaceTemplate_GEN3`. Dokud jeho
 public-readiness audit drží visibility `private`, root příkaz fail-closed nic
@@ -29,7 +29,7 @@ současný live příkaz ji nevytváří.
 
 ## Self-service
 
-V kořeni Conglomerate spusť read-only preflight:
+V kořeni Lazurio spusť read-only preflight:
 
 ```text
 gh auth status

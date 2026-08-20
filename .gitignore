@@ -102,7 +102,7 @@ organizations/*
 # Template source lives in separate template repositories; root tracks only registry/runbook references.
 templates/TemplatesRozjedeme-ai/
 
-# Conglomerate Dashboard GEN3 — separatni privatni repo mount (v1 spike)
+# Lazurio Dashboard — separatni privatni repo mount (v1 spike)
 dashboard/
 
 # Organization-local private mounts

@@ -369,7 +369,7 @@ export async function agentSkillsEntrypointsDoctorCheck({
   agentCapabilityMode = AGENT_CAPABILITY_MODES.CLAUDE_COMPATIBLE,
 }) {
   const targets = [
-    // Conglomerate root má vlastní skills katalog a mirror (decision 0104).
+    // Lazurio root má vlastní skills katalog a mirror (decision 0104).
     ...(includeRoot ? [{ path: ".", label: "root" }] : []),
     ...mounts.filter((mount) => mount?.path && mount.status !== "planned"),
   ];

@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://companiesascode.dev/schemas/doctor-report.schema.json",
-  "title": "HumanAndMachines Doctor Report",
+  "title": "Lazurio Doctor Report",
   "description": "Versionovaný kontrakt výstupu doctora a zároveň SPOLEČNÝ SURFACE, přes který se doctory skládají (decision 0118). Stabilní JSON shape, který konzumuje Launchpad GEN3 orchestrace (CAC-0004). v1 je validní subset v2; sync_push blok je optional a plní ho jen sync/push akce, read-only doctor ho vynechá. v3 rozděluje historický 'skip' na 'not_applicable' (strukturálně mimo scope — fakt, zelenou nekazí) a 'blocked' (mělo běžet, nešlo pozorovat — zelenou kazí vždy) a přidává 'children[]' s tím, co root doctor skutečně dostal od podřízených doctorů. Historické 'skip' se čte jako 'blocked', tedy fail-closed směrem.",
   "type": "object",
   "required": [

@@ -364,7 +364,7 @@ async function main(argv) {
   const paths = [];
   const conglomerateRoot = resolve(explicitConglomerateRoot ?? resolve(import.meta.dirname, ".."));
   if (!existsSync(join(conglomerateRoot, "organizations"))) {
-    console.error(`${conglomerateRoot} není primární Conglomerate root: chybí organizations/; předej --conglomerate-root`);
+    console.error(`${conglomerateRoot} není primární Lazurio root: chybí organizations/; předej --conglomerate-root`);
     process.exitCode = 2;
     return;
   }
