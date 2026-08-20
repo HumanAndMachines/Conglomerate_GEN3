@@ -1,10 +1,12 @@
 import { afterEach, expect, setDefaultTimeout, test } from "bun:test";
+import { Buffer } from "node:buffer";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   auditRepository,
   resolveAuthorityPlanPath,
+  runCanonicalSemanticValidator,
 } from "../.agents/skills/worktree-development-discipline/scripts/worktree-inventory.mjs";
 
 const cleanupPaths = [];
@@ -81,11 +83,14 @@ function planSources(root) {
   walk(join(root, "data", "mission-control", "plans"));
   return files;
 }
-export function validateMissionControlData(root) {
-  return planSources(root).some((source) => source.includes('title: "Semantically invalid"'))
-    ? ["semantic fixture rejection"]
-    : [];
+const failures = planSources(process.cwd()).some((source) => source.includes('title: "Semantically invalid"'))
+  ? ["semantic fixture rejection"]
+  : [];
+if (failures.length > 0) {
+  console.error(failures.join("\\n"));
+  process.exit(1);
 }
+console.log("fixture semantic validation OK");
 `;
 
 afterEach(async () => {
@@ -431,6 +436,85 @@ test("fails closed when canonical semantic plan validation rejects a schema-vali
   });
 });
 
+test("runs the canonical CLI validator in repository-db cwd with injection env scrubbed", async () => {
+  const repositoryDbRoot = await mkdtemp(join(tmpdir(), "worktree validator cwd "));
+  cleanupPaths.push(repositoryDbRoot);
+  const scriptsRoot = join(repositoryDbRoot, "scripts");
+  const validatorPath = join(scriptsRoot, "validate-mission-control-data.mjs");
+  await mkdir(scriptsRoot, { recursive: true });
+  await writeFile(
+    validatorPath,
+    `import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+const expectedCwd = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const leaked = ["GIT_DIR", "NODE_OPTIONS", "NODE_PATH", "BUN_CONFIG_PRELOAD", "BUN_OPTIONS"]
+  .filter((key) => process.env[key]);
+if (process.cwd() !== expectedCwd || leaked.length > 0) {
+  console.error(JSON.stringify({ cwd: process.cwd(), expectedCwd, leaked }));
+  process.exit(1);
+}
+`,
+  );
+  const inherited = new Map([
+    ["GIT_DIR", process.env.GIT_DIR],
+    ["NODE_OPTIONS", process.env.NODE_OPTIONS],
+    ["NODE_PATH", process.env.NODE_PATH],
+    ["BUN_CONFIG_PRELOAD", process.env.BUN_CONFIG_PRELOAD],
+    ["BUN_OPTIONS", process.env.BUN_OPTIONS],
+  ]);
+  try {
+    process.env.GIT_DIR = "/untrusted/git-dir";
+    process.env.NODE_OPTIONS = "--require=/untrusted/preload.cjs";
+    process.env.NODE_PATH = "/untrusted/node-path";
+    process.env.BUN_CONFIG_PRELOAD = "/untrusted/bun-preload.ts";
+    process.env.BUN_OPTIONS = "--preload=/untrusted/bun-options.ts";
+    const result = await runCanonicalSemanticValidator({
+      scriptPath: validatorPath,
+      cwd: repositoryDbRoot,
+      timeoutMs: 2_000,
+    });
+    expect(result).toMatchObject({ ok: true, timedOut: false, exitCode: 0 });
+  } finally {
+    for (const [key, value] of inherited) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test("bounds failing validator output without parsing it", async () => {
+  const repositoryDbRoot = await mkdtemp(join(tmpdir(), "worktree validator flood "));
+  cleanupPaths.push(repositoryDbRoot);
+  const validatorPath = join(repositoryDbRoot, "validator.mjs");
+  await writeFile(
+    validatorPath,
+    `process.stderr.write("x".repeat(1024 * 1024));\nprocess.exit(1);\n`,
+  );
+  const result = await runCanonicalSemanticValidator({
+    scriptPath: validatorPath,
+    cwd: repositoryDbRoot,
+    timeoutMs: 2_000,
+    outputLimitBytes: 1_024,
+  });
+  expect(result.ok).toBe(false);
+  expect(result.exitCode).toBe(1);
+  expect(result.outputTruncated).toBe(true);
+  expect(Buffer.byteLength(result.stdout) + Buffer.byteLength(result.stderr)).toBeLessThanOrEqual(1_024);
+});
+
+test("times out a hanging validator and fails closed", async () => {
+  const repositoryDbRoot = await mkdtemp(join(tmpdir(), "worktree validator timeout "));
+  cleanupPaths.push(repositoryDbRoot);
+  const validatorPath = join(repositoryDbRoot, "validator.mjs");
+  await writeFile(validatorPath, `setInterval(() => {}, 1_000);\n`);
+  const result = await runCanonicalSemanticValidator({
+    scriptPath: validatorPath,
+    cwd: repositoryDbRoot,
+    timeoutMs: 100,
+  });
+  expect(result).toMatchObject({ ok: false, timedOut: true });
+});
+
 test("fails closed when selected plan id does not match dev_code", async () => {
   const fixture = await createFixture({
     authorityAvailable: true,
@@ -736,7 +820,7 @@ async function createOrganizationAuthority(root, { validatorFailures = [] } = {}
   );
   await writeFile(
     join(authorityRoot, "scripts", "validate-mission-control-data.mjs"),
-    `export function validateMissionControlData() { return ${JSON.stringify(validatorFailures)}; }\n`,
+    `const failures = ${JSON.stringify(validatorFailures)};\nif (failures.length > 0) { console.error(failures.join("\\n")); process.exit(1); }\n`,
   );
   await writeFile(planPath, validPlanContents);
   return authorityRoot;

@@ -2,11 +2,13 @@
 
 import { access, lstat, opendir, readFile, readdir, realpath } from "node:fs/promises";
 import { constants, existsSync } from "node:fs";
+import { Buffer } from "node:buffer";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir, tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
 
 const GIT_TIMEOUT_MS = 10_000;
+const SEMANTIC_VALIDATOR_TIMEOUT_MS = 30_000;
+const SEMANTIC_VALIDATOR_OUTPUT_LIMIT_BYTES = 256 * 1024;
 const MAX_PARALLEL_GIT_CHECKS = 4;
 const DISK_SCAN_BUDGET_MS = 20_000;
 const DISK_SCAN_ENTRY_BUDGET = 500_000;
@@ -827,6 +829,7 @@ export async function validateCanonicalMissionControlPlan(
         ),
       ],
     ]);
+    let realSemanticValidatorPath = null;
     for (const [path, expectedRealPath] of expectedRealPaths) {
       const stat = await lstat(path);
       const realPath = await realpath(path);
@@ -838,6 +841,7 @@ export async function validateCanonicalMissionControlPlan(
       ) {
         throw new Error("canonical repository-db path is redirected or outside authority root");
       }
+      if (path === semanticValidatorPath) realSemanticValidatorPath = realPath;
     }
 
     if (await readFile(planPath, "utf8") !== planSource) {
@@ -872,22 +876,29 @@ export async function validateCanonicalMissionControlPlan(
       };
     }
 
-    const semanticValidator = await import(
-      pathToFileURL(semanticValidatorPath).href
-    );
-    if (typeof semanticValidator.validateMissionControlData !== "function") {
-      throw new Error(
-        "canonical semantic validator export is unavailable: validateMissionControlData",
-      );
+    if (!realSemanticValidatorPath) {
+      throw new Error("canonical semantic validator real path is unavailable");
     }
-    const semanticFailures = semanticValidator.validateMissionControlData(repositoryDbRoot);
-    if (!Array.isArray(semanticFailures)) {
-      throw new Error("canonical semantic validator returned an invalid result");
-    }
-    if (semanticFailures.length > 0) {
+    const semanticValidation = await runCanonicalSemanticValidator({
+      scriptPath: realSemanticValidatorPath,
+      cwd: realRepositoryDbRoot,
+    });
+    if (!semanticValidation.ok) {
+      const reason = semanticValidation.timedOut
+        ? `timed out after ${SEMANTIC_VALIDATOR_TIMEOUT_MS}ms`
+        : semanticValidation.spawnError
+          ? `could not start: ${semanticValidation.spawnError}`
+          : `exited with code ${semanticValidation.exitCode ?? "unknown"}`;
+      const diagnostics = [semanticValidation.stderr, semanticValidation.stdout]
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .join("\n");
+      const truncation = semanticValidation.outputTruncated
+        ? " [validator output truncated]"
+        : "";
       return {
         valid: false,
-        error: `Mission Control repository-db semantic validation failed: ${semanticFailures.slice(0, 3).join("; ")}`,
+        error: `Mission Control repository-db semantic validation failed: ${reason}${diagnostics ? `: ${diagnostics}` : ""}${truncation}`,
       };
     }
     return { valid: true, error: null };
@@ -899,6 +910,100 @@ export async function validateCanonicalMissionControlPlan(
       }`,
     };
   }
+}
+
+export async function runCanonicalSemanticValidator({
+  scriptPath,
+  cwd,
+  timeoutMs = SEMANTIC_VALIDATOR_TIMEOUT_MS,
+  outputLimitBytes = SEMANTIC_VALIDATOR_OUTPUT_LIMIT_BYTES,
+} = {}) {
+  const env = { ...process.env };
+  for (const key of [
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_COMMON_DIR",
+    "GIT_DIR",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_PREFIX",
+    "GIT_WORK_TREE",
+    "NODE_OPTIONS",
+    "NODE_PATH",
+    "BUN_CONFIG_PRELOAD",
+    "BUN_OPTIONS",
+  ]) {
+    delete env[key];
+  }
+
+  let proc;
+  try {
+    proc = Bun.spawn([process.execPath, scriptPath], {
+      cwd,
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+      env,
+      windowsHide: true,
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      exitCode: null,
+      timedOut: false,
+      stdout: "",
+      stderr: "",
+      outputTruncated: false,
+      spawnError: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  const outputBudget = {
+    remaining: Math.max(0, outputLimitBytes),
+    truncated: false,
+  };
+  const stdoutPromise = readStreamWithSharedLimit(proc.stdout, outputBudget);
+  const stderrPromise = readStreamWithSharedLimit(proc.stderr, outputBudget);
+  let timedOut = false;
+  let timer;
+  const timeout = new Promise((resolveTimeout) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      proc.kill();
+      resolveTimeout(null);
+    }, Math.max(1, timeoutMs));
+  });
+  const racedExitCode = await Promise.race([proc.exited, timeout]);
+  if (timedOut) await proc.exited;
+  clearTimeout(timer);
+  const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise]);
+  const exitCode = timedOut ? await proc.exited : racedExitCode;
+  return {
+    ok: !timedOut && exitCode === 0,
+    exitCode,
+    timedOut,
+    stdout,
+    stderr,
+    outputTruncated: outputBudget.truncated,
+    spawnError: null,
+  };
+}
+
+async function readStreamWithSharedLimit(stream, budget) {
+  const chunks = [];
+  const reader = stream.getReader();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (budget.remaining > 0) {
+      const accepted = value.subarray(0, budget.remaining);
+      chunks.push(Buffer.from(accepted));
+      budget.remaining -= accepted.byteLength;
+      if (accepted.byteLength < value.byteLength) budget.truncated = true;
+    } else {
+      budget.truncated = true;
+    }
+  }
+  return Buffer.concat(chunks).toString("utf8");
 }
 async function scanLocalOrphans(primaryRoot, commonDir, records, options = {}) {
   const registered = new Set(records.map((record) => resolve(record.path)));
