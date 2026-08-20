@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleDisplayName</key>
-  <string>HumanAndMachine Launchpad</string>
+  <string>Lazurio Launchpad</string>
   <key>CFBundleExecutable</key>
   <string>launchpad-bootstrap</string>
   <key>CFBundleIdentifier</key>
-  <string>com.humanandmachine.launchpad</string>
+  <string>com.lazurio.launchpad</string>
   <key>CFBundleName</key>
-  <string>HumanAndMachine Launchpad</string>
+  <string>Lazurio Launchpad</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>

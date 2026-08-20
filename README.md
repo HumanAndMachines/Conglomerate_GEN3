@@ -230,7 +230,7 @@ bun run install:macos-app
 ```
 
 Instalátor vytvoří ad-hoc podepsanou aplikaci
-`~/Applications/HumanAndMachine Launchpad.app`, takže nepotřebuje vývojářský
+`~/Applications/Lazurio Launchpad.app`, takže nepotřebuje vývojářský
 certifikát ani zápis do systémového `/Applications`. Aplikace drží pouze
 kanonickou cestu rootu a otevírá jeho `Launchpad.command`; Bun resolution,
 Server identity/install-generation, bezpečné nahrazení stale instance i porty

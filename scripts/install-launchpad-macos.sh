@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 SOURCE_DIR="$ROOT/scripts/macos"
-APP_NAME="HumanAndMachine Launchpad.app"
+APP_NAME="Lazurio Launchpad.app"
 INSTALL_SCHEMA="lazurio.launchpad.macos_install.v1"
 BUILD_ROOT=""
 BUILD_APP=""
@@ -29,7 +29,7 @@ cleanup() {
       return
     fi
     case "$BUILD_ROOT" in
-      */.humanandmachine-launchpad-install.*) rm -rf -- "$BUILD_ROOT" ;;
+      */.lazurio-launchpad-install.*) rm -rf -- "$BUILD_ROOT" ;;
       *) show_error "Odmítám uklidit neočekávanou dočasnou cestu: $BUILD_ROOT" ;;
     esac
   fi
@@ -182,9 +182,9 @@ if [[ -e "$TARGET" && ! -d "$TARGET" ]]; then
   show_error "existující cíl není aplikace-adresář: $TARGET"
   exit 1
 fi
-BACKUP_PATH="$TARGET_PARENT/.humanandmachine-launchpad-rollback"
-FAILED_PATH="$TARGET_PARENT/.humanandmachine-launchpad-failed"
-LOCK_PATH="$TARGET_PARENT/.humanandmachine-launchpad-install.lock"
+BACKUP_PATH="$TARGET_PARENT/.lazurio-launchpad-rollback"
+FAILED_PATH="$TARGET_PARENT/.lazurio-launchpad-failed"
+LOCK_PATH="$TARGET_PARENT/.lazurio-launchpad-install.lock"
 for managed_path in "$BACKUP_PATH" "$FAILED_PATH" "$LOCK_PATH"; do
   if [[ "$managed_path" == "$LOCK_PATH" ]]; then
     if [[ -L "$managed_path" || ( -e "$managed_path" && ! -f "$managed_path" ) ]]; then
@@ -227,7 +227,7 @@ for source in launchpad-bootstrap.sh replace-app.jxa Info.plist; do
   fi
 done
 
-BUILD_ROOT="$(mktemp -d "$TARGET_PARENT/.humanandmachine-launchpad-install.XXXXXX")"
+BUILD_ROOT="$(mktemp -d "$TARGET_PARENT/.lazurio-launchpad-install.XXXXXX")"
 BUILD_APP="$BUILD_ROOT/$APP_NAME"
 PREVIOUS_BACKUP_PATH="$BUILD_ROOT/previous-rollback"
 mkdir -p "$BUILD_APP/Contents/MacOS" "$BUILD_APP/Contents/Resources"
@@ -265,7 +265,7 @@ if [[ "$(<"$TARGET/Contents/Resources/install-schema")" != "$INSTALL_SCHEMA" ]];
   exit 1
 fi
 
-printf 'HumanAndMachine Launchpad je nainstalovaný v: %s\n' "$TARGET"
+printf 'Lazurio Launchpad je nainstalovaný v: %s\n' "$TARGET"
 if [[ "$HAD_TARGET" == true ]]; then
   printf 'Předchozí aplikace zůstala jako rollback záloha: %s\n' "$BACKUP_PATH"
 fi

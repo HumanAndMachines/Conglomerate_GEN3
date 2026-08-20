@@ -18,18 +18,18 @@ fail() {
 }
 
 if [[ ! -f "$ROOT_FILE" || -L "$ROOT_FILE" || ! -f "$SCHEMA_FILE" || -L "$SCHEMA_FILE" ]]; then
-  fail "HumanAndMachine Launchpad nemá platnou instalaci. V primárním Lazurio checkoutu spusť bun run install:macos-app."
+  fail "Lazurio Launchpad nemá platnou instalaci. V primárním Lazurio checkoutu spusť bun run install:macos-app."
 fi
 ROOT_LINE_COUNT="$(/usr/bin/wc -l < "$ROOT_FILE" | /usr/bin/tr -d '[:space:]')"
 SCHEMA_LINE_COUNT="$(/usr/bin/wc -l < "$SCHEMA_FILE" | /usr/bin/tr -d '[:space:]')"
 if [[ "$ROOT_LINE_COUNT" != "1" || "$SCHEMA_LINE_COUNT" != "1" ]]; then
-  fail "HumanAndMachine Launchpad má neplatný víceřádkový instalační kontrakt. Spusť znovu bun run install:macos-app."
+  fail "Lazurio Launchpad má neplatný víceřádkový instalační kontrakt. Spusť znovu bun run install:macos-app."
 fi
 
 IFS= read -r ROOT < "$ROOT_FILE" || true
 IFS= read -r SCHEMA < "$SCHEMA_FILE" || true
 if [[ -z "$ROOT" || "$ROOT" == *$'\n'* || "$SCHEMA" != "$EXPECTED_SCHEMA" ]]; then
-  fail "HumanAndMachine Launchpad má neplatný instalační kontrakt. Spusť znovu bun run install:macos-app."
+  fail "Lazurio Launchpad má neplatný instalační kontrakt. Spusť znovu bun run install:macos-app."
 fi
 if [[ ! -d "$ROOT" ]]; then
   fail "Nakonfigurovaný Lazurio root není dostupný: $ROOT"
