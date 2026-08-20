@@ -36,6 +36,7 @@ import {
   openCodexRuntimeIssueDialog,
 } from "./codex-handoff.js";
 import { runtimeRecoveryModel } from "./runtime-recovery.js";
+import { safeOpaqueOrganizationThemeColor } from "./organization-theme.js";
 import {
   organizationHash,
   personalspaceHash,
@@ -127,6 +128,10 @@ let launchpadScopeDataReady = false;
 
 // Launchpad má jednu kanonickou světlou Lazurio podobu.
 const LEGACY_THEME_MODE_STORAGE = "launchpad-theme";
+const ORGANIZATION_THEME_PROPERTIES = new Map([
+  ["--accent", "--organization-theme-accent"],
+  ["--on-accent", "--organization-theme-on-accent"],
+]);
 const OPEN_STARTING_WAIT_MS = 120_000;
 const OPEN_STARTING_POLL_MS = 1_500;
 const ACTIVE_POLL_INTERVAL_MS = 15_000;
@@ -1564,11 +1569,24 @@ function writeLaunchpadHash(hash, { replace = false } = {}) {
 function applyOrganizationTheme() {
   const root = document.documentElement;
   const space = activeSpace();
-  const renderKey = `${space.kind}:${space.organization?.slug ?? "personal"}`;
+  const theme = space.kind === "organization" ? space.organization.theme : null;
+  const renderKey = `${space.kind}:${space.organization?.slug ?? "personal"}:${JSON.stringify(theme?.light ?? null)}`;
   if (renderKey === organizationThemeRenderKey) return;
   organizationThemeRenderKey = renderKey;
+
+  for (const property of ORGANIZATION_THEME_PROPERTIES.values()) root.style.removeProperty(property);
   root.removeAttribute("data-organization-theme");
   root.removeAttribute("data-accent");
+
+  const accent = theme?.light?.["--accent"];
+  if (!safeOpaqueOrganizationThemeColor(accent)) return;
+  root.style.setProperty("--organization-theme-accent", accent);
+
+  const onAccent = theme.light["--on-accent"];
+  if (onAccent && safeOpaqueOrganizationThemeColor(onAccent)) {
+    root.style.setProperty("--organization-theme-on-accent", onAccent);
+  }
+  root.setAttribute("data-organization-theme", space.organization.slug);
 }
 
 function renderSpaceSwitcher() {

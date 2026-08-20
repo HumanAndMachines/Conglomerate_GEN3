@@ -236,18 +236,25 @@ function isSafeThemeValue(token, value) {
   if (typeof value !== "string" || value.length === 0 || value.length > 500 || /[\\{};<>:@]/.test(value)) {
     return false;
   }
-  if (token.startsWith("--font-")) return /^[a-zA-Z0-9 ,"'_-]+$/.test(value);
+  // Reálné design systémy často zalomí delší font stack přes více řádků.
+  // Whitespace je bezpečný; znaky schopné ukončit deklaraci filtr výše dál
+  // odmítá. Bez této tolerance by validní Spectoda kompatibilní adaptér
+  // vypadl jen kvůli formátování zdrojového CSS.
+  if (token.startsWith("--font-")) return /^[a-zA-Z0-9\s,"'_-]+$/.test(value);
   if (token.startsWith("--r-")) return /^(?:0|\d+(?:\.\d+)?(?:px|rem|em|%))$/.test(value);
   if (token.startsWith("--shadow-")) return isSafeShadow(value);
   if (token === "--launchpad-body-background") {
     return value === "linear-gradient(180deg, var(--bg-muted) 0%, var(--bg) 42%)";
   }
-  if (token === "--on-accent") return isSafeOpaqueColor(value);
+  if (token === "--accent" || token === "--on-accent") return isSafeOpaqueColor(value);
   return isSafeColor(value);
 }
 
 function isSafeColor(value) {
-  return /^(?:#[0-9a-fA-F]{3,8}|(?:rgb|rgba|hsl|hsla)\([\d.%,\s+-]+\)|transparent|white|black)$/.test(value);
+  if (value === "transparent" || value === "white" || value === "black") return true;
+  const hex = value.match(/^#([0-9a-fA-F]+)$/)?.[1];
+  if (hex) return [3, 4, 6, 8].includes(hex.length);
+  return /^(?:rgb|rgba|hsl|hsla)\([\d.%,\s+-]+\)$/.test(value);
 }
 
 function isSafeOpaqueColor(value) {

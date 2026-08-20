@@ -55,6 +55,42 @@ test("extractLaunchpadTheme převede GEN2 design tokeny do bezpečného light/da
   });
 });
 
+test("Organization theme přijme bezpečně zalomený font stack", () => {
+  const theme = extractLaunchpadTheme(`
+    :root {
+      --bg: #ffffff;
+      --surface: #ffffff;
+      --text: #1b1348;
+      --accent: #6058e9;
+      --font-body: "Manrope", "Inter", -apple-system,
+        BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    [data-theme="dark"] {
+      --bg: #0b0e14;
+      --surface: #151a24;
+      --text: #f3f4f8;
+      --accent: #728efc;
+    }
+  `);
+
+  expect(theme?.light["--accent"]).toBe("#6058e9");
+  expect(theme?.light["--font-body"]).toContain('"Manrope"');
+});
+
+test("Organization theme odmítne neplatnou délku hex barvy", () => {
+  const theme = extractLaunchpadTheme(`
+    :root {
+      --bg: #ffffff;
+      --surface: #ffffff;
+      --text: #1b1348;
+      --accent: #12345;
+      --font-body: "Inter", sans-serif;
+    }
+  `);
+
+  expect(theme).toBeNull();
+});
+
 test("Organization theme preferuje explicitní design-system adaptér před GEN2 fallbackem", async () => {
   const root = await makeOrganizationRoot();
   const organizationRoot = join(root, "organizations", "Example_GEN3");

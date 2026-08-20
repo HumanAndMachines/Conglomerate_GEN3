@@ -111,14 +111,15 @@ test("filtr aplikací používá dvě samostatné Lazurio pilulky", async () => 
   expect(styles).toMatch(/\.search-field input:focus-visible\s*{[\s\S]*?outline: none;/);
 });
 
-test("Organizace, Workspace a Productionspace používají modrou záložku v bezpečném toku", async () => {
+test("Theme barví Organizaci a Workspace, Productionspace zůstává v Lazurio identitě", async () => {
   const [styles, app] = await Promise.all([source("styles.css"), source("app.js")]);
-  expect(styles).toMatch(/\.app-section-organization:not\(\.skeleton-section\),[\s\S]*?border-top-color: var\(--lz-blue-500\)/);
+  expect(styles).toMatch(/\.app-section-organization:not\(\.skeleton-section\),[\s\S]*?border-top-color: var\(--organization-theme-accent\)/);
   const finalLayout = styles.slice(styles.indexOf("/* Filtry mohou hlavičku Organizace zvětšit"));
   expect(finalLayout).toMatch(/\.app-section-workspace > \.app-section-head:first-child\s*{[\s\S]*?position: static;[\s\S]*?transform: none/);
-  expect(styles).toMatch(/\.app-section-workspace > \.app-section-head:first-child \.app-section-title[\s\S]*?background: var\(--lz-blue-500\)[\s\S]*?color: var\(--lz-white\)/);
+  expect(styles).toMatch(/\.app-section-workspace > \.app-section-head:first-child \.app-section-title\s*{[\s\S]*?background: var\(--organization-theme-accent\)[\s\S]*?color: var\(--organization-theme-on-accent\)/);
   expect(styles).toMatch(/\.app-section-productionspace > \.app-section-head:first-child\s*{[\s\S]*?position: static;[\s\S]*?transform: none/);
   expect(styles).toMatch(/\.app-section-productionspace > \.app-section-head:first-child \.app-section-title[\s\S]*?background: var\(--lz-blue-500\)[\s\S]*?color: var\(--lz-white\)/);
+  expect(styles).toMatch(/\.notifications-badge\s*{[\s\S]*?background: var\(--organization-theme-accent\)[\s\S]*?color: var\(--organization-theme-on-accent\)/);
   expect(styles).toContain("font-variant-numeric: tabular-nums");
   expect(app).toContain('appSectionHead("Organizace"');
   expect(app).toMatch(/"Workspace",\r?\n\s+`\$\{uniqueModules\.size\}/);

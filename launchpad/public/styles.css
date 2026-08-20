@@ -72,6 +72,10 @@
      color-mix, so a theme/accent switch only has to change the ramp below. */
   --accent: var(--c-accent-500);
   --on-accent: var(--lz-white);
+  /* Theme je úzká Organization vrstva: značí Organizaci, Workspace a číslo
+     notifikací. Ostatní akcenty a stavové barvy zůstávají identitou Lazuria. */
+  --organization-theme-accent: var(--lz-blue-500);
+  --organization-theme-on-accent: var(--lz-white);
   /* Hlavní akce je inkoustová, ne modrá. Modrá plocha velikosti
      tlačítka přebije všechno ostatní; modrá zůstává na ohnisko,
      odkaz a graf. */
@@ -3554,8 +3558,8 @@ button.runtime-stage.is-available:hover {
   justify-content: center;
   border: 2px solid var(--surface);
   border-radius: var(--r-pill);
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--organization-theme-accent);
+  color: var(--organization-theme-on-accent);
   font-size: 11px;
   font-weight: 600;
   line-height: 1;
@@ -5150,7 +5154,7 @@ b {
 .app-section-workspace {
   position: relative;
   margin-top: 30px;
-  border-top-color: var(--lz-blue-500);
+  border-top-color: var(--organization-theme-accent);
 }
 
 .app-section-organization:not(.skeleton-section) > .app-section-head:first-child,
@@ -5189,6 +5193,11 @@ b {
   border-bottom: 1px solid var(--lz-blue-500);
 }
 
+.app-section-organization:not(.skeleton-section) > .app-section-head:first-child .app-section-title-row,
+.app-section-workspace > .app-section-head:first-child .app-section-title-row {
+  border-bottom-color: var(--organization-theme-accent);
+}
+
 .app-section-filter-slot {
   display: flex;
   align-items: center;
@@ -5219,6 +5228,12 @@ b {
   color: var(--lz-white);
   font-size: var(--lz-size-meta);
   font-weight: 600;
+}
+
+.app-section-organization:not(.skeleton-section) > .app-section-head:first-child .app-section-title,
+.app-section-workspace > .app-section-head:first-child .app-section-title {
+  background: var(--organization-theme-accent);
+  color: var(--organization-theme-on-accent);
 }
 
 .app-section-organization:not(.skeleton-section) > .app-section-head:first-child .app-section-summary,
@@ -5472,12 +5487,12 @@ body {
 
 .team-access-summary > summary:focus-visible {
   border-radius: var(--lz-radius-sm);
-  outline: 2px solid var(--lz-blue-500);
+  outline: 2px solid var(--organization-theme-accent);
   outline-offset: 3px;
 }
 
 .team-access-summary > summary strong {
-  color: var(--lz-blue-500);
+  color: var(--organization-theme-accent);
   font-size: var(--lz-size-meta);
   font-weight: 600;
 }
@@ -5487,9 +5502,9 @@ body {
   width: 20px;
   height: 20px;
   place-items: center;
-  border: 1px solid var(--lz-blue-500);
+  border: 1px solid var(--organization-theme-accent);
   border-radius: 50%;
-  color: var(--lz-blue-500);
+  color: var(--organization-theme-accent);
   font-size: 12px;
   font-weight: 600;
   line-height: 1;
