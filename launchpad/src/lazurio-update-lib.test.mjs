@@ -27,6 +27,10 @@ afterEach(async () => {
   await Promise.all(cleanup.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 
+async function readPortableText(path) {
+  return (await readFile(path, "utf8")).replace(/\r\n/g, "\n");
+}
+
 test("pure classifier has only current, updated and blocked outcomes", () => {
   const cases = [
     [{}, ["current", "already_current"]],
@@ -58,7 +62,7 @@ test("clean behind checkout fast-forwards and rerun is idempotent", async () => 
   expect(first).toMatchObject({ state: "updated", actions: expect.arrayContaining(["fast_forward"]) });
   expect(await branch(fixture.working)).toBe("main");
   expect(status(fixture.working)).toBe("");
-  expect(await readFile(join(fixture.working, "remote.txt"), "utf8")).toBe("remote\n");
+  expect(await readPortableText(join(fixture.working, "remote.txt"))).toBe("remote\n");
 
   const second = await update(fixture);
   expect(second).toMatchObject({ state: "current", reason: "already_current" });
@@ -141,7 +145,7 @@ test("dirty tracked, untracked and binary work is verified in a recovery stash a
   });
   expect(result.recovery_stash).toMatch(/^[0-9a-f]{40}$/);
   expect(status(fixture.working)).toBe("");
-  expect(await readFile(join(fixture.working, "tracked.txt"), "utf8")).toBe("tracked\n");
+  expect(await readPortableText(join(fixture.working, "tracked.txt"))).toBe("tracked\n");
   expect(runGit(fixture.working, ["stash", "show", "--include-untracked", "--name-only", result.recovery_stash]))
     .toContain("untracked.bin");
   expect(runGit(fixture.working, ["stash", "list", "--format=%H"]))
@@ -208,7 +212,7 @@ test("a remote redirected immediately before pull cannot inject a foreign descen
   });
 
   expect(result).toMatchObject({ state: "blocked", reason: "post_update_verification_failed" });
-  expect(await readFile(join(fixture.working, "expected.txt"), "utf8")).toBe("expected\n");
+  expect(await readPortableText(join(fixture.working, "expected.txt"))).toBe("expected\n");
   expect(existsSync(join(fixture.working, "foreign.txt"))).toBe(false);
 });
 
@@ -235,11 +239,11 @@ test("a remote advance after fetch waits for the next run instead of changing th
   });
 
   expect(result.state).toBe("updated");
-  expect(await readFile(join(fixture.working, "expected.txt"), "utf8")).toBe("expected\n");
+  expect(await readPortableText(join(fixture.working, "expected.txt"))).toBe("expected\n");
   expect(existsSync(join(fixture.working, "later.txt"))).toBe(false);
   const next = await update(fixture);
   expect(next.state).toBe("updated");
-  expect(await readFile(join(fixture.working, "later.txt"), "utf8")).toBe("later\n");
+  expect(await readPortableText(join(fixture.working, "later.txt"))).toBe("later\n");
 });
 
 test("crash after verified stash preserves recovery and a rerun completes", async () => {
@@ -276,7 +280,7 @@ test("crash after verified stash preserves recovery and a rerun completes", asyn
   });
   expect(second.state).toBe("updated");
   expect(runGit(fixture.working, ["stash", "list", "--format=%H"])).toContain(preserved);
-  expect(await readFile(join(fixture.working, "remote.txt"), "utf8")).toBe("remote\n");
+  expect(await readPortableText(join(fixture.working, "remote.txt"))).toBe("remote\n");
 });
 
 test("crashes after switch or fast-forward remain recoverable by a plain rerun", async () => {
@@ -312,7 +316,7 @@ test("crashes after switch or fast-forward remain recoverable by a plain rerun",
     expect(second.state).toBe(checkpointName === "after_fast_forward" ? "current" : "updated");
     expect(await branch(fixture.working)).toBe("main");
     expect(status(fixture.working)).toBe("");
-    expect(await readFile(join(fixture.working, "remote.txt"), "utf8")).toBe("remote\n");
+    expect(await readPortableText(join(fixture.working, "remote.txt"))).toBe("remote\n");
   }
 });
 
