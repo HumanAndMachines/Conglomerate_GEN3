@@ -221,20 +221,18 @@ export async function buildResidentArtifact({
     readBlob(repositoryRoot, tree, profileContract.descriptor),
     "0644",
   );
-  if (profile !== "workspace") {
-    addGeneratedEntry(
-      entries,
-      "resident/dependencies/hermes.json",
-      readBlob(repositoryRoot, tree, "distribution/dependencies/hermes.json"),
-      "0644",
-    );
-    addGeneratedEntry(
-      entries,
-      "resident/dependencies/gbrain.json",
-      readBlob(repositoryRoot, tree, "distribution/dependencies/gbrain.json"),
-      "0644",
-    );
-  }
+  addGeneratedEntry(
+    entries,
+    "resident/dependencies/hermes.json",
+    readBlob(repositoryRoot, tree, "distribution/dependencies/hermes.json"),
+    "0644",
+  );
+  addGeneratedEntry(
+    entries,
+    "resident/dependencies/gbrain.json",
+    readBlob(repositoryRoot, tree, "distribution/dependencies/gbrain.json"),
+    "0644",
+  );
   addGeneratedEntry(
     entries,
     "resident/dependencies/toolchain.json",
