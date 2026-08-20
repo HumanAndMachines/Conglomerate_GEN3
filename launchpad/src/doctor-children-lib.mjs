@@ -2,7 +2,7 @@
 // `manual/decision-register.md`).
 //
 // PROČ TENHLE SOUBOR EXISTUJE. Doctor není jeden program. Root doctor v kořeni
-// Conglomerate nese *standardizované* kontroly, které platí pro každý checkout;
+// Lazurio nese *standardizované* kontroly, které platí pro každý checkout;
 // každé namountované repo — Organizace, Personalspace — si nese **vlastní
 // nezávislý doctor**, který root najde a zavolá. Důvod je vlastnický, ne
 // technický: pull sdíleného rootu nesmí rozbít Organizaci, která má vlastní

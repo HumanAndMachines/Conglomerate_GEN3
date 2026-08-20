@@ -7,7 +7,7 @@ najde, spustí a agreguje. Zdroj pravidla: decision **0118** v lokálním
 
 ## Pravidlo
 
-Doctor není jeden program. **Root doctor** v kořeni Conglomerate nese
+Doctor není jeden program. **Root doctor** v kořeni Lazurio nese
 *standardizované* kontroly, které platí pro každý checkout. Každé namountované
 repo — Organizace, Personalspace — si nese **vlastní nezávislý doctor**, který
 root najde a zavolá.
@@ -180,7 +180,7 @@ v CLI a v UI by znamenal dvě různé odpovědi o téže mašině.
 **`doctor.self_conformance` a app id — dluh zůstává otevřený, i když dnes
 neměří.** Původní znění tohohle odstavce tvrdilo, že `self_conformance` na dnešní
 mašině hlásí `fail`, protože dvacet kontrol `launchpad.runtime.<app id>` má id
-s velkými písmeny. **Změřeno 2026-07-30** proti reálnému Conglomerate rootu
+s velkými písmeny. **Změřeno 2026-07-30** proti reálnému Lazurio rootu
 (10 mountů, 8 Organizací, 62 kontrol `launchpad.runtime.*`): žádné z vydaných
 `checks[].id` dnes pattern `^[a-z0-9]+([._-][a-z0-9]+)*$` neporušuje a
 `self_conformance` je `ok`. Nic se tím ale neopravilo a nic se tu neuvolnilo:

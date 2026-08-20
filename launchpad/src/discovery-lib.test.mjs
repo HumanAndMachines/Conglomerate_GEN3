@@ -275,7 +275,7 @@ test("discovery načte root shared Guide local surface jako Launchpad app", asyn
   await writeJson(join(root, "launchpad.gen3.json"), {
     launchpad_root: {
       slug: "conglomerate",
-      display_name: "Conglomerate",
+      display_name: "Lazurio",
       root_role: "launchpad-root",
     },
     local_surfaces: [
@@ -1694,7 +1694,7 @@ async function createGenerationMountFixture() {
   await writeJson(join(root, "launchpad.gen3.json"), {
     launchpad_root: {
       slug: "conglomerate",
-      display_name: "Conglomerate",
+      display_name: "Lazurio",
       root_role: "launchpad-root",
     },
   });

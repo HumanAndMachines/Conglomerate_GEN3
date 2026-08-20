@@ -68,7 +68,7 @@ Codex, Desktop agenti). Kanonický standard:
 8. **Zaseknutí nebo zastaralý manuál = povinný upstream PR.** Runbooky jsou
    živý komunitní standard; nikdo je denně nepřetestovává. Když se Kolega
    při instalaci zasekne nebo realita poskytovatele neodpovídá runbooku,
-   oprav manuál/runbook a pošli PR na `HumanAndMachines/Conglomerate_GEN3`;
+   oprav manuál/runbook a pošli PR na `HumanAndMachines/Lazurio`;
    bez známého řešení zapiš aspoň issue do root `ISSUES.open.json` (také
    PR). Org-specifika patří do `INTEGRATIONS.md` dané Organizace; upstream
    jde jen generalizované, anonymizované poučení bez secrets.

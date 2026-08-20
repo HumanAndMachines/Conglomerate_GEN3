@@ -844,7 +844,7 @@ function launchpadRootSurfaceCompany(companiesConfig, surface) {
   const launchpadRootConfig = companiesConfig.launchpad_root ?? {};
   return {
     slug: launchpadRootConfig.slug ?? "conglomerate",
-    display_name: launchpadRootConfig.display_name ?? "Conglomerate",
+    display_name: launchpadRootConfig.display_name ?? "Lazurio",
     path: surface.path,
     organization_type: surface.kind ?? "local-surface",
     status: "mounted",

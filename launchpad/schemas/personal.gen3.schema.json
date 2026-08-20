@@ -108,7 +108,7 @@
             },
             "local_execution": {
               "const": "forbidden",
-              "description": "Lokální Conglomerate/Personalspace smí držet konfiguraci, ale nesmí spouštět Hermes/Buddy runtime ani poskytovat localhost fallback."
+              "description": "Lokální Lazurio/Personalspace smí držet konfiguraci, ale nesmí spouštět Hermes/Buddy runtime ani poskytovat localhost fallback."
             }
           },
           "additionalProperties": true

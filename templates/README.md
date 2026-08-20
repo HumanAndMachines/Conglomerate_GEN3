@@ -1,6 +1,6 @@
 # Templates
 
-Tady jsou doplňkové šablony dostupné HumanAndMachine GEN3 / Conglomerate rootu.
+Tady jsou doplňkové šablony dostupné v Lazurio rootu.
 
 Modulové šablony patří pod `templates/` nebo do samostatného template
 repozitáře. `organizations/` je vyhrazené pro lokální gitignored Organization

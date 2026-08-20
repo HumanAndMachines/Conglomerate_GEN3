@@ -5,8 +5,8 @@ preflight a PR push preflight popsané níže jsou aktivní; plánované
 `doctor worktrees ...` create/hydrate/cleanup příkazy zatím aktivním
 operátorským postupem nejsou.
 
-Tento dokument přesně definuje, jak má HumanAndMachine GEN3 vytvářet,
-zobrazovat, kontrolovat a uklízet Git worktrees pro Conglomerate root a pro
+Tento dokument přesně definuje, jak má Lazurio vytvářet,
+zobrazovat, kontrolovat a uklízet Git worktrees pro Lazurio root a pro
 Organizace. Příkazy označené jako plánované se nesmí vydávat za dnešní
 implementaci. Do dokončení CAC-0065 platí decision 0049 a současné Doctor /
 Launchpad guardy.
@@ -48,7 +48,7 @@ adresář ani branch.
 
 ## Neměnné invarianty
 
-1. Primární Conglomerate, Organization a module checkouty jsou reference pro
+1. Primární Lazurio, Organization a module checkouty jsou reference pro
    `main`; feature práci do nich nezapisujeme.
 2. Jedna Organization feature práce má jeden plan-owned Organization
    environment.
@@ -108,7 +108,7 @@ dlouhodobý action layer.
 
 ## Aktivní freshness gate před taskem a PR pushem
 
-Před převzetím každého tasku agent spustí v primárním Conglomerate checkoutu:
+Před převzetím každého tasku agent spustí v primárním Lazurio checkoutu:
 
 ```sh
 bun run doctor:task
@@ -142,13 +142,13 @@ exact `--force-with-lease=refs/heads/<branch>:<expected-remote-head>`; obecné
 `main`, exact head, mergeability a checks. Stejný gate se opakuje těsně před
 merge, protože main i review evidence mohly mezitím zestárnout.
 
-### Conglomerate root environment
+### Lazurio root environment
 
 Kanonická cesta:
 
 ```text
-<Conglomerate>/.worktrees/root/<canonical-plan-basename>/
-<Conglomerate>/.worktrees/root/<canonical-plan-basename>.worktree.json
+<Lazurio>/.worktrees/root/<canonical-plan-basename>/
+<Lazurio>/.worktrees/root/<canonical-plan-basename>.worktree.json
 ```
 
 Je to linked worktree veřejného Lazurio root repozitáře. Doctor z něj
@@ -296,7 +296,7 @@ bun run doctor -- worktrees create \
   --with build
 ```
 
-Conglomerate varianta:
+Lazurio varianta:
 
 ```sh
 bun run doctor -- worktrees create \
@@ -472,8 +472,8 @@ worktree.
 
 Doctor sestaví UNION následujících zdrojů:
 
-1. Conglomerate a Organization environment sidecary;
-2. `git worktree list --porcelain` Conglomerate rootu, všech Organization
+1. Lazurio a Organization environment sidecary;
+2. `git worktree list --porcelain` Lazurio rootu, všech Organization
    rootů a všech fyzicky dostupných manifest owner repos;
 3. kanonické `.worktrees/root/` filesystem cesty;
 4. známé legacy cesty (`.worktrees/workspace`, `.worktrees/productionspace`,
@@ -549,7 +549,7 @@ vznikl lokální nepushnutý commit.
 3. odstranit dependency child worktrees;
 4. odstranit edit child worktrees;
 5. provést owner-repo `git worktree prune` pouze pro potvrzené registrace;
-6. odstranit outer Organization/Conglomerate root worktree;
+6. odstranit outer Organization/Lazurio root worktree;
 7. archivovat nebo odstranit sidecar podle finálního audit kontraktu;
 8. vypsat ponechané branch refs a případný samostatný branch-cleanup návrh;
 9. ověřit readbackem, že cesta, registrace a runtime zmizely.
@@ -577,7 +577,7 @@ pořád viditelně odlišené a používají nezávislé porty.
 ## Cross-platform kontrakt
 
 Git/path/status/sidecar/cleanup logika žije v Bun/JavaScript knihovně v
-Conglomerate. Shell a PowerShell implementace nesmějí mít vlastní rozdílný
+Lazurio. Shell a PowerShell implementace nesmějí mít vlastní rozdílný
 worktree algoritmus:
 
 - root `bun run doctor -- worktrees ...` je canonical engine;
@@ -650,7 +650,7 @@ ověřený handoff.
 - plan/owner/member detail a blockers;
 - runtime source z edit memberu;
 - create preview/apply affordance;
-- canonical root mount context pro Conglomerate worktree smoke.
+- canonical root mount context pro Lazurio worktree smoke.
 
 ### 5. PR refresh a cleanup apply
 
@@ -675,7 +675,7 @@ Mechanismus není hotový jen proto, že jeden create příkaz funguje. Hotovo j
 když:
 
 - všechny živé autority popisují jediný environment model;
-- agent dokáže založit Conglomerate i Organization práci bez ručního Git
+- agent dokáže založit Lazurio i Organization práci bez ručního Git
   příkazu a dostane jednu canonical workdir;
 - dependency profil hydruje jen potřebné repozitáře;
 - Launchpad environment správně zobrazí a spustí;
@@ -690,7 +690,7 @@ když:
 
 - accepted decision 0049 stále předepisuje direct per-module worktrees;
 - canonical CAC-0042 je hotový a nesmí se znovu otevřít;
-- Conglomerate root Doctor neindexuje vlastní root worktrees a na disku jsou
+- Lazurio root Doctor neindexuje vlastní root worktrees a na disku jsou
   sidecary již odstraněných stromů i prunable registrace mimo canonical path;
 - root/member Git registry flagship Organizace obsahuje worktrees, které dnešní sidecar
   scan nevidí, a `.worktrees` zabírá nezanedbatelné místo na disku;

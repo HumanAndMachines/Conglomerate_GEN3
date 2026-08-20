@@ -113,7 +113,7 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-  console.log(`Usage: bun scripts/gen2-gen3-sync-inventory.mjs --gen2 <path> --gen3 <path> [--label <name>] [--json] [--include-same] [--include-shared-surfaces]\n       bun scripts/gen2-gen3-sync-inventory.mjs --pairs-file <json> [--json] [--include-shared-surfaces]\n\nRead-only dry-run inventory for a local GEN2 -> GEN3 organization sync.\nIt never copies, deletes or edits files. It compares allowlisted source-of-truth files and labels whether a delta is likely organization-local, a template-baseline candidate, or a shared-root mechanism candidate.\n\nThe shared HumanAndMachine root must not carry organization-specific data. Shared-root and template hints are only extraction prompts: promote mechanisms after anonymizing names, paths, ports, people, business records and secrets.`);
+  console.log(`Usage: bun scripts/gen2-gen3-sync-inventory.mjs --gen2 <path> --gen3 <path> [--label <name>] [--json] [--include-same] [--include-shared-surfaces]\n       bun scripts/gen2-gen3-sync-inventory.mjs --pairs-file <json> [--json] [--include-shared-surfaces]\n\nRead-only dry-run inventory for a local GEN2 -> GEN3 organization sync.\nIt never copies, deletes or edits files. It compares allowlisted source-of-truth files and labels whether a delta is likely organization-local, a template-baseline candidate, or a shared-root mechanism candidate.\n\nThe shared Lazurio root must not carry organization-specific data. Shared-root and template hints are only extraction prompts: promote mechanisms after anonymizing names, paths, ports, people, business records and secrets.`);
 }
 
 function loadPairs(args) {

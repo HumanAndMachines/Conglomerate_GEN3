@@ -1,6 +1,6 @@
-# ARCHITECTURE.md — Conglomerate Guide
+# ARCHITECTURE.md — Lazurio Guide
 
-`guide/` je sdílený onboardingový povrch pro HumanAndMachine GEN3 root. Funkční mechanismus vychází z GEN2 guide, ale obsah je obecný pro multi-organization Conglomerate model.
+`guide/` je sdílený onboardingový povrch pro Lazurio root. Funkční mechanismus vychází z GEN2 guide, ale obsah je obecný pro multi-organization Lazurio model.
 
 ## Vrstvy
 

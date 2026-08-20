@@ -2,7 +2,7 @@
 name: nightly-steward-pr-sweep
 description: Use when an Organization Steward must run the daily 02:00 PR closeout for exactly one GitHub Organization assigned to that seat. Inventories the live queue, applies exact-head review and CI gates, actively fixes or routes bounded work, merges only within Steward authority, and writes one idempotent Mission Control Steward Report.
 version: 1.0.5
-author: HumanAndMachine GEN3
+author: Lazurio
 license: MIT
 metadata:
   hermes:

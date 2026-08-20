@@ -1,6 +1,6 @@
 // Společný surface doctorů (decision 0118).
 //
-// Doctor není jeden program. Root doctor v kořeni Conglomerate orchestruje a nese
+// Doctor není jeden program. Root doctor v kořeni Lazuria orchestruje a nese
 // standardizované kontroly; každé namountované repo — organization, personalspace —
 // si nese vlastní nezávislý doctor, který root najde a zavolá. Personalspace doctor
 // musí umět běžet i SAMOSTATNĚ: na Buddy VPS žádný root nad ním neexistuje.

@@ -115,7 +115,7 @@ mezi lidmi hotové token cache, client secrety ani celý uživatelský
 
 ### Výchozí model: jeden Principál, více mašin
 
-Conglomerate GEN3 počítá s tím, že jeden Principál může používat svůj vlastní
+Lazurio počítá s tím, že jeden Principál může používat svůj vlastní
 OpenAI účet a subscription na více svých mašinách. Identita a subscription
 mohou být stejné, ale přístupy k ostatním službám zůstávají na každé mašině
 oddělené: každá má vlastní `~/.codex/config.toml`, MCP servery, OAuth granty,

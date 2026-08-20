@@ -46,7 +46,7 @@ Migrované Organizace bez adaptéru používají svůj existující
 Launchpad z obou zdrojů propouští jen allowlist tokenů, odmítá aktivní CSS
 hodnoty a symlink úniky a vyžaduje úplnou light i dark variantu. Firemní brand
 v Organization scope uzamyká accent; osobní prostor používá výchozí motiv
-Conglomerate a zachovává uživatelský accent preset.
+Lazurio a zachovává uživatelský accent preset.
 Upřesnění 2026-07-18: Design System adaptér se aktivuje jen tehdy, když je
 `design-system/design-system.config.json` bezpečně čitelný běžný soubor uvnitř
 Organization rootu, má `mode: organization`, `content_status: approved`
@@ -69,7 +69,7 @@ trvale viditelný v pravém sloupci po vzoru Launchpadu GEN2. Moduly řadí podl
 času posledního commitu a každou položku lze rozkliknout do detailu commitů.
 V Osobním prostoru se organizační panel nezobrazuje; na úzké obrazovce se
 sloupec skládá pod hlavní plochu.
-Implementation surface: `Conglomerate/launchpad/`
+Implementation surface: `Lazurio/launchpad/`
 Source inputs:
 
 - applicable spike/wireframe conclusions transcribed into this public spec;
@@ -85,7 +85,7 @@ where Organization Builders (formerly Workspace Builder, decision 0062) — the
 machine owner, kolegové and AI colleagues — build
 and run workspace module apps, and secondarily see a read-only overview of
 productionspace. It is not an admin dashboard: Admin Organizace (Organization Admin)
-flows, organization governance, configuration, plans and billing live in Conglomerate
+flows, organization governance, configuration, plans and billing live in Lazurio
 Dashboard GEN3. Dashboard is also the Organization User entrypoint into production
 workspace applications and the deploy/server configuration surface for workspace
 and personalspace applications. Launchpad is the Organization Builder surface, not
@@ -169,7 +169,7 @@ remains the dev mode** for machines that already have dev tools. The binary and
 the root content update on two separate cadences: the root via `git pull`, the
 binary via a separate release artifact that changes far less often.
 
-- **"Aktualizovat"** updates the Conglomerate root via
+- **"Aktualizovat"** updates the Lazurio root via
   `git pull --rebase --autostash` (or equivalent). It must not fail on a trivial
   divergence, and it is **fail-closed**: on a conflict or unclean result the
   rebase/stash is cleanly rolled back and the state is shown to the builder
@@ -192,7 +192,7 @@ as a silent default. Channels and client checkout policy are held by decision
 0080 (`manual/decision-register.md`); the binary axis waits for the CI build+sign
 pipeline and is reported as `binary: { state: "not_available" }`.
 
-- **Intent:** bring the Conglomerate root to the current target of the
+- **Intent:** bring the Lazurio root to the current target of the
   machine's update channel (`stable` = highest `vX.Y.Z` tag, `nightly` =
   `origin/main`) without ever rewriting history or losing local work.
 - **Source of truth:** channel in gitignored `launchpad.gen3.local.json`
@@ -616,7 +616,7 @@ Mission Control plan worktrees. Contract summary (decision 0049 in
   `COMPANYASCODE_ORGANIZATION_ROOT`. Appka používá tento kontrakt pro
   Organization-level manifesty, `infra/`, shared compatibility soubory a
   cesty do jiných modulů; nesmí Organization root odvozovat z worktree `cwd`
-  ani zaměnit za Conglomerate-level `COMPANIES_WORKSPACE_ROOT`. Stejný env je
+  ani zaměnit za Lazurio-level `COMPANIES_WORKSPACE_ROOT`. Stejný env je
   dostupný i dependency install procesu.
 - Launchpad may create a worktree from a planned Mission Control plan (guarded:
   valid plan, clean-enough main, canonical path, sidecar metadata).
@@ -780,7 +780,7 @@ o git stavy je připravené a aktivuje se automaticky, jakmile endpoint začne
 vracet data — viz handoff CAC-0044.
 
 Organization Git stav je first-class položka UI, ale denní povrch ho shrnuje
-bez samostatného technického panelu. Pod stavem Conglomerate je druhý stejně
+bez samostatného technického panelu. Pod stavem Lazurio je druhý stejně
 jednoduchý řádek: bez změn říká, že jsou moduly aktuální; při změnách ukáže
 počet dotčených modulů a jediné tlačítko **Stáhnout změny**. Akce projde právě
 otevřenou Organizaci včetně jejího root repozitáře a Workspace modulů.

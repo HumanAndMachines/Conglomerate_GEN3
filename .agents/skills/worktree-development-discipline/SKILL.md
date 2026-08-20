@@ -1,13 +1,13 @@
 ---
 name: worktree-development-discipline
-description: Povinná disciplína pro každou Git změnu, branch, PR, review, předávku a cleanup z Conglomerate rootu. Drží primary checkout na main, worktrees v .worktrees/root pod owner repem, sidecar a bezpečné cleanup guardy.
+description: Povinná disciplína pro každou Git změnu, branch, PR, review, předávku a cleanup z Lazurio rootu. Drží primary checkout na main, worktrees v .worktrees/root pod owner repem, sidecar a bezpečné cleanup guardy.
 ---
 
 # Worktree development discipline
 
 ## Kdy použít
 
-Použij před každou změnou Git-trackovaného obsahu v Conglomerate rootu a při
+Použij před každou změnou Git-trackovaného obsahu v Lazurio rootu a při
 inventuře, předávce nebo úklidu worktrees. Kanonický plán drží Mission Control
 Organizace, která práci vlastní; tato lokálně verzovaná kopie je samostatně
 použitelný consumer kontrakt pro agenta, který startoval přímo zde. Veřejný
@@ -16,7 +16,7 @@ autoritu.
 
 ## Postup
 
-1. Primární checkout `<Conglomerate>` je reference pro Launchpad/Doctor.
+1. Primární checkout `<Lazurio>` je reference pro Launchpad/Doctor.
    Neměň v něm trackovaný obsah, nezakládej v něm feature branch a drž ho na
    `main`, pokud tomu nebrání už existující zachovaná práce. Před převzetím
    každého tasku v něm spusť `bun run doctor:task`. Freshness lane provede
@@ -42,7 +42,7 @@ autoritu.
    tohoto tvaru normalizuje, uloží do sidecaru a nikdy nevytváří duplicitní
    plán v jiném repu.
    Worktree cesta je
-   výhradně `<Conglomerate>/.worktrees/root/<canonical-plan-basename>/`;
+   výhradně `<Lazurio>/.worktrees/root/<canonical-plan-basename>/`;
    basename je název kanonického plan souboru bez `.yaml`. Branch obsahuje
    kód plánu.
 4. Sidecar `<canonical-plan-basename>.worktree.json` (schema

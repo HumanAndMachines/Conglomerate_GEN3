@@ -19,7 +19,7 @@ import { mapWithConcurrency } from "./git-lib.mjs";
 
 export const UPDATE_CLI_USAGE = `Použití: bun run update [-- <volby>]
 
-Bezpečně aktualizuje Conglomerate root (ff-only podle update kanálu) a
+Bezpečně aktualizuje Lazurio root (ff-only podle update kanálu) a
 volitelně namountované Organizace. Nikdy nepřepisuje lokální práci; dirty,
 diverged nebo ahead stavy fail-closed ohlásí a nechá beze změny.
 
@@ -34,7 +34,7 @@ Volby:
                  stavy, které ji bezpečně umí. Bez této volby jsou lokální
                  změny vždy blokující.
   --json         Strojový výstup.
-  --root <path>  Explicitní cesta ke Conglomerate rootu.
+  --root <path>  Explicitní cesta k Lazurio rootu.
   --help         Tahle nápověda.`;
 
 export function parseUpdateCliArgs(argv) {
@@ -354,7 +354,7 @@ export function formatCommits(value) {
 export function formatUpdateLaneReport(result) {
   const lines = [];
   const root = result.root;
-  const rootLabel = `Conglomerate root · ${root.channel ?? "stable"}`;
+  const rootLabel = `Lazurio root · ${root.channel ?? "stable"}`;
   if (root.mode === "check") {
     if (root.state === "update_available") {
       lines.push(`${rootLabel}: k dispozici ${formatCommits(root.behind)} ke stažení (${root.head} → ${root.target}). Spusť bun run update.`);

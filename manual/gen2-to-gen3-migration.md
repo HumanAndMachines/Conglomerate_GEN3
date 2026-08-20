@@ -1,7 +1,7 @@
 # Workspace GEN2 → Organizace GEN3: bezpečný migrační runbook
 
 Tento runbook převádí existující Workspace GEN2 super-repo na samostatnou
-Organizaci GEN3 pod jedním HumanAndMachine GEN3 / Conglomerate rootem. Je
+Organizaci GEN3 pod jedním Lazurio rootem. Je
 určený pro reálnou firmu s historií, nested repozitáři, lidmi, AI kolegy a
 rozpracovaným provozem. Greenfield Organizace bez GEN2 historie vzniká z
 `OrganizationTemplate_GEN3` podle `manual/first-client-organization-rollout.md`;
@@ -86,7 +86,7 @@ Template hranice během migrace (decision 0033 a decision 0077 v
 Kanonický cílový tvar je:
 
 ```text
-<Conglomerate root>/
+<Lazurio root>/
   launchpad/                     # jeden shared builder Launchpad
   guide/                         # shared obecný onboarding
   organizations/
@@ -157,7 +157,7 @@ lokální cesty, bundle, credentials a raw klientská data zůstávají mimo Git
 Git inventory ani forward-port registry samy o sobě nechrání ignored/untracked
 soubory, lokální Git refs a stashe, nested repozitáře, klientské checkouty,
 runtime data nebo secrets. Před jakýmkoliv smazáním GEN2 použij generický
-metadata-only nástroj z Conglomerate rootu:
+metadata-only nástroj z Lazurio rootu:
 
 ```bash
 ARCHIVE="${ROOT}/personalspace/${PS_HANDLE}_GEN3/migration-archive/${ORG}_GEN2-${STAMP}"
@@ -210,7 +210,7 @@ pokyn Principála v aktuálním threadu.
 
 ## Fáze 0 — preflight a přesný source snapshot
 
-1. Přečti `AGENTS.md` Conglomerate rootu, GEN2 repa a případných nested rep,
+1. Přečti `AGENTS.md` Lazurio rootu, GEN2 repa a případných nested rep,
    kterých se migrace dotkne.
 2. Ověř GitHub přístup, správnou Organizaci a otevřené PR:
 
@@ -412,7 +412,7 @@ sedm dní je warning `stale`, ne automatické oprávnění k mazání.
 
 ## Fáze 3 — read-only inventory a forward-port registry
 
-Aktuální Conglomerate CLI používá explicitní cesty. Staré přepínače
+Aktuální Lazurio CLI používá explicitní cesty. Staré přepínače
 `--pair` a `--limit` nejsou podporované.
 
 ```bash
@@ -528,12 +528,12 @@ prohlásit za layout-complete. Nepřenášej celý legacy Launchpad do shared ro
 promuj pouze anonymizovaný mechanismus.
 
 Po odstranění musí Organization README/MAP/runbooky odkazovat na shared
-`<Conglomerate root>/launchpad`, ne na lokální kopii.
+`<Lazurio root>/launchpad`, ne na lokální kopii.
 
 ### Gate 4B — shared Guide versus Organization onboarding
 
-Obecný kurz o HumanAndMachine GEN3, Launchpadu, agentech, Doctorech a
-source-of-truth routingu patří do shared `<Conglomerate root>/guide`.
+Obecný kurz o Lazurio, Launchpadu, agentech, Doctorech a
+source-of-truth routingu patří do shared `<Lazurio root>/guide`.
 
 Pro každý Organization `guide/` soubor rozhodni:
 
@@ -981,7 +981,7 @@ zapiš přesné příkazy, ne předpoklad.
 | Gate | Povinné ověření | PASS evidence | Co blokuje |
 |---|---|---|---|
 | Source | clean GEN2 main, local/origin/remote SHA shoda, bundle verify | source SHA + bundle verify | dirty/behind/unknown source |
-| Repo topology | `git status`, remotes, `git ls-files -s` | žádný Organization gitlink v Conglomerate ani nechtěný gitlink v Organization rootu | submodule pointer nebo cizí historie |
+| Repo topology | `git status`, remotes, `git ls-files -s` | žádný Organization gitlink v Lazuriu ani nechtěný gitlink v Organization rootu | submodule pointer nebo cizí historie |
 | Worktree | canonical path + schema-valid sidecar + plan owner | branch/path/sidecar/current head | orphan, wrong main branch, dva writeři |
 | Inventory | oba CLI passy + registry | všechny high-risk rows classified | untriaged `manual-review`/`port-candidate` |
 | Consumer census | root + každý nested repo | nula nevyřešených live consumers odstraňované cesty | unresolved `launchpad/contracts`, `modules/`, `company/team` apod. |
@@ -991,7 +991,7 @@ zapiš přesné příkazy, ne předpoklad.
 | Apps | schema, global id/port census, scripts/build/smoke | `/api/apps` přesně jedna app deklarace na package | invalid manifest, duplicate id/port, chybějící daily app |
 | Mission Control | app validate/test/build + data validate + parity/rollback | current app/data SHAs a gate checklist | dvě živé pravdy nebo neověřený sole-source claim |
 | Organization | vlastní check/Doctor/task/search | žádný `fail`; accepted warn registry | task-ledger fail, dirty mount, nejasný branch/access |
-| Conglomerate | z rootu `bun run check` a `bun run doctor` | discovery/API summary | failure, security violation, workspace declaration warn |
+| Lazurio | z rootu `bun run check` a `bun run doctor` | discovery/API summary | failure, security violation, workspace declaration warn |
 | Runtime/UI | `/api/apps`, `/api/doctor`, start → healthy → stop, browser flow/console | URL, app id, SHA, screenshot/log summary | silent failure, stuck loader, required flow broken |
 | Secrets | tracked-file scan + diff review | pouze metadata/pointery | secret/session/customer export v diffu |
 
@@ -1064,7 +1064,7 @@ Doctor výsledek, daily apps, rollback ownera a applied move SHA.
 
 Po local readiness:
 
-- denní vstup míří do Conglomerate rootu/shared Launchpadu a GEN3 Organizace;
+- denní vstup míří do Lazurio rootu/shared Launchpadu a GEN3 Organizace;
 - GEN2 checkout zůstává fyzicky čitelný a dostane ignored lokální marker
   `rollback/forward-port`, ne team-wide tvrzení;
 - před přepnutím zinventarizuj app bundles, Dock/taskbar položky, aliasy a
@@ -1179,7 +1179,7 @@ Migrace Organizace je hotová teprve když:
   vypnutý pouze po decision-0036 gates;
 - DEV kódy jsou unikátní nebo sémanticky remapované s provenance;
 - inventory nemá neklasifikovaný high-risk rozdíl;
-- Organization i Conglomerate validace, API a user-facing smoke jsou zelené
+- Organization i Lazurio validace, API a user-facing smoke jsou zelené
   nebo mají pouze explicitně accepted warnings;
 - local switch každého člověka má rollback a týmový archive byl proveden jen
   po samostatném lidském schválení;

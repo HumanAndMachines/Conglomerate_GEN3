@@ -287,7 +287,7 @@ async function main() {
 
   const primaryRoot = git(process.cwd(), ["rev-parse", "--show-toplevel"]).stdout;
   if (!existsSync(join(primaryRoot, "launchpad.gen3.json"))) {
-    fail(`${primaryRoot} nevypadá jako Conglomerate root (chybí launchpad.gen3.json).`);
+    fail(`${primaryRoot} nevypadá jako Lazurio root (chybí launchpad.gen3.json).`);
   }
   if (primaryRoot.split("/").includes(".worktrees")) {
     fail("spouštěj z primárního checkoutu, ne z linked worktree.");

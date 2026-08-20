@@ -352,7 +352,7 @@ describe("report formatting", () => {
       deps,
     });
     const report = formatUpdateLaneReport(result);
-    expect(report.startsWith("Conglomerate root · stable:")).toBe(true);
+    expect(report.startsWith("Lazurio root · stable:")).toBe(true);
     expect(report).toContain("BLOKOVÁNO");
     expect(report).toContain("Souhrn Organizací:");
     expect(report).toContain("vyžaduje pozornost");

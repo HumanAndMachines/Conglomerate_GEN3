@@ -16,6 +16,6 @@ nástroje, handoffy, guardrails a tracing; Codex může běžet jako MCP server 
 scoped implementační práci. Žádný z těchto surface sám nepřiděluje business
 pravomoce.
 
-HumanAndMachine decision 0052 drží AI Architekta jako placenou admin službu,
+Lazurio decision 0052 drží AI Architekta jako placenou admin službu,
 která navrhuje Dashboard apply plány ke schválení. Není náhradou builder agentů
 a nesmí zapisovat přímo do zákaznického Gitu.

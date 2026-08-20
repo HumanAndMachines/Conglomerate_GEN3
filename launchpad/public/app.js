@@ -4724,7 +4724,7 @@ async function abortGitRebase({ git, label, pendingKey = `git-rebase-abort:${git
   }
 }
 
-// Update lane Conglomerate rootu (decision 0059, draft 0080) — oddělená od
+// Update lane Lazurio rootu (decision 0059, draft 0080) — oddělená od
 // per-repo org pullů; pill v top baru ukazuje kanál, verzi a akční stav a
 // globální banner dělá dostupný update nepřehlédnutelný ve všech scope.
 async function loadUpdateStatus() {
@@ -4780,7 +4780,7 @@ function renderUpdateBanner() {
   if (status.state === "up_to_date") {
     banner.classList.remove("is-blocked", "is-updating");
     banner.classList.add("is-current");
-    elements.updateBannerText.textContent = "Conglomerate je aktuální.";
+    elements.updateBannerText.textContent = "Lazurio je aktuální.";
     elements.updateBannerAction.hidden = true;
     elements.updateBannerAction.disabled = true;
     banner.hidden = false;
@@ -4792,8 +4792,8 @@ function renderUpdateBanner() {
   elements.updateBannerText.textContent = state.updatePending
     ? "Stahuju novou verzi… Stránka se po dokončení sama znovu načte."
     : preserve
-      ? `Nová verze Conglomerate je k dispozici (${formatCommitCountCz(behind)}). Lokální změny se při aktualizaci bezpečně zachovají.`
-      : `Nová verze Conglomerate je k dispozici — ${formatCommitCountCz(behind)} ke stažení.`;
+      ? `Nová verze Lazuria je k dispozici (${formatCommitCountCz(behind)}). Lokální změny se při aktualizaci bezpečně zachovají.`
+      : `Nová verze Lazuria je k dispozici — ${formatCommitCountCz(behind)} ke stažení.`;
   elements.updateBannerAction.textContent = state.updatePending
     ? "Aktualizuju…"
     : preserve ? "Aktualizovat (zachovat změny)" : "Aktualizovat";
@@ -4821,7 +4821,7 @@ function moduleUpdateLocation(count) {
   return count === 1 ? "v 1 modulu" : `ve ${count} modulech`;
 }
 
-// Modulové změny mají vlastní jednoduchý řádek pod stavem Conglomerate.
+// Modulové změny mají vlastní jednoduchý řádek pod stavem Lazuria.
 // Počet se odvozuje z unikátních repo modulů, ne z počtu jejich app verzí.
 function renderModuleUpdateBanner() {
   const banner = elements.moduleUpdateBanner;
@@ -4901,7 +4901,7 @@ async function runRootUpdate() {
   if (!status || state.updatePending) return;
   let mode = null;
   if (status.state === "update_available") {
-    if (!window.confirm(`Aktualizovat Conglomerate root na cíl kanálu ${status.channel} (${status.target?.ref ?? ""})? Provede se bezpečný fast-forward; po dokončení restartuj Launchpad.`)) return;
+    if (!window.confirm(`Aktualizovat Lazurio root na cíl kanálu ${status.channel} (${status.target?.ref ?? ""})? Provede se bezpečný fast-forward; po dokončení restartuj Launchpad.`)) return;
     mode = "ff_only";
   } else if (status.state === "dirty_worktree" && status.can_update_with_autostash) {
     if (!window.confirm("Tracked soubory mají lokální změny. Aktualizovat a zachovat změny? Změny se bezpečně odloží a po fast-forwardu obnoví; při konfliktu zůstanou ve stash zálohách.")) return;

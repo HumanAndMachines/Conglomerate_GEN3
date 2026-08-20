@@ -16,7 +16,7 @@ const updateMessages = {
   update_available: "Je k dispozici novější verze a lze ji bezpečně aktualizovat fast-forwardem.",
   ahead_of_channel_target: "Lokální verze je před cílem kanálu. Žádný downgrade se neprovede; zůstáváš na této verzi, dokud tě kanál nedožene.",
   diverged: "Lokální historie a cíl kanálu se rozešly. Aktualizace je zablokovaná; vyber „Vyřešit s Agentem“.",
-  wrong_branch: "Conglomerate root není na branchi main. Aktualizace je zablokovaná; vyber „Vyřešit s Agentem“.",
+  wrong_branch: "Lazurio root není na branchi main. Aktualizace je zablokovaná; vyber „Vyřešit s Agentem“.",
   dirty_worktree: "Tracked soubory obsahují lokální změny. Zvol „Aktualizovat a zachovat změny“, nebo „Vyřešit s Agentem“.",
   no_release_tag: "Stable kanál zatím nemá žádný release tag ve formátu vMAJOR.MINOR.PATCH. Můžeš přepnout na nightly.",
   fetch_failed: "Cíl kanálu se nepodařilo bezpečně načíst nebo ověřit. Repo zůstalo beze změny.",
@@ -315,7 +315,7 @@ async function verifyRootCheckout(rootPath) {
   try {
     const [actualRoot, expectedRoot] = await Promise.all([realpath(topLevel.stdout), realpath(resolve(rootPath))]);
     if (actualRoot !== expectedRoot) {
-      return { ok: false, detail: "Zadaná cesta není samostatný Conglomerate Git root." };
+      return { ok: false, detail: "Zadaná cesta není samostatný Lazurio Git root." };
     }
   } catch (error) {
     return { ok: false, detail: error.message };

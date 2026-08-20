@@ -1,6 +1,6 @@
-# Jak přispívat do Conglomerate
+# Jak přispívat do Lazuria
 
-Conglomerate je **sdílený framework pro celou komunitu** HumanAndMachine GEN3.
+Lazurio je **sdílený framework pro celou komunitu Lazuria**.
 Každá mašina ho používá jako direct-pull klon (decision 0030 v
 manual/decision-register.md): jedna sdílená codebase bez trvalých
 per-machine variant kódu — lokální změny vznikají ve worktree a vracejí se
@@ -24,14 +24,14 @@ prvním stupni, který problém řeší:
 3. **Repo Organizace.** Cokoli company-specific — data, moduly, pravidla,
    vzhled, workflow jedné firmy — patří do repa té Organizace
    (`organizations/<Org>_GEN3/`), které si každá Organizace upravuje, jak se
-   jí zlíbí. Do sdíleného Conglomerate nikdy.
-4. **PR do Conglomerate.** Teprve generický bug fix nebo funkce užitečná
+   jí zlíbí. Do sdíleného Lazuria nikdy.
+4. **PR do Lazuria.** Teprve generický bug fix nebo funkce užitečná
    každé instalaci na světě.
 
 **Pravidlo pro agenty:** když tvůj Principál chce změnit chování Launchpadu,
 nenavrhuj úpravu „pro nás" — navrhni ji tak, aby byla aplikovatelná pro celou
 komunitu (konfigurovatelná, org-agnostic, forkable). Pokud to nejde, není to
-změna Conglomerate, ale kandidát na plugin nebo obsah Organizace.
+změna Lazuria, ale kandidát na plugin nebo obsah Organizace.
 
 ## Než otevřeš PR
 
@@ -44,7 +44,7 @@ změna Conglomerate, ale kandidát na plugin nebo obsah Organizace.
   `bun run worktrees:create -- --plan <KOD-XXXX>`; postup a guardy drží skill
   `.agents/skills/worktree-development-discipline/SKILL.md`, správnost hlídá
   `bun run worktrees:check`. Dlouhodobá lokální větev na mašině je
-  zakázaný stav; práce, která nemíří do PR, do Conglomerate nepatří.
+  zakázaný stav; práce, která nemíří do PR, do Lazuria nepatří.
 
 ## Kvalita PR — co musí platit
 

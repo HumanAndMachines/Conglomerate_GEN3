@@ -195,7 +195,7 @@ function checkNoSubmodules(cwd) {
 export async function createPersonalspace(options, { root = process.cwd() } = {}) {
   const conglomerateRoot = resolve(root);
   if (!existsSync(join(conglomerateRoot, "launchpad.gen3.json"))) {
-    throw new Error("Příkaz spusť z kořene Conglomerate GEN3.");
+    throw new Error("Příkaz spusť z kořene Lazuria.");
   }
   if (!options.displayName && options.apply) throw new Error("--display-name je pro --apply povinný.");
   if (!["human", "ai-colleague"].includes(options.ownerType)) {
@@ -228,7 +228,7 @@ export async function createPersonalspace(options, { root = process.cwd() } = {}
     ["check-ignore", "--quiet", "--no-index", `personalspace/${login}_GEN3`],
     { cwd: conglomerateRoot, allowFailure: true },
   );
-  if (ignored.status !== 0) throw new Error(`personalspace/${login}_GEN3 není v Conglomerate rootu gitignored.`);
+  if (ignored.status !== 0) throw new Error(`personalspace/${login}_GEN3 není v Lazurio rootu gitignored.`);
 
   let ownerInfo = repoInfo(repo, conglomerateRoot, { allowMissing: true });
   if (ownerInfo) assertPrivate(ownerInfo, repo);

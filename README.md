@@ -1,6 +1,6 @@
-# HumanAndMachine GEN3 / Conglomerate root
+# Lazurio root
 
-Sdílený framework repo pro **HumanAndMachine GEN3** (dříve pracovní název **Conglomerate GEN3**): jedno místo na počítači člověka nebo AI kolegy, odkud se načítá jeho osobní kontext a více GitHub-like Organizací.
+Sdílený framework repo pro **Lazurio**: jedno místo na počítači člověka nebo AI kolegy, odkud se načítá jeho osobní kontext a více GitHub-like Organizací.
 
 Tenhle root není jedna firma ani klientské workspace repo. Je to společný framework, který vyvíjí Rozjedeme.ai a který je na GitHubu hostovaný jako `HumanAndMachines/Lazurio`, protože organizace `HumanAndMachine` byla zabraná. Drží sdílený Launchpad, Guide, šablony, manuály, privátní `personalspace/` mountpoint a lokální mountpointy Organizací; Organizace v něm zůstávají oddělené access hranice a vlastní git repozitáře.
 
@@ -86,7 +86,7 @@ a stabilní URL schéma v [launchpad/README.md](launchpad/README.md#stabilní-od
 ## Navržený tvar
 
 ```text
-Conglomerate/
+Lazurio/
 ├── launchpad/
 ├── guide/
 ├── templates/
@@ -103,10 +103,10 @@ Conglomerate/
         └── productionspace/    # org-level repa mimo workspace moduly
 ```
 
-## Personalspace je součást Conglomerate GEN3
+## Personalspace je součást Lazuria
 
 `personalspace/` není externí doplněk ani další Organizace. Je to integrální
-privátní vrstva tohoto rootu: Conglomerate drží mountpoint, isolation pravidla,
+privátní vrstva tohoto rootu: Lazurio drží mountpoint, isolation pravidla,
 Doctor a onboarding, zatímco konkrétní obsah žije v samostatných privátních
 repozitářích jejich vlastníků. Instance vlastníka může plnohodnotně fungovat bez
 Buddyho; Buddy je volitelná navazující vazba.
@@ -151,12 +151,12 @@ adapter publikovaný a cross-repo otestovaný.
 
 ## Hlavní pojmy
 
-- HumanAndMachine GEN3 — současný název systému/frameworku dříve označovaného jako Conglomerate GEN3.
+- Lazurio — současný název systému a sdíleného frameworku.
 - Konglomerát — lokální celek více Organizací pod jedním Launchpad rootem na jedné mašině; dostupné Organizace se auto-discoverují z `organizations/*/company.gen3.json`, `launchpad.gen3.json` drží jen sdílená root metadata; `planned` sloty jsou per-machine v gitignored `launchpad.gen3.local.json`.
-- `launchpad/` — sdílený **builder-first Launchpad GEN3** (decision 0047 v manual/decision-register.md, reviduje CEO-first 0024): surface pro Buildery Organizace (Organization Builder) — spouštění aplikací z `main` i z worktrees podle Mission Control plánů (decision 0049), read-only přehled productionspace a dynamické načítání Organizací/Workspaces/modulů se stavy `available` / `missing_access` / `planned_slot`; Admin Organizace (Organization Admin), vstup Uživatelů Organizace (Organization User) do produkčních workspace aplikací a deploy/server konfigurace patří do Conglomerate Dashboardu GEN3.
+- `launchpad/` — sdílený **builder-first Launchpad GEN3** (decision 0047 v manual/decision-register.md, reviduje CEO-first 0024): surface pro Buildery Organizace (Organization Builder) — spouštění aplikací z `main` i z worktrees podle Mission Control plánů (decision 0049), read-only přehled productionspace a dynamické načítání Organizací/Workspaces/modulů se stavy `available` / `missing_access` / `planned_slot`; Admin Organizace (Organization Admin), vstup Uživatelů Organizace (Organization User) do produkčních workspace aplikací a deploy/server konfigurace patří do Lazurio Dashboardu.
 - `guide/` — sdílený netechnický onboarding kurz do práce s digitální kanceláří a AI kolegy; technická cesta „mapa systému“ (Launchpad root, Organizace, workspaces, productionspace, personalspace) je plánovaná budoucí část kurzu.
 - `launchpad.gen3.json` — strojově čitelná sdílená root metadata (root, lokální povrchy), ne allowlist Organizací; Organizace i šablony se auto-discoverují skenem disku a `planned` sloty s personalspace ownerem žijí per-machine v gitignored `launchpad.gen3.local.json`. Flow pro nový Organization modul je „manifest se stáhne přes `Pullnout vše` / `bun run update --org` → GitHub přístup dovolí checkout bezpečně naklonovat → rediscovery ho ukáže v Launchpadu“ (decision 0042 v `manual/decision-register.md`, implementační plán CAC-0015).
-- `personalspace/` — integrální privátní mountpoint Conglomerate rootu pro
+- `personalspace/` — integrální privátní mountpoint Lazurio rootu pro
   owner repa lidí a AI kolegů. Nepatří do GitHub organizace firmy, funguje i
   bez Buddyho a drží osobní moduly i Gbrain custody mimo firemní pravdu.
   Buddy-enabled instance zde lokálně drží jen konfiguraci; runtime je VPS-only.
@@ -175,7 +175,7 @@ adapter publikovaný a cross-repo otestovaný.
 
 ## Aktuální pilot
 
-Aktuální lokální GEN3 pilot je HumanAndMachine GEN3 / Conglomerate root
+Aktuální lokální GEN3 pilot běží v Lazurio rootu
 s několika živými Organization checkouty, např.:
 
 ```text
@@ -222,7 +222,7 @@ bun run install:windows-shortcut
 
 Instalátor atomicky připraví stabilní uživatelský bootstrap a konfiguraci pod
 `%LOCALAPPDATA%\HumanAndMachine\Launchpad`, vytvoří položku
-`HumanAndMachine Launchpad GEN3` ve Start Menu a požádá Windows o připnutí na
+`Lazurio Launchpad` ve Start Menu a požádá Windows o připnutí na
 hlavní panel. Zkratka neukazuje přímo do pohyblivého checkoutu: bootstrap
 načte canonical root z `install.json` a spustí jeho `Launchpad.ps1`, který
 zůstává jediným vlastníkem Bun resolution a startu Launchpadu. Instalace
@@ -245,7 +245,7 @@ viditelné; instalátor starý proces ani jeho port sám nepřebírá.
 
 Windows 11 může programové připnutí na hlavní panel podle místní policy
 odmítnout. V takovém případě zůstane ověřená položka ve Start Menu: vyhledej
-`HumanAndMachine Launchpad GEN3`, klikni pravým tlačítkem a zvol
+`Lazurio Launchpad`, klikni pravým tlačítkem a zvol
 **Připnout na hlavní panel**. Instalátor nevypíná ani nemaže starší launchery.
 
 Jen Start Menu bez pokusu o připnutí:

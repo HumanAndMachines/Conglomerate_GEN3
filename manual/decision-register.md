@@ -1,10 +1,10 @@
 # Registr rozhodnutí sdíleného frameworku
 
-Dokumenty Conglomerate rootu odkazují na rozhodnutí číslem (`decision NNNN`).
+Dokumenty Lazurio rootu odkazují na rozhodnutí číslem (`decision NNNN`).
 Číslo je stabilní identifikátor; tento registr je **lokální projekce norem
-uvnitř Conglomerate** — uživatel Conglomerate nepotřebuje žádný externí
+uvnitř Lazuria** — uživatel Lazuria nepotřebuje žádný externí
 repozitář. Plné decision records (kontext, founder verbatim, historie) drží
-privátní strategické repo maintainerů frameworku; pro práci v Conglomerate
+privátní strategické repo maintainerů frameworku; pro práci v Lazuriu
 jsou závazné texty tohoto repa: `AGENTS.md`, manuály, skilly a tento registr.
 Mezery v číselné řadě jsou normální (rozhodnutí mimo scope sdíleného
 frameworku se sem nepřenášejí).
@@ -61,3 +61,4 @@ frameworku se sem nepřenášejí).
 | 0124 | Document-native Workspace modul používá pro Markdown/MDX jedinou write/publish cestu Git branch + PR; druhý writer ve v2 nevzniká a oddělený v3 authoring profil vyžaduje samostatně doložený a schválený use case. |
 | 0125 | Stabilní identita modulu a fyzický repository mount jsou oddělené osy: `slug` je explicitní lowercase kebab-case ID pro vazby a UI, zatímco basename `workspace/<repo-name>` nebo `productionspace/<repo-name>` zachovává přesný název GitHub repozitáře včetně case, `_` a `.`. Case-preserving basename bez bezpečně odvoditelného nebo explicitního slugu failuje zavřeně. |
 | 0127 | Pracovní Personalspace/Organization template checkouty žijí jako org-level nested repa v `organizations/<AdminOrganization>/productionspace/`; bez Team membership, aliasu, provider transferu nebo visibility změny. |
+| 0128 | Sdílený systém, framework, root, Launchpad hlášky, návody a další současné uživatelské povrchy se jmenují **Lazurio**. Starší názvy zůstávají pouze v historických auditních záznamech. Přejmenování nemění právní jméno HumanAndMachine s.r.o., skutečné GitHub/Organization identity, existující filesystem cesty ani kompatibilní CLI, API a datové identifikátory. |
