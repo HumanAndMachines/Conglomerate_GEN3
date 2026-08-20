@@ -5,6 +5,7 @@ import { test, expect } from "bun:test";
 
 import {
   classifyDataState,
+  evaluateEffectiveRules,
   evaluateProtection,
   evaluateRootLedgers,
   evaluateTrustedProcessCircle,
@@ -28,6 +29,8 @@ test("accepts provider enforcement that preserves direct fast-forward pushes", (
       required_pull_request_reviews: null,
       required_status_checks: null,
       restrictions: null,
+      lock_branch: { enabled: false },
+      required_signatures: { enabled: false },
     },
   });
   expect(result).toEqual({ mode: "provider-enforced", ok: true, problems: [] });
@@ -48,12 +51,47 @@ test("rejects provider rules that add PR, status-check or second-roster friction
         required_pull_request_reviews: null,
         required_status_checks: null,
         restrictions: null,
+        lock_branch: { enabled: false },
+        required_signatures: { enabled: false },
         [field]: value,
       },
     });
     expect(result.ok).toBe(false);
     expect(result.problems.join(" ")).toContain(phrase);
   }
+});
+
+test("rejects a locked branch, required signatures and friction rulesets", () => {
+  for (const field of ["lock_branch", "required_signatures"]) {
+    const result = evaluateProtection({
+      kind: "configured",
+      value: {
+        allow_force_pushes: { enabled: false },
+        allow_deletions: { enabled: false },
+        enforce_admins: { enabled: true },
+        required_pull_request_reviews: null,
+        required_status_checks: null,
+        restrictions: null,
+        lock_branch: { enabled: false },
+        required_signatures: { enabled: false },
+        [field]: { enabled: true },
+      },
+    });
+    expect(result.ok).toBe(false);
+  }
+  expect(
+    evaluateEffectiveRules({
+      kind: "configured",
+      value: [
+        { type: "non_fast_forward" },
+        { type: "deletion" },
+        { type: "pull_request" },
+        { type: "required_status_checks" },
+        { type: "update" },
+      ],
+    }),
+  ).toHaveLength(3);
+  expect(evaluateEffectiveRules({ kind: "unsupported" })).toEqual([]);
 });
 
 test("treats an unavailable private-branch feature as trusted-process, not as an access grant", () => {
@@ -98,6 +136,21 @@ test("live smoke fails closed instead of passing an empty checkout", () => {
   try {
     mkdirSync(join(root, "organizations"));
     expect(() => runSmoke(root)).toThrow("odmítá false-green běh bez Organizací");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("one malformed Organization is reported with its path instead of aborting the audit", () => {
+  const root = mkdtempSync(join(tmpdir(), "mc-invalid-smoke-"));
+  const organizationRoot = join(root, "organizations", "Broken_GEN3");
+  try {
+    mkdirSync(organizationRoot, { recursive: true });
+    writeFileSync(join(organizationRoot, "company.gen3.json"), "{broken\n");
+    const results = runSmoke(root);
+    expect(results).toHaveLength(1);
+    expect(results[0].data_state).toBe("invalid");
+    expect(results[0].errors.join(" ")).toContain("company.gen3.json");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -24,8 +24,9 @@ collaboratory a branch protection. Ověřuje zejména:
   credentialu;
 - app `main` používá stejný frictionless writer a nenese retired provider
   audit;
-- `provider-enforced` zakazuje force push, delete a admin bypass, ale nepřidává
-  povinný PR, status check ani druhý push roster;
+- `provider-enforced` zakazuje force push, delete a admin bypass, ale classic
+  protection ani efektivní repo/org ruleset nepřidává lock větve, podpis,
+  povinný PR, status check, workflow/deployment gate ani druhý push roster;
 - `trusted-process` má nejvýše 10 lidských writerů a žádného bota nebo outside
   collaboratora.
 

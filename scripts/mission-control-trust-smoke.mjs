@@ -28,7 +28,13 @@ const GITHUB_REPOSITORY_PATTERN =
 const GITHUB_LOGIN_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 
 function json(path) {
-  return JSON.parse(readFileSync(path, "utf8"));
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `${path}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 function slotsOf(manifest) {
@@ -90,11 +96,39 @@ export function evaluateProtection(response) {
   if (protection.restrictions != null) {
     problems.push("v3 nesmí nahrazovat GitHub repo granty druhým push rosterem");
   }
+  if (protection.lock_branch?.enabled !== false) {
+    problems.push("v3 nesmí být zamčená proti běžným Builder pushům");
+  }
+  if (protection.required_signatures?.enabled !== false) {
+    problems.push("v3 nesmí vyžadovat podpis commitu mimo běžný writer kontrakt");
+  }
   return {
     mode: "provider-enforced",
     ok: problems.length === 0,
     problems,
   };
+}
+
+export function evaluateEffectiveRules(response) {
+  if (response.kind === "unsupported") return [];
+  if (response.kind === "blocked") {
+    return [response.message || "Efektivní GitHub rulesety nelze ověřit"];
+  }
+  const frictionRuleTypes = new Set([
+    "pull_request",
+    "required_status_checks",
+    "required_signatures",
+    "required_deployments",
+    "workflows",
+    "code_scanning",
+    "update",
+  ]);
+  return (Array.isArray(response.value) ? response.value : [])
+    .filter((rule) => frictionRuleTypes.has(rule?.type))
+    .map(
+      (rule) =>
+        `Efektivní GitHub ruleset ${rule.type} blokuje frictionless validovaný fast-forward writer`,
+    );
 }
 
 export function evaluateTrustedProcessCircle({
@@ -201,7 +235,11 @@ function gh(endpoint) {
   } catch {
     value = null;
   }
-  return { status: result.status ?? 1, value, stderr: result.stderr.trim() };
+  return {
+    status: result.status ?? 1,
+    value,
+    stderr: String(result.stderr ?? result.error?.message ?? "").trim(),
+  };
 }
 
 function ghPaginatedArray(endpoint) {
@@ -222,7 +260,7 @@ function ghPaginatedArray(endpoint) {
       Array.isArray(pages) && pages.every((page) => Array.isArray(page))
         ? pages.flat()
         : null,
-    stderr: result.stderr.trim(),
+    stderr: String(result.stderr ?? result.error?.message ?? "").trim(),
   };
 }
 
@@ -237,7 +275,11 @@ function organizationMembership(githubOrg, login) {
   if (response.status === 0) return { kind: "member" };
   const message = response.value?.message ?? response.stderr;
   if (response.value?.status === "404" || /not found/i.test(message)) {
-    return { kind: "outside" };
+    return {
+      kind: "blocked",
+      message:
+        "GitHub vrátil 404: writer není Organization member nebo token nemá read:org scope",
+    };
   }
   return { kind: "blocked", message: message || "GitHub API selhalo" };
 }
@@ -255,6 +297,22 @@ function branchProtection(repo) {
   if (response.value?.status === "404" || message === "Branch not protected") {
     return { kind: "unconfigured", message };
   }
+  if (
+    /upgrade to github (?:pro|team)|enable this feature|only available for .*repositor/i.test(
+      message,
+    )
+  ) {
+    return { kind: "unsupported", message };
+  }
+  return { kind: "blocked", message };
+}
+
+function effectiveBranchRules(repo) {
+  const response = gh(`repos/${repo}/rules/branches/v3`);
+  if (response.status === 0 && Array.isArray(response.value)) {
+    return { kind: "configured", value: response.value };
+  }
+  const message = response.value?.message ?? response.stderr;
   if (
     /upgrade to github (?:pro|team)|enable this feature|only available for .*repositor/i.test(
       message,
@@ -386,7 +444,12 @@ function inspectOrganization(organizationRoot) {
     }
     const protection = evaluateProtection(branchProtection(dataRepo));
     result.enforcement_mode = protection.mode;
-    if (dataState === "active") result.errors.push(...protection.problems);
+    if (dataState === "active") {
+      result.errors.push(...protection.problems);
+      result.errors.push(
+        ...evaluateEffectiveRules(effectiveBranchRules(dataRepo)),
+      );
+    }
     const collaborators = ghPaginatedArray(
       `repos/${dataRepo}/collaborators?affiliation=all&per_page=100`,
     );
@@ -429,6 +492,19 @@ function inspectOrganization(organizationRoot) {
   return result;
 }
 
+function failedOrganizationResult(organizationRoot, error) {
+  return {
+    organization: basename(organizationRoot),
+    github_org: null,
+    data_repo: null,
+    data_state: "invalid",
+    enforcement_mode: null,
+    writers: null,
+    errors: [error instanceof Error ? error.message : String(error)],
+    notes: [],
+  };
+}
+
 export function defaultWorkspaceRoot() {
   const scriptRoot = fileURLToPath(new URL("../", import.meta.url));
   const result = spawnSync("git", ["worktree", "list", "--porcelain", "-z"], {
@@ -457,22 +533,35 @@ export function runSmoke(workspaceRoot) {
   if (!existsSync(organizationsRoot)) {
     throw new Error(`Chybí Lazurio organizations mountpoint: ${organizationsRoot}`);
   }
-  const roots = readdirSync(organizationsRoot, { withFileTypes: true })
+  const candidates = readdirSync(organizationsRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => join(organizationsRoot, entry.name))
     .filter((root) => existsSync(join(root, "company.gen3.json")))
-    .filter(
-      (root) =>
-        json(join(root, "company.gen3.json"))?.organization_kind !==
-        "template",
-    )
-    .sort()
-  if (roots.length === 0) {
+    .sort();
+  const results = [];
+  for (const root of candidates) {
+    let company;
+    try {
+      company = json(join(root, "company.gen3.json"));
+    } catch (error) {
+      results.push(failedOrganizationResult(root, error));
+      continue;
+    }
+    if (company?.organization_kind === "template") continue;
+    // Discovery keeps legacy business mounts without organization_kind as
+    // Organizations; only the explicit template marker excludes a mount.
+    try {
+      results.push(inspectOrganization(root));
+    } catch (error) {
+      results.push(failedOrganizationResult(root, error));
+    }
+  }
+  if (results.length === 0) {
     throw new Error(
       `Mission Control trust smoke odmítá false-green běh bez Organizací: ${organizationsRoot}`,
     );
   }
-  return roots.map(inspectOrganization);
+  return results;
 }
 
 function main() {
