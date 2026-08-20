@@ -1,6 +1,6 @@
-import { lstat, mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, realpath, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import {
   GIT_FETCH_TIMEOUT_MS,
   GIT_LOCAL_TIMEOUT_MS,
@@ -29,6 +29,7 @@ export async function materializeRepoCheckout({
     run = runGit,
     makeDirectory = mkdir,
     makeTempDirectory = mkdtemp,
+    move = rename,
     remove = rm,
   } = deps;
 
@@ -45,6 +46,8 @@ export async function materializeRepoCheckout({
 
   const targetParent = dirname(targetPath);
   let transportCwd = null;
+  let stagingPath = null;
+  let materialized = false;
   try {
     transportCwd = await makeTempDirectory(join(tmpdir(), "launchpad-materialization-"));
     // Probe access from a neutral cwd so the Organization checkout cannot
@@ -71,14 +74,10 @@ export async function materializeRepoCheckout({
       return boundaryFailure("Rodič cílového checkoutu vede mimo kanonický root Organizace.");
     }
 
-    // Claim the final path atomically. Concurrent update actions can observe
-    // the target, but never overwrite or adopt each other's checkout.
-    try {
-      await makeDirectory(targetPath);
-    } catch (error) {
-      if (error?.code === "EEXIST") return targetExists();
-      return cloneFailure();
-    }
+    // Clone to a sibling staging directory first. The final path appears only
+    // after branch, origin, HEAD and cleanliness have been verified; rename on
+    // the same filesystem is the one atomic publication step.
+    stagingPath = await makeTempDirectory(join(targetParent, `.${basename(targetPath)}.lazurio-update-`));
 
     const clone = await run(
       [
@@ -90,7 +89,7 @@ export async function materializeRepoCheckout({
         "origin",
         "--",
         remote,
-        targetPath,
+        stagingPath,
       ],
       {
         cwd: transportCwd,
@@ -101,12 +100,21 @@ export async function materializeRepoCheckout({
     if (!clone.ok) return cloneFailure();
 
     const verification = await verifyClonedCheckout({
-      path: targetPath,
+      path: stagingPath,
       branch,
       remote,
       run,
     });
     if (!verification.ok) return verification;
+
+    if (await lstatOrNull(targetPath)) return targetExists();
+    try {
+      await move(stagingPath, targetPath);
+      materialized = true;
+    } catch (error) {
+      if (["EEXIST", "ENOTEMPTY"].includes(error?.code)) return targetExists();
+      return cloneFailure();
+    }
 
     return {
       ok: true,
@@ -122,6 +130,9 @@ export async function materializeRepoCheckout({
   } finally {
     if (transportCwd) {
       await remove(transportCwd, { recursive: true, force: true }).catch(() => {});
+    }
+    if (stagingPath && !materialized) {
+      await remove(stagingPath, { recursive: true, force: true }).catch(() => {});
     }
   }
 }
@@ -279,7 +290,7 @@ function cloneFailure() {
     ok: false,
     outcome: "failed",
     code: "materialization_clone_failed",
-    message: "Git nedokončil klon manifestovaného modulu; částečný target zůstal viditelný pro kontrolu.",
+    message: "Git nedokončil klon manifestovaného modulu; finální target zůstal nedotčený.",
   };
 }
 

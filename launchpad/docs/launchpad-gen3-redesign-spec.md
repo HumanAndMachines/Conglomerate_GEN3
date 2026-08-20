@@ -157,70 +157,52 @@ The redesign must preserve the current root behavior:
 - Launchpad consumes Organization truth; it does not write business data or grant
   GitHub access.
 
-### Distribution and updates (decision 0059)
+### Distribution and updates (decision 0129)
 
-Launchpad ships as a **compiled binary** — a standalone per-OS executable that
-embeds its runtime. Daily builder work (overview, entering apps, updating) needs
-**neither Bun nor `bun install`/`node_modules`**; this targets non-programmer
-builders and corporate machines where IT typically allows only an agent
-(Codex/Claude) and git. The source stays in the direct-pull repo, the binary is a
-build of that same code (not a fork or a second truth), and **`bun run launchpad`
-remains the dev mode** for machines that already have dev tools. The binary and
-the root content update on two separate cadences: the root via `git pull`, the
-binary via a separate release artifact that changes far less often.
+Launchpad runs from an immutable, exact-digest Workspace runtime artifact
+outside the mutable Lazurio working root. Local and hosted workspaces use the
+same runtime/working-root interface and the same update engine; only transport,
+custody, active Team projection, and deployment differ. The runtime has no
+self-update service. An image/release pipeline installs a new runtime digest,
+while `lazurio update` independently fast-forwards working checkouts.
 
-- **"Aktualizovat"** updates the Lazurio root via
-  `git pull --rebase --autostash` (or equivalent). It must not fail on a trivial
-  divergence, and it is **fail-closed**: on a conflict or unclean result the
-  rebase/stash is cleanly rolled back and the state is shown to the builder
-  legibly — no silent `reset --hard`, no lost draft. Mutating update
-  (`doctor sync`, "Aktualizovat") is a separate guarded tool, not a Doctor
-  check — Doctor stays read-only diagnostics.
-- **"Vyřešit s Agentem"** fallback: when an update fails, Launchpad offers to
-  start a local Codex/Claude session tasked with finishing the update. It is the
-  builder's own BYOS session (decision 0061), not a platform agent.
-- **On the Workspace Host** the Steward seat holds the update through a
-  daily cron (e.g. 05:00) that updates the whole system including tests.
+- **Synchronizovat** invokes the same engine as `lazurio update`; Doctor remains
+  read-only and never fetches.
+- **Vyřešit s Codexem** appears only for Git history or operations the algorithm
+  cannot safely repair. It carries the exact repo, reason, and recovery stash.
+- Hosted scheduling, if enabled by an operator, may invoke only this same
+  command; it does not create a second updater or different hosted state model.
 
-### Action contract: "Aktualizovat" (implemented v1 — git-context axis, CAC-0056)
+### Action contract: „Synchronizovat“ / `lazurio update` (decision 0129)
 
-Implementation note: v1 deliberately deviates from the `git pull --rebase
---autostash` sketch above and reuses the safer, already-proven per-repo
-primitives — **ff-only merge to an explicit verified channel target**, with
-autostash (stash → ff → exact restore) only as an explicit second action, never
-as a silent default. Channels and client checkout policy are held by decision
-0080 (`manual/decision-register.md`); the binary axis waits for the CI build+sign
-pipeline and is reported as `binary: { state: "not_available" }`.
+One explicit action and one library engine update the managed hierarchy in a
+deterministic order: Lazurio Root → Organization Roots → freshly rediscovered
+Workspace Modules. There is no stable/nightly channel, plan/apply mode,
+per-module download button, restore overlay, update journal, or second daemon.
 
-- **Intent:** bring the Lazurio root to the current target of the
-  machine's update channel (`stable` = highest `vX.Y.Z` tag, `nightly` =
-  `origin/main`) without ever rewriting history or losing local work.
-- **Source of truth:** channel in gitignored `launchpad.gen3.local.json`
-  (`update_channel`, default `stable`); target resolved from origin tags /
-  `origin/main` after `git fetch origin main --tags --prune`.
-- **Preconditions:** root checkout is a standalone git root on branch `main`;
-  clean tracked files for the default action (`mode: "ff_only"`); dirty
-  tracked state requires the explicit `mode: "preserve_changes"` action and
-  `can_update_with_autostash`; target must be strictly fast-forward.
-- **Side effects:** `git merge --ff-only <verified target sha>` on the root;
-  in preserve mode additionally stash push/apply/drop with exact-identity
-  verification. Records `from_commit`/`to_commit` in the response for a
-  future rollback action. No binary is touched in v1.
-- **Failure mode:** explainable states (`ahead_of_channel_target`, `diverged`,
-  `wrong_branch`, `dirty_worktree`, `no_release_tag`, `fetch_failed`) return
-  HTTP 409 with a Czech message and never mutate; a failed autostash restore
-  keeps the stash backup and says so ("Vyřešit s Agentem" is the recovery
-  path). Never `reset --hard`, never rebase.
-- **Access boundary:** builder control plane only — `POST /api/update` is a
-  mutating API guarded by the trusted-local check (127.0.0.1, same-origin),
-  serialized with background fetches via `withRemoteRefreshPaused`. The root
-  lane is separate from the organization git inventory (`pull-all` never
-  touches the root).
-- **Verification:** `GET /api/update/status` before/after; post-update HEAD
-  must equal the verified target sha (`update_verification_failed`
-  otherwise); read-only Doctor check `update.channel` reports channel
-  validity, branch, and ahead/behind against the last known target without
-  fetching. Covered by `src/update-lib.test.mjs` and
+- **Source of truth:** verified `origin/main` for every managed Git checkout.
+  The engine fetches that one branch, re-verifies the origin identity, and
+  uses only `pull --ff-only --no-rebase`.
+- **Local-work rule:** tracked, untracked, and binary changes are stored in a
+  named native recovery stash whose object and path coverage are verified.
+  The stash is never automatically restored, popped, or dropped. A non-main
+  branch is returned to main while all of its commits remain reachable.
+- **Failure rule:** local main commits, ahead/diverged history, an unsafe
+  detached HEAD, hidden index state, and merge/rebase/am in progress return
+  the single public state `blocked` with an exact Codex repair prompt. The
+  algorithm never resets, rebases, force-pushes, or guesses a history repair.
+- **Scope:** Productionspace, Personalspace, task/PR worktrees, and nested
+  root-space repository-db checkouts are excluded. A freshly declared missing
+  Workspace Module is cloned into a sibling staging path, verified, and
+  atomically renamed.
+- **Runtime boundary:** the long-running Launchpad executes from an immutable
+  exact-digest Workspace runtime outside the mutable working root. The local
+  short CLI bundles the same engine into a temporary external runtime for its
+  one invocation. Runtime release and checkout update are separate operations.
+- **API/UX:** `GET /api/update/status` is local and no-fetch. Only explicit
+  `POST /api/update` or `POST /api/sync` mutates; legacy pull routes adapt to
+  the same engine. Public results are only `current`, `updated`, or `blocked`.
+  Covered by `src/lazurio-update-lib.test.mjs`, CLI/server parity tests, and
   `src/diagnostics-lib.test.mjs`.
 
 ## 1b. Builder Bridge API — versioning, transport adapters, CORS/LNA, pairing token, headless mode [PROPOSAL — pending founder ratification of decision 0077]
@@ -790,16 +772,12 @@ vždy `false`, takže se stávající chování nemění. Rozšíření `isAtten
 o git stavy je připravené a aktivuje se automaticky, jakmile endpoint začne
 vracet data — viz handoff CAC-0044.
 
-Organization Git stav je first-class položka UI, ale denní povrch ho shrnuje
-bez samostatného technického panelu. Pod stavem Lazurio je druhý stejně
-jednoduchý řádek: bez změn říká, že jsou moduly aktuální; při změnách ukáže
-počet dotčených modulů a jediné tlačítko **Stáhnout změny**. Akce projde právě
-otevřenou Organizaci včetně jejího root repozitáře a Workspace modulů.
-Bezpečné čisté checkouty fast-forwardne; draft s incoming a bez outgoing commitů
-projde explicitním autostash flow. Productionspace a rizikové stavy přeskočí,
-jeden konflikt nezastaví ostatní repozitáře a výsledný souhrn musí pojmenovat
-každý skipped/conflict/failed checkout. Background fetch je během Git mutací
-pozastavený a mutace z různých karet jsou serializované.
+Organization Git stav je first-class položka read modelu, ale denní povrch
+nenabízí per-repo pull. Jediná akce **Synchronizovat** projde celou spravovanou
+hierarchii Lazurio Root → Organization Rooty → Workspace Moduly. Dílčí karty
+smějí ukázat lokální změny a recovery detail, ne spustit jiný update postup.
+Productionspace a nested repository-db zůstávají mimo mechanismus; všechny
+mutace jsou pod jedním lockem a background fetch je během nich pozastavený.
 
 **Freshness kontrakt (owner 2026-07-14).** Tichý browser refresh běží každých
 15 sekund jen tehdy, když je karta viditelná a okno fokusované. Hidden/blur jej

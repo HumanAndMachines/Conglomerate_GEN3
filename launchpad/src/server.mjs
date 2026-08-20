@@ -14,17 +14,13 @@ import {
   GitApiError,
   buildGitApiResponse,
   buildPlansResponse,
-  buildPullAllResponse,
-  buildRepoAutostashPullResponse,
   buildRepoChangesResponse,
-  buildRepoPullResponse,
-  buildRepoRebaseAbortResponse,
   buildRepoResponse,
   buildWorktreesResponse,
 } from "./git-api-lib.mjs";
 import { RuntimeActionError, createRuntimeManager } from "./runtime-lib.mjs";
 import { createGitStatusService } from "./git-status-lib.mjs";
-import { performRootUpdate, readRootUpdateStatus } from "./update-lib.mjs";
+import { readLazurioUpdateStatus, runLazurioUpdate } from "./lazurio-update-lib.mjs";
 import { WorktreeActionError, createWorktreeFromPlan, publishWorktreeDraft } from "./worktree-actions-lib.mjs";
 import { buildRecentModuleChanges } from "./recent-changes-lib.mjs";
 import { buildNotifications } from "./notifications-lib.mjs";
@@ -66,9 +62,13 @@ const safeApiMethods = new Set(["GET", "HEAD", "OPTIONS"]);
 const launchpadRoot = join(import.meta.dirname, "..");
 const publicRoot = join(launchpadRoot, "public");
 const options = parseArgs(Bun.argv.slice(2));
-const companiesRoot = resolve(options.root ?? join(launchpadRoot, ".."));
+const companiesRoot = resolve(options.root ?? process.env.WORKSPACE_ROOT ?? join(launchpadRoot, ".."));
 const canonicalCompaniesRoot = realpathSync(companiesRoot);
 const lazurioCodeRoot = resolve(launchpadRoot, "..");
+const configuredRuntimeRoot = resolve(process.env.LAZURIO_RUNTIME_ROOT ?? lazurioCodeRoot);
+if (realpathSync(configuredRuntimeRoot) !== realpathSync(lazurioCodeRoot)) {
+  throw new Error("LAZURIO_RUNTIME_ROOT musí přesně označovat Lazurio runtime, ze kterého běží Launchpad server.");
+}
 const launchpadRootId = computeServerRootId(canonicalCompaniesRoot);
 const launchpadInstallGeneration = computeServerInstallGeneration(lazurioCodeRoot);
 const launchpadServerIdentity = buildServerIdentity({
@@ -673,8 +673,6 @@ function gitApiRoute(pathname) {
   if (changesMatch) return { kind: "repo_changes", repoKey: decodeURIComponent(changesMatch[1]) };
   const autostashPullMatch = pathname.match(/^\/api\/git\/repos\/([^/]+)\/pull-autostash$/);
   if (autostashPullMatch) return { kind: "repo_autostash_pull", repoKey: decodeURIComponent(autostashPullMatch[1]) };
-  const rebaseAbortMatch = pathname.match(/^\/api\/git\/repos\/([^/]+)\/rebase-abort$/);
-  if (rebaseAbortMatch) return { kind: "repo_rebase_abort", repoKey: decodeURIComponent(rebaseAbortMatch[1]) };
   const pullMatch = pathname.match(/^\/api\/git\/repos\/([^/]+)\/pull$/);
   if (pullMatch) return { kind: "repo_pull", repoKey: decodeURIComponent(pullMatch[1]) };
   const repoMatch = pathname.match(/^\/api\/git\/repos\/([^/]+)$/);
@@ -715,29 +713,19 @@ async function handleGitApiRoute(request, url, route) {
       if (request.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
       return jsonResponse(await appsResponseCache.runMutation(() =>
         gitStatusService.withRemoteRefreshPaused(() =>
-          buildRepoPullResponse({ companiesRoot, repoKey: route.repoKey, statusService: gitStatusService }))));
+          runLazurioUpdate({ rootPath: companiesRoot, runtimeRoot: configuredRuntimeRoot }))));
     }
     if (route.kind === "repo_autostash_pull") {
       if (request.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
       return jsonResponse(await appsResponseCache.runMutation(() =>
         gitStatusService.withRemoteRefreshPaused(() =>
-          buildRepoAutostashPullResponse({ companiesRoot, repoKey: route.repoKey, statusService: gitStatusService }))));
-    }
-    if (route.kind === "repo_rebase_abort") {
-      if (request.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
-      return jsonResponse(await appsResponseCache.runMutation(() =>
-        gitStatusService.withRemoteRefreshPaused(() =>
-          buildRepoRebaseAbortResponse({ companiesRoot, repoKey: route.repoKey, statusService: gitStatusService }))));
+          runLazurioUpdate({ rootPath: companiesRoot, runtimeRoot: configuredRuntimeRoot }))));
     }
     if (route.kind === "pull_all") {
       if (request.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
       return jsonResponse(await appsResponseCache.runMutation(() =>
         gitStatusService.withRemoteRefreshPaused(() =>
-          buildPullAllResponse({
-            companiesRoot,
-            organization: url.searchParams.get("company"),
-            statusService: gitStatusService,
-          }))));
+          runLazurioUpdate({ rootPath: companiesRoot, runtimeRoot: configuredRuntimeRoot }))));
     }
     if (request.method !== "GET") return jsonResponse({ error: "method_not_allowed" }, 405);
     if (route.kind === "repos") {
@@ -992,35 +980,31 @@ function startServer(startPort) {
             root_id: launchpadRootId,
           });
         }
-        // Update lane Lazurio rootu (decision 0059, draft 0080): oddělená
-        // od org git inventáře; mutace jde přes trusted-local guard výše a
-        // serializuje se s background fetchi přes withRemoteRefreshPaused.
-        // I GET status je trusted-local: dělá git fetch (síť + credentials),
-        // cizí origin ho nesmí spouštět ani jako drive-by bez čtení odpovědi.
-        if (url.pathname.startsWith("/api/update") && !await isTrustedWorkspaceRequest()) {
-          return jsonResponse({ error: "update_request_forbidden" }, 403);
-        }
+        // GET je čistě lokální snapshot: žádný fetch, credentials ani mutace.
+        // Teprve explicitní POST prochází společným mutation trust gatem výš.
         if (url.pathname === "/api/update/status" && request.method === "GET") {
-          return jsonResponse(await gitStatusService.withRemoteRefreshPaused(() =>
-            readRootUpdateStatus({ rootPath: companiesRoot })));
+          return jsonResponse(await readLazurioUpdateStatus({ rootPath: companiesRoot }));
         }
         if (url.pathname === "/api/update" && request.method === "POST") {
-          const payload = await request.json().catch(() => ({}));
           const result = await appsResponseCache.runMutation(() =>
             gitStatusService.withRemoteRefreshPaused(() =>
-              performRootUpdate({ rootPath: companiesRoot, mode: payload?.mode ?? "ff_only" })));
-          return jsonResponse(result, result.ok ? 200 : 409);
+              runLazurioUpdate({ rootPath: companiesRoot, runtimeRoot: configuredRuntimeRoot })));
+          return jsonResponse(result);
         }
         if (url.pathname === "/api/apps") return jsonResponse(await buildAppsResponse());
-        // Synchronizovat (decision 0042): znovu projede lokální auto-discovery
-        // organizations/*/company.gen3.json bez ruční editace root manifestu.
-        // Nový lokální mount (git clone / doctor sync) se objeví bez restartu.
+        // Jediná explicitní Sync mutace: tentýž engine jako `lazurio update`,
+        // potom čerstvá lokální projekce pro UI. Onboarding nových Organization
+        // rootů podle GitHub grantů zůstává samostatná access Sync lane.
         if (url.pathname === "/api/sync" && request.method === "POST") {
+          const update = await appsResponseCache.runMutation(() =>
+            gitStatusService.withRemoteRefreshPaused(() =>
+              runLazurioUpdate({ rootPath: companiesRoot, runtimeRoot: configuredRuntimeRoot })));
           const response = await buildAppsResponse({ force: true });
           return jsonResponse({
+            ...response,
             action: "sync",
             synced_at: response.generated_at,
-            ...response,
+            update,
           });
         }
         if (url.pathname === "/api/doctor") return jsonResponse(await buildDoctorReport());

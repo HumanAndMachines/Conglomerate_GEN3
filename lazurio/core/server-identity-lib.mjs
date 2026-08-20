@@ -28,6 +28,17 @@ export function computeServerInstallGeneration(codeRoot) {
   }
 
   const root = resolve(codeRoot);
+  const residentManifestPath = join(root, "lazurio.resident.json");
+  try {
+    const manifest = JSON.parse(readFileSync(residentManifestPath, "utf8"));
+    const digest = manifest?.payload?.digest;
+    if (manifest?.schema_version === "lazurio.resident.manifest.v1" && isSha256(digest)) {
+      return digest;
+    }
+    throw new Error("Installed Lazurio runtime manifest has no valid payload digest.");
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
   const normalizedInputs = serverInstallGenerationInputPaths(root).map((path) => ({
     absolute: join(root, ...path.split("/")),
     relative: path,

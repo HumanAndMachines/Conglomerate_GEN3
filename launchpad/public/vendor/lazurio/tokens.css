@@ -5,9 +5,8 @@
  * Rozhodovací historii zvolených hodnot zachovává Git historie tohoto souboru;
  * aktivní tokenový kontrakt je celý lokálně a nevyžaduje externí knowledgebase.
  *
- * POZOR na scope: úroveň Lazuria versus produkt Organizace
- * Rozjedeme-ai) není uzavřená a je eskalovaná na foundera. Hodnoty níž platí;
- * to, kde je jejich kanonický domov, ne. Detail v AGENTS.md.
+ * Tokeny patří sdílenému Lazurio surface; Organization může doplnit vlastní
+ * obsahovou identitu, ale nepřejmenovává ani nepřebarvuje Launchpad shell.
  *
  * Princip (Principál, 2026-07-25):
  * minimalismus, stupně šedi + černá a bílá, JEDINÝ výrazný prvek je

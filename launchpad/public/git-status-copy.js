@@ -44,9 +44,9 @@ export function gitStatusUserMessage(repo) {
   const messages = {
     up_to_date: "Tenhle modul je připravený.",
     pull_available:
-      "Někdo mezitím poslal novější verzi. Můžeš ji bezpečně stáhnout.",
+      "Někdo mezitím poslal novější verzi. Použij Synchronizovat.",
     update_available:
-      "Někdo mezitím poslal novější verzi. Můžeš ji bezpečně stáhnout.",
+      "Někdo mezitím poslal novější verzi. Použij Synchronizovat.",
     push_required:
       "Tady jsou hotové uložené změny, které ještě nejsou odeslané ostatním.",
     diverged:

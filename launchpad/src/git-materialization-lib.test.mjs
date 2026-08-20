@@ -139,15 +139,12 @@ test("does not overwrite a target claimed by a concurrent materialization", asyn
     companiesRoot: root,
     repo,
     deps: {
-      makeDirectory: async (path, options) => {
-        if (path === target && !options?.recursive) {
-          await mkdir(path);
-          await writeFile(join(path, "owned-by-other-update"), "keep\n");
-          const error = new Error("target already claimed");
-          error.code = "EEXIST";
-          throw error;
-        }
-        return mkdir(path, options);
+      move: async () => {
+        await mkdir(target);
+        await writeFile(join(target, "owned-by-other-update"), "keep\n");
+        const error = new Error("target already claimed");
+        error.code = "EEXIST";
+        throw error;
       },
     },
   });
@@ -160,7 +157,7 @@ test("does not overwrite a target claimed by a concurrent materialization", asyn
   expect(await readFile(join(target, "owned-by-other-update"), "utf8")).toBe("keep\n");
 });
 
-test("leaves a claimed target visible when clone fails", async () => {
+test("clone failure leaves no partial final target or staging directory", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const organizationRoot = join(root, "organizations", "BetaCo_GEN3");
@@ -200,8 +197,8 @@ test("leaves a claimed target visible when clone fails", async () => {
     outcome: "failed",
     code: "materialization_clone_failed",
   });
-  expect(existsSync(target)).toBe(true);
-  expect(await readdir(target)).toEqual([]);
+  expect(existsSync(target)).toBe(false);
+  expect((await readdir(join(organizationRoot, "workspace"))).filter((name) => name.includes("lazurio-update"))).toEqual([]);
 });
 
 async function prepareOrganizationRoot(organizationRoot) {

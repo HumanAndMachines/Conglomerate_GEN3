@@ -45,6 +45,20 @@ stromem a build k němu přidá pouze úzký profilový fragment. Zdrojové frag
 se nejmenují `AGENTS.md`, takže v development checkoutu omylem nepřebírají
 řízení Agentů.
 
+## Profil Workspace
+
+Workspace profil je immutable runtime pro Launchpad a Lazurio CLI v pracovním
+prostoru Kolegy nebo AI Kolegy. Není druhým datovým modelem hosted prostředí:
+lokální i vzdálený pracovní prostor používají stejný Lazurio Root,
+Organization Rooty a Workspace Moduly. Liší se jen transportem, custody,
+aktivní Team projekcí a způsobem provozního nasazení runtime.
+
+Runtime artefakt běží mimo mutable working root. V hosted kontejneru je
+kanonické rozhraní `LAZURIO_RUNTIME_ROOT=/opt/lazurio-runtime` a
+`WORKSPACE_ROOT=/home/builder/Lazurio`; Launchpad se spouští z první cesty a
+druhou dostává přes `--root`. Runtime nemá self-update. Exact build, startup
+gate a rollout pořadí drží `manual/lazurio-runtime-install-interface.md`.
+
 ## Profil Buddy
 
 Buddy patří jednomu člověku a zastupuje ho jeho právy. Veřejný profil určuje

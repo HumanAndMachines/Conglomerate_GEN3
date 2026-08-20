@@ -235,7 +235,7 @@ test("Launchpad shell ships GEN2-like command center, theme and feedback afforda
   expect(html).toContain('id="heroTitle"');
   expect(html).toContain('id="heroCta"');
   expect(html.indexOf('id="hero"')).toBeGreaterThan(html.indexOf('id="recentChangesSidebar"'));
-  expect(html.indexOf('id="moduleUpdateBanner"')).toBeLessThan(html.indexOf('id="hero"'));
+  expect(html.indexOf('id="updateBanner"')).toBeLessThan(html.indexOf('id="hero"'));
   expect(html).not.toContain('id="organizationGitPanel"');
   expect(html).toContain('id="spaceHealthBadge"');
   expect(html).not.toContain('id="heroSubtitle"');
@@ -411,16 +411,12 @@ test("Launchpad quiet refresh is lightweight and non-overlapping", async () => {
   expect(js).toContain("createLatestDataLoadCoordinator({ run: runLoadData })");
   expect(loadDataBlock).toContain("dataLoadCoordinator.load(options)");
   expect(stateLib).toContain("if (!fresh) return inFlight.promise;");
-  expect(stateLib).toContain("return queueFresh({ quiet });");
+  expect(stateLib).toContain("return queueFresh({ quiet, sync });");
   expect(stateLib).toContain("isCurrent: () => requestGeneration === generation");
   expect(loadDataBlock).toContain("if (!isCurrent()) return;");
   expect(js).toContain("loadData({ quiet: true, fresh: true })");
   for (const [name, nextName] of [
     ["openAppChain", "openWorkspaceModuleFolder"],
-    ["pullGitRepository", "abortGitRebase"],
-    ["abortGitRebase", "loadUpdateStatus"],
-    ["runRootUpdate", "pullOrganizationRepositories"],
-    ["pullOrganizationRepositories", "selectedRuntimeSourceForApp"],
     ["createWorktreeForPlan", "publishSelectedWorktreeDraft"],
     ["publishSelectedWorktreeDraft", "firstPlanPathForGit"],
     ["runRuntimeAction", "humanRuntimeActionError"],
@@ -702,7 +698,7 @@ test("CAC-0044: git stavy mají lidský text a vstupují do kontrolního togglu"
   ]);
 
   // Lidské texty portované 1:1 z GEN2 Kontroly.
-  expect(copy).toContain("Někdo mezitím poslal novější verzi. Můžeš ji bezpečně stáhnout.");
+  expect(copy).toContain("Někdo mezitím poslal novější verzi. Použij Synchronizovat.");
   expect(copy).toContain("Tady je rozepsaná práce. Můžeš si zobrazit, co se změnilo.");
   expect(copy).toContain("git_am_in_progress");
   expect(copy).toContain("Launchpad do git am automaticky nezasahuje.");
@@ -714,7 +710,7 @@ test("CAC-0044: git stavy mají lidský text a vstupují do kontrolního togglu"
   expect(appState).toContain("app.git_attention === true");
 });
 
-test("CAC-0044: step-005 aktivuje Ukázat změny a guarded Stáhnout novější verzi", async () => {
+test("CAC-0044: detail ukazuje změny, ale update zůstává jediná globální akce", async () => {
   const [js, css] = await Promise.all([
     readFile(join(publicRoot, "app.js"), "utf8"),
     readFile(join(publicRoot, "styles.css"), "utf8"),
@@ -722,24 +718,20 @@ test("CAC-0044: step-005 aktivuje Ukázat změny a guarded Stáhnout novější 
 
   expect(js).toContain("function renderGitBuilderActions");
   expect(js).toContain("Ukázat změny");
-  expect(js).toContain("Stáhnout novější verzi");
   expect(js).toContain("function showRepoChanges");
-  expect(js).toContain("function pullLatestRepoVersion");
   expect(js).toContain("/changes");
-  expect(js).toContain("/pull");
-  expect(js).toContain("`Nová verze - ${newCommitCountLabel(incoming)}`");
-  expect(js).toContain('summaryButton("Stáhnout", () => pullLatestRepoVersion(app, git)');
+  expect(js).not.toContain("function pullLatestRepoVersion");
+  expect(js).not.toContain("function pullGitRepository");
+  expect(js).not.toContain('summaryButton("Stáhnout"');
   expect(js).toContain('title: "Změny k odeslání"');
   expect(js).toContain('button.className = "btn btn-sm btn-secondary card-warning-action"');
   expect(js).not.toContain("warning.actionStyle");
   expect(js).not.toContain("Můžeš ji bezpečně stáhnout (fast-forward).");
-  expect(js).toContain("git.status === \"pull_available\"");
   expect(js).toContain("state.gitChangesByRepo");
-  expect(js).toContain("state.gitRecoveryByRepo");
-  expect(js).toContain("Abortnout rebase");
   expect(js).toContain("Udělejte screenshot této hlášky a vložte ho agentovi do Codexu");
-  expect(js).toContain("function abortGitRebase");
-  expect(js).toContain("/rebase-abort");
+  expect(js).not.toContain("Abortnout rebase");
+  expect(js).not.toContain("function abortGitRebase");
+  expect(js).not.toContain("/rebase-abort");
   expect(css).toContain(".git-builder-actions");
   expect(css).toContain(".git-change-list");
   expect(css).toContain(".toast.is-success");
@@ -747,7 +739,7 @@ test("CAC-0044: step-005 aktivuje Ukázat změny a guarded Stáhnout novější 
   expect(css).toContain(".card-warning-message");
 });
 
-test("Launchpad ukazuje jednoduchý stav modulů s počtem a jedním stažením pro aktivní Organizaci", async () => {
+test("Launchpad používá jednu explicitní Synchronizovat akci místo dílčích module pullů", async () => {
   const [html, js, css] = await Promise.all([
     readFile(join(publicRoot, "index.html"), "utf8"),
     readFile(join(publicRoot, "app.js"), "utf8"),
@@ -755,29 +747,19 @@ test("Launchpad ukazuje jednoduchý stav modulů s počtem a jedním stažením 
   ]);
 
   expect(html).toContain('id="updateBannerGroup"');
-  expect(html).toContain('id="moduleUpdateBanner"');
-  expect(html).toContain('id="moduleUpdateBannerText"');
-  expect(html).toContain('id="moduleUpdateBannerAction"');
-  expect(html).toContain("Stáhnout změny");
+  expect(html).not.toContain('id="moduleUpdateBanner"');
+  expect(html).toContain("Synchronizovat");
   expect(html).not.toContain('id="organizationGitPanel"');
-  expect(js).toContain("function renderModuleUpdateBanner");
-  expect(js).toContain("function activeOrganizationGitRepositories");
-  expect(js).toContain("function moduleUpdateLocation");
-  expect(js).toContain('repositories.set(repo.key ?? `${repo.organization}::${repo.module ?? repo.repo_kind}`, repo)');
-  expect(js).toContain('`Změny jsou připravené ${moduleUpdateLocation(moduleUpdates.length)}.`');
-  expect(js).toContain('text.textContent = "Moduly jsou aktuální."');
-  expect(js).toContain("function canAutostashPull");
-  expect(js).toContain("`Nová verze - ${newCommitCountLabel(incoming)}`");
-  expect(js).toContain('autostash ? "pull-autostash" : "pull"');
-  expect(js).toContain("function pullOrganizationRepositories");
-  expect(js).toContain('`/api/git/pull-all?company=${encodeURIComponent(organization)}`');
+  expect(js).not.toContain("moduleUpdateBanner");
+  expect(js).not.toContain("function renderModuleUpdateBanner");
+  expect(js).not.toContain("function pullOrganizationRepositories");
+  expect(js).not.toContain("function canAutostashPull");
+  expect(js).not.toContain("function builderPullScopeAllowedForRepo");
+  expect(js).not.toContain("function pullLatestRepoVersion");
+  expect(js).not.toContain('`/api/git/pull-all?company=${encodeURIComponent(organization)}`');
   expect(js).not.toContain("Načíst nejnovější změny ve všech organizacích?");
-  const moduleBannerBlock = js.slice(js.indexOf("function renderModuleUpdateBanner"), js.indexOf("function renderUpdatePill"));
-  expect(moduleBannerBlock.indexOf("if (checkFailed)")).toBeLessThan(
-    moduleBannerBlock.indexOf("if (moduleUpdates.length > 0)"),
-  );
-  expect(js).toContain("summary.materialized_count");
-  expect(js).toContain("summary.missing_access_count");
+  expect(js).toContain("loadData({ sync: true })");
+  expect(js).toContain('fetchJson("/api/sync", { method: "POST" })');
   expect(css).toContain(".update-banner-group");
   expect(css).toContain(".recent-changes-sidebar > .update-banner-group .update-banner");
 });
@@ -1176,12 +1158,10 @@ test("Owner 2026-07-05: karta modulu je GEN2-minimal dlaždice bez velkých tla�
   expect(js).toContain('placement: "top-action"');
   expect(js).toContain("function cardWarningActionIcon");
   expect(js).toContain("appCardTone(app, warning)");
-  // Příprava balíčků zůstává kontextovou akcí karty; stažení nové verze je
-  // sjednocené v souhrnu a detailu, aby se neopakovalo na každé dlaždici.
+  // Příprava balíčků zůstává kontextovou akcí karty; update checkoutů má
+  // právě jednu explicitní globální akci Synchronizovat.
   expect(js).toContain("runRuntimeAction(app, installAction(app))");
-  expect(js).toContain("pullLatestRepoVersion(app, git)");
-  expect(js).toContain("Nové vzdálené změny patří do jediného souhrnného hlášení");
-  expect(js).toContain("pull_available");
+  expect(js).not.toContain("pullLatestRepoVersion");
 
   // „Další možnosti" (varianty + zastavit/restart + detail/logy) žijí pod ⋯,
   // které se ukáže jen když má obsah.
@@ -1274,7 +1254,7 @@ test("Organization workspace má kompaktní uvítání s dynamickým názvem fir
   expect(css).toContain("font-weight: 600");
 });
 
-test("CAC-0083: dostupný root update je nepřehlédnutelný — banner ve všech scope, počet commitů, průběžný refresh", async () => {
+test("DEV-6493: banner používá GET-first Lazurio stav a pouze current|updated|blocked", async () => {
   const [html, js, css] = await Promise.all([
     readFile(join(publicRoot, "index.html"), "utf8"),
     readFile(join(publicRoot, "app.js"), "utf8"),
@@ -1292,32 +1272,26 @@ test("CAC-0083: dostupný root update je nepřehlédnutelný — banner ve všec
   expect(html.indexOf('id="updateBanner"')).toBeLessThan(html.indexOf('id="hero"'));
   expect(html).toContain('id="updateBannerText"');
   expect(html).toContain('id="updateBannerAction"');
-  expect(html).toContain('id="moduleUpdateBanner"');
-  expect(html).toContain('id="moduleUpdateBannerAction"');
+  expect(html).not.toContain('id="moduleUpdateBanner"');
 
-  // Aktuální stav je tichý. Akční stav nese počet commitů a vede na guarded
-  // update; blokovaný stav zůstane vysvětlený bez falešného tlačítka.
+  // GET status je metadata-only; vzdálený GitHub se kontroluje až explicitním
+  // Synchronizovat. Blokace nese připravený Codex prompt.
   expect(js).toContain("function renderUpdateBanner");
   expect(js).toContain("function mountUpdateBannerGroup");
   expect(js).toContain('mobilePanelQuery.matches || state.filters.scope === "personal"');
   expect(js).toContain("if (global) target.append(group)");
   expect(js).toContain("else target.prepend(group)");
-  expect(js).toContain('status.state === "update_available"');
-  expect(js).toContain('(status.state === "dirty_worktree" && status.can_update_with_autostash)');
-  expect(js).toContain("function formatCommitCountCz");
-  expect(js).toContain("formatCommitCountCz(behind)");
-  expect(js).toContain('status.state === "up_to_date"');
-  expect(js).toContain('elements.updateBannerText.textContent = "Lazurio je aktuální."');
+  expect(js).toContain('status.state === "blocked"');
+  expect(js).toContain('status.state === "current"');
+  expect(js).toContain('"Lazurio bylo při poslední synchronizaci aktualizované."');
+  expect(js).toContain('"Lazurio je aktuální."');
   expect(js).not.toContain("Všechny aplikace jsou aktuální");
-  expect(js).toContain('state: "check_failed"');
-  expect(js).toContain('elements.updateBannerText.textContent = "Kontroluji dostupné změny…"');
-  expect(js).not.toContain('!status || status.state === "up_to_date"');
+  expect(js).toContain('state: "blocked"');
+  expect(js).toContain('elements.updateBannerText.textContent = "Načítám lokální stav Lazurio…"');
   expect(js).toContain('elements.updateBannerAction.hidden = true');
   expect(js).toContain('banner.classList.add("is-blocked")');
-  expect(js).toContain('elements.updateBannerAction?.addEventListener("click", () => runRootUpdate())');
-  expect(js).toContain('elements.moduleUpdateBannerAction?.addEventListener("click", () => pullOrganizationRepositories())');
-  expect(js).toContain("const moduleUpdates = modules.filter(pullableGitUpdate)");
-  expect(js).toContain("moduleUpdateLocation(moduleUpdates.length)");
+  expect(js).toContain("openCodexUpdateDialog(prompt)");
+  expect(js).toContain("loadData({ sync: true })");
 
   // Update status se neobnovuje jen jednou při startu: quiet poll ho drží
   // čerstvý nejvýš UPDATE_STATUS_REFRESH_INTERVAL_MS starý.
@@ -1333,7 +1307,7 @@ test("CAC-0083: dostupný root update je nepřehlédnutelný — banner ve všec
   expect(css).toContain(".global-update-slot:empty");
 });
 
-test("CAC-0083: update je hladký — spinner během stahování a automatický reload po dokončení", async () => {
+test("DEV-6493: explicitní Sync ukazuje spinner a po dokončení zůstává na serverem vráceném stavu", async () => {
   const [html, js, css] = await Promise.all([
     readFile(join(publicRoot, "index.html"), "utf8"),
     readFile(join(publicRoot, "app.js"), "utf8"),
@@ -1344,31 +1318,24 @@ test("CAC-0083: update je hladký — spinner během stahování a automatický 
   expect(html).toContain('class="update-banner-spinner"');
   expect(html).toContain('class="update-banner-icon"');
   expect(js).toContain('banner.classList.toggle("is-updating", Boolean(state.updatePending))');
-  expect(js).toContain("Stahuju novou verzi… Stránka se po dokončení sama znovu načte.");
+  expect(js).toContain("Synchronizuji Lazurio…");
   expect(css).toContain(".update-banner.is-updating .update-banner-spinner");
   expect(css).toContain("@keyframes update-spin");
 
-  // Po úspěšném stažení se stránka sama reloadne, aby kolega nezůstal ve
-  // staré verzi UI; spinner běží až do reloadu (pending se neresetuje).
-  expect(js).toContain("window.setTimeout(() => window.location.reload(), 1_200)");
-  expect(js).toContain("Načítám novou verzi…");
-  expect(js).toContain("if (!reloading) {");
+  expect(js).toContain("if (appsResponse.update) state.updateStatus = appsResponse.update;");
+  expect(js).toContain("state.updatePending = false;");
+  expect(js).not.toContain("window.setTimeout(() => window.location.reload(), 1_200)");
 });
 
 test("CAC-0083: UI nenabízí Stáhnout mimo builder pull scope a zrcadlí serverovou hranici", async () => {
   const js = await readFile(join(publicRoot, "app.js"), "utf8");
 
-  // Frontend zrcadlo builderPullScopeAllowed: Organization root, org
-  // root-space sloty a workspace moduly ano; productionspace read-only.
-  expect(js).toContain("function builderPullScopeAllowedForRepo");
-  expect(js).toContain('git?.repo_kind === "root_repo"');
-  expect(js).toContain('(git?.repo_kind === "module" && git?.workspace !== "productionspace")');
-
-  // Každá nabídka Stáhnout na kartě i v builder detailu jde přes kind guard.
-  expect(js).toContain('gitRepo\n    && builderPullScopeAllowedForRepo(gitRepo)');
-  expect(js).toContain('if (git?.status === "pull_available" && builderPullScopeAllowedForRepo(git))');
-  expect(js).toContain('if (builderPullScopeAllowedForRepo(git) && canAutostashPull(git))');
-  expect(js).toContain('if (git.status === "pull_available" && builderPullScopeAllowedForRepo(git))');
+  // Dílčí Stáhnout UI je vypnuté; jedinou mutací je Synchronizovat.
+  expect(js).not.toContain("function builderPullScopeAllowedForRepo");
+  expect(js).not.toContain("function pullLatestRepoVersion");
+  expect(js).not.toContain("Stáhnout novější verzi");
+  expect(js).toContain("loadData({ sync: true })");
+  expect(js).toContain('fetchJson("/api/sync", { method: "POST" })');
 });
 
 test("render-time constants initialize before the first data load", async () => {

@@ -30,6 +30,35 @@ test("normalizes supported resident targets and rejects unknown ones", () => {
   expect(() => normalizeTarget("linux-riscv64")).toThrow("unsupported target architecture");
 });
 
+test("Workspace runtime profile declares the immutable runtime/working-root boundary", async () => {
+  const profile = JSON.parse(await readFile(
+    join(import.meta.dir, "profiles", "workspace", "profile.json"),
+    "utf8",
+  ));
+  const evals = JSON.parse(await readFile(
+    join(import.meta.dir, "profile-evals", "workspace.json"),
+    "utf8",
+  ));
+  expect(profile).toMatchObject({
+    schema_version: "lazurio.resident.profile.v1",
+    id: "workspace",
+    runtime: { root_mode: "installed-non-git" },
+  });
+  expect(profile.behavior_invariants).toEqual(expect.arrayContaining([
+    "runtime-working-root-separation",
+    "get-first-no-fetch",
+    "no-runtime-self-update",
+  ]));
+  expect(new Set(evals.cases.map((item) => item.kind))).toEqual(new Set([
+    "normal",
+    "boundary",
+    "access-denied",
+    "tool-failure",
+    "regression",
+    "role-bleed",
+  ]));
+});
+
 test("privacy scan fails closed on scoped data, nested instructions, secrets and caller terms", () => {
   const entries = new Map([
     ["organizations/Acme/private/note.md", { bytes: Buffer.from("safe"), mode: "0644" }],
@@ -62,7 +91,8 @@ test("ustar output is byte-identical for identical entries and epoch", () => {
 test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", async () => {
   const firstOutput = await mkdtemp(join(tmpdir(), "lazurio-resident-build-a-"));
   const secondOutput = await mkdtemp(join(tmpdir(), "lazurio-resident-build-b-"));
-  cleanup.push(firstOutput, secondOutput);
+  const workspaceOutput = await mkdtemp(join(tmpdir(), "lazurio-workspace-runtime-build-"));
+  cleanup.push(firstOutput, secondOutput, workspaceOutput);
   const target = `${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`;
   const options = {
     cwd: import.meta.dir,
@@ -163,6 +193,23 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
   const doctor = runDoctor(first.artifact_root);
   expect(doctor.status).toBe(0);
   expect(JSON.parse(doctor.stdout)).toMatchObject({ status: "pass", profile: "buddy" });
+
+  const workspace = await buildResidentArtifact({
+    ...options,
+    profile: "workspace",
+    outputRoot: workspaceOutput,
+  });
+  const workspacePaths = workspace.manifest.payload.files.map((file) => file.path);
+  expect(workspace.manifest.profile).toBe("workspace");
+  expect(await verifyArtifactTree(workspace.artifact_root)).toMatchObject({ ok: true, failures: [] });
+  expect(workspacePaths).toContain("launchpad/src/server.mjs");
+  expect(workspacePaths.some((path) => path.startsWith("bridge/"))).toBe(false);
+  expect(workspacePaths.some((path) => path.includes("updater"))).toBe(false);
+  expect(workspacePaths.some((path) => path.includes("buddy-service") || path.includes("buddy-rollout"))).toBe(false);
+  const workspacePackage = JSON.parse(await readFile(join(workspace.artifact_root, "package.json"), "utf8"));
+  expect(workspacePackage.scripts["launchpad:serve"]).toBe("bun launchpad/src/server.mjs --reuse");
+  expect(workspacePackage.scripts["resident:update"]).toBeUndefined();
+  expect(workspacePackage.scripts["buddy:service"]).toBeUndefined();
 
   const injectedGit = join(first.artifact_root, "launchpad", ".git");
   await mkdir(injectedGit);

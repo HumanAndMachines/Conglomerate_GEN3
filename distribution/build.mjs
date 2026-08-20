@@ -23,7 +23,7 @@ function parseArgs(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--help" || argument === "-h") {
-      console.log("bun distribution/build.mjs [--profile buddy] [--target linux-x64] [--version VERSION] [--channel candidate|stable] [--output PATH] [--forbid-term TEXT]");
+      console.log("bun distribution/build.mjs [--profile buddy|workspace] [--target linux-x64] [--version VERSION] [--channel candidate|stable] [--output PATH] [--forbid-term TEXT]");
       process.exit(0);
     }
     const value = argv[index + 1];

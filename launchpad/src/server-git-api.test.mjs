@@ -56,9 +56,9 @@ test("Launchpad server exposes read-only git and Mission Control routes", async 
   const repos = await getJson(port, "/api/git/repos");
   const deals = await getJson(port, "/api/git/repos/BetaCo%3A%3Adeals");
   const changes = await getJson(port, "/api/git/repos/BetaCo%3A%3Adeals/changes");
-  const blockedPull = await postJson(port, "/api/git/repos/BetaCo%3A%3Adeals/pull", {}, 409);
-  const blockedAutostashPull = await postJson(port, "/api/git/repos/BetaCo%3A%3Adeals/pull-autostash", {}, 409);
-  const blockedProductionPull = await postJson(port, "/api/git/repos/OmegaCo%3A%3Afirmware/pull", {}, 403);
+  const blockedPull = await postJson(port, "/api/git/repos/BetaCo%3A%3Adeals/pull", {});
+  const blockedAutostashPull = await postJson(port, "/api/git/repos/BetaCo%3A%3Adeals/pull-autostash", {});
+  const blockedProductionPull = await postJson(port, "/api/git/repos/OmegaCo%3A%3Afirmware/pull", {});
   const pullAll = await postJson(port, "/api/git/pull-all", {});
   const scopedPull = await postJson(port, "/api/git/pull-all?company=BetaCo", {});
   const worktrees = await getJson(port, "/api/git/worktrees?organization=BetaCo&module=deals");
@@ -70,15 +70,12 @@ test("Launchpad server exposes read-only git and Mission Control routes", async 
   expect(deals.repo.key).toBe("BetaCo::deals");
   expect(deals.repo.status).toBe("draft_changes");
   expect(changes.changes[0]).toMatchObject({ path: "draft.md", porcelain: "??" });
-  expect(blockedPull.error).toBe("pull_not_safe");
-  expect(blockedPull.message).toContain("rozepsaná práce");
-  expect(blockedAutostashPull.error).toBe("autostash_pull_not_safe");
-  expect(blockedProductionPull.error).toBe("pull_scope_forbidden");
-  expect(blockedProductionPull.message).toContain("productionspace");
-  expect(pullAll.schema_version).toBe("companiesascode.launchpad.git_pull_all.v1");
-  expect(pullAll.results.some((result) => result.repo_key === "OmegaCo::firmware" && result.outcome === "policy_skipped")).toBe(true);
-  expect(scopedPull.organization).toBe("BetaCo");
-  expect(scopedPull.results.every((result) => result.organization === "BetaCo")).toBe(true);
+  for (const report of [blockedPull, blockedAutostashPull, blockedProductionPull, pullAll, scopedPull]) {
+    expect(report.schema_version).toBe("lazurio.update.v1");
+    expect(["current", "updated", "blocked"]).toContain(report.state);
+  }
+  expect(JSON.stringify(pullAll)).not.toContain("OmegaCo::firmware");
+  expect(scopedPull.results).toEqual(pullAll.results);
   expect(worktrees.schema_version).toBe("companiesascode.launchpad.worktrees.v1");
   expect(plans.schema_version).toBe("companiesascode.launchpad.mission_control_plans.v1");
   expect(moduleFolderGet.status).toBe(405);
@@ -498,7 +495,7 @@ test("apps cache keeps first paint Git-free and invalidates on force sync and fa
   expect((await getJson(port, "/api/apps")).apps.map((app) => app.id)).toContain("omegaco-cache-studio-v1");
 });
 
-test("Launchpad server exposes a guarded rebase abort only for a live module rebase", async () => {
+test("Launchpad server reports a live rebase and routes recovery through the shared update handoff", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const dealsRepo = join(root, "organizations", "BetaCo_GEN3", "workspace", "deals");
@@ -508,24 +505,18 @@ test("Launchpad server exposes a guarded rebase abort only for a live module reb
 
   const before = await getJson(port, "/api/git/repos/BetaCo%3A%3Adeals");
   expect(before.repo.status).toBe("rebase_in_progress");
-  expect(before.repo.operation).toMatchObject({ kind: "rebase", can_abort_rebase: true });
+  expect(before.repo.operation).toEqual({ kind: "rebase", backend: "merge" });
 
-  const blockedPull = await postJson(port, "/api/git/repos/BetaCo%3A%3Adeals/pull", {}, 409);
-  expect(blockedPull.error).toBe("pull_not_safe");
-  expect(blockedPull.recovery).toEqual({ operation: "rebase", can_abort_rebase: true });
-
-  const aborted = await postJson(port, "/api/git/repos/BetaCo%3A%3Adeals/rebase-abort", {});
-  expect(aborted.schema_version).toBe("companiesascode.launchpad.git_rebase_abort.v1");
-  expect(aborted.aborted).toBe(true);
-  expect(aborted.before.status).toBe("rebase_in_progress");
-  expect(aborted.after.status).toBe("up_to_date");
-
-  const repeated = await postJson(port, "/api/git/repos/BetaCo%3A%3Adeals/rebase-abort", {}, 409);
-  expect(repeated.error).toBe("rebase_not_in_progress");
-  expect(repeated.recovery.can_abort_rebase).toBe(false);
+  const blockedPull = await postJson(port, "/api/git/repos/BetaCo%3A%3Adeals/pull", {});
+  expect(blockedPull.schema_version).toBe("lazurio.update.v1");
+  expect(blockedPull.state).toBe("blocked");
+  expect(blockedPull.next_action).toMatchObject({ kind: "codex" });
+  expect((await getJson(port, "/api/git/repos/BetaCo%3A%3Adeals")).repo.status)
+    .toBe("rebase_in_progress");
+  runGit(["rebase", "--abort"], dealsRepo);
 });
 
-test("Launchpad server reports git am without exposing the rebase-abort action", async () => {
+test("Launchpad server reports git am and leaves recovery to Codex", async () => {
   const root = await createLaunchpadGitFixture();
   tempRoots.push(root);
   const dealsRepo = join(root, "organizations", "BetaCo_GEN3", "workspace", "deals");
@@ -535,14 +526,12 @@ test("Launchpad server reports git am without exposing the rebase-abort action",
 
   const before = await getJson(port, "/api/git/repos/BetaCo%3A%3Adeals");
   expect(before.repo.status).toBe("git_am_in_progress");
-  expect(before.repo.operation).toEqual({ kind: "am", backend: "apply", can_abort_rebase: false });
+  expect(before.repo.operation).toEqual({ kind: "am", backend: "apply" });
 
-  const blockedPull = await postJson(port, "/api/git/repos/BetaCo%3A%3Adeals/pull", {}, 409);
-  expect(blockedPull.error).toBe("pull_not_safe");
-  expect(blockedPull.recovery).toEqual({ operation: null, can_abort_rebase: false });
-
-  const refusedAbort = await postJson(port, "/api/git/repos/BetaCo%3A%3Adeals/rebase-abort", {}, 409);
-  expect(refusedAbort.error).toBe("rebase_not_in_progress");
+  const blockedPull = await postJson(port, "/api/git/repos/BetaCo%3A%3Adeals/pull", {});
+  expect(blockedPull.schema_version).toBe("lazurio.update.v1");
+  expect(blockedPull.state).toBe("blocked");
+  expect(blockedPull.next_action).toMatchObject({ kind: "codex" });
   expect((await getJson(port, "/api/git/repos/BetaCo%3A%3Adeals")).repo.status).toBe("git_am_in_progress");
   runGit(["am", "--abort"], dealsRepo);
 });
@@ -686,7 +675,6 @@ test("mutating APIs reject cross-origin and DNS-rebinding requests before routin
     "/api/git/pull-all",
     "/api/git/repos/BetaCo%3A%3Adeals/pull",
     "/api/git/repos/BetaCo%3A%3Adeals/pull-autostash",
-    "/api/git/repos/BetaCo%3A%3Adeals/rebase-abort",
     "/api/git/repos/BetaCo%3A%3Adeals/worktrees/create",
     "/api/git/repos/BetaCo%3A%3Adeals/worktrees/review-fix/publish",
     "/api/apps/betaco-deals-v1/health",

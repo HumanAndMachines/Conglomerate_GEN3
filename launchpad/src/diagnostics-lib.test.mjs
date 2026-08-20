@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { tmpdir } from "os";
 import { join } from "path";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "fs/promises";
-import { appPlacementResolverForOrganization, buildDoctorReportFromAppsResponse, buildEnvironmentChecks, buildLaunchpadAppsResponse, buildLaunchpadDoctorReport, runtimeAppStatus, updateChannelCheck } from "./diagnostics-lib.mjs";
+import { appPlacementResolverForOrganization, buildDoctorReportFromAppsResponse, buildEnvironmentChecks, buildLaunchpadAppsResponse, buildLaunchpadDoctorReport, lazurioUpdateCheck, runtimeAppStatus } from "./diagnostics-lib.mjs";
 import { createLaunchpadGitFixture, initGitRepo, runGit } from "./git-fixture-helpers.test.mjs";
 import { buildGitInventory } from "./git-inventory-lib.mjs";
 
@@ -12,7 +12,7 @@ afterAll(async () => {
   await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
 });
 
-test("update.channel check je read-only anti-stuck guard kanálu", async () => {
+test("Lazurio update Doctor check je read-only a nemá stable/nightly kanály", async () => {
   const base = await mkdtemp(join(tmpdir(), "update-channel-check-"));
   tempRoots.push(base);
   const repo = join(base, "root");
@@ -23,34 +23,23 @@ test("update.channel check je read-only anti-stuck guard kanálu", async () => {
   runGit(["commit", "-m", "ExampleOrg root"], repo);
   runGit(["push", "origin", "main"], repo);
 
-  // Default stable kanál bez release tagu = viditelný warn, ne tichý stav.
-  const noTag = updateChannelCheck(repo);
-  expect(noTag.id).toBe("update.channel");
-  expect(noTag.status).toBe("warn");
-  expect(noTag.message).toContain("release tag");
+  const current = lazurioUpdateCheck(repo);
+  expect(current.id).toBe("update.lazurio");
+  expect(current.status).toBe("ok");
+  expect(current.message).toContain("origin/main");
+  expect(JSON.stringify(current)).not.toMatch(/stable|nightly|release tag/i);
 
-  // Nevalidní hodnota kanálu = warn s vysvětlením, platí stable.
-  await writeJson(join(repo, "launchpad.gen3.local.json"), { update_channel: "beta" });
-  const invalid = updateChannelCheck(repo);
-  expect(invalid.status).toBe("warn");
-  expect(invalid.message).toContain("Neplatný update_channel");
-
-  // Platný nightly kanál na origin/main = ok.
-  await writeJson(join(repo, "launchpad.gen3.local.json"), { update_channel: "nightly" });
-  const nightly = updateChannelCheck(repo);
-  expect(nightly.status).toBe("ok");
-  expect(nightly.message).toContain("nightly");
-
-  // Stable s release tagem na HEAD = ok a jmenuje tag.
-  runGit(["tag", "v0.1.0"], repo);
-  await writeJson(join(repo, "launchpad.gen3.local.json"), { update_channel: "stable" });
-  const stable = updateChannelCheck(repo);
-  expect(stable.status).toBe("ok");
-  expect(stable.message).toContain("v0.1.0");
+  await writeFile(join(repo, "ahead.txt"), "ahead\n");
+  runGit(["add", "ahead.txt"], repo);
+  runGit(["commit", "-m", "local ahead"], repo);
+  const ahead = lazurioUpdateCheck(repo);
+  expect(ahead.status).toBe("warn");
+  expect(ahead.message).toContain("Local main");
+  expect(ahead.details.join(" ")).toContain("Codex");
 
   // Mimo main = warn s odkazem na worktree disciplínu.
   runGit(["checkout", "-b", "feature/apply"], repo);
-  const wrongBranch = updateChannelCheck(repo);
+  const wrongBranch = lazurioUpdateCheck(repo);
   expect(wrongBranch.status).toBe("warn");
   expect(wrongBranch.message).toContain("main");
 });

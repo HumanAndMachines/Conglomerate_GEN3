@@ -1,360 +1,67 @@
-import { describe, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
+
 import {
-  formatCommits,
   formatUpdateLaneReport,
-  matchOrganizationSelector,
   parseUpdateCliArgs,
   runUpdateLane,
-  updateLanePullAllowed,
 } from "./update-cli-lib.mjs";
 
-const orgRootRepo = {
-  key: "spectoda::root",
-  organization: "spectoda",
-  organization_path: "organizations/Spectoda_GEN3",
-  workspace: "root",
-  module: "root",
-  repo_kind: "organization_root",
-  repo_path: "organizations/Spectoda_GEN3",
-};
-const moduleRepo = {
-  key: "spectoda::deals",
-  organization: "spectoda",
-  organization_path: "organizations/Spectoda_GEN3",
-  workspace: "workspace",
-  module: "deals",
-  repo_kind: "module",
-  repo_path: "organizations/Spectoda_GEN3/workspace/deals",
-  absolute_path: "/x/organizations/Spectoda_GEN3/workspace/deals",
-  slot_path: "workspace/deals",
-  expected_branch: "main",
-  repo: "git@github.com:Spectoda/deals.git",
-};
-const newModuleRepo = {
-  ...moduleRepo,
-  key: "spectoda::lazurio",
-  module: "lazurio",
-  repo_path: "organizations/Spectoda_GEN3/workspace/lazurio",
-  absolute_path: "/x/organizations/Spectoda_GEN3/workspace/lazurio",
-  slot_path: "workspace/lazurio",
-  repo: "git@github.com:Spectoda/lazurio.git",
-};
-const productionRepo = {
-  key: "spectoda::firmware",
-  organization: "spectoda",
-  organization_path: "organizations/Spectoda_GEN3",
-  workspace: "productionspace",
-  module: "firmware",
-  repo_kind: "module",
-  repo_path: "organizations/Spectoda_GEN3/productionspace/firmware",
-};
-const rootSlotRepo = {
-  key: "spectoda::mission-control",
-  organization: "spectoda",
-  organization_path: "organizations/Spectoda_GEN3",
-  workspace: null,
-  module: "mission-control",
-  repo_kind: "root_repo",
-  repo_path: "organizations/Spectoda_GEN3/mission-control",
-};
+test("CLI keeps one command with only output and root options", () => {
+  expect(parseUpdateCliArgs(["--json", "--root", "/tmp/Lazurio"])).toEqual({
+    ok: true,
+    options: { json: true, help: false, root: "/tmp/Lazurio" },
+  });
+  expect(parseUpdateCliArgs(["--root=/tmp/Lazurio"]).ok).toBe(true);
+  for (const obsolete of ["--check", "--preserve", "--all-orgs", "--plan", "--apply"]) {
+    const parsed = parseUpdateCliArgs([obsolete]);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.error).toContain("záměrně nemá");
+  }
+});
 
-function laneDeps({ rootState = "up_to_date", repoStatuses = {}, pulls = {}, inventories = null } = {}) {
-  const calls = {
-    performRoot: [],
-    pullFastForward: [],
-    pullWithAutostash: [],
-    materializeRepo: [],
-    buildInventory: 0,
-  };
-  return {
-    calls,
+test("CLI adapter returns the shared engine report unchanged", async () => {
+  const report = await runUpdateLane({
+    rootPath: "/working",
+    runtimeRoot: "/runtime",
     deps: {
-      readRootStatus: async () => ({
-        state: rootState,
-        channel: "stable",
-        message: "status",
-        counts: { behind: rootState === "update_available" ? 2 : 0, ahead: 0 },
-        head: { short_sha: "aaaaaaa" },
-        target: { short_sha: "bbbbbbb" },
+      runId: "cli-parity",
+      now: () => new Date("2026-08-20T12:00:00Z"),
+      acquireLock: async () => ({ release: async () => {} }),
+      buildInventory: async () => ({ repos: [], warnings: [] }),
+      updateRepo: async (repo) => ({
+        repo_key: repo.key,
+        repo_kind: repo.repo_kind,
+        organization: null,
+        module: "root",
+        path: ".",
+        state: "current",
+        reason: "already_current",
+        message: "Repo už je aktuální.",
       }),
-      performRoot: async (args) => {
-        calls.performRoot.push(args);
-        return {
-          ok: true,
-          updated: rootState === "update_available",
-          state: "up_to_date",
-          channel: "stable",
-          message: "hotovo",
-          from_commit: "aaaaaaa1111",
-          to_commit: "bbbbbbb2222",
-        };
-      },
-      buildInventory: async () => {
-        const index = calls.buildInventory;
-        calls.buildInventory += 1;
-        return inventories?.[Math.min(index, inventories.length - 1)]
-          ?? { repos: [orgRootRepo, moduleRepo, productionRepo, rootSlotRepo] };
-      },
-      readRepoStatus: async (repo) => repoStatuses[repo.key] ?? { status: "up_to_date", counts: {} },
-      pullFastForward: async (repo) => {
-        calls.pullFastForward.push(repo.key);
-        return pulls[repo.key] ?? { ok: true };
-      },
-      pullWithAutostash: async (repo) => {
-        calls.pullWithAutostash.push(repo.key);
-        return pulls[repo.key] ?? { ok: true, stash_preserved: false };
-      },
-      materializeRepo: async ({ repo }) => {
-        calls.materializeRepo.push(repo.key);
-        return {
-          ok: true,
-          outcome: "materialized",
-          message: "Nový manifestovaný modul byl bezpečně naklonovaný.",
-          branch: repo.expected_branch,
-          head: "1".repeat(40),
-        };
-      },
     },
-  };
-}
-
-describe("parseUpdateCliArgs", () => {
-  test("parses org selectors, flags and root override", () => {
-    const parsed = parseUpdateCliArgs(["--org", "Spectoda_GEN3", "--org", "avaltar", "--check", "--json", "--root", "/tmp/x"]);
-    expect(parsed.ok).toBe(true);
-    expect(parsed.options.orgs).toEqual(["Spectoda_GEN3", "avaltar"]);
-    expect(parsed.options.check).toBe(true);
-    expect(parsed.options.json).toBe(true);
-    expect(parsed.options.root).toBe("/tmp/x");
-    expect(parsed.options.preserve).toBe(false);
   });
-
-  test("fails closed on unknown flag and missing --org value", () => {
-    expect(parseUpdateCliArgs(["--force"]).ok).toBe(false);
-    expect(parseUpdateCliArgs(["--org"]).ok).toBe(false);
-    expect(parseUpdateCliArgs(["--org", "--check"]).ok).toBe(false);
+  expect(report).toMatchObject({
+    schema_version: "lazurio.update.v1",
+    state: "current",
+    run_id: "cli-parity",
+    summary: { current: 1, updated: 0, blocked: 0 },
   });
 });
 
-describe("scope guards", () => {
-  test("productionspace is never pull-eligible; org root, root-space slot and workspace module are", () => {
-    expect(updateLanePullAllowed(orgRootRepo)).toBe(true);
-    expect(updateLanePullAllowed(moduleRepo)).toBe(true);
-    expect(updateLanePullAllowed(rootSlotRepo)).toBe(true);
-    expect(updateLanePullAllowed(productionRepo)).toBe(false);
+test("human output uses only Lazurio and the three public states", () => {
+  const text = formatUpdateLaneReport({
+    state: "blocked",
+    results: [{
+      state: "blocked",
+      path: "organizations/Example",
+      message: "Historie potřebuje pomoc.",
+      recovery_stash: "a".repeat(40),
+      next_action: { prompt: "Oprav bezpečně main." },
+    }],
+    warnings: [],
   });
-
-  test("selector matches company slug and mount folder basename, case-insensitive", () => {
-    expect(matchOrganizationSelector(orgRootRepo, "spectoda")).toBe(true);
-    expect(matchOrganizationSelector(orgRootRepo, "Spectoda_GEN3")).toBe(true);
-    expect(matchOrganizationSelector(orgRootRepo, "spectoda_gen3")).toBe(true);
-    expect(matchOrganizationSelector(orgRootRepo, "lumbio")).toBe(false);
-  });
-});
-
-describe("runUpdateLane", () => {
-  test("no_release_tag a ahead_of_channel_target jsou benigní, ne blokace rutiny", async () => {
-    const { deps } = laneDeps();
-    deps.performRoot = async () => ({
-      ok: false,
-      updated: false,
-      state: "no_release_tag",
-      channel: "stable",
-      message: "Stable kanál zatím nemá žádný release tag.",
-      code: "update_not_safe",
-    });
-    const result = await runUpdateLane({
-      rootPath: "/x",
-      options: { orgs: [], allOrgs: false, check: false, preserve: false },
-      deps,
-    });
-    expect(result.root.ok).toBe(true);
-    expect(result.ok).toBe(true);
-
-    deps.performRoot = async () => ({
-      ok: false,
-      updated: false,
-      state: "dirty_worktree",
-      channel: "stable",
-      message: "Tracked soubory obsahují lokální změny.",
-      code: "explicit_preserve_required",
-    });
-    const dirty = await runUpdateLane({
-      rootPath: "/x",
-      options: { orgs: [], allOrgs: false, check: false, preserve: false },
-      deps,
-    });
-    expect(dirty.root.ok).toBe(false);
-    expect(dirty.ok).toBe(false);
-  });
-
-  test("root-only update runs ff_only by default and reports ok", async () => {
-    const { deps, calls } = laneDeps({ rootState: "update_available" });
-    const result = await runUpdateLane({
-      rootPath: "/x",
-      options: { orgs: [], allOrgs: false, check: false, preserve: false },
-      deps,
-    });
-    expect(calls.performRoot[0].mode).toBe("ff_only");
-    expect(result.ok).toBe(true);
-    expect(result.root.updated).toBe(true);
-    expect(result.organizations).toEqual([]);
-  });
-
-  test("check mode never mutates and reports update_available", async () => {
-    const { deps, calls } = laneDeps({
-      rootState: "update_available",
-      repoStatuses: { "spectoda::deals": { status: "pull_available", counts: { incoming: 3, outgoing: 0 } } },
-    });
-    const result = await runUpdateLane({
-      rootPath: "/x",
-      options: { orgs: ["spectoda"], allOrgs: false, check: true, preserve: false },
-      deps,
-    });
-    expect(calls.performRoot).toEqual([]);
-    expect(calls.pullFastForward).toEqual([]);
-    expect(calls.pullWithAutostash).toEqual([]);
-    expect(result.root.state).toBe("update_available");
-    expect(result.organizations.find((entry) => entry.repo_key === "spectoda::deals").outcome)
-      .toBe("update_available");
-    expect(result.ok).toBe(true);
-  });
-
-  test("org update pulls eligible repos including root-space slot, skips productionspace, blocks dirty without --preserve", async () => {
-    const { deps, calls } = laneDeps({
-      repoStatuses: {
-        "spectoda::root": { status: "pull_available", counts: { incoming: 1, outgoing: 0 } },
-        "spectoda::deals": { status: "draft_changes", counts: { incoming: 2, outgoing: 0 } },
-        "spectoda::mission-control": { status: "pull_available", counts: { incoming: 1, outgoing: 0 } },
-      },
-    });
-    const result = await runUpdateLane({
-      rootPath: "/x",
-      options: { orgs: ["Spectoda_GEN3"], allOrgs: false, check: false, preserve: false },
-      deps,
-    });
-    expect(calls.pullFastForward).toEqual(["spectoda::root", "spectoda::mission-control"]);
-    expect(calls.pullWithAutostash).toEqual([]);
-    const byKey = Object.fromEntries(result.organizations.map((entry) => [entry.repo_key, entry.outcome]));
-    expect(byKey["spectoda::root"]).toBe("pulled");
-    expect(byKey["spectoda::deals"]).toBe("blocked_dirty");
-    expect(byKey["spectoda::mission-control"]).toBe("pulled");
-    expect(byKey["spectoda::firmware"]).toBe("policy_skipped");
-    expect(result.ok).toBe(false);
-    expect(result.summary.org_blocked_count).toBe(1);
-  });
-
-  test("org update reloads the manifest after root pull and materializes a newly declared module in the same run", async () => {
-    const { deps, calls } = laneDeps({
-      inventories: [
-        { repos: [orgRootRepo, moduleRepo] },
-        { repos: [orgRootRepo, moduleRepo, newModuleRepo] },
-      ],
-      repoStatuses: {
-        "spectoda::root": { status: "pull_available", counts: { incoming: 1, outgoing: 0 } },
-        "spectoda::lazurio": { status: "repo_missing", counts: {} },
-      },
-    });
-    const result = await runUpdateLane({
-      rootPath: "/x",
-      options: { orgs: ["spectoda"], allOrgs: false, check: false, preserve: false },
-      deps,
-    });
-
-    expect(calls.buildInventory).toBe(2);
-    expect(calls.pullFastForward[0]).toBe("spectoda::root");
-    expect(calls.materializeRepo).toEqual(["spectoda::lazurio"]);
-    expect(result.organizations.find((entry) => entry.repo_key === "spectoda::lazurio"))
-      .toMatchObject({ outcome: "materialized", branch: "main" });
-    expect(result.summary.org_materialized_count).toBe(1);
-    expect(result.ok).toBe(true);
-  });
-
-  test("check mode reports manifest materialization without cloning or rebuilding inventory", async () => {
-    const { deps, calls } = laneDeps({
-      inventories: [{ repos: [orgRootRepo, newModuleRepo] }],
-      repoStatuses: {
-        "spectoda::lazurio": { status: "repo_missing", counts: {} },
-      },
-    });
-    const result = await runUpdateLane({
-      rootPath: "/x",
-      options: { orgs: ["spectoda"], allOrgs: false, check: true, preserve: false },
-      deps,
-    });
-
-    expect(calls.buildInventory).toBe(1);
-    expect(calls.materializeRepo).toEqual([]);
-    expect(result.organizations.find((entry) => entry.repo_key === "spectoda::lazurio").outcome)
-      .toBe("materialization_available");
-  });
-
-  test("--preserve enables autostash pull for dirty behind-only repos", async () => {
-    const { deps, calls } = laneDeps({
-      repoStatuses: { "spectoda::deals": { status: "draft_changes", counts: { incoming: 2, outgoing: 0 } } },
-    });
-    const result = await runUpdateLane({
-      rootPath: "/x",
-      options: { orgs: ["spectoda"], allOrgs: false, check: false, preserve: true },
-      deps,
-    });
-    expect(calls.pullWithAutostash).toEqual(["spectoda::deals"]);
-    expect(result.organizations.find((entry) => entry.repo_key === "spectoda::deals").outcome)
-      .toBe("autostash_pulled");
-  });
-
-  test("diverged and push_required repos are reported, never pulled", async () => {
-    const { deps, calls } = laneDeps({
-      repoStatuses: {
-        "spectoda::root": { status: "diverged", counts: { incoming: 2, outgoing: 1 } },
-        "spectoda::deals": { status: "push_required", counts: { incoming: 0, outgoing: 1 } },
-      },
-    });
-    const result = await runUpdateLane({
-      rootPath: "/x",
-      options: { orgs: ["spectoda"], allOrgs: false, check: false, preserve: true },
-      deps,
-    });
-    expect(calls.pullFastForward).toEqual([]);
-    expect(calls.pullWithAutostash).toEqual([]);
-    const byKey = Object.fromEntries(result.organizations.map((entry) => [entry.repo_key, entry.outcome]));
-    expect(byKey["spectoda::root"]).toBe("skipped");
-    expect(byKey["spectoda::deals"]).toBe("skipped");
-  });
-
-  test("unknown org selector fails closed with available organizations", async () => {
-    const { deps } = laneDeps();
-    const result = await runUpdateLane({
-      rootPath: "/x",
-      options: { orgs: ["neexistuje"], allOrgs: false, check: false, preserve: false },
-      deps,
-    });
-    expect(result.ok).toBe(false);
-    expect(result.selector_errors[0]).toContain("neexistuje");
-    expect(result.selector_errors[0]).toContain("spectoda");
-  });
-});
-
-describe("report formatting", () => {
-  test("czech commit pluralization", () => {
-    expect(formatCommits(1)).toBe("1 commit");
-    expect(formatCommits(2)).toBe("2 commity");
-    expect(formatCommits(5)).toBe("5 commitů");
-  });
-
-  test("report leads with root outcome and flags blocked states", async () => {
-    const { deps } = laneDeps({
-      repoStatuses: { "spectoda::deals": { status: "draft_changes", counts: { incoming: 2, outgoing: 0 } } },
-    });
-    const result = await runUpdateLane({
-      rootPath: "/x",
-      options: { orgs: ["spectoda"], allOrgs: false, check: false, preserve: false },
-      deps,
-    });
-    const report = formatUpdateLaneReport(result);
-    expect(report.startsWith("Lazurio root · stable:")).toBe(true);
-    expect(report).toContain("BLOKOVÁNO");
-    expect(report).toContain("Souhrn Organizací:");
-    expect(report).toContain("vyžaduje pozornost");
-  });
+  expect(text).toContain("Lazurio update: blocked");
+  expect(text).toContain("Recovery stash");
+  expect(text).toContain("Prompt pro Codex");
+  expect(text).not.toMatch(/Conglomerate|HumanAndMachine/);
 });
