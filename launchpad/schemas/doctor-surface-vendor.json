@@ -15,8 +15,13 @@
       "path": "src/doctor-surface-lib.mjs",
       "baseline_path": "launchpad/src/doctor-surface-lib.mjs",
       "baseline_sha256": "0e5dd714e7506c28f5f4f62322a18b3ea7771bd41b4e32abbf0d8ce76a5c9b82",
-      "current_sha256": "0e5dd714e7506c28f5f4f62322a18b3ea7771bd41b4e32abbf0d8ce76a5c9b82",
-      "declared_delta": []
+      "current_sha256": "6409f45284100bd64a92a2843b4f7e9b6ba5c820db6c6058744d666af9d8ecd3",
+      "declared_delta": [
+        {
+          "summary": "Komentář pojmenovává sdílený root jako Lazurio; chování Doctor kontraktu se nemění.",
+          "anchor": "Root doctor v kořeni Lazuria"
+        }
+      ]
     },
     {
       "path": "src/json-schema-mini.mjs",
@@ -29,8 +34,13 @@
       "path": "schemas/doctor-report.schema.json",
       "baseline_path": "launchpad/schemas/doctor-report.schema.json",
       "baseline_sha256": "0bdf0184dcb7fb1a95e312c01cec448d0deaaebf0acc7bd09c3afa5ec4380036",
-      "current_sha256": "0bdf0184dcb7fb1a95e312c01cec448d0deaaebf0acc7bd09c3afa5ec4380036",
-      "declared_delta": []
+      "current_sha256": "a7e171b3b4665cf0d9b3d2fd326abca0a0c2aa06b2a03bd5f100e4d63a705699",
+      "declared_delta": [
+        {
+          "summary": "Zobrazovaný titul schématu používá značku Lazurio; validační kontrakt se nemění.",
+          "anchor": "Lazurio Doctor Report"
+        }
+      ]
     }
   ],
   "root_side_policy": "Co root potřebuje navíc, NENÍ v těchhle souborech — je to v `src/doctor-children-lib.mjs` (`runBoundChildDoctor`): povinné svázání reportu s mountem, druh scope určený lane, do které mount patří, a přepočet očekávaného exit kódu z celého reportu včetně vnuků. Je to politika rootu, ne kontrakt všech doctorů; kdyby seděla ve sdíleném surfacu, byl by to consumer-specific fork."

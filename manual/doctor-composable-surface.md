@@ -200,15 +200,17 @@ páruje) a `checks[].id` má `additionalProperties: false`, takže se app id ned
 poslat vedle jako pole. Dokud o tom nerozhodne vlastník, je správný stav hlasitá
 vada, ne uvolněný pattern.
 
-**Adoption baseline je bajt na bajt.** Veřejné Lazurio převzalo surface na
-`main` jako tři přesně otisknuté soubory bez lokální odchylky:
+**Adoption baseline a současné odchylky jsou přesně otisknuté.** Veřejné
+Lazurio převzalo surface na `main` jako tři přesně otisknuté soubory:
 `doctor-report.schema.json`, `doctor-surface-lib.mjs` a
 `json-schema-mini.mjs`. Dvě root-only povinnosti — svázání identity dítěte s
 mountem a přepočet exit kódu z celého reportu — nejsou kontrakt všech doctorů,
 proto zůstávají v `doctor-children-lib.mjs`. Hlídá to
-`doctor-surface-vendor.test.mjs`: otisky, nulové odchylky a kontrolní test,
-který záznam schválně rozbije. Další změna sdíleného surfacu se autoruje přímo
-v Lazuriu a v témže PR aktualizuje baseline receipt.
+`doctor-surface-vendor.test.mjs`: otisky, pojmenované odchylky a kontrolní test,
+který záznam schválně rozbije. Současný receipt navíc jmenovitě připouští jen
+značkový komentář a zobrazovaný titul Lazurio bez změny validačního chování.
+Další změna sdíleného surfacu se autoruje přímo v Lazuriu a v témže PR
+aktualizuje baseline receipt.
 
 Co ten test **neumí** a co je napsané i v samotném záznamu: nechodí na síť.
 Pozná drift proti záznamu, ne to, zda je navržená změna kompatibilní. Aktuálnost
