@@ -243,12 +243,14 @@ nezmizí. Předchozí aplikaci zachová jako jedinou skrytou, ne-launchovatelnou
 rollback zálohu; starší zálohu odstraní až po úspěšném ověření nové generace.
 Instalace z linked worktree se odmítne;
 podporovaný je primární Git checkout, primární checkout se samostatným Git
-metadata adresářem a directory-only root AI Kolegy/Buddyho. Pokud na stroji
-zůstává historická `/Applications/Launchpad GEN3.app` nebo
-`~/Applications/Launchpad GEN3.app`, instalátor ji nemaže ani nepřepisuje a
-výslovně upozorní, že Dock má používat novou uživatelskou aplikaci. Do Docku ji
-připneš přetažením z uživatelské složky `Applications`; instalátor Dock sám
-nemění.
+metadata adresářem a directory-only root AI Kolegy/Buddyho. Po úplném ověření
+nové aplikace instalátor rozpozná přesný historický bundle
+`/Applications/Launchpad GEN3.app`, odebere jej ze systémové složky a zachová
+jej obnovitelný v uživatelském Koši. Stejnojmenný symlink, soubor nebo bundle
+s jinou identitou odmítne a novou instalaci vrátí zpět; libovolnou cizí
+aplikaci tedy nemaže. Starší `~/Applications/Launchpad GEN3.app` zůstává beze
+změny a instalátor na něj upozorní. Do Docku připni `Lazurio Launchpad`
+přetažením z uživatelské složky `Applications`; instalátor Dock sám nemění.
 
 ### Windows: Start Menu a hlavní panel
 
