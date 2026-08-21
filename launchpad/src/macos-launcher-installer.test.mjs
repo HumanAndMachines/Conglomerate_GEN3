@@ -54,6 +54,32 @@ async function install(root, home) {
   });
 }
 
+async function redirectLegacySystemApp(root, legacyApp) {
+  const installerPath = join(root, "scripts", "install-launchpad-macos.sh");
+  const installer = await readFile(installerPath, "utf8");
+  const declaration = 'LEGACY_SYSTEM_APP="/Applications/Launchpad GEN3.app"';
+  expect(installer.split(declaration).length - 1).toBe(1);
+  await writeFile(installerPath, installer.replace(declaration, `LEGACY_SYSTEM_APP=${JSON.stringify(legacyApp)}`));
+}
+
+async function createLegacySystemApp(legacyApp, { bundleId = "com.humanandmachine.launchpad-gen3" } = {}) {
+  await mkdir(join(legacyApp, "Contents", "MacOS"), { recursive: true });
+  await mkdir(join(legacyApp, "Contents", "Resources"), { recursive: true });
+  await writeFile(join(legacyApp, "Contents", "Info.plist"), `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>launchpad-gen3</string>
+<key>CFBundleIdentifier</key><string>${bundleId}</string>
+<key>CFBundleName</key><string>Launchpad GEN3</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+</dict></plist>
+`);
+  await writeFile(join(legacyApp, "Contents", "MacOS", "launchpad-gen3"), "#!/bin/bash\nexit 0\n");
+  await chmod(join(legacyApp, "Contents", "MacOS", "launchpad-gen3"), 0o755);
+  await writeFile(join(legacyApp, "Contents", "Resources", "LaunchAgent.plist"), "legacy fixture\n");
+  await writeFile(join(legacyApp, "Contents", "Resources", "root-path"), "/legacy/root\n");
+}
+
 function installAsync(root, home) {
   return Bun.spawn(["/bin/bash", join(root, "scripts", "install-launchpad-macos.sh")], {
     cwd: root,
@@ -86,6 +112,9 @@ test("macOS app is only a per-user bootstrap to the canonical human launcher", a
 
   expect(installer).toContain('TARGET_PARENT="$HOME_CANONICAL/Applications"');
   expect(installer).toContain('APP_NAME="Lazurio Launchpad.app"');
+  expect(installer).toContain('LEGACY_SYSTEM_APP="/Applications/Launchpad GEN3.app"');
+  expect(installer).toContain('LEGACY_BUNDLE_ID="com.humanandmachine.launchpad-gen3"');
+  expect(installer).toContain('mv "$LEGACY_SYSTEM_APP" "$LEGACY_TRASH_PATH"');
   expect(installer).not.toContain("HumanAndMachine Launchpad");
   expect(bootstrap).not.toContain("HumanAndMachine Launchpad");
   expect(installer).toContain("lazurio.launchpad.macos_install.v1");
@@ -94,7 +123,6 @@ test("macOS app is only a per-user bootstrap to the canonical human launcher", a
   expect(bootstrap).not.toContain("launchctl");
   expect(installer).not.toContain("launchctl");
   expect(bootstrap).not.toContain("LaunchAgent");
-  expect(installer).not.toContain("LaunchAgent");
   expect(bootstrap).not.toContain("/api/launchpad/identity");
   expect(installer).not.toContain("/api/launchpad/identity");
   expect(installer).not.toContain('mv "$TARGET" "$BACKUP_PATH"');
@@ -132,6 +160,77 @@ macTest("default install succeeds without admin rights and produces a verified u
   expect(bundleId.stdout.toString().trim()).toBe("com.lazurio.launchpad");
   const signature = spawn(["/usr/bin/codesign", "--verify", "--deep", "--strict", app]);
   expect(signature.exitCode, signature.stderr.toString()).toBe(0);
+});
+
+macTest("verified install moves the exact historical system app into the user Trash", async () => {
+  const root = await fixtureRoot();
+  const home = await mkdtemp(join(tmpdir(), "lazurio-macos-legacy-migration-home-"));
+  tempRoots.push(home);
+  const legacyApp = join(root, "system-applications", "Launchpad GEN3.app");
+  await createLegacySystemApp(legacyApp);
+  await redirectLegacySystemApp(root, legacyApp);
+
+  const result = await install(root, home);
+  expect(result.exitCode, result.stderr.toString()).toBe(0);
+  expect(existsSync(legacyApp)).toBe(false);
+  expect(existsSync(join(home, "Applications", "Lazurio Launchpad.app"))).toBe(true);
+  const trashEntries = await readdir(join(home, ".Trash"));
+  expect(trashEntries.length).toBe(1);
+  expect(trashEntries[0]).toStartWith("Launchpad GEN3 (migrated by Lazurio ");
+  expect(await Bun.file(join(home, ".Trash", trashEntries[0], "Contents", "MacOS", "launchpad-gen3")).exists()).toBe(true);
+  expect(result.stdout.toString()).toContain("zůstává obnovitelný v Koši");
+});
+
+macTest("an unknown app on the historical system path fails closed", async () => {
+  const root = await fixtureRoot();
+  const home = await mkdtemp(join(tmpdir(), "lazurio-macos-unknown-legacy-home-"));
+  tempRoots.push(home);
+  const legacyApp = join(root, "system-applications", "Launchpad GEN3.app");
+  await createLegacySystemApp(legacyApp, { bundleId: "example.unrelated.app" });
+  await redirectLegacySystemApp(root, legacyApp);
+
+  const result = await install(root, home);
+  expect(result.exitCode).not.toBe(0);
+  expect(result.stderr.toString()).toContain("odmítám přesunout neznámou aplikaci");
+  expect(await Bun.file(join(legacyApp, "Contents", "MacOS", "launchpad-gen3")).exists()).toBe(true);
+  expect(existsSync(join(home, "Applications", "Lazurio Launchpad.app"))).toBe(false);
+});
+
+macTest("a symlink on the historical system path is rejected without touching its destination", async () => {
+  const root = await fixtureRoot();
+  const home = await mkdtemp(join(tmpdir(), "lazurio-macos-legacy-symlink-home-"));
+  tempRoots.push(home);
+  const external = join(root, "external-legacy-app");
+  const legacyApp = join(root, "system-applications", "Launchpad GEN3.app");
+  await createLegacySystemApp(external);
+  await mkdir(dirname(legacyApp), { recursive: true });
+  await symlink(external, legacyApp);
+  await redirectLegacySystemApp(root, legacyApp);
+
+  const result = await install(root, home);
+  expect(result.exitCode).not.toBe(0);
+  expect(result.stderr.toString()).toContain("nemá bezpečný adresářový typ");
+  expect(await Bun.file(join(external, "Contents", "MacOS", "launchpad-gen3")).exists()).toBe(true);
+  expect(existsSync(join(home, "Applications", "Lazurio Launchpad.app"))).toBe(false);
+});
+
+macTest("a failed legacy move rolls back the newly published user app", async () => {
+  const root = await fixtureRoot();
+  const home = await mkdtemp(join(tmpdir(), "lazurio-macos-legacy-move-failure-home-"));
+  tempRoots.push(home);
+  const legacyApp = join(root, "system-applications", "Launchpad GEN3.app");
+  await createLegacySystemApp(legacyApp);
+  await redirectLegacySystemApp(root, legacyApp);
+  const installerPath = join(root, "scripts", "install-launchpad-macos.sh");
+  const installer = await readFile(installerPath, "utf8");
+  const moveLine = '  mv "$LEGACY_SYSTEM_APP" "$LEGACY_TRASH_PATH"\n';
+  expect(installer.split(moveLine).length - 1).toBe(1);
+  await writeFile(installerPath, installer.replace(moveLine, "  false # injected legacy migration failure\n"));
+
+  const result = await install(root, home);
+  expect(result.exitCode).not.toBe(0);
+  expect(await Bun.file(join(legacyApp, "Contents", "MacOS", "launchpad-gen3")).exists()).toBe(true);
+  expect(existsSync(join(home, "Applications", "Lazurio Launchpad.app"))).toBe(false);
 });
 
 macTest("reinstall preserves the previous app as a rollback backup", async () => {
@@ -194,6 +293,41 @@ macTest("failed reinstall restores both the live app and the previously retained
   expect(await readFile(join(target, "current-generation"), "utf8")).toBe("keep-current\n");
   expect(await readFile(join(rollback, "older-generation"), "utf8")).toBe("keep-older\n");
   expect((await readdir(apps)).filter((name) => (name.startsWith(".lazurio-launchpad-install.") && name !== ".lazurio-launchpad-install.lock") || name === ".lazurio-launchpad-failed")).toEqual([]);
+});
+
+macTest("ambiguous helper failure during rollback preserves every recovery generation", async () => {
+  const root = await fixtureRoot();
+  const home = await mkdtemp(join(tmpdir(), "lazurio-macos-ambiguous-rollback-home-"));
+  tempRoots.push(home);
+  expect((await install(root, home)).exitCode).toBe(0);
+  expect((await install(root, home)).exitCode).toBe(0);
+
+  const apps = join(home, "Applications");
+  const target = join(apps, "Lazurio Launchpad.app");
+  const rollback = join(apps, ".lazurio-launchpad-rollback");
+  await writeFile(join(target, "current-generation"), "keep-current\n");
+  await writeFile(join(rollback, "older-generation"), "keep-older\n");
+
+  const helperPath = join(root, "scripts", "macos", "replace-app.jxa");
+  const helper = await readFile(helperPath, "utf8");
+  const returnLine = "  return argv[0];\n";
+  expect(helper.split(returnLine).length - 1).toBe(1);
+  await writeFile(helperPath, helper.replace(
+    returnLine,
+    '  if (backupName === ".lazurio-launchpad-failed") { throw new Error("injected rollback failure after completed swap"); }\n  return argv[0];\n',
+  ));
+  const installerPath = join(root, "scripts", "install-launchpad-macos.sh");
+  const installer = await readFile(installerPath, "utf8");
+  expect(installer.match(/PUBLISHED_TARGET=true/g)?.length).toBe(1);
+  await writeFile(installerPath, installer.replace("PUBLISHED_TARGET=true\n", "PUBLISHED_TARGET=true\nfalse # injected post-publication failure\n"));
+
+  const result = await install(root, home);
+  expect(result.exitCode).not.toBe(0);
+  expect(result.stderr.toString()).toContain("recovery data zůstávají zachovaná");
+  expect(await readFile(join(target, "current-generation"), "utf8")).toBe("keep-current\n");
+  expect(await readFile(join(rollback, "older-generation"), "utf8")).toBe("keep-older\n");
+  expect(await Bun.file(join(apps, ".lazurio-launchpad-failed", "Contents", "Resources", "install-schema")).exists()).toBe(true);
+  expect((await readdir(apps)).some((name) => name.startsWith(".lazurio-launchpad-install."))).toBe(true);
 });
 
 macTest("failure before native replacement never promotes an older rollback over the live app", async () => {
