@@ -179,10 +179,11 @@ test("kanonické modulové dlaždice jsou samostatné zaoblené karty", async ()
   expect(canonical).toMatch(/\.apps-grid\s*{[\s\S]*?column-gap: var\(--lz-space-16\);[\s\S]*?row-gap: var\(--lz-space-16\);[\s\S]*?border: 0/);
   expect(canonical).toMatch(/\.apps-grid > \.app-card\s*{[\s\S]*?border: 1\.5px solid var\(--lz-line\);[\s\S]*?border-radius: var\(--lz-radius-md\)/);
   expect(canonical).toMatch(/\.apps-grid > \.app-card:not\(\.has-open-menu\):focus-within,[\s\S]*?\.apps-grid > \.app-card\.selected\s*{[\s\S]*?border-color: var\(--app-focus-accent, var\(--app-accent\)\)/);
-  expect(canonical).toMatch(/\.apps-grid > \.app-card::after\s*{[\s\S]*?border-radius: inherit/);
   expect(canonical).toMatch(/box-shadow: 0 10px 24px -22px color-mix\(in srgb, var\(--lz-ink\) 24%, transparent\)/);
-  expect(canonical).toMatch(/\.app-card:not\(\.selected\):not\(\.has-open-menu\):hover\s*{[\s\S]*?transform: none/);
-  expect(canonical).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.apps-grid > \.app-card \.app-card-desc,[\s\S]*?\.apps-grid > \.app-card::after\s*{[\s\S]*?transition: none/);
+  expect(canonical).toMatch(/\.app-card:not\(\.selected\):not\(\.has-open-menu\):hover\s*{[\s\S]*?transform: none;[\s\S]*?background-color: var\(--lz-white\);[\s\S]*?box-shadow:[\s\S]*?0 0 0 3px color-mix/);
+  expect(canonical).toMatch(/\.apps-grid > \.app-card:not\(\.selected\):not\(\.has-open-menu\):focus-within\s*{[\s\S]*?background-color: var\(--lz-white\);[\s\S]*?box-shadow:/);
+  expect(canonical).not.toContain(".app-card:not(.has-open-menu):hover::after");
+  expect(canonical).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.apps-grid > \.app-card \.app-card-desc\s*{[\s\S]*?transition: none/);
   expect(styles).toMatch(/\.app-card-icon\.is-lazurio-art img\s*{[\s\S]*?object-fit: contain/);
   expect(styles).not.toContain("image-rendering: pixelated");
   expect(app).toContain("const LAZURIO_APP_ICON_FILES = Object.freeze({");

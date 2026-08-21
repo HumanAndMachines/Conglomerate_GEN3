@@ -5729,7 +5729,7 @@ body {
 
 /* Samostatné modulové dlaždice: teplý papír zůstává viditelný mezi kartami
    a Lazurio radius vytváří měkčí, klidnější pracovní plochu. Hover mění jen
-   vnitřní text a povrch, ne polohu dlaždice. */
+   vnitřní text, hranu a stín, ne polohu ani bílý povrch dlaždice. */
 .apps-grid {
   column-gap: var(--lz-space-16);
   row-gap: var(--lz-space-16);
@@ -5754,34 +5754,11 @@ body {
   border-color: var(--app-focus-accent, var(--app-accent));
 }
 
-/* Barevná vrstva nepatří do klidového povrchu. Plynule se přimíchá až při
-   interakci, takže nehoverovaná mřížka zůstává čistá a klidná. */
-.apps-grid > .app-card::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  z-index: 0;
-  pointer-events: none;
-  background-image:
-    radial-gradient(
-      circle at 8% 10%,
-      color-mix(in srgb, var(--app-accent) 14%, var(--lz-white)) 0%,
-      color-mix(in srgb, var(--app-accent) 5%, var(--lz-white)) 34%,
-      transparent 66%
-    ),
-    linear-gradient(
-      145deg,
-      transparent 42%,
-      color-mix(in srgb, var(--app-accent) 4%, var(--lz-paper)) 100%
-    );
-  background-repeat: no-repeat;
-  opacity: 0;
-  transition: opacity 460ms var(--tile-reveal-ease);
-}
-
-.apps-grid > .app-card > * {
-  z-index: 1;
+.apps-grid > .app-card:not(.selected):not(.has-open-menu):focus-within {
+  background-color: var(--lz-white);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--app-focus-accent, var(--app-accent)) 12%, transparent),
+    0 16px 34px -24px color-mix(in srgb, var(--lz-ink) 36%, transparent);
 }
 
 .apps-grid > .app-card.selected {
@@ -5793,12 +5770,11 @@ body {
 @media (hover: hover) and (pointer: fine) {
   .app-card:not(.selected):not(.has-open-menu):hover {
     transform: none;
-    border-color: color-mix(in srgb, var(--app-accent) 52%, var(--lz-line));
-  }
-
-  .app-card:not(.has-open-menu):hover::after,
-  .app-card:not(.has-open-menu):focus-within::after {
-    opacity: 1;
+    border-color: color-mix(in srgb, var(--app-accent) 64%, var(--lz-line));
+    background-color: var(--lz-white);
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--app-accent) 10%, transparent),
+      0 16px 34px -24px color-mix(in srgb, var(--lz-ink) 36%, transparent);
   }
 
   .apps-grid > .app-card:not(.has-open-menu):hover .app-card-desc,
@@ -5834,8 +5810,7 @@ body {
     transition: none;
   }
 
-  .apps-grid > .app-card .app-card-desc,
-  .apps-grid > .app-card::after {
+  .apps-grid > .app-card .app-card-desc {
     transition: none;
   }
 
