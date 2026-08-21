@@ -5,6 +5,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 SOURCE_DIR="$ROOT/scripts/macos"
 APP_NAME="Lazurio Launchpad.app"
 INSTALL_SCHEMA="lazurio.launchpad.macos_install.v1"
+LEGACY_SYSTEM_APP="/Applications/Launchpad GEN3.app"
+LEGACY_BUNDLE_ID="com.humanandmachine.launchpad-gen3"
+LEGACY_EXECUTABLE="launchpad-gen3"
 BUILD_ROOT=""
 BUILD_APP=""
 BACKUP_PATH=""
@@ -12,11 +15,15 @@ FAILED_PATH=""
 LOCK_PATH=""
 PREVIOUS_BACKUP_PATH=""
 TARGET=""
+LEGACY_TRASH_PATH=""
+TRASH_ROOT=""
 HAD_TARGET=false
 PUBLISHED_TARGET=false
 PRESERVE_BUILD_ROOT=false
 REPLACEMENT_STARTED=false
 SHLOCK_ACQUIRED=false
+LEGACY_MIGRATION_REQUIRED=false
+INSTALL_COMMITTED=false
 
 show_error() {
   printf 'Launchpad macOS install: %s\n' "$1" >&2
@@ -39,7 +46,8 @@ rollback() {
   if [[ "$PUBLISHED_TARGET" == true && -n "$TARGET" && -d "$TARGET" && ! -L "$TARGET" ]]; then
     if [[ "$HAD_TARGET" == true && -d "$BACKUP_PATH" && ! -L "$BACKUP_PATH" ]]; then
       if ! replace_app "$TARGET" "$BACKUP_PATH" "$(basename "$FAILED_PATH")"; then
-        show_error "atomický rollback selhal; původní aplikace zůstává v $BACKUP_PATH."
+        show_error "výsledek atomického rollbacku nelze potvrdit; recovery data zůstávají zachovaná."
+        PRESERVE_BUILD_ROOT=true
       fi
     elif [[ "$HAD_TARGET" == false && -n "$BUILD_ROOT" ]]; then
       mv "$TARGET" "$BUILD_ROOT/failed-first-install.app" || true
@@ -88,7 +96,7 @@ replace_app() {
 
 finish() {
   local status=$?
-  if [[ $status -ne 0 ]]; then
+  if [[ $status -ne 0 && "$INSTALL_COMMITTED" == false ]]; then
     rollback
   fi
   cleanup
@@ -96,6 +104,31 @@ finish() {
   exit "$status"
 }
 trap finish EXIT
+
+validate_legacy_system_app() {
+  local plist="$LEGACY_SYSTEM_APP/Contents/Info.plist"
+  local executable="$LEGACY_SYSTEM_APP/Contents/MacOS/$LEGACY_EXECUTABLE"
+  local launch_agent="$LEGACY_SYSTEM_APP/Contents/Resources/LaunchAgent.plist"
+  local root_path="$LEGACY_SYSTEM_APP/Contents/Resources/root-path"
+
+  if [[ -L "$LEGACY_SYSTEM_APP" || ! -d "$LEGACY_SYSTEM_APP" ]]; then
+    show_error "historická aplikace nemá bezpečný adresářový typ: $LEGACY_SYSTEM_APP"
+    return 1
+  fi
+  for legacy_file in "$plist" "$executable" "$launch_agent" "$root_path"; do
+    if [[ ! -f "$legacy_file" || -L "$legacy_file" ]]; then
+      show_error "historická aplikace neodpovídá známému Launchpad GEN3 bundlu: $LEGACY_SYSTEM_APP"
+      return 1
+    fi
+  done
+  if [[ "$(/usr/bin/plutil -extract CFBundleIdentifier raw "$plist" 2>/dev/null || true)" != "$LEGACY_BUNDLE_ID" || \
+        "$(/usr/bin/plutil -extract CFBundleExecutable raw "$plist" 2>/dev/null || true)" != "$LEGACY_EXECUTABLE" || \
+        "$(/usr/bin/plutil -extract CFBundleName raw "$plist" 2>/dev/null || true)" != "Launchpad GEN3" || \
+        "$(/usr/bin/plutil -extract CFBundlePackageType raw "$plist" 2>/dev/null || true)" != "APPL" ]]; then
+    show_error "odmítám přesunout neznámou aplikaci na historické cestě: $LEGACY_SYSTEM_APP"
+    return 1
+  fi
+}
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   show_error "tento instalátor je určený pouze pro macOS."
@@ -173,6 +206,7 @@ if [[ "$(cd "$TARGET_PARENT" && pwd -P)" != "$TARGET_PARENT" ]]; then
   show_error "uživatelský Applications adresář není kanonický."
   exit 1
 fi
+
 TARGET="$TARGET_PARENT/$APP_NAME"
 if [[ -L "$TARGET" ]]; then
   show_error "cílová aplikace nesmí být symlink."
@@ -220,6 +254,24 @@ else
   exit 1
 fi
 
+if [[ -L "$LEGACY_SYSTEM_APP" || ( -e "$LEGACY_SYSTEM_APP" && ! -d "$LEGACY_SYSTEM_APP" ) ]]; then
+  show_error "historická aplikace nemá bezpečný adresářový typ: $LEGACY_SYSTEM_APP"
+  exit 1
+elif [[ -d "$LEGACY_SYSTEM_APP" ]]; then
+  validate_legacy_system_app
+  LEGACY_MIGRATION_REQUIRED=true
+  TRASH_ROOT="$HOME_CANONICAL/.Trash"
+  if [[ -L "$TRASH_ROOT" ]]; then
+    show_error "uživatelský Koš nesmí být symlink: $TRASH_ROOT"
+    exit 1
+  fi
+  mkdir -p "$TRASH_ROOT"
+  if [[ "$(cd "$TRASH_ROOT" && pwd -P)" != "$TRASH_ROOT" ]]; then
+    show_error "uživatelský Koš není kanonický: $TRASH_ROOT"
+    exit 1
+  fi
+fi
+
 for source in launchpad-bootstrap.sh replace-app.jxa Info.plist; do
   if [[ ! -f "$SOURCE_DIR/$source" || -L "$SOURCE_DIR/$source" ]]; then
     show_error "chybí bezpečný zdroj macOS launcheru: $SOURCE_DIR/$source"
@@ -265,10 +317,24 @@ if [[ "$(<"$TARGET/Contents/Resources/install-schema")" != "$INSTALL_SCHEMA" ]];
   exit 1
 fi
 
+if [[ "$LEGACY_MIGRATION_REQUIRED" == true ]]; then
+  validate_legacy_system_app
+  LEGACY_TRASH_PATH="$TRASH_ROOT/Launchpad GEN3 (migrated by Lazurio $(/bin/date +%Y%m%d-%H%M%S)-$$).app"
+  if [[ -e "$LEGACY_TRASH_PATH" || -L "$LEGACY_TRASH_PATH" ]]; then
+    show_error "cílová cesta v Koši už existuje; historickou aplikaci nepřesouvám: $LEGACY_TRASH_PATH"
+    exit 1
+  fi
+  mv "$LEGACY_SYSTEM_APP" "$LEGACY_TRASH_PATH"
+fi
+INSTALL_COMMITTED=true
+
 printf 'Lazurio Launchpad je nainstalovaný v: %s\n' "$TARGET"
 if [[ "$HAD_TARGET" == true ]]; then
   printf 'Předchozí aplikace zůstala jako rollback záloha: %s\n' "$BACKUP_PATH"
 fi
-if [[ -e "/Applications/Launchpad GEN3.app" || -e "$TARGET_PARENT/Launchpad GEN3.app" ]]; then
-  printf 'Upozornění: starší Launchpad GEN3.app zůstává beze změny. V Docku používej novou aplikaci z uživatelského Applications.\n' >&2
+if [[ -n "$LEGACY_TRASH_PATH" ]]; then
+  printf 'Historický Launchpad GEN3 byl odebrán z /Applications a zůstává obnovitelný v Koši: %s\n' "$LEGACY_TRASH_PATH"
+fi
+if [[ -e "$TARGET_PARENT/Launchpad GEN3.app" || -L "$TARGET_PARENT/Launchpad GEN3.app" ]]; then
+  printf 'Upozornění: starší uživatelský Launchpad GEN3.app zůstává beze změny. V Docku používej Lazurio Launchpad.\n' >&2
 fi
