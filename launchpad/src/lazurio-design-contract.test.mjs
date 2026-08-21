@@ -183,8 +183,9 @@ test("kanonické modulové dlaždice jsou samostatné zaoblené karty", async ()
   expect(canonical).toMatch(/box-shadow: 0 10px 24px -22px color-mix\(in srgb, var\(--lz-ink\) 24%, transparent\)/);
   expect(canonical).toMatch(/\.app-card:not\(\.selected\):not\(\.has-open-menu\):hover\s*{[\s\S]*?transform: none/);
   expect(canonical).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.apps-grid > \.app-card \.app-card-desc,[\s\S]*?\.apps-grid > \.app-card::after\s*{[\s\S]*?transition: none/);
-  expect(styles).toMatch(/\.app-card-icon\.is-pixel-art img\s*{[\s\S]*?image-rendering: pixelated/);
-  expect(app).toContain("const PIXEL_APP_ICON_FILES = Object.freeze({");
+  expect(styles).toMatch(/\.app-card-icon\.is-lazurio-art img\s*{[\s\S]*?object-fit: contain/);
+  expect(styles).not.toContain("image-rendering: pixelated");
+  expect(app).toContain("const LAZURIO_APP_ICON_FILES = Object.freeze({");
   expect(app).toContain("const key = appIconKey(app);");
   expect(app).not.toContain("guideIconExperiment");
   expect(app).toContain('app.module === "mission-control" ? "" : variantTag(app, moduleName)');
