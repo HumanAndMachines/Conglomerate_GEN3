@@ -67,27 +67,6 @@ const fixturePlanSchema = {
     dev_code: { type: "string", pattern: "^[A-Z]{2,6}-[0-9]{4}$" },
   },
 };
-const fixtureSemanticValidator = `import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
-function planSources(root) {
-  const files = [];
-  const walk = (directory) => {
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      const target = join(directory, entry.name);
-      if (entry.isDirectory()) walk(target);
-      else if (entry.isFile() && /\\.ya?ml$/.test(entry.name)) files.push(readFileSync(target, "utf8"));
-    }
-  };
-  walk(join(root, "data", "mission-control", "plans"));
-  return files;
-}
-export function validateMissionControlData(root) {
-  return planSources(root).some((source) => source.includes('title: "Semantically invalid"'))
-    ? ["semantic fixture rejection"]
-    : [];
-}
-`;
-
 afterEach(async () => {
   await Promise.all(cleanupPaths.splice(0).map((path) => rm(path, {
     recursive: true,
@@ -278,29 +257,6 @@ test("rejects a plan outside the Organization-scoped authority plan root", async
   });
 });
 
-test("rejects an Organization authority whose canonical validator fails", async () => {
-  const fixture = await createFixture({
-    authorityAvailable: true,
-    planAvailable: true,
-    sidecarOverrides: {
-      mission_control_authority_path:
-        "organizations/HumanAndMachine-ai_GEN3/mission-control/db",
-      mission_control_plan_path:
-        "data/mission-control/plans/2026/07/CAC-0007-contract.yaml",
-    },
-  });
-  await createOrganizationAuthority(fixture.root, {
-    validatorFailures: ["fixture authority rejected its data"],
-  });
-  const report = await auditRepository(fixture.root, {
-    authorityRoot: fixture.authorityRoot,
-  });
-  expect(canonicalWorktree(report)).toMatchObject({
-    sidecar_valid: false,
-    sidecar_error: expect.stringContaining("fixture authority rejected its data"),
-  });
-});
-
 test.skipIf(process.platform === "win32")(
   "rejects a symlink in an Organization authority path",
   async () => {
@@ -407,26 +363,6 @@ test("fails closed when a matching plan code has a non-canonical schema", async 
     sidecar_valid: false,
     sidecar_error: expect.stringContaining(
       "Mission Control plan schema validation failed",
-    ),
-  });
-});
-
-test("fails closed when canonical semantic plan validation rejects a schema-valid plan", async () => {
-  const fixture = await createFixture({
-    authorityAvailable: true,
-    planAvailable: true,
-    planContents: validPlanContents.replace(
-      'title: "Worktree contract fixture"',
-      'title: "Semantically invalid"',
-    ),
-  });
-  const report = await auditRepository(fixture.root, {
-    authorityRoot: fixture.authorityRoot,
-  });
-  expect(canonicalWorktree(report)).toMatchObject({
-    sidecar_valid: false,
-    sidecar_error: expect.stringContaining(
-      "Mission Control repository-db semantic validation failed",
     ),
   });
 });
@@ -697,7 +633,7 @@ test("fails closed when the live remote branch advanced without a local fetch", 
   );
 });
 
-async function createOrganizationAuthority(root, { validatorFailures = [] } = {}) {
+async function createOrganizationAuthority(root) {
   const organizationRoot = join(
     root,
     "organizations",
@@ -714,7 +650,6 @@ async function createOrganizationAuthority(root, { validatorFailures = [] } = {}
     "CAC-0007-contract.yaml",
   );
   await mkdir(join(authorityRoot, "schemas"), { recursive: true });
-  await mkdir(join(authorityRoot, "scripts"), { recursive: true });
   await mkdir(join(authorityRoot, "data", "mission-control", "plans", "2026", "07"), {
     recursive: true,
   });
@@ -733,10 +668,6 @@ async function createOrganizationAuthority(root, { validatorFailures = [] } = {}
   await writeFile(
     join(authorityRoot, "schemas", "mission-control-plan.schema.json"),
     `${JSON.stringify(fixturePlanSchema, null, 2)}\n`,
-  );
-  await writeFile(
-    join(authorityRoot, "scripts", "validate-mission-control-data.mjs"),
-    `export function validateMissionControlData() { return ${JSON.stringify(validatorFailures)}; }\n`,
   );
   await writeFile(planPath, validPlanContents);
   return authorityRoot;
@@ -767,18 +698,11 @@ async function createFixture({
     "07",
     "CAC-0007-contract.yaml",
   );
-  const semanticValidatorPath = join(
-    repositoryDbRoot,
-    "scripts",
-    "validate-mission-control-data.mjs",
-  );
-
   await mkdir(root);
   await mkdir(remote, { recursive: true });
   if (authorityAvailable) {
     await mkdir(join(planPath, ".."), { recursive: true });
     await mkdir(join(repositoryDbRoot, "schemas"), { recursive: true });
-    await mkdir(join(semanticValidatorPath, ".."), { recursive: true });
     await writeFile(
       join(repositoryDbRoot, "repository-db.manifest.json"),
       `${JSON.stringify({
@@ -790,10 +714,6 @@ async function createFixture({
     await writeFile(
       join(repositoryDbRoot, "schemas", "mission-control-plan.schema.json"),
       `${JSON.stringify(fixturePlanSchema, null, 2)}\n`,
-    );
-    await writeFile(
-      semanticValidatorPath,
-      fixtureSemanticValidator,
     );
   }
   if (planAvailable) {

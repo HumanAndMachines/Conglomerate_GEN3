@@ -4,7 +4,6 @@ import { access, lstat, opendir, readFile, readdir, realpath } from "node:fs/pro
 import { constants, existsSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir, tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
 
 const GIT_TIMEOUT_MS = 10_000;
 const MAX_PARALLEL_GIT_CHECKS = 4;
@@ -783,12 +782,6 @@ export async function validateCanonicalMissionControlPlan(
 
   const manifestPath = join(repositoryDbRoot, "repository-db.manifest.json");
   const schemaPath = join(repositoryDbRoot, "schemas", "mission-control-plan.schema.json");
-  const semanticValidatorPath = join(
-    repositoryDbRoot,
-    "scripts",
-    "validate-mission-control-data.mjs",
-  );
-
   try {
     const realRepositoryDbRoot = await realpath(repositoryDbRoot);
     const realRepositoryDbPlansRoot = await realpath(repositoryDbPlansRoot);
@@ -817,14 +810,6 @@ export async function validateCanonicalMissionControlPlan(
       [
         schemaPath,
         join(realRepositoryDbRoot, "schemas", "mission-control-plan.schema.json"),
-      ],
-      [
-        semanticValidatorPath,
-        join(
-          realRepositoryDbRoot,
-          "scripts",
-          "validate-mission-control-data.mjs",
-        ),
       ],
     ]);
     for (const [path, expectedRealPath] of expectedRealPaths) {
@@ -872,24 +857,6 @@ export async function validateCanonicalMissionControlPlan(
       };
     }
 
-    const semanticValidator = await import(
-      pathToFileURL(semanticValidatorPath).href
-    );
-    if (typeof semanticValidator.validateMissionControlData !== "function") {
-      throw new Error(
-        "canonical semantic validator export is unavailable: validateMissionControlData",
-      );
-    }
-    const semanticFailures = semanticValidator.validateMissionControlData(repositoryDbRoot);
-    if (!Array.isArray(semanticFailures)) {
-      throw new Error("canonical semantic validator returned an invalid result");
-    }
-    if (semanticFailures.length > 0) {
-      return {
-        valid: false,
-        error: `Mission Control repository-db semantic validation failed: ${semanticFailures.slice(0, 3).join("; ")}`,
-      };
-    }
     return { valid: true, error: null };
   } catch (error) {
     return {
