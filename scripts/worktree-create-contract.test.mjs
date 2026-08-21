@@ -333,10 +333,12 @@ function planSources(root) {
   walk(join(root, "data", "mission-control", "plans"));
   return files;
 }
-export function validateMissionControlData(root) {
-  return planSources(root).some((source) => source.includes('title: "Semantically invalid"'))
-    ? ["semantic fixture rejection"]
-    : [];
+const failures = planSources(process.cwd()).some((source) => source.includes('title: "Semantically invalid"'))
+  ? ["semantic fixture rejection"]
+  : [];
+if (failures.length > 0) {
+  console.error(failures.join("\\n"));
+  process.exitCode = 1;
 }
 `,
     "utf8",

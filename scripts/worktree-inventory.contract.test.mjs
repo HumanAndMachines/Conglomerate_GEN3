@@ -81,10 +81,12 @@ function planSources(root) {
   walk(join(root, "data", "mission-control", "plans"));
   return files;
 }
-export function validateMissionControlData(root) {
-  return planSources(root).some((source) => source.includes('title: "Semantically invalid"'))
-    ? ["semantic fixture rejection"]
-    : [];
+const failures = planSources(process.cwd()).some((source) => source.includes('title: "Semantically invalid"'))
+  ? ["semantic fixture rejection"]
+  : [];
+if (failures.length > 0) {
+  console.error(failures.join("\\n"));
+  process.exitCode = 1;
 }
 `;
 
@@ -736,7 +738,7 @@ async function createOrganizationAuthority(root, { validatorFailures = [] } = {}
   );
   await writeFile(
     join(authorityRoot, "scripts", "validate-mission-control-data.mjs"),
-    `export function validateMissionControlData() { return ${JSON.stringify(validatorFailures)}; }\n`,
+    `const failures = ${JSON.stringify(validatorFailures)};\nif (failures.length > 0) {\n  console.error(failures.join("\\n"));\n  process.exitCode = 1;\n}\n`,
   );
   await writeFile(planPath, validPlanContents);
   return authorityRoot;

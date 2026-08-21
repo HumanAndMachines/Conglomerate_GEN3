@@ -883,13 +883,18 @@ function resultIdentity(repo, result) {
 }
 
 function codexRepairPrompt(repo, reason, detail, recoveryStash) {
+  const recoveryStashLine = !recoveryStash
+    ? null
+    : reason === "recovery_stash_unverified"
+      ? `Neověřený recovery stash (update s ním nepokračoval): ${recoveryStash}`
+      : `Ověřený recovery stash: ${recoveryStash}`;
   return [
     "Lazurio update je zablokovaný a tento Git stav se nesmí opravovat automaticky.",
     `Repo: ${repo.absolute_path}`,
     `Repo key: ${repo.key}`,
     "Požadovaný invariant: primární checkout je clean main a lze jej fast-forwardnout na origin/main.",
     `Zjištěný problém: ${reason}${detail ? ` — ${detail}` : ""}`,
-    recoveryStash ? `Ověřený recovery stash: ${recoveryStash}` : null,
+    recoveryStashLine,
     "Zachovej všechny commity a stashe. Nepoužívej reset --hard ani force push.",
     "Dohledatelnou práci převeď do task/PR worktree, oprav primární checkout na clean main a potom spusť `lazurio update` znovu.",
   ].filter(Boolean).join("\n");

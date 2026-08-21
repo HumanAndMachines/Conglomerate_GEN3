@@ -152,6 +152,34 @@ test("dirty tracked, untracked and binary work is verified in a recovery stash a
     .toContain(result.recovery_stash);
 });
 
+test("an unverified recovery stash is labeled truthfully in the Codex handoff", async () => {
+  const fixture = await repositoryFixture("unverified-stash-prompt");
+  await writeFile(join(fixture.working, "unfinished.txt"), "unfinished\n");
+
+  const result = await updateManagedRepo(descriptor(fixture), {
+    runId: "unverified-stash-prompt",
+    deps: {
+      runGit: async (args, options) => {
+        const gitResult = await runGitAsync(args, options);
+        return args[0] === "stash" && args.includes("--name-only")
+          ? { ...gitResult, stdout: "" }
+          : gitResult;
+      },
+      installDependencies: async () => ({ ok: true }),
+    },
+  });
+
+  expect(result).toMatchObject({
+    state: "blocked",
+    reason: "recovery_stash_unverified",
+    actions: [],
+    next_action: { kind: "codex" },
+  });
+  expect(result.recovery_stash).toMatch(/^[0-9a-f]{40}$/);
+  expect(result.next_action.prompt).toContain("Neověřený recovery stash");
+  expect(result.next_action.prompt).not.toContain("Ověřený recovery stash");
+});
+
 test("foreign stashes survive and the engine never uses destructive Git commands", async () => {
   const fixture = await repositoryFixture("foreign-stash");
   await writeFile(join(fixture.working, "foreign.txt"), "foreign draft\n");
