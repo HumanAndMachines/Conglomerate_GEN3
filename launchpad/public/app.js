@@ -169,29 +169,29 @@ const APP_ICON_FAMILY = {
   "marketing": "kampan"
 };
 
-// Pixelová sada je výchozí vizuální jazyk modulů. Resolver zůstává sdílený:
+// Lazurio kameny jsou výchozí vizuální jazyk modulů. Resolver zůstává sdílený:
 // vybírá podle obecného významu `icon`, nikdy podle názvu Organizace nebo
 // konkrétního modulu. Některé významy záměrně sdílejí stejnou kresbu.
-const PIXEL_APP_ICON_FILES = Object.freeze({
-  control: "mission-control-24.png",
-  dashboard: "presentation-24.png",
-  system: "settings-24.png",
-  app: "clients-24.png",
-  database: "knowledgebase-24.png",
-  examples: "presentation-24.png",
-  book: "guide-24.png",
-  pen: "content-24.png",
-  palette: "lazurio-design-system-24.png",
-  datasheet: "presentation-24.png",
-  website: "website-lazurio-24.png",
-  warehouse: "clients-24.png",
-  product: "brainstorm-24.png",
-  installation: "settings-24.png",
-  deal: "deals-24.png",
-  pricebook: "pricebook-24.png",
-  invoice: "invoices-24.png",
-  profitability: "pricebook-24.png",
-  marketing: "content-24.png",
+const LAZURIO_APP_ICON_FILES = Object.freeze({
+  control: "mission-control-96.png",
+  dashboard: "presentation-96.png",
+  system: "settings-96.png",
+  app: "clients-96.png",
+  database: "knowledgebase-96.png",
+  examples: "presentation-96.png",
+  book: "guide-96.png",
+  pen: "content-96.png",
+  palette: "lazurio-design-system-96.png",
+  datasheet: "presentation-96.png",
+  website: "website-lazurio-96.png",
+  warehouse: "clients-96.png",
+  product: "brainstorm-96.png",
+  installation: "settings-96.png",
+  deal: "deals-96.png",
+  pricebook: "pricebook-96.png",
+  invoice: "invoices-96.png",
+  profitability: "pricebook-96.png",
+  marketing: "content-96.png",
 });
 
 const APP_ICON_STYLES = {
@@ -3697,11 +3697,11 @@ function appIconNode(app) {
   const span = document.createElement("span");
   span.className = "app-card-icon";
   const key = appIconKey(app);
-  const pixelArtIcon = pixelAppIcon(key);
-  if (pixelArtIcon) {
-    span.classList.add("is-pixel-art");
+  const lazurioIcon = lazurioAppIcon(key);
+  if (lazurioIcon) {
+    span.classList.add("is-lazurio-art");
     const image = document.createElement("img");
-    image.src = pixelArtIcon;
+    image.src = lazurioIcon;
     image.alt = "";
     image.setAttribute("aria-hidden", "true");
     span.append(image);
@@ -3713,9 +3713,9 @@ function appIconNode(app) {
   return span;
 }
 
-function pixelAppIcon(key) {
-  const file = PIXEL_APP_ICON_FILES[key];
-  return file ? `/app-icons/pixel/${file}` : "";
+function lazurioAppIcon(key) {
+  const file = LAZURIO_APP_ICON_FILES[key];
+  return file ? `/app-icons/lazurio/${file}` : "";
 }
 
 function appCardTone(app, warning) {

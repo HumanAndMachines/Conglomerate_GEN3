@@ -3131,19 +3131,18 @@ tbody tr.selected {
   color: var(--lz-white);
 }
 
-/* Kanonické 24px Lazurio ikony se zobrazují ve 2× velikosti. Nearest-neighbour
-   chrání sjednocenou pixelovou kresbu bez rozmazání. */
-.app-card-icon.is-pixel-art {
+/* Kanonické Lazurio kameny používají 96px zdroje pro jemné vykreslení ve 48px
+   dlaždici bez pixel-art filtru. */
+.app-card-icon.is-lazurio-art {
   width: 48px;
   height: 48px;
 }
 
-.app-card-icon.is-pixel-art img {
+.app-card-icon.is-lazurio-art img {
   display: block;
   width: 48px;
   height: 48px;
   object-fit: contain;
-  image-rendering: pixelated;
 }
 
 /* =========================================================
