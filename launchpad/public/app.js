@@ -1040,7 +1040,6 @@ function render() {
   const spaceHealth = heroDiagnostics(heroApps);
   renderHero(heroApps, spaceHealth);
   renderUpdateBanner();
-  renderModuleUpdateBanner();
   renderDoctorStatus(spaceHealth);
   renderProblems(spaceHealth);
   renderActionMessage();

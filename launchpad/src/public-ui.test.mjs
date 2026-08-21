@@ -751,7 +751,7 @@ test("Launchpad používá jednu explicitní Synchronizovat akci místo dílčí
   expect(html).toContain("Synchronizovat");
   expect(html).not.toContain('id="organizationGitPanel"');
   expect(js).not.toContain("moduleUpdateBanner");
-  expect(js).not.toContain("function renderModuleUpdateBanner");
+  expect(js).not.toContain("renderModuleUpdateBanner");
   expect(js).not.toContain("function pullOrganizationRepositories");
   expect(js).not.toContain("function canAutostashPull");
   expect(js).not.toContain("function builderPullScopeAllowedForRepo");
