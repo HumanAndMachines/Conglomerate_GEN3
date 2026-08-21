@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { test, expect } from "bun:test";
 
 import {
+  classifyRepositoryProbe,
   classifyDataState,
   evaluateEffectiveRules,
   evaluateProtection,
@@ -79,19 +80,50 @@ test("rejects a locked branch, required signatures and friction rulesets", () =>
     });
     expect(result.ok).toBe(false);
   }
-  expect(
-    evaluateEffectiveRules({
-      kind: "configured",
-      value: [
-        { type: "non_fast_forward" },
-        { type: "deletion" },
-        { type: "pull_request" },
-        { type: "required_status_checks" },
-        { type: "update" },
-      ],
-    }),
-  ).toHaveLength(3);
-  expect(evaluateEffectiveRules({ kind: "unsupported" })).toEqual([]);
+  const result = evaluateEffectiveRules({
+    kind: "configured",
+    value: [
+      { type: "non_fast_forward", ruleset_id: 7 },
+      { type: "deletion", ruleset_id: 7 },
+      { type: "pull_request", ruleset_id: 7 },
+      { type: "required_status_checks", ruleset_id: 7 },
+      { type: "update", ruleset_id: 7 },
+    ],
+    details: {
+      7: { enforcement: "active", bypass_actors: [] },
+    },
+  });
+  expect(result.historyProtected).toBe(true);
+  expect(result.problems).toHaveLength(3);
+  expect(evaluateEffectiveRules({ kind: "unsupported" })).toEqual({
+    kind: "unsupported",
+    historyProtected: false,
+    problems: [],
+  });
+});
+
+test("accepts native rulesets only when both history rules have no bypass", () => {
+  const classic = { kind: "unconfigured" };
+  const rules = {
+    kind: "configured",
+    value: [
+      { type: "non_fast_forward", ruleset_id: 9 },
+      { type: "deletion", ruleset_id: 9 },
+    ],
+    details: {
+      9: { enforcement: "active", bypass_actors: [] },
+    },
+  };
+  expect(evaluateProtection(classic, rules)).toEqual({
+    mode: "provider-enforced",
+    ok: true,
+    problems: [],
+  });
+  rules.details[9].bypass_actors = [{ actor_type: "RepositoryRole" }];
+  expect(evaluateProtection(classic, rules)).toMatchObject({
+    mode: "capable-unprotected",
+    ok: false,
+  });
 });
 
 test("treats an unavailable private-branch feature as trusted-process, not as an access grant", () => {
@@ -104,8 +136,8 @@ test("treats an unavailable private-branch feature as trusted-process, not as an
   expect(evaluateProtection({ kind: "blocked", message: "forbidden" }).mode).toBe("blocked");
 });
 
-test("trusted-process growth guard is an audit gate, while provider enforcement accepts the same circle", () => {
-  const writers = Array.from({ length: 11 }, (_, index) => ({
+test("trusted-process gates only objective automation and unconfirmed membership", () => {
+  const writers = Array.from({ length: 20 }, (_, index) => ({
     login: `builder-${index}`,
     type: "User",
   }));
@@ -113,9 +145,8 @@ test("trusted-process growth guard is an audit gate, while provider enforcement 
     evaluateTrustedProcessCircle({
       enforcementMode: "trusted-process",
       writers,
-      outsideLogins: ["outside-builder"],
-    }).join(" "),
-  ).toContain("před rozšířením nad 10");
+    }),
+  ).toEqual([]);
   expect(
     evaluateTrustedProcessCircle({
       enforcementMode: "trusted-process",
@@ -124,11 +155,44 @@ test("trusted-process growth guard is an audit gate, while provider enforcement 
   ).toContain("automatizovaného writera");
   expect(
     evaluateTrustedProcessCircle({
+      enforcementMode: "trusted-process",
+      writers,
+      unconfirmedMemberships: [
+        { login: "unconfirmed-builder", message: "GitHub vrátil 404" },
+      ],
+    }).join(" "),
+  ).toContain("membership writera unconfirmed-builder není potvrzené");
+  expect(
+    evaluateTrustedProcessCircle({
       enforcementMode: "provider-enforced",
       writers,
-      outsideLogins: ["outside-builder"],
+      unconfirmedMemberships: [
+        { login: "unconfirmed-builder", message: "GitHub vrátil 404" },
+      ],
     }),
   ).toEqual([]);
+});
+
+test("repository probe distinguishes a confirmed 404 from unreadable GitHub state", () => {
+  expect(classifyRepositoryProbe({ status: 0, value: {} })).toEqual({
+    exists: true,
+    error: null,
+  });
+  expect(
+    classifyRepositoryProbe({
+      status: 1,
+      value: { status: "404", message: "Not Found" },
+    }),
+  ).toEqual({ exists: false, error: null });
+  expect(
+    classifyRepositoryProbe({
+      status: 1,
+      value: { status: "403", message: "Forbidden" },
+    }),
+  ).toEqual({ exists: null, error: "Forbidden" });
+  expect(
+    classifyRepositoryProbe({ status: 1, value: null, stderr: "network failed" }),
+  ).toEqual({ exists: null, error: "network failed" });
 });
 
 test("live smoke fails closed instead of passing an empty checkout", () => {

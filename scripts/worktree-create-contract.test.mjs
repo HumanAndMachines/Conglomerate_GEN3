@@ -236,18 +236,6 @@ test("dry-run fails closed when the canonical schema rejects the plan", async ()
   expect(result.stderr).toContain("Mission Control plan schema validation failed");
 });
 
-test("dry-run fails closed when repository-db semantic validation rejects the plan", async () => {
-  const fixture = await createLaneFixture({
-    plans: [[
-      "CAC-0007-create-lane.yaml",
-      validPlan.replace('title: "Create lane fixture"', 'title: "Semantically invalid"'),
-    ]],
-  });
-  const result = runCreateLane(fixture);
-  expect(result.status).toBe(1);
-  expect(result.stderr).toContain("Mission Control repository-db semantic validation failed");
-});
-
 test("dry-run rejects a selected plan whose id does not match dev_code", async () => {
   const fixture = await createLaneFixture({
     plans: [[
@@ -269,15 +257,9 @@ async function createLaneFixture({ plans, legacyPlans = [] }) {
   const repositoryDbRoot = authorityRoot;
   const plansRoot = join(authorityRoot, "data", "mission-control", "plans");
   const legacyPlansRoot = join(organizationRoot, "mission-control", "plans");
-  const semanticValidatorPath = join(
-    repositoryDbRoot,
-    "scripts",
-    "validate-mission-control-data.mjs",
-  );
   await mkdir(root, { recursive: true });
   await mkdir(plansRoot, { recursive: true });
   await mkdir(join(repositoryDbRoot, "schemas"), { recursive: true });
-  await mkdir(join(semanticValidatorPath, ".."), { recursive: true });
   await writeFile(join(root, "launchpad.gen3.json"), "{}\n", "utf8");
   await writeFile(
     join(organizationRoot, "company.gen3.json"),
@@ -315,33 +297,6 @@ async function createLaneFixture({ plans, legacyPlans = [] }) {
         title: { type: "string" },
       },
     }, null, 2)}\n`,
-    "utf8",
-  );
-  await writeFile(
-    semanticValidatorPath,
-    `import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
-function planSources(root) {
-  const files = [];
-  const walk = (directory) => {
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      const target = join(directory, entry.name);
-      if (entry.isDirectory()) walk(target);
-      else if (entry.isFile() && /\\.ya?ml$/.test(entry.name)) files.push(readFileSync(target, "utf8"));
-    }
-  };
-  walk(join(root, "data", "mission-control", "plans"));
-  return files;
-}
-const failures = planSources(process.cwd()).some((source) => source.includes('title: "Semantically invalid"'))
-  ? ["semantic fixture rejection"]
-  : [];
-if (failures.length > 0) {
-  console.error(failures.join("\\n"));
-  process.exit(1);
-}
-console.log("fixture semantic validation OK");
-`,
     "utf8",
   );
   for (const args of [

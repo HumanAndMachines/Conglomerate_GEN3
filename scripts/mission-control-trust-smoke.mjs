@@ -19,13 +19,18 @@ const RETIRED_ROOT_FILES = [
   "scripts/mission-control-ledger-mirror.mjs",
 ];
 
-// Audit ceiling, not an ACL: GitHub grants remain the only write authority.
-// Crossing it stops the trusted-process smoke until the Organization Admin
-// upgrades provider enforcement before widening the write circle further.
-export const TRUSTED_PROCESS_MAX_WRITERS = 10;
 const GITHUB_REPOSITORY_PATTERN =
   /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
 const GITHUB_LOGIN_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+const FRICTION_RULE_TYPES = new Set([
+  "pull_request",
+  "required_status_checks",
+  "required_signatures",
+  "required_deployments",
+  "workflows",
+  "code_scanning",
+  "update",
+]);
 
 function json(path) {
   try {
@@ -58,35 +63,22 @@ export function classifyDataState(slot, repositoryExists) {
   return repositoryExists ? "staged" : "planned";
 }
 
-export function evaluateProtection(response) {
+function evaluateClassicProtection(response) {
   if (response.kind === "unsupported") {
-    return { mode: "trusted-process", ok: true, problems: [] };
+    return { kind: "unsupported", historyProtected: false, problems: [] };
   }
   if (response.kind === "blocked") {
     return {
-      mode: "blocked",
-      ok: false,
+      kind: "blocked",
+      historyProtected: false,
       problems: [response.message || "GitHub branch protection nelze ověřit"],
     };
   }
   if (response.kind === "unconfigured") {
-    return {
-      mode: "capable-unprotected",
-      ok: false,
-      problems: ["Provider branch protection podporuje, ale v3 ji nemá aktivní"],
-    };
+    return { kind: "unconfigured", historyProtected: false, problems: [] };
   }
   const protection = response.value ?? {};
   const problems = [];
-  if (protection.allow_force_pushes?.enabled !== false) {
-    problems.push("v3 musí zakazovat force push");
-  }
-  if (protection.allow_deletions?.enabled !== false) {
-    problems.push("v3 musí zakazovat smazání větve");
-  }
-  if (protection.enforce_admins?.enabled !== true) {
-    problems.push("v3 ochrana musí platit i pro administrátory");
-  }
   if (protection.required_pull_request_reviews != null) {
     problems.push("v3 nesmí pro běžnou datovou publikaci vyžadovat pull request");
   }
@@ -103,48 +95,87 @@ export function evaluateProtection(response) {
     problems.push("v3 nesmí vyžadovat podpis commitu mimo běžný writer kontrakt");
   }
   return {
-    mode: "provider-enforced",
-    ok: problems.length === 0,
+    kind: "configured",
+    historyProtected:
+      protection.allow_force_pushes?.enabled === false &&
+      protection.allow_deletions?.enabled === false &&
+      protection.enforce_admins?.enabled === true,
     problems,
   };
 }
 
 export function evaluateEffectiveRules(response) {
-  if (response.kind === "unsupported") return [];
-  if (response.kind === "blocked") {
-    return [response.message || "Efektivní GitHub rulesety nelze ověřit"];
+  if (response.kind === "unsupported") {
+    return { kind: "unsupported", historyProtected: false, problems: [] };
   }
-  const frictionRuleTypes = new Set([
-    "pull_request",
-    "required_status_checks",
-    "required_signatures",
-    "required_deployments",
-    "workflows",
-    "code_scanning",
-    "update",
-  ]);
-  return (Array.isArray(response.value) ? response.value : [])
-    .filter((rule) => frictionRuleTypes.has(rule?.type))
+  if (response.kind === "blocked") {
+    return {
+      kind: "blocked",
+      historyProtected: false,
+      problems: [response.message || "Efektivní GitHub rulesety nelze ověřit"],
+    };
+  }
+  const rules = Array.isArray(response.value) ? response.value : [];
+  const details = response.details ?? {};
+  const problems = rules
+    .filter((rule) => FRICTION_RULE_TYPES.has(rule?.type))
     .map(
       (rule) =>
         `Efektivní GitHub ruleset ${rule.type} blokuje frictionless validovaný fast-forward writer`,
     );
+  const protectedTypes = new Set();
+  for (const rule of rules) {
+    if (!["deletion", "non_fast_forward"].includes(rule?.type)) continue;
+    const detail = details[String(rule.ruleset_id)];
+    if (
+      detail?.enforcement === "active" &&
+      Array.isArray(detail.bypass_actors) &&
+      detail.bypass_actors.length === 0
+    ) {
+      protectedTypes.add(rule.type);
+    }
+  }
+  return {
+    kind: "configured",
+    historyProtected:
+      protectedTypes.has("deletion") && protectedTypes.has("non_fast_forward"),
+    problems,
+  };
+}
+
+export function evaluateProtection(
+  classicResponse,
+  effectiveRulesResponse = { kind: "unsupported" },
+) {
+  const classic = evaluateClassicProtection(classicResponse);
+  const rules = evaluateEffectiveRules(effectiveRulesResponse);
+  const problems = [...classic.problems, ...rules.problems];
+  if (classic.kind === "blocked" || rules.kind === "blocked") {
+    return { mode: "blocked", ok: false, problems };
+  }
+  if (classic.kind === "unsupported" && rules.kind === "unsupported") {
+    return { mode: "trusted-process", ok: true, problems: [] };
+  }
+  const historyProtected = classic.historyProtected || rules.historyProtected;
+  if (!historyProtected) {
+    problems.push(
+      "v3 nemá provider ochranu bez bypassu proti force pushi a smazání větve",
+    );
+  }
+  return {
+    mode: historyProtected ? "provider-enforced" : "capable-unprotected",
+    ok: historyProtected && problems.length === 0,
+    problems,
+  };
 }
 
 export function evaluateTrustedProcessCircle({
   enforcementMode,
   writers,
-  outsideLogins = [],
-  membershipProbeFailures = [],
-  maxWriters = TRUSTED_PROCESS_MAX_WRITERS,
+  unconfirmedMemberships = [],
 }) {
   if (enforcementMode !== "trusted-process") return [];
   const problems = [];
-  if (writers.length > maxWriters) {
-    problems.push(
-      `Trusted-process write okruh má ${writers.length} writerů; před rozšířením nad ${maxWriters} musí Organization Admin aktivovat provider-enforced ochranu`,
-    );
-  }
   const automationLogins = writers
     .filter((entry) => entry?.type !== "User")
     .map((entry) => entry?.login)
@@ -154,17 +185,21 @@ export function evaluateTrustedProcessCircle({
       `Trusted-process nesmí mít automatizovaného writera bez provider enforcement: ${automationLogins.join(", ")}`,
     );
   }
-  if (outsideLogins.length > 0) {
+  for (const failure of unconfirmedMemberships) {
     problems.push(
-      `Trusted-process nesmí mít outside writera bez provider enforcement: ${outsideLogins.join(", ")}`,
-    );
-  }
-  for (const failure of membershipProbeFailures) {
-    problems.push(
-      `Nelze ověřit Organization membership writera ${failure.login}: ${failure.message}`,
+      `Organization membership writera ${failure.login} není potvrzené: ${failure.message}`,
     );
   }
   return problems;
+}
+
+export function classifyRepositoryProbe(response) {
+  if (response.status === 0) return { exists: true, error: null };
+  const message = response.value?.message ?? response.stderr ?? "GitHub API selhalo";
+  if (String(response.value?.status ?? "") === "404") {
+    return { exists: false, error: null };
+  }
+  return { exists: null, error: message };
 }
 
 export function evaluateRootLedgers(organizationRoot, dataState, taskSources) {
@@ -269,25 +304,19 @@ function organizationMembership(githubOrg, login) {
     !GITHUB_LOGIN_PATTERN.test(String(githubOrg ?? "")) ||
     !GITHUB_LOGIN_PATTERN.test(String(login ?? ""))
   ) {
-    return { kind: "blocked", message: "neplatná GitHub identita" };
+    return { kind: "unconfirmed", message: "neplatná GitHub identita" };
   }
   const response = gh(`orgs/${githubOrg}/members/${login}`);
   if (response.status === 0) return { kind: "member" };
   const message = response.value?.message ?? response.stderr;
   if (response.value?.status === "404" || /not found/i.test(message)) {
     return {
-      kind: "blocked",
+      kind: "unconfirmed",
       message:
         "GitHub vrátil 404: writer není Organization member nebo token nemá read:org scope",
     };
   }
-  return { kind: "blocked", message: message || "GitHub API selhalo" };
-}
-
-function remoteText(repo, path, ref) {
-  const response = gh(`repos/${repo}/contents/${path}?ref=${encodeURIComponent(ref)}`);
-  if (response.status !== 0 || typeof response.value?.content !== "string") return null;
-  return Buffer.from(response.value.content.replace(/\n/g, ""), "base64").toString("utf8");
+  return { kind: "unconfirmed", message: message || "GitHub API selhalo" };
 }
 
 function branchProtection(repo) {
@@ -310,7 +339,44 @@ function branchProtection(repo) {
 function effectiveBranchRules(repo) {
   const response = gh(`repos/${repo}/rules/branches/v3`);
   if (response.status === 0 && Array.isArray(response.value)) {
-    return { kind: "configured", value: response.value };
+    const details = {};
+    const historyRules = response.value.filter((rule) =>
+      ["deletion", "non_fast_forward"].includes(rule?.type),
+    );
+    for (const rule of historyRules) {
+      const id = Number(rule?.ruleset_id);
+      if (!Number.isSafeInteger(id) || details[String(id)]) continue;
+      let endpoint = null;
+      if (
+        rule?.ruleset_source_type === "Repository" &&
+        GITHUB_REPOSITORY_PATTERN.test(String(rule?.ruleset_source ?? ""))
+      ) {
+        endpoint = `repos/${rule.ruleset_source}/rulesets/${id}`;
+      } else if (
+        rule?.ruleset_source_type === "Organization" &&
+        GITHUB_LOGIN_PATTERN.test(String(rule?.ruleset_source ?? ""))
+      ) {
+        endpoint = `orgs/${rule.ruleset_source}/rulesets/${id}`;
+      }
+      if (!endpoint) {
+        return {
+          kind: "blocked",
+          message: `Nelze určit authority efektivního GitHub rulesetu ${id}`,
+        };
+      }
+      const detail = gh(endpoint);
+      if (detail.status !== 0) {
+        return {
+          kind: "blocked",
+          message:
+            detail.value?.message ??
+            detail.stderr ??
+            `Nelze přečíst efektivní GitHub ruleset ${id}`,
+        };
+      }
+      details[String(id)] = detail.value;
+    }
+    return { kind: "configured", value: response.value, details };
   }
   const message = response.value?.message ?? response.stderr;
   if (
@@ -323,56 +389,11 @@ function effectiveBranchRules(repo) {
   return { kind: "blocked", message };
 }
 
-function dataConfigProblems(config, agentsText) {
-  const problems = [];
-  const policy = config?.publish_policy ?? {};
-  if (policy.writer_mode !== "local-principal-v1") {
-    problems.push("publish_policy.writer_mode musí být local-principal-v1");
-  }
-  for (const retired of ["approval_roles", "credential_authority", "local_principal"]) {
-    if (Object.hasOwn(policy, retired)) problems.push(`publish_policy.${retired} je retired`);
-  }
-  if (!Array.isArray(policy.protected_paths) || policy.protected_paths.length === 0) {
-    problems.push("publish_policy.protected_paths musí být neprázdné");
-  }
-  const admin = String(config?.organization_admin ?? "");
-  if (!admin || /replace|pending|placeholder/i.test(admin)) {
-    problems.push("organization_admin musí být konkrétní Admin owner růstového triggeru");
-  }
-  if (!agentsText) {
-    problems.push("Data repo musí mít AGENTS.md s trust a enforcement kontraktem");
-  } else {
-    for (const phrase of ["GitHub je jediná autorita", "trusted-process", "provider-enforced"] ) {
-      if (!agentsText.includes(phrase)) problems.push(`Data AGENTS.md musí obsahovat: ${phrase}`);
-    }
-  }
-  return problems;
-}
-
-function appWriterProblems(appRepo) {
-  if (!appRepo) return ["Aktivní app slot nemá čitelný GitHub repo identifikátor"];
-  const capability = remoteText(
-    appRepo,
-    "app/v3/src/ui-app/repository-writer-capability.ts",
-    "main",
-  );
-  if (!capability) return ["Nelze přečíst writer capability z app-code main"];
-  const problems = [];
-  if (!capability.includes("local-principal-v1")) {
-    problems.push("App-code main nedeklaruje local-principal-v1 writer");
-  }
-  if (capability.includes("provider_access_audit_required")) {
-    problems.push("App-code main stále vyžaduje retired provider access audit");
-  }
-  return problems;
-}
-
 function inspectOrganization(organizationRoot) {
   const company = json(join(organizationRoot, "company.gen3.json"));
   const manifestPath = join(organizationRoot, "modules.manifest.json");
   const manifest = existsSync(manifestPath) ? json(manifestPath) : { modules: [] };
   const slots = slotsOf(manifest);
-  const appSlot = slots.find((slot) => slot?.path === "mission-control");
   const dataSlot = slots.find((slot) => slot?.path === "mission-control/db");
   const githubOrg = company?.company?.github_org ?? company?.github_org;
   const dataRepo =
@@ -385,11 +406,14 @@ function inspectOrganization(organizationRoot) {
     typeof githubOrg === "string" &&
     typeof dataRepoOwner === "string" &&
     dataRepoOwner.toLowerCase() === githubOrg.toLowerCase();
-  const repository =
+  const repositoryResponse =
     dataRepo && ownerMatches
       ? gh(`repos/${dataRepo}`)
-      : { status: 1, value: null };
-  const repositoryExists = repository.status === 0;
+      : null;
+  const repositoryProbe = repositoryResponse
+    ? classifyRepositoryProbe(repositoryResponse)
+    : { exists: false, error: null };
+  const repositoryExists = repositoryProbe.exists === true;
   const dataState = classifyDataState(dataSlot, repositoryExists);
   const result = {
     organization: basename(organizationRoot),
@@ -407,6 +431,11 @@ function inspectOrganization(organizationRoot) {
   } else if (!ownerMatches) {
     result.errors.push(
       `Mission Control data repo ${dataRepo} nepatří GitHub Organization ${githubOrg ?? "<missing>"}`,
+    );
+  }
+  if (repositoryProbe.error) {
+    result.errors.push(
+      `Nelze ověřit existenci Mission Control data repa ${dataRepo}: ${repositoryProbe.error}`,
     );
   }
 
@@ -427,28 +456,13 @@ function inspectOrganization(organizationRoot) {
   }
 
   if (repositoryExists) {
-    const configText = remoteText(
-      dataRepo,
-      "data/mission-control/mission-control.config.json",
-      "v3",
+    const protection = evaluateProtection(
+      branchProtection(dataRepo),
+      effectiveBranchRules(dataRepo),
     );
-    const agentsText = remoteText(dataRepo, "AGENTS.md", "v3");
-    if (!configText) {
-      result.errors.push("Nelze přečíst Mission Control data config z v3");
-    } else {
-      try {
-        result.errors.push(...dataConfigProblems(JSON.parse(configText), agentsText));
-      } catch {
-        result.errors.push("Mission Control data config na v3 není validní JSON");
-      }
-    }
-    const protection = evaluateProtection(branchProtection(dataRepo));
     result.enforcement_mode = protection.mode;
     if (dataState === "active") {
       result.errors.push(...protection.problems);
-      result.errors.push(
-        ...evaluateEffectiveRules(effectiveBranchRules(dataRepo)),
-      );
     }
     const collaborators = ghPaginatedArray(
       `repos/${dataRepo}/collaborators?affiliation=all&per_page=100`,
@@ -460,13 +474,11 @@ function inspectOrganization(organizationRoot) {
         (entry) => entry?.permissions?.push || entry?.permissions?.maintain || entry?.permissions?.admin,
       );
       result.writers = writers.length;
-      const outsideLogins = [];
-      const membershipProbeFailures = [];
+      const unconfirmedMemberships = [];
       for (const writer of writers.filter((entry) => entry?.type === "User")) {
         const membership = organizationMembership(githubOrg, writer.login);
-        if (membership.kind === "outside") outsideLogins.push(writer.login);
-        if (membership.kind === "blocked") {
-          membershipProbeFailures.push({
+        if (membership.kind === "unconfirmed") {
+          unconfirmedMemberships.push({
             login: writer.login,
             message: membership.message,
           });
@@ -477,17 +489,11 @@ function inspectOrganization(organizationRoot) {
           ...evaluateTrustedProcessCircle({
             enforcementMode: protection.mode,
             writers,
-            outsideLogins,
-            membershipProbeFailures,
+            unconfirmedMemberships,
           }),
         );
       }
     }
-  }
-
-  if (appSlot && normalizedSlotStatus(appSlot) === "active") {
-    const appRepo = parseRepo(appSlot?.git?.url) ?? parseRepo(appSlot?.doctor_managed_target?.repo);
-    result.errors.push(...appWriterProblems(appRepo));
   }
   return result;
 }

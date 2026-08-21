@@ -20,21 +20,24 @@ collaboratory a branch protection. Ověřuje zejména:
 - Organization owner odpovídá ownerovi `mission-control-data`;
 - aktivní root drží jen prázdné typed pointery a všechny tři kanonické task
   sources;
-- data config používá `local-principal-v1` bez provider rosteru nebo writer
-  credentialu;
-- app `main` používá stejný frictionless writer a nenese retired provider
-  audit;
-- `provider-enforced` zakazuje force push, delete a admin bypass, ale classic
-  protection ani efektivní repo/org ruleset nepřidává lock větve, podpis,
+- deklarovaný active/planned stav odpovídá živé existenci data repa; jen
+  potvrzené GitHub 404 znamená „repo neexistuje“, jiné chyby audit zastaví;
+- `provider-enforced` zakazuje force push, delete a bypass buď klasickou
+  branch protection, nebo efektivním repo/org rulesetem; žádná z vrstev
+  zároveň nepřidává lock větve, podpis,
   povinný PR, status check, workflow/deployment gate ani druhý push roster;
-- `trusted-process` má nejvýše 10 lidských writerů a žádného bota nebo outside
-  collaboratora.
+- `trusted-process` nemá automatizovaného writera a každý lidský writer má
+  pozitivně potvrzené členství v Organizaci.
 
-Limit 10 je konzervativní auditní růstový trigger, ne přístupové pravidlo.
-Jeho překročení nikomu GitHub právo neodebírá; znamená, že Organization Admin
-musí před dalším rozšířením write okruhu aktivovat placený plán a
-`provider-enforced` ochranu. Pokud je širší kruh stále záměrný, jeho governance
-se nemá řešit zvýšením skrytého rosteru v Mission Controlu.
+Výstup vždy ukazuje skutečný počet writerů. Číslo není druhý ACL ani hardcoded
+limit: Organization Admin posoudí, kdy kruh přestává být malý a osobně
+dohlédnutelný. Před přidáním automatizace, externího writera nebo jiným
+materiálním rozšířením aktivuje placený plán a `provider-enforced` ochranu.
+
+Organization-internal kontrakty — data schema, reference, supersession cykly,
+writer mode a app/data parita — vlastní Organization doctor a CI data repa.
+Root smoke je záměrně znovu neimplementuje ani negrepuje vzdálený source kód a
+prózu.
 
 `STAGED` znamená, že privátní data repo už existuje, ale manifest ještě
 neaktivoval writer. `planned` znamená, že repo není materializované. Ani jeden
