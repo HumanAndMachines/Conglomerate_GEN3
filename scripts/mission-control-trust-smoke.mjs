@@ -189,7 +189,7 @@ export function evaluateTrustedProcessCircle({
     .filter(Boolean);
   if (nonHumanCollaboratorLogins.length > 0) {
     problems.push(
-      `Trusted-process přímý write collaborator musí být lidský Organization member: ${nonHumanCollaboratorLogins.join(", ")}`,
+      `Trusted-process write collaborator musí být lidský Organization member: ${nonHumanCollaboratorLogins.join(", ")}`,
     );
   }
   for (const failure of unconfirmedMemberships) {
@@ -200,11 +200,21 @@ export function evaluateTrustedProcessCircle({
   return problems;
 }
 
-export function classifyRepositoryProbe(response) {
+export function classifyRepositoryProbe(
+  response,
+  absenceProof = {
+    confirmed: false,
+    message: "chybí aktivní Organization Owner proof přihlášeného gh účtu",
+  },
+) {
   if (response.status === 0) return { exists: true, error: null };
   const message = response.value?.message ?? response.stderr ?? "GitHub API selhalo";
   if (String(response.value?.status ?? "") === "404") {
-    return { exists: false, error: null };
+    if (absenceProof.confirmed) return { exists: false, error: null };
+    return {
+      exists: null,
+      error: `${message}; 404 nepotvrzuje neexistenci privátního repa: ${absenceProof.message}`,
+    };
   }
   return { exists: null, error: message };
 }
@@ -325,6 +335,27 @@ function organizationMembership(githubOrg, login) {
   return { kind: "unconfirmed", message: message || "GitHub API selhalo" };
 }
 
+function organizationOwnerProof(githubOrg) {
+  if (!GITHUB_LOGIN_PATTERN.test(String(githubOrg ?? ""))) {
+    return { confirmed: false, message: "neplatná GitHub Organization identita" };
+  }
+  const response = gh(`user/memberships/orgs/${githubOrg}`);
+  if (
+    response.status === 0 &&
+    response.value?.state === "active" &&
+    response.value?.role === "admin"
+  ) {
+    return { confirmed: true, message: null };
+  }
+  const message = response.value?.message ?? response.stderr;
+  return {
+    confirmed: false,
+    message:
+      message ||
+      "přihlášený gh účet nemá aktivní Organization Owner roli",
+  };
+}
+
 function branchProtection(repo) {
   const response = gh(`repos/${repo}/branches/v3/protection`);
   if (response.status === 0) return { kind: "configured", value: response.value };
@@ -416,8 +447,13 @@ function inspectOrganization(organizationRoot) {
     dataRepo && ownerMatches
       ? gh(`repos/${dataRepo}`)
       : null;
+  const absenceProof =
+    repositoryResponse &&
+    String(repositoryResponse.value?.status ?? "") === "404"
+      ? organizationOwnerProof(githubOrg)
+      : undefined;
   const repositoryProbe = repositoryResponse
-    ? classifyRepositoryProbe(repositoryResponse)
+    ? classifyRepositoryProbe(repositoryResponse, absenceProof)
     : { exists: false, error: null };
   const repositoryExists = repositoryProbe.exists === true;
   const dataState = classifyDataState(dataSlot, repositoryExists);
@@ -499,7 +535,7 @@ function inspectOrganization(organizationRoot) {
           }),
         );
         result.notes.push(
-          "Writer count zahrnuje přímé GitHub collaborators; deploy keys, GitHub Apps a workflow tokeny zůstávají v Organization Admin credential inventáři mimo root audit",
+          "Writer count vychází z GitHub collaborators API; deploy keys, GitHub Apps a workflow tokeny zůstávají v Organization Admin credential inventáři mimo root audit",
         );
       }
     }

@@ -162,7 +162,7 @@ test("trusted-process gates only direct non-human collaborators and unconfirmed 
       enforcementMode: "trusted-process",
       writers: [{ login: "writer-bot", type: "Bot" }],
     }).join(" "),
-  ).toContain("přímý write collaborator musí být lidský Organization member");
+  ).toContain("write collaborator musí být lidský Organization member");
   expect(
     evaluateTrustedProcessCircle({
       enforcementMode: "trusted-process",
@@ -183,7 +183,7 @@ test("trusted-process gates only direct non-human collaborators and unconfirmed 
   ).toEqual([]);
 });
 
-test("repository probe distinguishes a confirmed 404 from unreadable GitHub state", () => {
+test("repository probe requires Organization Owner proof before 404 means absent", () => {
   expect(classifyRepositoryProbe({ status: 0, value: {} })).toEqual({
     exists: true,
     error: null,
@@ -193,6 +193,15 @@ test("repository probe distinguishes a confirmed 404 from unreadable GitHub stat
       status: 1,
       value: { status: "404", message: "Not Found" },
     }),
+  ).toMatchObject({ exists: null });
+  expect(
+    classifyRepositoryProbe(
+      {
+        status: 1,
+        value: { status: "404", message: "Not Found" },
+      },
+      { confirmed: true, message: null },
+    ),
   ).toEqual({ exists: false, error: null });
   expect(
     classifyRepositoryProbe({
