@@ -4,9 +4,9 @@ import { access, lstat, opendir, readFile, readdir, realpath } from "node:fs/pro
 import { constants, existsSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir, tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
 
 const GIT_TIMEOUT_MS = 10_000;
+const SEMANTIC_VALIDATOR_TIMEOUT_MS = 30_000;
 const MAX_PARALLEL_GIT_CHECKS = 4;
 const DISK_SCAN_BUDGET_MS = 20_000;
 const DISK_SCAN_ENTRY_BUDGET = 500_000;
@@ -872,22 +872,14 @@ export async function validateCanonicalMissionControlPlan(
       };
     }
 
-    const semanticValidator = await import(
-      pathToFileURL(semanticValidatorPath).href
+    const semanticValidation = await runSemanticValidator(
+      repositoryDbRoot,
+      semanticValidatorPath,
     );
-    if (typeof semanticValidator.validateMissionControlData !== "function") {
-      throw new Error(
-        "canonical semantic validator export is unavailable: validateMissionControlData",
-      );
-    }
-    const semanticFailures = semanticValidator.validateMissionControlData(repositoryDbRoot);
-    if (!Array.isArray(semanticFailures)) {
-      throw new Error("canonical semantic validator returned an invalid result");
-    }
-    if (semanticFailures.length > 0) {
+    if (!semanticValidation.ok) {
       return {
         valid: false,
-        error: `Mission Control repository-db semantic validation failed: ${semanticFailures.slice(0, 3).join("; ")}`,
+        error: `Mission Control repository-db semantic validation failed: ${semanticValidation.error}`,
       };
     }
     return { valid: true, error: null };
@@ -899,6 +891,80 @@ export async function validateCanonicalMissionControlPlan(
       }`,
     };
   }
+}
+
+async function runSemanticValidator(repositoryDbRoot, semanticValidatorPath) {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    const upperKey = key.toUpperCase();
+    if (
+      [
+        "BUN_OPTIONS",
+        "DYLD_INSERT_LIBRARIES",
+        "DYLD_LIBRARY_PATH",
+        "GIT_ASKPASS",
+        "GIT_CONFIG_COUNT",
+        "GNUPGHOME",
+        "GPG_AGENT_INFO",
+        "LD_PRELOAD",
+        "NODE_OPTIONS",
+        "NODE_PATH",
+        "SSH_AGENT_PID",
+        "SSH_ASKPASS",
+        "SSH_AUTH_SOCK",
+      ].includes(upperKey)
+      || /^GIT_CONFIG_(?:KEY|VALUE)_\d+$/.test(upperKey)
+    ) {
+      delete env[key];
+    }
+  }
+  for (const key of [
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_COMMON_DIR",
+    "GIT_DIR",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_PREFIX",
+    "GIT_WORK_TREE",
+  ]) {
+    delete env[key];
+  }
+
+  const proc = Bun.spawn([process.execPath, semanticValidatorPath], {
+    cwd: repositoryDbRoot,
+    stdout: "pipe",
+    stderr: "pipe",
+    env,
+    windowsHide: true,
+  });
+  let timedOut = false;
+  let timer;
+  const timeout = new Promise((resolveTimeout) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      proc.kill();
+      resolveTimeout(null);
+    }, SEMANTIC_VALIDATOR_TIMEOUT_MS);
+  });
+  const exitCode = await Promise.race([proc.exited, timeout]);
+  clearTimeout(timer);
+  const [stdout, stderr] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  if (!timedOut && exitCode === 0) return { ok: true, error: null };
+  const output = (stderr || stdout)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 3)
+    .join("; ");
+  return {
+    ok: false,
+    error: timedOut
+      ? "semantic validator timed out"
+      : output || `semantic validator exited with code ${String(exitCode)}`,
+  };
 }
 async function scanLocalOrphans(primaryRoot, commonDir, records, options = {}) {
   const registered = new Set(records.map((record) => resolve(record.path)));
