@@ -132,11 +132,21 @@ test("treats an unavailable private-branch feature as trusted-process, not as an
     ok: true,
     problems: [],
   });
+  expect(
+    evaluateProtection(
+      { kind: "unsupported" },
+      { kind: "configured", value: [], details: {} },
+    ),
+  ).toEqual({
+    mode: "trusted-process",
+    ok: true,
+    problems: [],
+  });
   expect(evaluateProtection({ kind: "unconfigured" }).ok).toBe(false);
   expect(evaluateProtection({ kind: "blocked", message: "forbidden" }).mode).toBe("blocked");
 });
 
-test("trusted-process gates only objective automation and unconfirmed membership", () => {
+test("trusted-process gates only direct non-human collaborators and unconfirmed membership", () => {
   const writers = Array.from({ length: 20 }, (_, index) => ({
     login: `builder-${index}`,
     type: "User",
@@ -152,7 +162,7 @@ test("trusted-process gates only objective automation and unconfirmed membership
       enforcementMode: "trusted-process",
       writers: [{ login: "writer-bot", type: "Bot" }],
     }).join(" "),
-  ).toContain("automatizovaného writera");
+  ).toContain("přímý write collaborator musí být lidský Organization member");
   expect(
     evaluateTrustedProcessCircle({
       enforcementMode: "trusted-process",

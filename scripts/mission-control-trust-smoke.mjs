@@ -153,7 +153,14 @@ export function evaluateProtection(
   if (classic.kind === "blocked" || rules.kind === "blocked") {
     return { mode: "blocked", ok: false, problems };
   }
-  if (classic.kind === "unsupported" && rules.kind === "unsupported") {
+  const noEffectiveRules =
+    effectiveRulesResponse.kind === "configured" &&
+    Array.isArray(effectiveRulesResponse.value) &&
+    effectiveRulesResponse.value.length === 0;
+  if (
+    classic.kind === "unsupported" &&
+    (rules.kind === "unsupported" || noEffectiveRules)
+  ) {
     return { mode: "trusted-process", ok: true, problems: [] };
   }
   const historyProtected = classic.historyProtected || rules.historyProtected;
@@ -176,13 +183,13 @@ export function evaluateTrustedProcessCircle({
 }) {
   if (enforcementMode !== "trusted-process") return [];
   const problems = [];
-  const automationLogins = writers
+  const nonHumanCollaboratorLogins = writers
     .filter((entry) => entry?.type !== "User")
     .map((entry) => entry?.login)
     .filter(Boolean);
-  if (automationLogins.length > 0) {
+  if (nonHumanCollaboratorLogins.length > 0) {
     problems.push(
-      `Trusted-process nesmí mít automatizovaného writera bez provider enforcement: ${automationLogins.join(", ")}`,
+      `Trusted-process přímý write collaborator musí být lidský Organization member: ${nonHumanCollaboratorLogins.join(", ")}`,
     );
   }
   for (const failure of unconfirmedMemberships) {
@@ -212,8 +219,8 @@ export function evaluateRootLedgers(organizationRoot, dataState, taskSources) {
       continue;
     }
     const ledger = json(path);
+    const expected = `mission-control/db/data/mission-control/${file}`;
     if (active) {
-      const expected = `mission-control/db/data/mission-control/${file}`;
       if (ledger.authority !== "pointer" || ledger.status !== "read-only") {
         problems.push(`${file} musí být read-only pointer`);
       }
@@ -240,7 +247,6 @@ export function evaluateRootLedgers(organizationRoot, dataState, taskSources) {
       const canonical = (Array.isArray(taskSources) ? taskSources : []).filter(
         (source) => source?.kind === kind && source?.authority === "source-of-truth",
       );
-      const expected = `mission-control/db/data/mission-control/${file}`;
       if (canonical.length !== 1 || canonical[0]?.path !== expected) {
         problems.push(`task_sources musí mít jediný ${kind} source-of-truth na ${expected}`);
       }
@@ -474,23 +480,26 @@ function inspectOrganization(organizationRoot) {
         (entry) => entry?.permissions?.push || entry?.permissions?.maintain || entry?.permissions?.admin,
       );
       result.writers = writers.length;
-      const unconfirmedMemberships = [];
-      for (const writer of writers.filter((entry) => entry?.type === "User")) {
-        const membership = organizationMembership(githubOrg, writer.login);
-        if (membership.kind === "unconfirmed") {
-          unconfirmedMemberships.push({
-            login: writer.login,
-            message: membership.message,
-          });
+      if (dataState === "active" && protection.mode === "trusted-process") {
+        const unconfirmedMemberships = [];
+        for (const writer of writers.filter((entry) => entry?.type === "User")) {
+          const membership = organizationMembership(githubOrg, writer.login);
+          if (membership.kind === "unconfirmed") {
+            unconfirmedMemberships.push({
+              login: writer.login,
+              message: membership.message,
+            });
+          }
         }
-      }
-      if (dataState === "active") {
         result.errors.push(
           ...evaluateTrustedProcessCircle({
             enforcementMode: protection.mode,
             writers,
             unconfirmedMemberships,
           }),
+        );
+        result.notes.push(
+          "Writer count zahrnuje přímé GitHub collaborators; deploy keys, GitHub Apps a workflow tokeny zůstávají v Organization Admin credential inventáři mimo root audit",
         );
       }
     }
@@ -528,7 +537,11 @@ function parseArgs(argv) {
   const args = { json: false, workspaceRoot: defaultWorkspaceRoot() };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === "--json") args.json = true;
-    else if (argv[i] === "--workspace-root") args.workspaceRoot = resolve(argv[++i]);
+    else if (argv[i] === "--workspace-root") {
+      const value = argv[++i];
+      if (!value) throw new Error("--workspace-root vyžaduje přesnou cestu");
+      args.workspaceRoot = resolve(value);
+    }
     else throw new Error(`Neznámý argument: ${argv[i]}`);
   }
   return args;

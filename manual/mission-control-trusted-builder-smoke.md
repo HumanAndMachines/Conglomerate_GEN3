@@ -15,7 +15,7 @@ bun scripts/mission-control-trust-smoke.mjs --workspace-root /exact/Lazurio/root
 ```
 
 Audit vyžaduje přihlášené `gh` s právem číst privátní repa, jejich
-collaboratory a branch protection. Ověřuje zejména:
+collaboratory, branch protection a repo/org rulesety. Ověřuje zejména:
 
 - Organization owner odpovídá ownerovi `mission-control-data`;
 - aktivní root drží jen prázdné typed pointery a všechny tři kanonické task
@@ -26,8 +26,14 @@ collaboratory a branch protection. Ověřuje zejména:
   branch protection, nebo efektivním repo/org rulesetem; žádná z vrstev
   zároveň nepřidává lock větve, podpis,
   povinný PR, status check, workflow/deployment gate ani druhý push roster;
-- `trusted-process` nemá automatizovaného writera a každý lidský writer má
-  pozitivně potvrzené členství v Organizaci.
+- v `trusted-process` je každý přímý lidský GitHub collaborator s write právem
+  pozitivně potvrzeným členem Organizace; nelidský collaborator audit zastaví.
+
+Smoke není druhý IAM ani úplný credential audit. Počet writerů vychází z
+GitHub collaborators API; write-enabled deploy keys, instalace GitHub Apps a
+workflow tokeny záměrně neinventarizuje. Ty spravuje Organization Admin v
+nativních GitHub surfaces a před přidáním takové unattended write cesty musí
+aktivovat `provider-enforced` ochranu.
 
 Výstup vždy ukazuje skutečný počet writerů. Číslo není druhý ACL ani hardcoded
 limit: Organization Admin posoudí, kdy kruh přestává být malý a osobně
