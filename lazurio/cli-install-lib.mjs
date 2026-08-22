@@ -353,6 +353,12 @@ export function assertInstallableLazurioRoot(root) {
   assertPhysicalFile(join(canonicalRoot, "package.json"), "Lazurio package manifest");
   assertPhysicalFile(join(canonicalRoot, ...cliRelativePath.split("/")), "Lazurio CLI entrypoint");
   assertPhysicalFile(join(canonicalRoot, "launchpad.gen3.json"), "Lazurio source root marker");
+  if (existsSync(join(canonicalRoot, "lazurio.resident.json"))) {
+    throw new LazurioCliInstallError(
+      "resident_activation_required",
+      "Immutable Resident CLI se aktivuje updater transakcí, ne source PATH instalací.",
+    );
+  }
   const packageManifest = JSON.parse(readFileSync(join(canonicalRoot, "package.json"), "utf8"));
   if (
     packageManifest.name !== packageName

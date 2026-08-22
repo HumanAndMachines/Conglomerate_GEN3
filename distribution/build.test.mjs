@@ -200,6 +200,13 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
   });
   expect(lazurioHelp.status).toBe(0);
   expect(lazurioHelp.stdout).toContain("Lazurio CLI v0");
+  const residentPathInstall = spawnSync(
+    process.execPath,
+    ["lazurio/cli.mjs", "cli", "install", "--root", first.artifact_root],
+    { cwd: first.artifact_root, encoding: "utf8", shell: false },
+  );
+  expect(residentPathInstall.status).toBe(1);
+  expect(residentPathInstall.stderr).toContain("updater transakcí");
 
   const doctor = runDoctor(first.artifact_root);
   expect(doctor.status).toBe(0);
