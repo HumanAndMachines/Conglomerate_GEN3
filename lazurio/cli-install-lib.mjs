@@ -189,7 +189,10 @@ export function inspectLazurioCliInstallation({
       reason = "owned_identity_matches";
     } else {
       state = "unrecognized";
-      reason = identityError ?? "identity_mismatch";
+      reason = identityError
+        ?? (observedIdentity?.root_id !== expectedIdentity.root_id
+          ? "identity_root_mismatch"
+          : "identity_generation_mismatch");
     }
   }
 

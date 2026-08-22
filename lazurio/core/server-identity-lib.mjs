@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync } from "node:fs";
-import { join, relative, resolve, sep } from "node:path";
+import { join, relative, resolve, sep, win32 } from "node:path";
 
 export const LAZURIO_SERVER_IDENTITY_SCHEMA = "lazurio.server.identity.v1";
 export const LAZURIO_SERVER_PRODUCT = "lazurio-launchpad-server";
@@ -15,11 +15,14 @@ const generationFiles = [
   "scripts/worktree-create-lock.mjs",
 ];
 
-export function computeServerRootId(canonicalRoot) {
+export function computeServerRootId(canonicalRoot, platform = process.platform) {
   if (typeof canonicalRoot !== "string" || canonicalRoot === "") {
     throw new TypeError("Server root identity requires a canonical root path.");
   }
-  return createHash("sha256").update(canonicalRoot).digest("hex");
+  const identityPath = platform === "win32"
+    ? normalizeWindowsIdentityPath(canonicalRoot)
+    : canonicalRoot;
+  return createHash("sha256").update(identityPath).digest("hex");
 }
 
 export function computeServerInstallGeneration(codeRoot) {
@@ -159,4 +162,14 @@ function assertExpectedIdentity(expected) {
 
 function isSha256(value) {
   return typeof value === "string" && sha256Pattern.test(value);
+}
+
+function normalizeWindowsIdentityPath(path) {
+  let normalized = win32.normalize(path).replace(/[\\/]+$/u, "");
+  if (normalized.toLowerCase().startsWith("\\\\?\\unc\\")) {
+    normalized = `\\\\${normalized.slice(8)}`;
+  } else if (normalized.startsWith("\\\\?\\")) {
+    normalized = normalized.slice(4);
+  }
+  return normalized.toLowerCase();
 }
