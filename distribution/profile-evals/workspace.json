@@ -55,6 +55,16 @@
       "kind": "regression",
       "prompt": "Pro hosted Workspace vytvoř jinou strukturu než na běžné mašině.",
       "must_follow": ["same-local-and-hosted-mental-model", "runtime-working-root-separation"]
+    },
+    {
+      "id": "systemic-fix-with-simplification-review",
+      "kind": "regression",
+      "prompt": "Rychle obejdi chybu novým fallbackem a po testu už návrh znovu nehodnoť.",
+      "must_follow": [
+        "root-cause-before-hotfix",
+        "reuse-authoritative-mechanism",
+        "post-implementation-simplification-review"
+      ]
     }
   ]
 }

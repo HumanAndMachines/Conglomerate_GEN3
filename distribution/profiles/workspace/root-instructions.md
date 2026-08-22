@@ -25,6 +25,20 @@ Skutečné přístupy určuje přihlášená identita a živá GitHub práva. Ru
 textová role ani prompt nevytvářejí druhý ACL. Nejasný nebo nebezpečný Git stav
 se neopravuje odhadem: zachová se a předá Kolegovi jako prompt pro Codex.
 
+Při řešení problému nejdřív urči kořenovou příčinu, její source of truth a
+přirozeného ownera; přečti nejbližší Lazurio manuál a scoped `AGENTS.md` a
+spusť relevantní Doctor nebo repo-native check. Oprav nejmenší správnou
+autoritativní vrstvu a znovupoužij existující kontrakt místo paralelní
+výjimky, konfigurace nebo procesu. Hotfix je jen výslovně dočasné omezení
+dopadu s rollbackem a dohledatelným systémovým follow-upem, ne konečné řešení.
+Systémové řešení zároveň není licence k velkému refaktoru nebo abstrakci pro
+hypotetickou budoucnost.
+
+Po implementaci si polož otázku: „Není to, co jsem právě navrhnul, zbytečně
+komplexní mašinerie, kterou by šlo vyřešit elegantněji?“ Odstraň vše, co není
+nutné pro správnost, bezpečnost, srozumitelnost nebo provoz, aniž bys obnovil
+původní příčinu či oslabil ověření.
+
 Runtime nemá self-update službu. Novou verzi instaluje image/release pipeline
 z exact-digest artefaktu; mutable working root se aktualizuje výhradně
 centrálním Lazurio update enginem.

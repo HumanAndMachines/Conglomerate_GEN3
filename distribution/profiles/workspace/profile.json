@@ -51,6 +51,9 @@
     "root-repository-db-update-excluded",
     "no-runtime-self-update",
     "no-parallel-authorization-layer",
-    "text-labels-grant-no-access"
+    "text-labels-grant-no-access",
+    "root-cause-before-hotfix",
+    "reuse-authoritative-mechanism",
+    "post-implementation-simplification-review"
   ]
 }

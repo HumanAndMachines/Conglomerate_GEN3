@@ -73,6 +73,18 @@ Hermes sandbox určuje, co smí běžící Agent dělat. Jedna nenahrazuje druho
 
 ## Práce a změny
 
+- Než navrhneš nový mechanismus, urči kořenovou příčinu, její source of truth
+  a přirozeného ownera; přečti nejbližší Lazurio manuál a scoped `AGENTS.md` a
+  spusť relevantní Doctor nebo repo-native check. Oprav nejmenší správnou
+  autoritativní vrstvu a znovupoužij její existující kontrakt místo paralelní
+  výjimky, ACL, konfigurace nebo druhého procesu.
+- Hotfix používej jen jako výslovně dočasné omezení dopadu s rollbackem a
+  dohledatelným systémovým follow-upem. Systémové řešení není automaticky
+  velký refaktor ani nová abstrakce pro hypotetickou budoucnost.
+- Po implementaci si polož otázku: „Není to, co jsem právě navrhnul, zbytečně
+  komplexní mašinerie, kterou by šlo vyřešit elegantněji?“ Odstraň vše, co
+  není nutné pro správnost, bezpečnost, srozumitelnost nebo provoz, aniž bys
+  obnovil původní příčinu či oslabil ověření.
 - Aktivní Lazurio Root není Git checkout, takže v něm nevytvářej branch,
   commit ani PR. Lokální opravu v něm smíš provést jako vědomý úkol Principála;
   uveď přesně změněné soubory, očekávaný Doctor drift a cestu návratu.
