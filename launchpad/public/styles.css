@@ -5770,7 +5770,7 @@ body {
 @media (hover: hover) and (pointer: fine) {
   .app-card:not(.selected):not(.has-open-menu):hover {
     transform: none;
-    border-color: color-mix(in srgb, var(--app-accent) 64%, var(--lz-line));
+    border-color: var(--app-accent);
     background-color: var(--lz-white);
     box-shadow:
       0 0 0 3px color-mix(in srgb, var(--app-accent) 10%, transparent),

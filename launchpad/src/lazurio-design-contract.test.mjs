@@ -75,8 +75,8 @@ test("výběr dlaždice drží důraz hranou a stav není barevný pruh", async 
   expect(app).toContain('section.setAttribute("aria-busy", "true")');
 });
 
-test("modulové ikony a hover hrany používají schválenou expresivní sadu", async () => {
-  const [app, styles] = await Promise.all([source("app.js"), source("styles.css")]);
+test("modulové ikony a hover hrany používají shodnou Lazurio barvu kamene", async () => {
+  const [app, styles, tokens] = await Promise.all([source("app.js"), source("styles.css"), source("vendor/lazurio/tokens.css")]);
   expect(app).not.toContain("#cccdff");
   expect(app).not.toContain("#fff5cc");
   expect(app).not.toContain("#ccffee");
@@ -88,10 +88,15 @@ test("modulové ikony a hover hrany používají schválenou expresivní sadu", 
   expect(app).toContain('stroj: { color: "var(--lz-expressive-mint-figure)"');
   expect(app).toContain('obchod: { color: "var(--lz-expressive-vermilion-figure)"');
   expect(app).toContain('kampan: { color: "var(--lz-blue-700)"');
+  expect(tokens).toContain("--lz-expressive-orchid: #db7eca");
+  expect(app).toContain('"lazurio-design-system-96.png": "var(--lz-expressive-orchid)"');
+  expect(app).toContain('"presentation-96.png": "var(--lz-expressive-orchid)"');
+  expect(app).toContain('"website-lazurio-96.png": "var(--lz-blue-500)"');
+  expect(app).toContain('"guide-96.png": "var(--lz-expressive-yellow)"');
   expect(app).toContain('card.style.setProperty("--app-accent"');
   expect(app).toContain('card.style.setProperty("--app-focus-accent"');
-  expect(app).toContain("return style.accent ?? style.color");
-  expect(app).toContain("return style.focusAccent ?? style.color");
+  expect(app).toContain("return LAZURIO_APP_ICON_ACCENTS[LAZURIO_APP_ICON_FILES[key]] ?? style.accent ?? style.color");
+  expect(app).toContain("return LAZURIO_APP_ICON_ACCENTS[LAZURIO_APP_ICON_FILES[key]] ?? style.focusAccent ?? style.color");
   expect(styles).toMatch(/\.app-card:hover\s*{[\s\S]*?border-color: var\(--app-accent\)/);
   expect(styles).toMatch(/\.app-card:focus-within\s*{[\s\S]*?border-color: var\(--app-focus-accent, var\(--app-accent\)\)/);
   expect(styles).toMatch(/\.app-card-icon\s*{[\s\S]*?border: 0;[\s\S]*?background: transparent;[\s\S]*?color: var\(--app-icon-color\)/);
@@ -117,12 +122,17 @@ test("Launchpad nepoužívá pyritovou barevnou roli", async () => {
     source("app.js"),
     source("personalspace.js"),
   ]);
-  const authoredSurface = `${styles}\n${app}\n${personalspace}`;
+  const iconAccentStart = app.indexOf("const LAZURIO_APP_ICON_ACCENTS");
+  const iconAccentEnd = app.indexOf("const APP_ICON_STYLES");
+  const iconAccentBlock = app.slice(iconAccentStart, iconAccentEnd);
+  const appWithoutIconAccents = `${app.slice(0, iconAccentStart)}${app.slice(iconAccentEnd)}`;
+  const authoredSurface = `${styles}\n${appWithoutIconAccents}\n${personalspace}`;
   expect(authoredSurface).not.toContain("--lz-warning");
   expect(authoredSurface).not.toContain("--lz-expressive-yellow");
   expect(authoredSurface).not.toContain("--lz-persona-buddy");
   expect(authoredSurface).not.toMatch(/#(?:ad8b00|876612|9a5b00|78350f|f59e0b)/i);
   expect(styles).toContain("--c-warn: var(--lz-expressive-orange-figure)");
+  expect(iconAccentBlock).toContain('"guide-96.png": "var(--lz-expressive-yellow)"');
 });
 
 test("filtr aplikací používá jednu společnou Lazurio kapsli", async () => {
@@ -181,6 +191,8 @@ test("kanonické modulové dlaždice jsou samostatné zaoblené karty", async ()
   expect(canonical).toMatch(/\.apps-grid > \.app-card:not\(\.has-open-menu\):focus-within,[\s\S]*?\.apps-grid > \.app-card\.selected\s*{[\s\S]*?border-color: var\(--app-focus-accent, var\(--app-accent\)\)/);
   expect(canonical).toMatch(/box-shadow: 0 10px 24px -22px color-mix\(in srgb, var\(--lz-ink\) 24%, transparent\)/);
   expect(canonical).toMatch(/\.app-card:not\(\.selected\):not\(\.has-open-menu\):hover\s*{[\s\S]*?transform: none;[\s\S]*?background-color: var\(--lz-white\);[\s\S]*?box-shadow:[\s\S]*?0 0 0 3px color-mix/);
+  expect(canonical).toMatch(/\.app-card:not\(\.selected\):not\(\.has-open-menu\):hover\s*{[\s\S]*?border-color: var\(--app-accent\)/);
+  expect(canonical).not.toContain("border-color: color-mix(in srgb, var(--app-accent)");
   expect(canonical).toMatch(/\.apps-grid > \.app-card:not\(\.selected\):not\(\.has-open-menu\):focus-within\s*{[\s\S]*?background-color: var\(--lz-white\);[\s\S]*?box-shadow:/);
   expect(canonical).not.toContain(".app-card:not(.has-open-menu):hover::after");
   expect(canonical).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.apps-grid > \.app-card \.app-card-desc\s*{[\s\S]*?transition: none/);
