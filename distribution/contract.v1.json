@@ -50,6 +50,8 @@
     "lazurio/core/",
     "lazurio/lib.mjs",
     "lazurio/search-lib.mjs",
+    "scripts/worktree-create-lib.mjs",
+    "scripts/worktree-create-lock.mjs",
     "manual/lazurio-resident-profiles.md",
     "manual/lazurio-runtime-install-interface.md",
     "manual/update-installed-resident.md",
