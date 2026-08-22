@@ -279,7 +279,7 @@ function requiredInlineValue(arg, name) {
 }
 
 function defaultCliRoot() {
-  return realpathSync(fileURLToPath(new URL("..", import.meta.url)));
+  return realpathSync.native(fileURLToPath(new URL("..", import.meta.url)));
 }
 
 function usage() {

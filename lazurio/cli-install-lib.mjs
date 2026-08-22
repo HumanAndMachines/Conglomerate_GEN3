@@ -393,7 +393,11 @@ function canonicalizeInstallRoot(root) {
     throw new LazurioCliInstallError("invalid_root", "Lazurio root musí být platná cesta bez nového řádku.");
   }
   try {
-    return realpathSync(resolve(root));
+    // Bun's portable realpath can preserve an 8.3 alias on Windows while a
+    // global Bun shim reports the same directory by its long name. The native
+    // variant asks the filesystem for one canonical spelling, so CLI identity
+    // does not depend on which equivalent Windows path reached the process.
+    return realpathSync.native(resolve(root));
   } catch {
     throw new LazurioCliInstallError("invalid_root", `Lazurio root neexistuje: ${resolve(root)}`);
   }
@@ -600,7 +604,7 @@ function pathContainsDirectory(pathValue = "", expectedDirectory, platform) {
 }
 
 function safeSameRealPath(left, right, platform) {
-  return samePath(realpathSync(left), realpathSync(right), platform);
+  return samePath(realpathSync.native(left), realpathSync.native(right), platform);
 }
 
 function samePath(left, right, platform) {

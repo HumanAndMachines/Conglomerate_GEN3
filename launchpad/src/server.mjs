@@ -63,10 +63,10 @@ const launchpadRoot = join(import.meta.dirname, "..");
 const publicRoot = join(launchpadRoot, "public");
 const options = parseArgs(Bun.argv.slice(2));
 const companiesRoot = resolve(options.root ?? process.env.WORKSPACE_ROOT ?? join(launchpadRoot, ".."));
-const canonicalCompaniesRoot = realpathSync(companiesRoot);
+const canonicalCompaniesRoot = realpathSync.native(companiesRoot);
 const lazurioCodeRoot = resolve(launchpadRoot, "..");
 const configuredRuntimeRoot = resolve(process.env.LAZURIO_RUNTIME_ROOT ?? lazurioCodeRoot);
-if (realpathSync(configuredRuntimeRoot) !== realpathSync(lazurioCodeRoot)) {
+if (realpathSync.native(configuredRuntimeRoot) !== realpathSync.native(lazurioCodeRoot)) {
   throw new Error("LAZURIO_RUNTIME_ROOT musí přesně označovat Lazurio runtime, ze kterého běží Launchpad server.");
 }
 const launchpadRootId = computeServerRootId(canonicalCompaniesRoot);
