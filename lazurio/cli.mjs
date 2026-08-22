@@ -15,7 +15,6 @@ import {
   installLazurioCli,
   renderHumanCliIdentity,
   renderHumanCliInstallation,
-  uninstallLazurioCli,
 } from "./cli-install-lib.mjs";
 import { runLaunchpadInstall } from "./launchpad-install-lib.mjs";
 import {
@@ -81,9 +80,7 @@ async function run(argv) {
     }
     const report = options.cliAction === "install"
       ? installLazurioCli({ root: options.root })
-      : options.cliAction === "uninstall"
-        ? uninstallLazurioCli({ root: options.root })
-        : inspectLazurioCliInstallation({ root: options.root });
+      : inspectLazurioCliInstallation({ root: options.root });
     console.log(options.json ? JSON.stringify(report, null, 2) : renderHumanCliInstallation(report));
     return 0;
   }
@@ -259,8 +256,11 @@ function parseArgs(argv) {
     if (parsed.searchFlags.size > 0) {
       throw new Error(`${[...parsed.searchFlags].join(", ")} lze použít pouze s příkazem search.`);
     }
-    if (parsed.operands.length !== 1 || !new Set(["install", "status", "uninstall", "identity"]).has(parsed.operands[0])) {
-      throw new Error("cli vyžaduje jedinou akci `install`, `status` nebo `uninstall`.");
+    if (parsed.operands.length === 1 && parsed.operands[0] === "uninstall") {
+      throw new Error("`lazurio cli uninstall` není veřejná v0 operace. Exact odregistrování provede Lazurio updater mimo běžící Windows shim.");
+    }
+    if (parsed.operands.length !== 1 || !new Set(["install", "status", "identity"]).has(parsed.operands[0])) {
+      throw new Error("cli vyžaduje jedinou akci `install` nebo `status`.");
     }
     parsed.cliAction = parsed.operands[0];
   } else if (parsed.searchFlags.size > 0) {
@@ -292,7 +292,6 @@ function usage() {
     "  lazurio update [--json] [--root <cesta>]",
     "  lazurio cli install [--json] [--root <cesta>]",
     "  lazurio cli status [--json] [--root <cesta>]",
-    "  lazurio cli uninstall [--json] [--root <cesta>]",
     "  lazurio launchpad install [--root <cesta>]",
     "  lazurio search <dotaz> [--mode exact|lexical|semantic|hybrid] [--scope lazurio] [--limit N] [--json] [--root <cesta>]",
     "  lazurio search --status [--scope lazurio] [--json] [--root <cesta>]",

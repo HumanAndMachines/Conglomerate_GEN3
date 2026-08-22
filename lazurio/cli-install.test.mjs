@@ -65,16 +65,16 @@ test("CLI default root patří entrypointu, ne aktuálnímu adresáři", () => {
   expect(JSON.parse(explicit.stdout)).toEqual(buildLazurioCliIdentity({ root: fixtureRoot }));
 });
 
-test("help drží tři jednoduché CLI instalační akce", () => {
+test("help drží dvě jednoduché CLI instalační akce", () => {
   const help = runCli(sourceCli, ["--help"], { cwd: outsideCwd, environment: process.env });
   expect(help.status).toBe(0);
   expect(help.stdout).toContain("lazurio cli install [--json] [--root <cesta>]");
   expect(help.stdout).toContain("lazurio cli status [--json] [--root <cesta>]");
-  expect(help.stdout).toContain("lazurio cli uninstall [--json] [--root <cesta>]");
+  expect(help.stdout).not.toContain("cli uninstall");
   expect(help.stdout).not.toContain("cli identity");
 });
 
-test("real Bun link projde install, direct status, idempotent reinstall a exact uninstall", () => {
+test("real Bun link projde install, direct status a idempotent reinstall", () => {
   const isolated = isolatedBunEnvironment("golden");
   const install = runCli(sourceCli, ["cli", "install", "--json", "--root", fixtureRoot], {
     cwd: outsideCwd,
@@ -130,25 +130,27 @@ test("real Bun link projde install, direct status, idempotent reinstall a exact 
     expect(JSON.parse(powershell.stdout)).toEqual(buildLazurioCliIdentity({ root: fixtureRoot }));
   }
 
-  const uninstall = runExecutable(installed.command.path, ["cli", "uninstall", "--json"], {
-    cwd: outsideCwd,
+  // Machine updater removes the exact owned link from outside the Windows
+  // launcher. A public self-uninstall would need a second deferred cleaner
+  // because the running .exe is locked until its Bun child exits.
+  const unlink = runExecutable(process.execPath, ["unlink", "--cwd", fixtureRoot], {
+    cwd: fixtureRoot,
     environment: isolated.environment,
   });
-  expect(uninstall.status, uninstall.stderr).toBe(0);
-  expect(JSON.parse(uninstall.stdout)).toMatchObject({ action: "uninstall", changed: true });
+  expect(unlink.status, unlink.stderr).toBe(0);
   expect(existsSync(join(isolated.globalDirectory, "node_modules", "lazurio"))).toBe(false);
+  expect(resolveInstalledCommand(isolated.globalBin)).toBeNull();
+  expect(existsSync(join(isolated.globalBin, "lazurio.bunx"))).toBe(false);
+});
 
-  const secondUninstall = runCli(
-    sourceCli,
-    ["cli", "uninstall", "--json", "--root", fixtureRoot],
-    { cwd: outsideCwd, environment: isolated.environment },
-  );
-  expect(secondUninstall.status, secondUninstall.stderr).toBe(0);
-  expect(JSON.parse(secondUninstall.stdout)).toMatchObject({
-    action: "uninstall",
-    changed: false,
-    registration: { state: "absent" },
+test("public v0 uninstall nepředstírá synchronní Windows self-delete", () => {
+  const result = runCli(sourceCli, ["cli", "uninstall"], {
+    cwd: outsideCwd,
+    environment: process.env,
   });
+  expect(result.status).toBe(2);
+  expect(result.stderr).toContain("není veřejná v0 operace");
+  expect(result.stderr).toContain("Lazurio updater");
 });
 
 test("foreign PATH command se nikdy nespustí ani nepřepíše", () => {
@@ -192,7 +194,7 @@ test("foreign Bun registrace se nepřepíše a neodinstaluje", () => {
   });
   expect(link.status, link.stderr).toBe(0);
 
-  for (const action of ["install", "uninstall"]) {
+  for (const action of ["install"]) {
     const result = runCli(sourceCli, ["cli", action, "--root", fixtureRoot], {
       cwd: outsideCwd,
       environment: isolated.environment,
@@ -253,6 +255,13 @@ function isolatedBunEnvironment(label) {
       BUN_INSTALL_BIN: globalBin,
     },
   };
+}
+
+function resolveInstalledCommand(globalBin) {
+  const names = process.platform === "win32"
+    ? ["lazurio.exe", "lazurio.cmd", "lazurio.bat", "lazurio.com"]
+    : ["lazurio"];
+  return names.find((name) => existsSync(join(globalBin, name))) ?? null;
 }
 
 function createLinkedWorktreeRoot() {

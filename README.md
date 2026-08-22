@@ -37,9 +37,10 @@ lazurio doctor
 
 Jde o per-user Bun link bez administrátorských práv, certifikátu, vlastního
 shimu nebo změny shell/Windows PATH konfigurace. Bun global bin proto musí být
-v `PATH` už po standardní instalaci Bunu. `lazurio cli uninstall` odstraní jen
-registraci, jejíž exact canonical root předem prokáže; cizí stejnojmenný
-příkaz nepřepíše ani nespustí.
+v `PATH` už po standardní instalaci Bunu. Stejný `install` je bezpečně
+opakovatelný a funguje i jako oprava registrace. Veřejný self-uninstall ve v0
+není: exact odregistrování vlastní pozdější machine updater, který neběží přes
+zamčený Windows launcher. Cizí stejnojmenný příkaz se nepřepíše ani nespustí.
 
 Bez PATH instalace se CLI ve vývojovém checkoutu spouští přes Bun:
 

@@ -20,8 +20,11 @@ Instalace používá standardní Bun global link. Nevytváří vlastní shim,
 neupravuje shell profily ani Windows registry a nepotřebuje admin práva nebo
 certifikát. Bun global bin musí být v `PATH` už předem; když není, instalace
 skončí před mutací s přesným návodem. Existing foreign `lazurio` command se
-nespouští ani nepřepisuje. `lazurio cli uninstall` odstraní pouze exact Bun
-registraci tohoto canonical rootu.
+nespouští ani nepřepisuje. `install` je idempotentní a slouží i jako reinstall.
+Veřejný self-uninstall ve v0 není: na Windows Bun launcher čeká na běžící CLI,
+takže vlastní `.exe` nelze synchronně přesně odstranit bez druhého cleanup
+mechanismu. Exact Bun unlink proto patří pozdějšímu machine updateru, který
+neběží přes tento launcher.
 
 CLI bez `--root` vždy použije root vlastního entrypointu, takže funguje z
 libovolného pracovního adresáře. Explicitní `--root` zůstává vědomý override.

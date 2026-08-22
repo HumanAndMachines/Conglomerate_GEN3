@@ -280,56 +280,6 @@ export function installLazurioCli(options = {}) {
   return installationAction(after, "install", true);
 }
 
-export function uninstallLazurioCli(options = {}) {
-  const before = inspectLazurioCliInstallation(options);
-  if (before.registration.state === "foreign") {
-    throw new LazurioCliInstallError(
-      "registration_foreign_root",
-      "Bun registrace jména lazurio patří jinému rootu; cizí instalaci neodstraňuji.",
-    );
-  }
-  if (before.registration.state === "unsafe") {
-    throw new LazurioCliInstallError(
-      "registration_unrecognized",
-      "Bun registrace jména lazurio nemá bezpečně rozpoznatelný typ; nic neodstraňuji.",
-    );
-  }
-  if (before.registration.state === "absent") {
-    return installationAction(before, "uninstall", false);
-  }
-
-  const canonicalRoot = assertInstallableLazurioRoot(options.root);
-  const layout = resolveBunGlobalLayout({
-    environment: options.environment,
-    homeDirectory: options.homeDirectory,
-  });
-  const environment = bunGlobalEnvironment(options.environment ?? process.env, layout);
-  const runProcess = options.runProcess ?? runProcessSync;
-  const unlink = runProcess(
-    options.bunExecutable ?? process.execPath,
-    ["unlink", "--cwd", canonicalRoot],
-    { cwd: canonicalRoot, environment },
-  );
-  if (unlink.status !== 0) {
-    throw new LazurioCliInstallError(
-      "bun_unlink_failed",
-      `Bun nedokázal Lazurio CLI odregistrovat: ${processFailure(unlink)}`,
-    );
-  }
-  const after = inspectLazurioCliInstallation({
-    ...options,
-    environment,
-    probeIdentity: false,
-  });
-  if (after.registration.state === "owned" || after.reason === "bin_orphaned") {
-    throw new LazurioCliInstallError(
-      "uninstall_verification_failed",
-      "Bun unlink skončil bez chyby, ale owned registrace stále existuje.",
-    );
-  }
-  return installationAction(after, "uninstall", true);
-}
-
 export function renderHumanCliIdentity(identity) {
   return [
     "Lazurio CLI identity",
@@ -342,9 +292,7 @@ export function renderHumanCliIdentity(identity) {
 export function renderHumanCliInstallation(report) {
   const heading = report.action === "status"
     ? "Lazurio CLI"
-    : report.action === "install"
-      ? "Lazurio CLI instalace"
-      : "Lazurio CLI odinstalace";
+    : "Lazurio CLI instalace";
   const state = {
     current: "připravené",
     installed: "nainstalované, identity neověřena",
