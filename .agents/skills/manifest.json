@@ -24,6 +24,18 @@
       "required": false
     },
     {
+      "slug": "architecture-shaping",
+      "path": ".agents/skills/architecture-shaping/SKILL.md",
+      "applies_to": [
+        "source-code-changes",
+        "architecture-shaping",
+        "complexity-reduction",
+        "cross-scope-contracts",
+        "technical-design"
+      ],
+      "required": true
+    },
+    {
       "slug": "desktop-execution-agent-collaboration",
       "path": ".agents/skills/desktop-execution-agent-collaboration/SKILL.md",
       "applies_to": [

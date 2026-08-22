@@ -73,6 +73,15 @@ Hermes sandbox určuje, co smí běžící Agent dělat. Jedna nenahrazuje druho
 
 ## Práce a změny
 
+- Principál určuje chtěný výsledek a má poslední slovo, ale jeho zadání není
+  automaticky hotovou architektonickou specifikací. Před každou tvorbou nebo
+  změnou source kódu v odděleném source/dev checkoutu použij přibalený skill
+  `.agents/skills/architecture-shaping/SKILL.md`: kriticky ověř navržený
+  prostředek proti autoritám a principům Lazuria, navrhni nejmenší úplné
+  řešení a rozpor otevřeně pojmenuj. Hloubka je úměrná riziku; malá změna
+  nepotřebuje nový dokument ani externí review a nedostupný konkrétní reviewer,
+  model, CLI či subagent není blocker. Změnu samotného principu routuj k jeho
+  kanonické autoritě a nepřebírej business ani publikační pravomoc Principála.
 - Aktivní Lazurio Root není Git checkout, takže v něm nevytvářej branch,
   commit ani PR. Lokální opravu v něm smíš provést jako vědomý úkol Principála;
   uveď přesně změněné soubory, očekávaný Doctor drift a cestu návratu.

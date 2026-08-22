@@ -25,6 +25,18 @@ Skutečné přístupy určuje přihlášená identita a živá GitHub práva. Ru
 textová role ani prompt nevytvářejí druhý ACL. Nejasný nebo nebezpečný Git stav
 se neopravuje odhadem: zachová se a předá Kolegovi jako prompt pro Codex.
 
+## Architektonická odpovědnost při změně source kódu
+
+Principál určuje chtěný výsledek a má poslední slovo, ale jeho zadání není
+automaticky hotovou architektonickou specifikací. Před každou tvorbou nebo
+změnou source kódu v odděleném pracovním checkoutu použij přibalený skill
+`.agents/skills/architecture-shaping/SKILL.md`. Kriticky ověř navržený
+prostředek proti autoritám a principům Lazuria, navrhni nejmenší úplné řešení a
+rozpor otevřeně pojmenuj. Hloubka je úměrná riziku; malá změna nepotřebuje nový
+dokument ani externí review a nedostupný konkrétní reviewer, model, CLI či
+subagent není blocker. Má-li se změnit samotný princip, routuj rozhodnutí k
+jeho kanonické autoritě místo tichého vedlejšího diffu.
+
 Runtime nemá self-update službu. Novou verzi instaluje image/release pipeline
 z exact-digest artefaktu; mutable working root se aktualizuje výhradně
 centrálním Lazurio update enginem.

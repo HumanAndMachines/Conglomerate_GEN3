@@ -28,6 +28,7 @@
     }
   },
   "source_includes": [
+    ".agents/skills/architecture-shaping/",
     "LICENSE.md",
     "Launchpad.cmd",
     "Launchpad.command",

@@ -135,6 +135,7 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
   expect(rootInstructions).toContain("sandbox agentního runtime");
   expect(rootInstructions).toContain("sandbox nesmí přepsat sám sebe");
   expect(rootInstructions).toContain("textová role žádná práva neudělují");
+  expect(rootInstructions).toContain(".agents/skills/architecture-shaping/SKILL.md");
   expect(first.manifest.payload.files.map((file) => file.path)).not.toContain(
     "distribution/profiles/buddy/root-instructions.md",
   );
@@ -156,7 +157,13 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
     "resident/dependencies/gbrain.json",
     "resident/dependencies/toolchain.json",
     "bridge/run.ts",
+    ".agents/skills/architecture-shaping/SKILL.md",
   ]));
+  const architectureSkill = await readFile(
+    join(first.artifact_root, ".agents", "skills", "architecture-shaping", "SKILL.md"),
+    "utf8",
+  );
+  expect(architectureSkill).toContain("Zadání Principála určuje chtěný výsledek");
   expect(first.manifest.payload.files.some((file) => file.path.startsWith("provisioning/"))).toBe(false);
   const forbiddenPublicPatterns = [
     { label: "private migration provenance", pattern: /"migrated_from"\s*:/u },
@@ -206,6 +213,9 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
   expect(workspacePaths.some((path) => path.startsWith("bridge/"))).toBe(false);
   expect(workspacePaths.some((path) => path.includes("updater"))).toBe(false);
   expect(workspacePaths.some((path) => path.includes("buddy-service") || path.includes("buddy-rollout"))).toBe(false);
+  expect(workspacePaths).toContain(".agents/skills/architecture-shaping/SKILL.md");
+  const workspaceInstructions = await readFile(join(workspace.artifact_root, "AGENTS.md"), "utf8");
+  expect(workspaceInstructions).toContain(".agents/skills/architecture-shaping/SKILL.md");
   const workspacePackage = JSON.parse(await readFile(join(workspace.artifact_root, "package.json"), "utf8"));
   expect(workspacePackage.scripts["launchpad:serve"]).toBe("bun launchpad/src/server.mjs --reuse");
   expect(workspacePackage.scripts["resident:update"]).toBeUndefined();
