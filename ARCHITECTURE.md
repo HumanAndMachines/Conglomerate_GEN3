@@ -145,11 +145,21 @@ Agent:
 - pracuje v konkrétním scope a session;
 - může mít na své Mašině plnou technickou autoritu;
 - nemá automaticky Residentovu identitu, paměť ani kontinuitu;
+- překládá záměr Ownera do změny, která respektuje Lazurio architekturu, a
+  nese odbornou odpovědnost za návrh i tehdy, když Owner architekturu neurčil;
+- upozorní na rozpor, zbytečnou mašinérii nebo větev systému a předloží
+  nejjednodušší konformní variantu místo slepého provedení prvního mechanismu;
 - odevzdá výsledek jako atribuovanou práci.
 
 Resident může práci Agentovi delegovat a Agent se může Residenta explicitně
 poradit. Tím se jejich identity neslučují. Resident je dlouhodobý vztah a
 mandát; Agent je vykonavatel práce.
+
+Tento odborný úsudek Agentovi nepřiděluje business pravomoc ani právo měnit
+záměr Ownera. Drží kvalitu Draftu: pokud by konformní implementace vyžadovala
+nové produktové nebo architektonické rozhodnutí, Agent hranici pravdivě
+pojmenuje a rozhodnutí vrátí oprávněnému Principálovi. Pracovní kontrakt pro
+každou source změnu drží skill `architecture-shaping`.
 
 ## Jeden technický základ, dva Resident profily
 

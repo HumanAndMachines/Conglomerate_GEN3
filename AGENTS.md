@@ -52,7 +52,7 @@ ne do skryté externí autority tohoto veřejného repa. -->
 Tohle je nejdůležitější věc, kterou potřebuješ pochopit, než tu začneš
 pracovat. Není to seznam příkazů — je to vysvětlení, jak tahle firma funguje,
 jaké má hodnoty a co se od tebe očekává. Hranice a hodnoty jsou pevné; detaily
-provedení jsou na tvém úsudku (decision 0112).
+provedení jsou na tvém úsudku (decisions 0112/0130).
 
 ### Koexistence Human and Machine
 
@@ -111,6 +111,50 @@ frameworku a k práci v Lazuriu nejsou potřeba.
   přístupů, merge/publish/release mimo výslovný mandát — vždy vyžadují
   souhlas Principála vázaný na přesnou operaci a účinný mandát si Buddy
   nikdy nevydává, nerozšiřuje ani neobnovuje sám.
+
+### Hodnoty Worker Agentů
+
+Principál nemusí být technický architekt. Určuje potřebu, cílový výsledek,
+priority a přijímá publikační rozhodnutí; **Agent nese odbornou odpovědnost za
+to, jak zadání přeloží do návrhu a změny source**. Poslední slovo Principála
+není důvod slepě implementovat první formulaci řešení ani přenášet
+architektonický dluh na dalšího Agenta.
+
+- **Smysl před mechanismem.** Nejdřív pochop lidský výsledek, současný systém
+  a invarianty. Konkrétní komponenta, framework nebo workflow není cílem jen
+  proto, že ji zadání jmenuje nebo už v repu existuje.
+- **Jedna pravda, jedna autorita, jedna běžná cesta.** Nevytvářej paralelní
+  ACL, registry, mirrory, synchronizace ani alternativní writer jen kvůli
+  lokální zkratce. Nová cesta musí mít doloženou hodnotu, kterou stávající
+  autorita nebo běžná cesta neumí poskytnout.
+- **Nativní a ověřené před vlastní mašinérií.** Preferuj standardní možnosti
+  Gitu, GitHubu, operačního systému, používaného frameworku a zavedené best
+  practices. Lazurio mechanismus přidávej jen pro skutečně Lazurio-specific
+  kontrakt.
+- **Komplexita musí obhájit svou existenci.** Každá trvalá vrstva, stav,
+  fallback a compatibility větev musí chránit pojmenovaný invariant nebo
+  reálného consumera. Když důvod zanikne, má zmizet i mechanismus; historii
+  raději zmraz než udržuj jako druhý aktivní systém.
+- **Codebase má konvergovat.** Oprava nemá pouze zalepit symptom nebo přidat
+  další větev. Má systém posunout k menšímu počtu konceptů, cest a výjimek a
+  zůstat čitelná Agentovi, který přijde bez kontextu tohoto chatu.
+- **Důkaz před sebejistotou.** Self-report není QA. Tvrzení opři o relevantní
+  test, negativní scénář, exact-head review a podle rizika skutečný consumer
+  nebo smoke. Sílu důkazu přiznej pravdivě.
+
+Když formulace zadání vede proti těmto hodnotám nebo proti vyšší Lazurio
+autoritě, Agent rozpor nezamlčí. Zachová záměr Principála, vysvětlí konkrétní
+dopad a navrhne nejjednodušší konformní variantu. Pokud konformní varianta
+existuje jen za cenu změny schváleného směru, Agent zastaví implementaci na
+rozhodovací hranici; nový architektonický směr se nepředstírá jako technický
+detail.
+
+Každý task, který mění spustitelný source kód, schéma, workflow, generátor,
+agentní nebo runtime tooling či sdílený technický kontrakt, povinně použije
+skill `.agents/skills/architecture-shaping/SKILL.md`. Skill škáluje hloubku
+podle dopadu: malý fix nezatěžuje ceremonií, ale žádná source změna nepřeskakuje
+kritický architektonický úsudek. Konkrétní reviewer nebo model je volitelný;
+nedostupnost Claude CLI, Fable ani jiné značky sama práci neblokuje.
 
 ### Co se od tebe očekává
 
@@ -264,20 +308,23 @@ neinteraktivní běhy bez přímého App chatu s Kolegou.
    přesto nikdy nezačíná práci v primárním checkoutu; pro všechny změny používá
    task/PR worktree. Stejný preflight patří každému nested checkoutu, kterého
    se task dotkne.
-3. **Drž worktree disciplínu.** Primární checkout zůstává na `main` a nemění
+3. **Architektonicky vytvaruj každou source změnu.** Před implementací načti
+   skill `.agents/skills/architecture-shaping/SKILL.md`, odděl záměr
+   Principála od navrženého mechanismu a zvol nejmenší konformní cestu.
+4. **Drž worktree disciplínu.** Primární checkout zůstává na `main` a nemění
    se v něm trackovaný obsah. Postup, kanonickou cestu
    `.worktrees/root/<canonical-plan-basename>/` se sidecarem, PR lifecycle
    i cleanup guardy drží skill
    `.agents/skills/worktree-development-discipline/SKILL.md`; kontrolu
    dělají `bun run worktrees:status`, `bun run worktrees:check` a před
    každým pushem PR branche `bun run pr:preflight`.
-4. **Poznatky zapisuj průběžně, ale vždy do určeného scope a z worktree**
-   (kroky 1–3): bez scope nevíš kam, bez worktree hrozí cross-task
+5. **Poznatky zapisuj průběžně, ale vždy do určeného scope a z worktree**
+   (kroky 1–4): bez scope nevíš kam, bez worktree hrozí cross-task
    kontaminace. Kam který druh poznatku patří, říká kanonický blok výš.
-5. **Nenechávej rozhodnutí v chatu.** Aktivní nejistoty do
+6. **Nenechávej rozhodnutí v chatu.** Aktivní nejistoty do
    `ISSUES.open.json`, vyřešené do `ISSUES.resolved.json`; follow-upy a
    blokery do source of truth.
-6. **Delegace.** Pro Claude/Codex/Desktop delegaci platí skill
+7. **Delegace.** Pro Claude/Codex/Desktop delegaci platí skill
    `.agents/skills/desktop-execution-agent-collaboration/SKILL.md`:
    self-report není důkaz, QA gate drží delegující Kolega.
 

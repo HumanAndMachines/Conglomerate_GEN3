@@ -2,7 +2,7 @@
   "schema_version": "conglomerate.skills.v0",
   "claude_compatibility": "tracked-derived-mirror",
   "policy": {
-    "principle": "Opakovatelné postupy pro Buddy a AI kolegy v Launchpad rootu patří do .agents/skills.",
+    "principle": "Opakovatelné postupy pro Agenty v Lazurio rootu patří do .agents/skills.",
     "directory": ".agents/skills",
     "required_headings": [
       "## Kdy použít",
@@ -22,6 +22,18 @@
         "agent-packaging"
       ],
       "required": false
+    },
+    {
+      "slug": "architecture-shaping",
+      "path": ".agents/skills/architecture-shaping/SKILL.md",
+      "applies_to": [
+        "source-code-changes",
+        "technical-contracts",
+        "architecture",
+        "framework-convergence",
+        "implementation-review"
+      ],
+      "required": true
     },
     {
       "slug": "desktop-execution-agent-collaboration",
