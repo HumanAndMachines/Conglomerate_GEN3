@@ -1,10 +1,33 @@
 # Lazurio CLI v0
 
-Interní CLI je read-only adapter nad kanonickým Launchpad rootem. Nevytváří
-další identity, IAM ani vlastní search engine. `context` bezpečně promítá
+Interní CLI je tenká fasáda nad kanonickým Lazurio Core a platformními
+adaptéry. Nevytváří další identity, IAM, vlastní search engine ani druhý
+lifecycle engine. `context` bezpečně promítá
 Principála/Mašinu/Personalspace a na explicitní selektor jednu lokálně objevenou
 Organizaci, `doctor` znovu používá existující Doctor core a `search` přidává
 první explicitně omezený Organization pilot.
+
+## Instalace Launchpadu
+
+```sh
+# z vývojového/source checkoutu
+bun run lazurio -- launchpad install
+
+# po instalaci CLI do PATH
+lazurio launchpad install
+```
+
+Příkaz je veřejným vlastníkem uživatelského záměru „nainstaluj lokální
+Launchpad“. Na macOS spustí existující Bash instalátor; na Windows existující
+PowerShell instalátor. Jejich validace rootu, bezpečná výměna, rollback,
+historická migrace a platformní filesystem pravidla se v CLI neduplikují.
+CLI dědí jejich výstup a vrací jejich exit code beze změny. Linux tento
+desktop instalační slice zatím nepodporuje a skončí před mutací čitelnou
+chybou.
+
+`lazurio launchpad install` neprovádí Git update. `lazurio update` naopak
+nemění desktop launcher. `--json` se u instalace nepřijímá, protože žádný
+druhý strojový instalační protokol v tomto slice nevzniká.
 
 ## Context kontrakt
 

@@ -45,7 +45,7 @@ catch {
     Write-Host ''
     Write-Host 'Launchpad se nepodařilo spustit z uživatelské instalace.' -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
-    Write-Host 'V primárním Lazurio checkoutu spusť znovu: bun run install:windows-shortcut'
+    Write-Host 'V primárním Lazurio checkoutu spusť znovu: bun run lazurio -- launchpad install'
     Read-Host 'Stiskni Enter pro zavření'
     exit 1
 }
