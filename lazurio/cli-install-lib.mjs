@@ -112,7 +112,11 @@ export function inspectLazurioCliInstallation({
     runProcess,
     platform,
   });
-  const globalBinOnPath = pathContainsDirectory(environment.PATH, layout.global_bin, platform);
+  const globalBinOnPath = pathContainsDirectory(
+    environmentPathValue(environment, platform),
+    layout.global_bin,
+    platform,
+  );
   const commandPath = resolveCommand(packageName, {
     environment,
     platform,
@@ -541,7 +545,7 @@ function runProcessSync(command, args, { cwd, environment }) {
 }
 
 function findPathCommand(command, { environment, platform, cwd }) {
-  const pathValue = environment.PATH ?? environment.Path ?? environment.path ?? "";
+  const pathValue = environmentPathValue(environment, platform);
   const pathDelimiter = platform === "win32" ? ";" : delimiter;
   const extensions = platform === "win32"
     ? (environment.PATHEXT ?? ".COM;.EXE;.BAT;.CMD")
@@ -568,6 +572,12 @@ function findPathCommand(command, { environment, platform, cwd }) {
     }
   }
   return null;
+}
+
+function environmentPathValue(environment, platform) {
+  if (platform !== "win32") return environment.PATH ?? "";
+  const entry = Object.entries(environment).find(([name]) => name.toLowerCase() === "path");
+  return entry?.[1] ?? "";
 }
 
 function pathContainsDirectory(pathValue = "", expectedDirectory, platform) {

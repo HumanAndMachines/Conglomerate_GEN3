@@ -220,7 +220,8 @@ test("chybějící Bun global bin v PATH skončí před mutací", () => {
 
 test("linked task worktree se nestane permanentním PATH targetem", () => {
   const isolated = isolatedBunEnvironment("worktree");
-  const result = runCli(sourceCli, ["cli", "install", "--root", sourceRoot], {
+  const linkedRoot = createLinkedWorktreeRoot();
+  const result = runCli(sourceCli, ["cli", "install", "--root", linkedRoot], {
     cwd: outsideCwd,
     environment: isolated.environment,
   });
@@ -235,19 +236,46 @@ function isolatedBunEnvironment(label) {
   const globalDirectory = join(root, "global packages");
   const globalBin = join(root, "global bin");
   mkdirSync(root, { recursive: true });
+  const environment = { ...process.env };
+  for (const name of Object.keys(environment)) {
+    if (name.toLowerCase() === "path") delete environment[name];
+  }
+  environment.PATH = `${globalBin}${delimiter}${process.env.PATH ?? process.env.Path ?? ""}`;
   return {
     root,
     installRoot,
     globalDirectory,
     globalBin,
     environment: {
-      ...process.env,
+      ...environment,
       BUN_INSTALL: installRoot,
       BUN_INSTALL_GLOBAL_DIR: globalDirectory,
       BUN_INSTALL_BIN: globalBin,
-      PATH: `${globalBin}${delimiter}${process.env.PATH ?? ""}`,
     },
   };
+}
+
+function createLinkedWorktreeRoot() {
+  const repositoryRoot = join(sandbox, "standalone source repository");
+  const linkedRoot = join(sandbox, "linked task worktree");
+  cpSync(fixtureRoot, repositoryRoot, { recursive: true, preserveTimestamps: true });
+  for (const args of [
+    ["init", "-b", "main"],
+    ["config", "user.name", "Lazurio Test"],
+    ["config", "user.email", "lazurio-test@example.invalid"],
+    ["add", "."],
+    ["commit", "-m", "fixture"],
+    ["worktree", "add", "-b", "agent/test", linkedRoot],
+  ]) {
+    const result = runExecutable("git", args, {
+      cwd: repositoryRoot,
+      environment: process.env,
+    });
+    if (result.status !== 0) {
+      throw new Error(`Git fixture selhala: git ${args.join(" ")}\n${result.stderr}`);
+    }
+  }
+  return linkedRoot;
 }
 
 function runCli(cliPath, args, options) {
