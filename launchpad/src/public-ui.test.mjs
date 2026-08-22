@@ -214,6 +214,24 @@ test("každá kanonická Lazurio ikona odkazovaná UI existuje", async () => {
   for (const file of referencedFiles) expect(files.has(file)).toBe(true);
 });
 
+test("každý Lazurio kámen má vlastní shodnou barvu hover hrany", async () => {
+  const js = await readFile(join(publicRoot, "app.js"), "utf8");
+  const fileMapBlock = js.slice(
+    js.indexOf("const LAZURIO_APP_ICON_FILES"),
+    js.indexOf("const LAZURIO_APP_ICON_ACCENTS"),
+  );
+  const accentMapBlock = js.slice(
+    js.indexOf("const LAZURIO_APP_ICON_ACCENTS"),
+    js.indexOf("const APP_ICON_STYLES"),
+  );
+  const iconFiles = new Set([...fileMapBlock.matchAll(/"([a-z0-9-]+\.png)"/g)].map((match) => match[1]));
+  const accentFiles = new Set([...accentMapBlock.matchAll(/"([a-z0-9-]+\.png)"\s*:/g)].map((match) => match[1]));
+
+  expect([...accentFiles].sort()).toEqual([...iconFiles].sort());
+  expect(accentMapBlock).toContain('"lazurio-design-system-96.png": "var(--lz-expressive-orchid)"');
+  expect(accentMapBlock).toContain('"website-lazurio-96.png": "var(--lz-blue-500)"');
+});
+
 test("Launchpad drží kanonické Lazurio a nepřebírá skin Organizace", async () => {
   const js = await readFile(join(publicRoot, "app.js"), "utf8");
   expect(js).toContain("function applyOrganizationTheme");

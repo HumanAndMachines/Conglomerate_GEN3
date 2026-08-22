@@ -84,14 +84,17 @@
 	--lz-blue-950: #080935;
 
 	/* --- Expresivní barvy mimo rozhraní ----------------------------- */
-	/* Schválená sada z `specimens/08-prvky.html`. Tyto barvy nesmějí nést
-	 * stav ani aktivní prvek produktového UI; patří ilustracím, maskotům,
-	 * obálkám a kampaním. Základ je nejsytější poloha odstínu. Varianta
-	 * `-figure` je pouze pro menší figuru na papíru a drží kontrast 3:1. */
+	/* Schválená sada z `specimens/08-prvky.html`, rozšířená o orchidejovou
+	 * variantu Lazurio kamenů. Barvy nenesou stav; patří ilustracím, maskotům,
+	 * obálkám a kampaním. V Launchpadu smějí nést identitu modulu na hraně
+	 * pouze tehdy, když přesně opakují barvu jeho kamenné ikony. Základ je
+	 * nejsytější poloha odstínu. Varianta `-figure` je pouze pro menší figuru
+	 * na papíru a drží kontrast 3:1. */
 	--lz-expressive-orange: #ff8800;
 	--lz-expressive-yellow: #ffcc00;
 	--lz-expressive-mint: #00ffaa;
 	--lz-expressive-vermilion: #ff0004;
+	--lz-expressive-orchid: #db7eca;
 	--lz-expressive-orange-figure: #db7500;
 	--lz-expressive-yellow-figure: #ad8b00;
 	--lz-expressive-mint-figure: #00a36d;

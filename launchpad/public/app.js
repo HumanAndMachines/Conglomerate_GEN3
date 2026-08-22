@@ -194,6 +194,25 @@ const LAZURIO_APP_ICON_FILES = Object.freeze({
   marketing: "content-96.png",
 });
 
+// Hrana karty je pokračováním kamene, ne barvou obecné obsahové rodiny.
+// Mapování proto patří konkrétní kresbě: dva sémantické klíče sdílející jeden
+// soubor vždy dostanou stejnou Lazurio barvu na ikoně i na hover/focus hraně.
+const LAZURIO_APP_ICON_ACCENTS = Object.freeze({
+  "mission-control-96.png": "var(--lz-blue-500)",
+  "presentation-96.png": "var(--lz-expressive-orchid)",
+  "settings-96.png": "var(--lz-blue-500)",
+  "clients-96.png": "var(--lz-expressive-mint)",
+  "knowledgebase-96.png": "var(--lz-expressive-mint)",
+  "guide-96.png": "var(--lz-expressive-yellow)",
+  "content-96.png": "var(--lz-expressive-orange)",
+  "lazurio-design-system-96.png": "var(--lz-expressive-orchid)",
+  "website-lazurio-96.png": "var(--lz-blue-500)",
+  "brainstorm-96.png": "var(--lz-expressive-yellow)",
+  "deals-96.png": "var(--lz-expressive-vermilion)",
+  "pricebook-96.png": "var(--lz-expressive-vermilion)",
+  "invoices-96.png": "var(--lz-expressive-orange)",
+});
+
 const APP_ICON_STYLES = {
   stavba: { color: "var(--lz-blue-500)", background: "transparent", border: "transparent" },
   obsah: {
@@ -5262,12 +5281,12 @@ function appIconStyle(key) {
 
 function appIconAccent(key) {
   const style = APP_ICON_STYLES[appIconFamily(key)];
-  return style.accent ?? style.color;
+  return LAZURIO_APP_ICON_ACCENTS[LAZURIO_APP_ICON_FILES[key]] ?? style.accent ?? style.color;
 }
 
 function appIconFocusAccent(key) {
   const style = APP_ICON_STYLES[appIconFamily(key)];
-  return style.focusAccent ?? style.color;
+  return LAZURIO_APP_ICON_ACCENTS[LAZURIO_APP_ICON_FILES[key]] ?? style.focusAccent ?? style.color;
 }
 
 function appIconSvg(key) {
