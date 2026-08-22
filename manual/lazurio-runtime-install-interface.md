@@ -37,6 +37,10 @@ obsah artifact rootu do nové immutable vrstvy. Iotor může tuto vrstvu připno
 exact image digestem a namountovat ji read-only jako `/opt/lazurio-runtime`.
 Runtime nemá self-update službu a nevytváří druhý kontejner ani druhou službu.
 
+Lokální `lazurio launchpad install` je od toho oddělený desktopový krok: pouze
+dispatchuje existující macOS nebo Windows instalátor uživatelského launcheru,
+nemění Git checkout ani immutable runtime a nezavádí další lifecycle autoritu.
+
 ## Launchpad process interface
 
 Supervisor ve stejném workspace kontejneru nastaví:
@@ -70,6 +74,10 @@ oddělené operace:
    → Workspace Moduly;
 3. Productionspace, Personalspace, worktrees a root-space repository-db
    zůstávají mimo obecný update engine.
+
+Instalace desktopového Launchpadu není implicitní čtvrtý krok tohoto update
+pořadí; uživatel nebo rollout ji spouští explicitně příkazem
+`lazurio launchpad install`.
 
 Odstranění hosted checkout pinu je bezpečné až po nasazení a health ověření
 immutable runtime vrstvy. Rollback runtime přepne image/artifact digest;
