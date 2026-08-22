@@ -404,9 +404,12 @@ function addGeneratedEntry(entries, path, value, mode) {
 function residentPackageJson(profile) {
   const workspace = profile === "workspace";
   return `${JSON.stringify({
-    name: `lazurio-resident-${profile}`,
+    name: "lazurio",
     private: true,
     type: "module",
+    bin: {
+      lazurio: "lazurio/cli.mjs",
+    },
     scripts: {
       doctor: "bun resident/doctor.mjs",
       "doctor:json": "bun resident/doctor.mjs --json",

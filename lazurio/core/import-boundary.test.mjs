@@ -141,7 +141,10 @@ test("Server identity and install-generation compatibility have one Core owner",
     .map(({ importer }) => importer)
     .sort();
 
-  expect(consumers).toEqual(["launchpad/src/server.mjs"]);
+  expect(consumers).toEqual([
+    "launchpad/src/server.mjs",
+    "lazurio/cli-install-lib.mjs",
+  ]);
 });
 
 test("Server install generation covers the complete local import closure", async () => {

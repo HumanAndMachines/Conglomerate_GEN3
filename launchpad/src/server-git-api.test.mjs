@@ -417,7 +417,7 @@ test("launcher replaces a stale same-root Server on the same port", async () => 
   tempRoots.push(root);
   const port = await findFreePort();
   const instanceId = "2a6db6d3-ad60-42b7-b6a8-e522ac838284";
-  const rootId = computeServerRootId(realpathSync(root));
+  const rootId = computeServerRootId(realpathSync.native(root));
   const blockerPath = join(root, "stale-server.mjs");
   await writeFile(blockerPath, staleServerFixtureSource());
   const blocker = Bun.spawn(["bun", blockerPath], {

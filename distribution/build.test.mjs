@@ -179,6 +179,10 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
   const residentPackage = JSON.parse(
     await readFile(join(first.artifact_root, "package.json"), "utf8"),
   );
+  expect(residentPackage).toMatchObject({
+    name: "lazurio",
+    bin: { lazurio: "lazurio/cli.mjs" },
+  });
   expect(residentPackage.scripts).toMatchObject({
     "resident:doctor": "bun resident/doctor.mjs",
     "resident:update": "bun resident/updater.mjs update",
@@ -196,6 +200,13 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
   });
   expect(lazurioHelp.status).toBe(0);
   expect(lazurioHelp.stdout).toContain("Lazurio CLI v0");
+  const residentPathInstall = spawnSync(
+    process.execPath,
+    ["lazurio/cli.mjs", "cli", "install", "--root", first.artifact_root],
+    { cwd: first.artifact_root, encoding: "utf8", shell: false },
+  );
+  expect(residentPathInstall.status).toBe(1);
+  expect(residentPathInstall.stderr).toContain("updater transakcí");
 
   const doctor = runDoctor(first.artifact_root);
   expect(doctor.status).toBe(0);
@@ -216,6 +227,10 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
   expect(workspacePaths.some((path) => path.includes("updater"))).toBe(false);
   expect(workspacePaths.some((path) => path.includes("buddy-service") || path.includes("buddy-rollout"))).toBe(false);
   const workspacePackage = JSON.parse(await readFile(join(workspace.artifact_root, "package.json"), "utf8"));
+  expect(workspacePackage).toMatchObject({
+    name: "lazurio",
+    bin: { lazurio: "lazurio/cli.mjs" },
+  });
   expect(workspacePackage.scripts["launchpad:serve"]).toBe("bun launchpad/src/server.mjs --reuse");
   expect(workspacePackage.scripts["resident:update"]).toBeUndefined();
   expect(workspacePackage.scripts["buddy:service"]).toBeUndefined();

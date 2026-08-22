@@ -9,6 +9,29 @@ první explicitně omezený Organization pilot.
 
 ## Instalace Launchpadu
 
+Nejdřív zpřístupni CLI v uživatelském `PATH`:
+
+```sh
+bun run lazurio -- cli install
+lazurio cli status
+```
+
+Instalace používá standardní Bun global link. Nevytváří vlastní shim,
+neupravuje shell profily ani Windows registry a nepotřebuje admin práva nebo
+certifikát. Bun global bin musí být v `PATH` už předem; když není, instalace
+skončí před mutací s přesným návodem. Existing foreign `lazurio` command se
+nespouští ani nepřepisuje. `install` je idempotentní a slouží i jako reinstall.
+Veřejný self-uninstall ve v0 není: na Windows Bun launcher čeká na běžící CLI,
+takže vlastní `.exe` nelze synchronně přesně odstranit bez druhého cleanup
+mechanismu. Exact Bun unlink proto patří pozdějšímu machine updateru, který
+neběží přes tento launcher.
+
+CLI bez `--root` vždy použije root vlastního entrypointu, takže funguje z
+libovolného pracovního adresáře. Explicitní `--root` zůstává vědomý override.
+Linked task/PR worktree se permanentním PATH targetem stát nesmí.
+
+Potom lze samostatně nainstalovat desktop Launchpad:
+
 ```sh
 # z vývojového/source checkoutu
 bun run lazurio -- launchpad install
@@ -28,6 +51,11 @@ chybou.
 `lazurio launchpad install` neprovádí Git update. `lazurio update` naopak
 nemění desktop launcher. `--json` se u instalace nepřijímá, protože žádný
 druhý strojový instalační protokol v tomto slice nevzniká.
+
+Resident artefakt nese stejná package/bin metadata, ale jeho immutable
+`active` switch zatím CLI link nepřepíná. Bun při linku připíná fyzickou
+version cestu; atomický Resident switch + relink + rollback proto zůstává
+samostatný updater krok, nikoli skrytá součást source instalace.
 
 ## Context kontrakt
 

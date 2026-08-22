@@ -46,6 +46,15 @@ test("server identity separates root, install generation, and process instance",
   expect(() => buildServerIdentity({ ...identity, rootId: "not-a-hash" })).toThrow();
 });
 
+test("Windows root identity normalizes equivalent casing, separators and namespace prefixes", () => {
+  const expected = computeServerRootId("C:\\Users\\Builder\\Lazurio", "win32");
+  expect(computeServerRootId("c:/users/builder/lazurio/", "win32")).toBe(expected);
+  expect(computeServerRootId("\\\\?\\C:\\USERS\\BUILDER\\LAZURIO", "win32")).toBe(expected);
+
+  const unc = computeServerRootId("\\\\server\\share\\Lazurio", "win32");
+  expect(computeServerRootId("\\\\?\\UNC\\SERVER\\SHARE\\LAZURIO\\", "win32")).toBe(unc);
+});
+
 test("install generation hashes one deterministic cross-platform source set", async () => {
   const root = await sourceFixture();
   const initial = computeServerInstallGeneration(root);

@@ -1,12 +1,21 @@
 #!/usr/bin/env bun
 
+import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { renderHumanDoctorReport } from "../launchpad/src/doctor-output-lib.mjs";
 import { DOCTOR_EXIT_CODES } from "../launchpad/src/doctor-surface-lib.mjs";
 import { formatUpdateLaneReport } from "../launchpad/src/update-cli-lib.mjs";
 import { runIsolatedLazurioUpdate } from "../launchpad/src/lazurio-update-runner-lib.mjs";
 import { buildLazurioContext, buildLazurioDoctorReport } from "./lib.mjs";
+import {
+  buildLazurioCliIdentity,
+  inspectLazurioCliInstallation,
+  installLazurioCli,
+  renderHumanCliIdentity,
+  renderHumanCliInstallation,
+} from "./cli-install-lib.mjs";
 import { runLaunchpadInstall } from "./launchpad-install-lib.mjs";
 import {
   buildLazurioSearchStatus,
@@ -63,6 +72,19 @@ async function run(argv) {
     return runLaunchpadInstall({ root: options.root });
   }
 
+  if (options.command === "cli") {
+    if (options.cliAction === "identity") {
+      const identity = buildLazurioCliIdentity({ root: options.root });
+      console.log(options.json ? JSON.stringify(identity, null, 2) : renderHumanCliIdentity(identity));
+      return 0;
+    }
+    const report = options.cliAction === "install"
+      ? installLazurioCli({ root: options.root })
+      : inspectLazurioCliInstallation({ root: options.root });
+    console.log(options.json ? JSON.stringify(report, null, 2) : renderHumanCliInstallation(report));
+    return 0;
+  }
+
   if (options.command === "search") {
     if (options.searchAction === "status") {
       const status = await buildLazurioSearchStatus({
@@ -106,7 +128,7 @@ async function run(argv) {
 function parseArgs(argv) {
   const parsed = {
     command: null,
-    root: process.cwd(),
+    root: defaultCliRoot(),
     organization: null,
     json: false,
     help: false,
@@ -125,7 +147,7 @@ function parseArgs(argv) {
       parsed.command = arg;
       continue;
     }
-    if (["search", "launchpad"].includes(parsed.command) && !arg.startsWith("-")) {
+    if (["search", "launchpad", "cli"].includes(parsed.command) && !arg.startsWith("-")) {
       parsed.operands.push(arg);
       continue;
     }
@@ -230,6 +252,17 @@ function parseArgs(argv) {
       throw new Error("`lazurio launchpad install` nepodporuje --json; předává přímo výstup platformního instalátoru.");
     }
     parsed.launchpadAction = "install";
+  } else if (parsed.command === "cli") {
+    if (parsed.searchFlags.size > 0) {
+      throw new Error(`${[...parsed.searchFlags].join(", ")} lze použít pouze s příkazem search.`);
+    }
+    if (parsed.operands.length === 1 && parsed.operands[0] === "uninstall") {
+      throw new Error("`lazurio cli uninstall` není veřejná v0 operace. Exact odregistrování provede Lazurio updater mimo běžící Windows shim.");
+    }
+    if (parsed.operands.length !== 1 || !new Set(["install", "status", "identity"]).has(parsed.operands[0])) {
+      throw new Error("cli vyžaduje jedinou akci `install` nebo `status`.");
+    }
+    parsed.cliAction = parsed.operands[0];
   } else if (parsed.searchFlags.size > 0) {
     throw new Error(`${[...parsed.searchFlags].join(", ")} lze použít pouze s příkazem search.`);
   }
@@ -245,6 +278,10 @@ function requiredInlineValue(arg, name) {
   return value;
 }
 
+function defaultCliRoot() {
+  return realpathSync.native(fileURLToPath(new URL("..", import.meta.url)));
+}
+
 function usage() {
   return [
     "Lazurio CLI v0 (unstable)",
@@ -253,6 +290,8 @@ function usage() {
     "  lazurio context [--organization <slug>] [--json] [--root <cesta>]",
     "  lazurio doctor [--json] [--root <cesta>]",
     "  lazurio update [--json] [--root <cesta>]",
+    "  lazurio cli install [--json] [--root <cesta>]",
+    "  lazurio cli status [--json] [--root <cesta>]",
     "  lazurio launchpad install [--root <cesta>]",
     "  lazurio search <dotaz> [--mode exact|lexical|semantic|hybrid] [--scope lazurio] [--limit N] [--json] [--root <cesta>]",
     "  lazurio search --status [--scope lazurio] [--json] [--root <cesta>]",
