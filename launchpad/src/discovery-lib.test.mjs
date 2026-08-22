@@ -706,6 +706,19 @@ test("lazurio.runtime.v1 discovers one entrypoint and auxiliary listeners", asyn
   );
 
   await writeFile(runtimeSourcePath, "Bun.serve({ port: Number(process.env.PORT) });\n", "utf8");
+  const envPath = join(root, "organizations", "TestCompany", "modules", "demo", "app", "v1", ".env.local");
+  await writeFile(envPath, "SECRET=value\nPORT=5283\nLAZURIO_RUNTIME_LISTENER_WEB_HOST=0.0.0.0\n", "utf8");
+  const envAuthority = await discoverLaunchpadApps(root);
+  expect(envAuthority.invalid_apps).toHaveLength(1);
+  expect(envAuthority.failures.join("\n")).toContain(
+    ".env.local: PORT nesmí být per-machine port autorita",
+  );
+  expect(envAuthority.failures.join("\n")).toContain(
+    ".env.local: LAZURIO_RUNTIME_LISTENER_WEB_HOST nesmí být per-machine port autorita",
+  );
+  expect(envAuthority.failures.join("\n")).not.toContain("SECRET=value");
+  await rm(envPath);
+
   packageJson.scripts.dev = "vite --port 5281";
   await writeJson(packagePath, packageJson);
   const drift = await discoverLaunchpadApps(root);

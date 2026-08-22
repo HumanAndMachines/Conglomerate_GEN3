@@ -461,6 +461,12 @@ Kontrolní pravidla:
 - Každý runtime listener odkazuje na stabilní module lease. Main, verze i
   worktrees stejného modulu používají shodný materializovaný port; dynamické
   i inline runtime porty jsou nevalidní.
+- Přesný port je verzovaný výhradně v module-root `lazurio.module.json`.
+  Principál nenastavuje `PORT`, `HOST` ani
+  `LAZURIO_RUNTIME_LISTENER_<ID>_PORT/HOST` v `.env`; tyto proměnné jsou pouze
+  Launchpadem injektované procesní rozhraní. Chybějící injekci nesmí modul
+  obcházet lokálním `.env` fallbackem a Doctor takovou rezervovanou deklaraci
+  odmítne bez vypsání její hodnoty.
 - Organization blok deklaruje jedině centrální `lazurio.port-registry.json`
   a slouží jako allocator nových lease. Chybějící module lease, dvě Module ID
   na stejném portu uvnitř jedné Organization a cross-module překryv jsou hard
