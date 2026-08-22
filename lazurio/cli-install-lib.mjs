@@ -44,6 +44,7 @@ export function buildLazurioCliIdentity({ root }) {
   return Object.freeze({
     schema_version: LAZURIO_CLI_IDENTITY_SCHEMA,
     product: LAZURIO_CLI_PRODUCT,
+    root_path: canonicalRoot,
     root_id: computeServerRootId(canonicalRoot),
     install_generation: computeServerInstallGeneration(canonicalRoot),
   });
@@ -56,6 +57,8 @@ export function isValidLazurioCliIdentity(identity) {
     && !Array.isArray(identity)
     && identity.schema_version === LAZURIO_CLI_IDENTITY_SCHEMA
     && identity.product === LAZURIO_CLI_PRODUCT
+    && typeof identity.root_path === "string"
+    && isAbsolute(identity.root_path)
     && sha256Pattern.test(identity.root_id ?? "")
     && sha256Pattern.test(identity.install_generation ?? ""),
   );
@@ -266,9 +269,12 @@ export function installLazurioCli(options = {}) {
         );
       }
     }
+    const rootMismatch = after.reason === "identity_root_mismatch"
+      ? ` Očekávaný root: ${after.expected.root_path}; spuštěný root: ${after.observed?.root_path ?? "nezjištěn"}.`
+      : "";
     throw new LazurioCliInstallError(
       "install_verification_failed",
-      `Bun link proběhl, ale direct Lazurio CLI nelze ověřit (${after.reason}).`,
+      `Bun link proběhl, ale direct Lazurio CLI nelze ověřit (${after.reason}).${rootMismatch}`,
     );
   }
   return installationAction(after, "install", true);
@@ -327,6 +333,7 @@ export function uninstallLazurioCli(options = {}) {
 export function renderHumanCliIdentity(identity) {
   return [
     "Lazurio CLI identity",
+    `Root: ${identity.root_path}`,
     `Root ID: ${identity.root_id}`,
     `Install generation: ${identity.install_generation}`,
   ].join("\n");
