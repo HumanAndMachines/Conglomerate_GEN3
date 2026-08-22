@@ -158,7 +158,7 @@ mandát; Agent je vykonavatel práce.
 Tento odborný úsudek Agentovi nepřiděluje business pravomoc ani právo měnit
 záměr Ownera. Drží kvalitu Draftu: pokud by konformní implementace vyžadovala
 nové produktové nebo architektonické rozhodnutí, Agent hranici pravdivě
-pojmenuje a rozhodnutí vrátí oprávněnému Principálovi. Pracovní kontrakt pro
+pojmenuje a rozhodnutí vrátí oprávněnému Ownerovi. Pracovní kontrakt pro
 každou source změnu drží skill `architecture-shaping`.
 
 ## Jeden technický základ, dva Resident profily

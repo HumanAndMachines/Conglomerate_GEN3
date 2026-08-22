@@ -247,7 +247,13 @@ platí odpověď „nemá".**
 
 ## Zásadní pravidlo
 
-Nepracuj v konkrétní firmě z rootu. Nejdřív vyber organizaci v `organizations/<org>/`, přečti její `AGENTS.md` a až potom měň její obsah.
+Nepracuj v konkrétní firmě z rootu. Nejdřív vyber organizaci v
+`organizations/<org>/`, přečti její `AGENTS.md` a až potom měň její obsah.
+Kanonický Model spolupráce a Hodnoty Worker Agentů výše jsou ale společná
+source baseline pro práci zahájenou pod tímto Lazurio rootem: bližší
+Organization, modulový nebo Personalspace `AGENTS.md` doplňuje doménový
+kontext, ale bez vyššího rozhodnutí neoslabuje decision 0130. Operativní root
+pravidla, data a pravomoci se tím do child scope nepřenášejí.
 
 ## Chat-first vstup do Launchpadu pro App Agenty
 
@@ -287,7 +293,9 @@ neinteraktivní běhy bez přímého App chatu s Kolegou.
    o firmě, klientovi, modulu, Mission Control plánu nebo productionspace
    repu pokračuje v Organization checkoutu podle jeho `AGENTS.md`; úkol
    o personalspace podle `personalspace/<owner>_GEN3/AGENTS.md`. Root
-   pravidla platí jen pro root. **Čtvrtý scope není lokální:** běh
+   operativní pravidla platí jen pro root; společný Model spolupráce, Hodnoty
+   Worker Agentů a architecture-shaping baseline platí dál. **Čtvrtý scope
+   není lokální:** běh
    hostovaného Buddyho (instalace, runtime, paměť, zálohy, incidenty) žije
    na dedikované per-owner VPS pod vygenerovaným `AGENTS.md` aktivního Buddy
    resident rootu a privátním profilem jeho Principála, ne pod pravidly source
@@ -309,8 +317,8 @@ neinteraktivní běhy bez přímého App chatu s Kolegou.
    task/PR worktree. Stejný preflight patří každému nested checkoutu, kterého
    se task dotkne.
 3. **Architektonicky vytvaruj každou source změnu.** Před implementací načti
-   skill `.agents/skills/architecture-shaping/SKILL.md`, odděl záměr
-   Principála od navrženého mechanismu a zvol nejmenší konformní cestu.
+   skill `<Lazurio root>/.agents/skills/architecture-shaping/SKILL.md`, odděl
+   záměr Principála od navrženého mechanismu a zvol nejmenší konformní cestu.
 4. **Drž worktree disciplínu.** Primární checkout zůstává na `main` a nemění
    se v něm trackovaný obsah. Postup, kanonickou cestu
    `.worktrees/root/<canonical-plan-basename>/` se sidecarem, PR lifecycle
@@ -370,6 +378,9 @@ Root upravuj jen když se mění:
 - Desktop-agent collaboration — kanonický domov je skill
   `.agents/skills/desktop-execution-agent-collaboration/SKILL.md`; manuálový
   pointer `manual/desktop-execution-agent-collaboration.md`
+- Kritické vytvarování každé source změny — kanonický domov je skill
+  `.agents/skills/architecture-shaping/SKILL.md`; hodnotovou autoritu drží
+  Model spolupráce výše a decision 0130 (`manual/decision-register.md`)
 - Worktree create/inventura/předávka/cleanup — consumer skill
   `.agents/skills/worktree-development-discipline/SKILL.md`; autorita
   decision 0049 (`manual/decision-register.md`) a shaping manual
