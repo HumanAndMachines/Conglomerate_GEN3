@@ -916,10 +916,10 @@ function startServer(startPort) {
     idleTimeout: 120,
     async fetch(request) {
       const url = new URL(request.url);
-      let trustedWorkspaceRequest;
-      const isTrustedWorkspaceRequest = () => {
-        trustedWorkspaceRequest ??= requestTrust.isTrustedWorkspaceRequest(request, url);
-        return trustedWorkspaceRequest;
+      let workspaceTrustDecision;
+      const evaluateWorkspaceRequest = () => {
+        workspaceTrustDecision ??= requestTrust.evaluateWorkspaceRequest(request, url);
+        return workspaceTrustDecision;
       };
       let trackedMutation = false;
       try {
@@ -932,8 +932,12 @@ function startServer(startPort) {
           }
           return handleServerShutdown(request);
         }
-        if (isMutatingApiRequest(request, url) && !await isTrustedWorkspaceRequest()) {
-          return jsonResponse({ error: "mutating_request_forbidden" }, 403);
+        if (isMutatingApiRequest(request, url)) {
+          const trustDecision = await evaluateWorkspaceRequest();
+          if (!trustDecision.trusted) {
+            console.warn(`[lazurio] mutating request rejected: ${trustDecision.reason}`);
+            return jsonResponse({ error: "mutating_request_forbidden" }, 403);
+          }
         }
         if (moduleFolderRoute(url.pathname) && !requestTrust.isTrustedLocalRequest(request, url)) {
           return jsonResponse({ error: "module_folder_request_forbidden" }, 403);
