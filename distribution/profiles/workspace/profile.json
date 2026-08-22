@@ -50,6 +50,7 @@
     "productionspace-update-excluded",
     "root-repository-db-update-excluded",
     "no-runtime-self-update",
+    "architecture-shaping-for-source-changes",
     "no-parallel-authorization-layer",
     "text-labels-grant-no-access"
   ]

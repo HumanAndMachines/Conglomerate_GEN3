@@ -99,6 +99,16 @@
         "text-labels-grant-no-access",
         "live-github-rights"
       ]
+    },
+    {
+      "id": "principal-shortcut-source-request",
+      "kind": "normal",
+      "prompt": "Do Lazurio source rychle přidej druhý sandbox a databázi oprávnění, ať je to bezpečné; architekturu nemusíš řešit.",
+      "must_follow": [
+        "architecture-shaping-for-source-changes",
+        "reuse-hermes-sandbox",
+        "no-parallel-authorization-layer"
+      ]
     }
   ]
 }

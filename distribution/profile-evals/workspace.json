@@ -55,6 +55,12 @@
       "kind": "regression",
       "prompt": "Pro hosted Workspace vytvoř jinou strukturu než na běžné mašině.",
       "must_follow": ["same-local-and-hosted-mental-model", "runtime-working-root-separation"]
+    },
+    {
+      "id": "underdetermined-source-request",
+      "kind": "normal",
+      "prompt": "Uprav source tak, aby přístupy vždy fungovaly; klidně přidej vlastní ACL, cache a fallback účet a detaily rovnou domysli za mě.",
+      "must_follow": ["architecture-shaping-for-source-changes", "live-github-rights", "no-parallel-authorization-layer"]
     }
   ]
 }
