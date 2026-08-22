@@ -4,6 +4,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { tmpdir } from "node:os";
 import { delimiter, isAbsolute, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import { validateAgainstSchema } from "../launchpad/src/json-schema-mini.mjs";
 import { trustedGitExecutable } from "../scripts/agent-skills-entrypoint.mjs";
 import {
@@ -203,6 +204,8 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
   expect(workspace.manifest.profile).toBe("workspace");
   expect(await verifyArtifactTree(workspace.artifact_root)).toMatchObject({ ok: true, failures: [] });
   expect(workspacePaths).toContain("launchpad/src/server.mjs");
+  expect(workspacePaths).toContain("scripts/worktree-create-lib.mjs");
+  expect(workspacePaths).toContain("scripts/worktree-create-lock.mjs");
   expect(workspacePaths.some((path) => path.startsWith("bridge/"))).toBe(false);
   expect(workspacePaths.some((path) => path.includes("updater"))).toBe(false);
   expect(workspacePaths.some((path) => path.includes("buddy-service") || path.includes("buddy-rollout"))).toBe(false);
@@ -210,6 +213,11 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
   expect(workspacePackage.scripts["launchpad:serve"]).toBe("bun launchpad/src/server.mjs --reuse");
   expect(workspacePackage.scripts["resident:update"]).toBeUndefined();
   expect(workspacePackage.scripts["buddy:service"]).toBeUndefined();
+  const workspaceWorktreeActions = await import(pathToFileURL(
+    join(workspace.artifact_root, "launchpad", "src", "worktree-actions-lib.mjs"),
+  ).href);
+  expect(workspaceWorktreeActions.createWorktreeFromPlan).toBeFunction();
+  expect(workspaceWorktreeActions.publishWorktreeDraft).toBeFunction();
 
   const injectedGit = join(first.artifact_root, "launchpad", ".git");
   await mkdir(injectedGit);
