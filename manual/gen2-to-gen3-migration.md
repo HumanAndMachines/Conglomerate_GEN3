@@ -668,7 +668,7 @@ Platí:
 Kořen modulu deklaruje `lazurio.module.v1` jako jedinou autoritu přesného portu.
 Každá spustitelná appka deklaruje `lazurio.runtime.v1` ve svém `package.json`
 jako autoritu příkazu, protokolu a health checku; na module lease pouze
-odkazuje. `Conglomerate/lazurio.port-registry.json` vlastní Organization blok
+odkazuje. `Lazurio/lazurio.port-registry.json` vlastní Organization blok
 pro přidělování nových lease, nikoli pro přečíslování existujících portů.
 Žádná z těchto hodnot se neduplikuje do `company.gen3.json` ani
 `modules.manifest.json`.
@@ -742,6 +742,17 @@ Split web/API zůstává explicitní zdůvodněná výjimka, nový modul má jed
 listener pro UI i API. Productionspace app
 manifest se tímto automaticky nestává spustitelným Launchpad lifecycle
 povrchem.
+
+Runtime proměnné jsou jednosměrná materializace tracked lease do child procesu.
+Nejsou per-machine konfigurace: Principál je nepřidává do `.env`, `.env.local`
+ani mode-specific `.env.*`. Launchpad je při každém Start/Open odvodí z
+`lazurio.module.json` a jeho hodnoty mají přednost před zděděným prostředím i
+automaticky načtenými `.env` soubory. Chybějící injekce při přímém spuštění se
+řeší spuštěním přes Launchpad nebo manifest-aware launcher, nikoli lokálním
+portovým fallbackem. `.env` zůstává pouze pro machine-local hodnoty, které
+nejsou verzovanou runtime identitou; Doctor deklaraci rezervovaných runtime
+port/host proměnných v načítaném `.env*` souboru odmítne bez zveřejnění její
+hodnoty.
 
 Pro každou zděděnou `app/vN` udělej census: `wire`, `defer` nebo `retire` s
 ownerem a důvodem. Required daily app bez validního manifestu blokuje cohort

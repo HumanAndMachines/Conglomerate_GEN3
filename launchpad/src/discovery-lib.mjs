@@ -518,6 +518,55 @@ export function runtimeScriptPortAuthorityIssues({ packageJson, packagePath, mod
   return issues;
 }
 
+const reservedRuntimeEnvNames = new Set([
+  "HOST",
+  "PORT",
+  "LAZURIO_RUNTIME_HOST",
+  "LAZURIO_RUNTIME_PORT",
+  "LAZURIO_RUNTIME_LISTENERS_JSON",
+]);
+
+function isRuntimeLoadedEnvFile(name) {
+  if (name === ".env" || name === ".env.local") return true;
+  if (!name.startsWith(".env.")) return false;
+  return ![".env.example", ".env.sample", ".env.template"].includes(name);
+}
+
+function isReservedRuntimeEnvName(name) {
+  return reservedRuntimeEnvNames.has(name)
+    || /^LAZURIO_RUNTIME_LISTENER_[A-Z0-9_]+_(?:HOST|PORT)$/.test(name);
+}
+
+export async function runtimeEnvPortAuthorityIssues({ packageDirectory, packagePath }) {
+  let entries;
+  try {
+    entries = await readdir(packageDirectory, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const issues = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !isRuntimeLoadedEnvFile(entry.name)) continue;
+    const absolutePath = join(packageDirectory, entry.name);
+    let source;
+    try {
+      source = await readFile(absolutePath, "utf8");
+    } catch {
+      continue;
+    }
+    for (const line of source.split(/\r?\n/)) {
+      const declaration = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/);
+      const name = declaration?.[1];
+      if (!name || !isReservedRuntimeEnvName(name)) continue;
+      issues.push(
+        `${posix.join(posix.dirname(packagePath), entry.name)}: ${name} nesmí být per-machine port autorita; deklaruj lease v module-root lazurio.module.json a nech ji injektovat Launchpadem`,
+      );
+    }
+  }
+  return issues;
+}
+
 function splitRuntimeValidationIssues(issues) {
   const authority = [];
   const appLocal = [];
@@ -1565,6 +1614,10 @@ export async function discoverLaunchpadApps(
           packageJson,
           packagePath,
           module: moduleResult.module,
+        }));
+        runtimeContractIssues.push(...await runtimeEnvPortAuthorityIssues({
+          packageDirectory: dirname(absolutePackagePath),
+          packagePath,
         }));
         runtimeContractIssues.push(...await runtimeSourcePortAuthorityIssues({
           packageDirectory: dirname(absolutePackagePath),

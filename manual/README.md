@@ -111,7 +111,11 @@ runtime/cache cesty, ne custody source of truth.
 - Pokud se mění registry nebo mountpointy, změna musí být propsaná do docs, test fixtures a Launchpad discovery.
 - V `organizations/` root repo nikdy netrackuje konkrétní Organization checkouty ani submodule pointery; na GitHubu tam patří jen `organizations/README.md`.
 - Pokud je otevřená otázka bez rozhodnutého řešení, patří do `ISSUES.open.json`, ne do ad-hoc Markdown poznámky.
-- Shared Launchpad nesmí držet hardcodované porty jedné organizace; port deklaruje aplikace ve svém `package.json`.
+- Shared Launchpad nesmí držet hardcodované porty jedné Organizace. Přesný
+  port vlastní verzovaný module-root `lazurio.module.json`; `package.json`
+  pouze odkazuje na lease jejím ID. `PORT`, `HOST` a
+  `LAZURIO_RUNTIME_LISTENER_<ID>_PORT/HOST` jsou Launchpadem materializované
+  procesní rozhraní, ne hodnoty, které má Principál nastavovat v `.env`.
 - Doctor je read-only. Když hlásí problém v Git stavu, submodulech nebo `.gitignore` ochraně runtime/private/archive cest, oprav source-of-truth soubor nebo mountpoint.
 - Secret hodnoty, OAuth URL/kódy, tokeny, hesla a obsah JSON credential souborů
   se nesmí posílat chatem ani commitovat; closeout používej jen metadata-only
