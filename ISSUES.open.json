@@ -293,6 +293,57 @@
           "path": "launchpad/src/apps-response-cache-lib.mjs"
         }
       ]
+    },
+    {
+      "id": "issue-2026-08-22-001",
+      "title": "Propagovat architecture-shaping baseline do self-contained Lazurio šablon a Organizací",
+      "status": "implementation_planned",
+      "severity": "high",
+      "owner": "Human and Machine template Steward",
+      "created_at": "2026-08-22",
+      "updated_at": "2026-08-22",
+      "tags": [
+        "agents",
+        "architecture-shaping",
+        "organization-template",
+        "personalspace-template",
+        "template-sync",
+        "decision-0130"
+      ],
+      "question": "Jak přenést decision 0130, Hodnoty Worker Agentů a architecture-shaping skill z aktualizovaného Lazurio rootu do self-contained OrganizationTemplate_GEN3, PersonalspaceTemplate_GEN3 a živých Organization checkoutů bez ručního driftu nebo nové distribuční mašinérie?",
+      "impact": "Aktualizovaný Lazurio root dává společnou baseline všem source taskům pod svým stromem, včetně nested Organizací a Personalspace. Samostatně otevřený template nebo Organization checkout ale parent root nemusí mít a jeho bližší AGENTS.md ani lokální skill katalog zatím decision 0130 nenesou. Bez řízené propagace by univerzální hodnotový kontrakt nebyl self-contained a nový Principal by mohl získat neúplnou agentní baseline.",
+      "acceptance_criteria": [
+        "OrganizationTemplate_GEN3 a PersonalspaceTemplate_GEN3 nesou významově shodný hodnotový blok nebo explicitní kanonický consumer kontrakt decision 0130 a lokálně dostupný architecture-shaping skill.",
+        "Claude-compatible mirror zůstává byte-for-byte odvozený existující repair lane; nevznikne nový distributor ani runtime reviewer služba.",
+        "Template sync klasifikace označí hodnoty, skill a manifest jako managed generický baseline a zachová Organization-specific pravidla, business kontext a access hranice.",
+        "Každá aktivní Organizace dostane samostatný reviewovatelný sync PR nebo doložený exact-head readback stejného kontraktu; žádné business nebo Personalspace údaje se mezi repozitáři nekopírují.",
+        "Smoke v root, Organization a Personalspace source scope prokáže, že source-changing Agent skill najde a že chybějící Claude CLI nebo konkrétní model běh neblokuje."
+      ],
+      "next_action": "Po publikaci Lazurio PR #150 připravit nejdřív generický template PR, ověřit mirror a skill kontrakt, potom provést kurátorovaný per-Organization sync sweep se samostatnými PR a exact-head readbackem.",
+      "verification": [
+        "bun run doctor:agent-skills v každém template a Organization consumeru",
+        "template a Organization vlastní bun run check",
+        "byte-for-byte kontrola aktivního skillu a .claude mirroru",
+        "read-only source-task smoke bez Claude CLI závislosti"
+      ],
+      "links": [
+        {
+          "label": "Decision 0130",
+          "path": "manual/decision-register.md"
+        },
+        {
+          "label": "Canonical architecture-shaping skill",
+          "path": ".agents/skills/architecture-shaping/SKILL.md"
+        },
+        {
+          "label": "Template promotion and sync manual",
+          "path": "manual/template-promotion-and-sync.md"
+        },
+        {
+          "label": "Implementation PR #150",
+          "url": "https://github.com/HumanAndMachines/Lazurio/pull/150"
+        }
+      ]
     }
   ]
 }
