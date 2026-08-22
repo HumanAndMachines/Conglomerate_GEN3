@@ -41,6 +41,14 @@ Lokální `lazurio launchpad install` je od toho oddělený desktopový krok: po
 dispatchuje existující macOS nebo Windows instalátor uživatelského launcheru,
 nemění Git checkout ani immutable runtime a nezavádí další lifecycle autoritu.
 
+Source checkout zpřístupní samotné CLI explicitním `lazurio cli install`
+přes standardní Bun global link. Tento per-user krok neupravuje shell/Windows
+PATH konfiguraci, nevytváří shim ani state store a nikdy není součástí
+`lazurio update`. Resident package nese kompatibilní `bin` metadata, ale prostý
+link na symlinkovaný `active` není update-safe: Bun připne fyzický version
+realpath. Budoucí Resident activation proto musí active switch, relink,
+identity verification a rollback provést jako jednu samostatnou transakci.
+
 ## Launchpad process interface
 
 Supervisor ve stejném workspace kontejneru nastaví:

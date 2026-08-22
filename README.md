@@ -26,7 +26,22 @@ sessions, secrets ani mandáty.
 Chybějící lokální mount není tvrzení o GitHub přístupu — provider authority
 zůstává `not_evaluated`, dokud ji neověří živý provider readback.
 
-Ve vývojovém checkoutu se CLI spouští přes Bun:
+První instalace CLI použije Bun, který Lazurio stejně potřebuje pro aplikace
+Modulů:
+
+```sh
+bun run lazurio -- cli install
+lazurio cli status
+lazurio doctor
+```
+
+Jde o per-user Bun link bez administrátorských práv, certifikátu, vlastního
+shimu nebo změny shell/Windows PATH konfigurace. Bun global bin proto musí být
+v `PATH` už po standardní instalaci Bunu. `lazurio cli uninstall` odstraní jen
+registraci, jejíž exact canonical root předem prokáže; cizí stejnojmenný
+příkaz nepřepíše ani nespustí.
+
+Bez PATH instalace se CLI ve vývojovém checkoutu spouští přes Bun:
 
 ```sh
 bun run lazurio -- context --json
@@ -38,13 +53,16 @@ bun run lazurio -- search "český dotaz"
 bun run lazurio -- search --status
 ```
 
-Všechny příkazy přijímají `--root <cesta>`. Root může být buď tento Launchpad root
+Výchozí root patří entrypointu nainstalovaného CLI, nikoli aktuálnímu
+pracovnímu adresáři. Všechny příkazy přijímají explicitní `--root <cesta>`.
+Root může být buď tento Launchpad root
 s `launchpad.gen3.json`, nebo samostatný Personalspace root na Buddy VPS s
 `personal.gen3.json`. `lazurio doctor` nevlastní diagnostická pravidla: v
 Launchpad rootu používá existující strukturované Doctor jádro, v Personalspace
 rootu spouští přesně doctor command deklarovaný jeho manifestem. CLI v0 není
-samostatný distribuční package, veřejné Core API ani MCP server. Má dvě
-explicitní a oddělené mutace. `lazurio update` sekvenčně aktualizuje Lazurio
+veřejné Core API ani MCP server. Má tři explicitně oddělené druhy mutace:
+vlastní Bun PATH registraci, Git update a desktop Launchpad install. `lazurio
+update` sekvenčně aktualizuje Lazurio
 Root → Organization Rooty → Workspace Moduly na clean `main` přes ff-only.
 `lazurio launchpad install` pouze vybere existující platformní instalátor
 lokálního launcheru a beze změny předá jeho výstup i exit code; neaktualizuje
@@ -233,9 +251,8 @@ administrátorských práv:
 bun run lazurio -- launchpad install
 ```
 
-Budoucí PATH distribuce zpřístupní stejný veřejný příkaz jako
-`lazurio launchpad install`; tento slice instalaci CLI do `PATH` ještě
-neprovádí. Package script `bun run install:macos-app` zůstává pouze
+Po `bun run lazurio -- cli install` je stejný veřejný příkaz dostupný jako
+`lazurio launchpad install`. Package script `bun run install:macos-app` zůstává pouze
 vývojářský/bootstrap vstup do stejného adaptéru.
 
 Instalátor vytvoří ad-hoc podepsanou aplikaci
@@ -270,9 +287,8 @@ administrátorských práv:
 bun run lazurio -- launchpad install
 ```
 
-Budoucí PATH distribuce zpřístupní stejný veřejný příkaz jako
-`lazurio launchpad install`; tento slice instalaci CLI do `PATH` ještě
-neprovádí. Package script `bun run install:windows-shortcut` zůstává jen
+Po `bun run lazurio -- cli install` je stejný veřejný příkaz dostupný jako
+`lazurio launchpad install`. Package script `bun run install:windows-shortcut` zůstává jen
 přímý bootstrap vstup do stejného PowerShell adaptéru.
 
 Instalátor atomicky připraví stabilní uživatelský bootstrap a konfiguraci pod
