@@ -30,6 +30,7 @@
   "source_includes": [
     "LICENSE.md",
     "Launchpad.cmd",
+    "Launchpad-Bootstrap.ps1",
     "Launchpad.command",
     "Launchpad.ps1",
     "Install-LaunchpadShortcut.ps1",
@@ -48,6 +49,7 @@
     "lazurio/cli.mjs",
     "lazurio/context-v0.schema.json",
     "lazurio/core/",
+    "lazurio/launchpad-install-lib.mjs",
     "lazurio/lib.mjs",
     "lazurio/search-lib.mjs",
     "scripts/worktree-create-lib.mjs",
@@ -55,6 +57,8 @@
     "manual/lazurio-resident-profiles.md",
     "manual/lazurio-runtime-install-interface.md",
     "manual/update-installed-resident.md",
+    "scripts/install-launchpad-macos.sh",
+    "scripts/macos/",
     "bridge/"
   ],
   "source_excludes": {

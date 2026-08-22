@@ -7,6 +7,7 @@ import { DOCTOR_EXIT_CODES } from "../launchpad/src/doctor-surface-lib.mjs";
 import { formatUpdateLaneReport } from "../launchpad/src/update-cli-lib.mjs";
 import { runIsolatedLazurioUpdate } from "../launchpad/src/lazurio-update-runner-lib.mjs";
 import { buildLazurioContext, buildLazurioDoctorReport } from "./lib.mjs";
+import { runLaunchpadInstall } from "./launchpad-install-lib.mjs";
 import {
   buildLazurioSearchStatus,
   searchLazurioExact,
@@ -56,6 +57,10 @@ async function run(argv) {
     const report = await runIsolatedLazurioUpdate({ rootPath: options.root });
     console.log(options.json ? JSON.stringify(report, null, 2) : formatUpdateLaneReport(report));
     return report.ok ? 0 : 1;
+  }
+
+  if (options.command === "launchpad") {
+    return runLaunchpadInstall({ root: options.root });
   }
 
   if (options.command === "search") {
@@ -120,7 +125,7 @@ function parseArgs(argv) {
       parsed.command = arg;
       continue;
     }
-    if (parsed.command === "search" && !arg.startsWith("-")) {
+    if (["search", "launchpad"].includes(parsed.command) && !arg.startsWith("-")) {
       parsed.operands.push(arg);
       continue;
     }
@@ -214,6 +219,17 @@ function parseArgs(argv) {
     if (parsed.searchAction !== "query" && ["--mode", "--limit"].some((flag) => parsed.searchFlags.has(flag))) {
       throw new Error("--mode a --limit lze použít pouze se search dotazem.");
     }
+  } else if (parsed.command === "launchpad") {
+    if (parsed.searchFlags.size > 0) {
+      throw new Error(`${[...parsed.searchFlags].join(", ")} lze použít pouze s příkazem search.`);
+    }
+    if (parsed.operands.length !== 1 || parsed.operands[0] !== "install") {
+      throw new Error("launchpad vyžaduje jedinou akci `install`.");
+    }
+    if (parsed.json) {
+      throw new Error("`lazurio launchpad install` nepodporuje --json; předává přímo výstup platformního instalátoru.");
+    }
+    parsed.launchpadAction = "install";
   } else if (parsed.searchFlags.size > 0) {
     throw new Error(`${[...parsed.searchFlags].join(", ")} lze použít pouze s příkazem search.`);
   }
@@ -237,6 +253,7 @@ function usage() {
     "  lazurio context [--organization <slug>] [--json] [--root <cesta>]",
     "  lazurio doctor [--json] [--root <cesta>]",
     "  lazurio update [--json] [--root <cesta>]",
+    "  lazurio launchpad install [--root <cesta>]",
     "  lazurio search <dotaz> [--mode exact|lexical|semantic|hybrid] [--scope lazurio] [--limit N] [--json] [--root <cesta>]",
     "  lazurio search --status [--scope lazurio] [--json] [--root <cesta>]",
     "  lazurio search --update [--embed] [--scope lazurio] [--json] [--root <cesta>]",

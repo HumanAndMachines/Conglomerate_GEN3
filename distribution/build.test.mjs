@@ -144,7 +144,13 @@ test("Buddy build is deterministic, schema-valid, non-Git and self-verifying", a
   ]);
   expect(first.manifest.payload.files.map((file) => file.path)).toEqual(expect.arrayContaining([
     "lazurio/core/organization-slot-scope-lib.mjs",
+    "lazurio/launchpad-install-lib.mjs",
+    "Launchpad-Bootstrap.ps1",
     "manual/update-installed-resident.md",
+    "scripts/install-launchpad-macos.sh",
+    "scripts/macos/Info.plist",
+    "scripts/macos/launchpad-bootstrap.sh",
+    "scripts/macos/replace-app.jxa",
     "resident/integrity.mjs",
     "resident/updater-lib.mjs",
     "resident/updater.mjs",
