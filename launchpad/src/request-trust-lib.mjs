@@ -39,50 +39,79 @@ export function createRequestTrustPolicy({
     throw new Error("Launchpad hosted auth verifier requires a fetch implementation.");
   }
 
+  async function evaluateWorkspaceRequest(request, url) {
+    if (normalizedProfile === "local") {
+      const trusted = isTrustedLocalRequest(request, url);
+      return trustDecision(
+        trusted,
+        trusted ? "trusted_local" : "local_request_rejected",
+      );
+    }
+    if (!localBackendHosts.has(url.hostname)) {
+      return trustDecision(false, "hosted_backend_not_loopback");
+    }
+
+    // The hosted browser never reaches this loopback listener directly. Caddy
+    // authenticates the exact GitHub Team, strips an incoming identity header,
+    // and only then injects X-Lazurio-GitHub-Login into the proxied request.
+    // A local workspace process can forge those transport headers, so they are
+    // only routing invariants. Authorization is independently revalidated
+    // over a separately authenticated TLS route against oauth2-proxy with
+    // the browser's signed HttpOnly session cookie.
+    const login = request.headers.get("x-lazurio-github-login") ?? "";
+    if (request.headers.get("sec-fetch-site") !== "same-origin") {
+      return trustDecision(false, "hosted_fetch_site_mismatch");
+    }
+    if (request.headers.get("origin") !== hostedOrigin) {
+      return trustDecision(false, "hosted_origin_mismatch");
+    }
+    if (!githubLoginPattern.test(login)) {
+      return trustDecision(false, "hosted_gateway_login_invalid");
+    }
+
+    const cookieSelection = selectHostedAuthCookie(
+      request.headers.get("cookie") ?? "",
+      hostedCookieName,
+    );
+    if (!cookieSelection.cookie) {
+      return trustDecision(false, cookieSelection.reason);
+    }
+
+    try {
+      const authResponse = await fetchImpl(hostedAuthUrl, {
+        method: "GET",
+        headers: { cookie: cookieSelection.cookie },
+        redirect: "manual",
+        signal: AbortSignal.timeout(hostedAuthCheckTimeoutMs),
+      });
+      const authorizedLogin = authResponse.headers.get("x-auth-request-user") ?? "";
+      if (authResponse.status < 200 || authResponse.status >= 300) {
+        return trustDecision(false, "hosted_auth_rejected");
+      }
+      if (authorizedLogin !== login) {
+        return trustDecision(false, "hosted_auth_identity_mismatch");
+      }
+      return trustDecision(true, "trusted_hosted");
+    } catch {
+      return trustDecision(false, "hosted_auth_unavailable");
+    }
+  }
+
   return Object.freeze({
     profile: normalizedProfile,
     hosted_origin: hostedOrigin,
     hosted_auth_check_url: hostedAuthUrl,
     isTrustedLocalRequest,
+    evaluateWorkspaceRequest,
     async isTrustedWorkspaceRequest(request, url) {
-      if (normalizedProfile === "local") return isTrustedLocalRequest(request, url);
-      if (!localBackendHosts.has(url.hostname)) return false;
-
-      // The hosted browser never reaches this loopback listener directly. Caddy
-      // authenticates the exact GitHub Team, strips an incoming identity header,
-      // and only then injects X-Lazurio-GitHub-Login into the proxied request.
-      // A local workspace process can forge those transport headers, so they are
-      // only routing invariants. Authorization is independently revalidated
-      // over a separately authenticated TLS route against oauth2-proxy with
-      // the browser's signed HttpOnly session cookie.
-      const login = request.headers.get("x-lazurio-github-login") ?? "";
-      if (
-        request.headers.get("sec-fetch-site") !== "same-origin"
-        || request.headers.get("origin") !== hostedOrigin
-        || !githubLoginPattern.test(login)
-      ) {
-        return false;
-      }
-
-      const cookie = selectHostedAuthCookie(request.headers.get("cookie") ?? "", hostedCookieName);
-      if (!cookie) return false;
-
-      try {
-        const authResponse = await fetchImpl(hostedAuthUrl, {
-          method: "GET",
-          headers: { cookie },
-          redirect: "manual",
-          signal: AbortSignal.timeout(hostedAuthCheckTimeoutMs),
-        });
-        const authorizedLogin = authResponse.headers.get("x-auth-request-user") ?? "";
-        return authResponse.status >= 200
-          && authResponse.status < 300
-          && authorizedLogin === login;
-      } catch {
-        return false;
-      }
+      const decision = await evaluateWorkspaceRequest(request, url);
+      return decision.trusted;
     },
   });
+}
+
+function trustDecision(trusted, reason) {
+  return Object.freeze({ trusted, reason });
 }
 
 export function isTrustedLocalRequest(request, url) {
@@ -173,11 +202,11 @@ function normalizeHostedAuthCookieName(rawValue) {
 }
 
 function selectHostedAuthCookie(rawHeader, expectedName) {
-  if (
-    !rawHeader
-    || Buffer.byteLength(rawHeader, "utf8") > maxHostedCookieHeaderBytes
-  ) {
-    return null;
+  if (!rawHeader) {
+    return { cookie: null, reason: "hosted_auth_cookie_missing" };
+  }
+  if (Buffer.byteLength(rawHeader, "utf8") > maxHostedCookieHeaderBytes) {
+    return { cookie: null, reason: "hosted_auth_cookie_invalid" };
   }
 
   let selected = null;
@@ -186,8 +215,12 @@ function selectHostedAuthCookie(rawHeader, expectedName) {
     const separator = pair.indexOf("=");
     if (separator <= 0 || pair.slice(0, separator).trim() !== expectedName) continue;
     const value = pair.slice(separator + 1).trim();
-    if (!value || selected !== null) return null;
+    if (!value || selected !== null) {
+      return { cookie: null, reason: "hosted_auth_cookie_invalid" };
+    }
     selected = `${expectedName}=${value}`;
   }
-  return selected;
+  return selected
+    ? { cookie: selected, reason: "hosted_auth_cookie_selected" }
+    : { cookie: null, reason: "hosted_auth_cookie_missing" };
 }

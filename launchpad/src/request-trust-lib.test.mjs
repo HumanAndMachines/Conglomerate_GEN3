@@ -9,6 +9,10 @@ function request(headers = {}) {
 
 test("local trust accepts loopback same-origin requests and rejects foreign origins", async () => {
   const trust = createRequestTrustPolicy();
+  expect(await trust.evaluateWorkspaceRequest(request(), backendUrl)).toEqual({
+    trusted: true,
+    reason: "trusted_local",
+  });
   expect(await trust.isTrustedWorkspaceRequest(request(), backendUrl)).toBe(true);
   expect(await trust.isTrustedWorkspaceRequest(request({
     origin: backendUrl.origin,
@@ -18,6 +22,13 @@ test("local trust accepts loopback same-origin requests and rejects foreign orig
     origin: "https://evil.invalid",
     "sec-fetch-site": "cross-site",
   }), backendUrl)).toBe(false);
+  expect(await trust.evaluateWorkspaceRequest(request({
+    origin: "https://evil.invalid",
+    "sec-fetch-site": "cross-site",
+  }), backendUrl)).toEqual({
+    trusted: false,
+    reason: "local_request_rejected",
+  });
 });
 
 test("hosted trust revalidates the signed OAuth session and exact gateway identity", async () => {
@@ -50,6 +61,11 @@ test("hosted trust revalidates the signed OAuth session and exact gateway identi
 
   expect(await trust.isTrustedWorkspaceRequest(request(headers), backendUrl)).toBe(true);
   expect(authCalls).toHaveLength(1);
+  expect(await trust.evaluateWorkspaceRequest(request(headers), backendUrl)).toEqual({
+    trusted: true,
+    reason: "trusted_hosted",
+  });
+  expect(authCalls).toHaveLength(2);
   expect(authCalls[0].url).toBe(authCheckUrl);
   expect(authCalls[0].init.redirect).toBe("manual");
   expect(authCalls[0].init.headers.cookie).toBe(`${authCookieName}=valid-session`);
@@ -80,6 +96,20 @@ test("hosted trust revalidates the signed OAuth session and exact gateway identi
     ...headers,
     cookie: `${authCookieName}=forged`,
   }), backendUrl)).toBe(false);
+  expect(await trust.evaluateWorkspaceRequest(request({
+    ...headers,
+    cookie: `${authCookieName}=forged`,
+  }), backendUrl)).toEqual({
+    trusted: false,
+    reason: "hosted_auth_rejected",
+  });
+  expect(await trust.evaluateWorkspaceRequest(request({
+    ...headers,
+    cookie: `unrelated=value`,
+  }), backendUrl)).toEqual({
+    trusted: false,
+    reason: "hosted_auth_cookie_missing",
+  });
   expect(await trust.isTrustedWorkspaceRequest(request({
     ...headers,
     "x-lazurio-github-login": "other-user",
