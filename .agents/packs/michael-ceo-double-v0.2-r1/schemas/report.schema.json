@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "michael.ceo_double.report.v1",
+  "type": "object",
+  "required": ["dry_run_only", "pack_version", "terminal_state", "overall_status", "source_gaps", "decision_cards", "tool_calls_executed", "external_actions_executed"],
+  "properties": {
+    "dry_run_only": {"const": true},
+    "pack_version": {"const": "0.2.0-r1"},
+    "terminal_state": {"enum": ["COMPLETED", "PARTIAL", "BLOCKED", "FAILED", "CANCELLED"]},
+    "overall_status": {"enum": ["GREEN", "ORANGE", "RED", "GRAY_UNKNOWN"]},
+    "source_gaps": {"type": "array"},
+    "decision_cards": {"type": "array", "maxItems": 5},
+    "tool_calls_executed": {"type": "array", "maxItems": 0},
+    "external_actions_executed": {"type": "array", "maxItems": 0}
+  },
+  "additionalProperties": true
+}

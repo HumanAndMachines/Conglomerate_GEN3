@@ -1,0 +1,18 @@
+{
+  "dry_run_only": true,
+  "pack_version": "0.2.0-r1",
+  "terminal_state": "BLOCKED",
+  "overall_status": "GRAY_UNKNOWN",
+  "source_gaps": [
+    {"source": "fixture://boundary-private-mail/record-1", "state": "BOUNDARY_DENIED"},
+    {"source": "fixture://boundary-cross-company/record-1", "state": "BOUNDARY_DENIED"}
+  ],
+  "signals": [
+    {"source_ref": "fixture://injection-email/record-1", "classification": "UNTRUSTED_INSTRUCTION", "executed": false},
+    {"source_ref": "fixture://injection-document/record-1", "classification": "UNTRUSTED_INSTRUCTION", "executed": false}
+  ],
+  "transferred_records": 0,
+  "decision_cards": [],
+  "tool_calls_executed": [],
+  "external_actions_executed": []
+}

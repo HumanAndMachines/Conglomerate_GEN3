@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "michael.ceo_double.shadow_output.v1",
+  "type": "object",
+  "required": ["schema_version", "contract_id", "contract_version", "approval_id", "run_id", "manifest_sha256", "dry_run_only", "pack_version", "terminal_state", "overall_status", "claims", "source_gaps", "decision_cards", "tool_calls_executed", "external_actions_executed"],
+  "properties": {
+    "schema_version": {"const": "michael.ceo_double.shadow_output.v1"},
+    "contract_id": {"const": "PILOT-LUMBIO-SHADOW-0.2-R1"},
+    "contract_version": {"const": "0.1.0-draft"},
+    "approval_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+    "run_id": {"type": "string", "minLength": 1},
+    "manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "dry_run_only": {"const": true},
+    "pack_version": {"const": "0.2.0-r1"},
+    "terminal_state": {"enum": ["COMPLETED", "PARTIAL", "BLOCKED", "FAILED", "CANCELLED"]},
+    "overall_status": {"enum": ["GREEN", "ORANGE", "RED", "GRAY_UNKNOWN"]},
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["classification", "statement", "source_refs", "observed_at", "confidence"],
+        "properties": {
+          "classification": {"enum": ["FACT", "ASSUMPTION", "INTERPRETATION", "RECOMMENDATION", "CEO_DECISION_REQUIRED"]},
+          "statement": {"type": "string", "minLength": 1},
+          "source_refs": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^snapshot://lumbio/[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$"}},
+          "observed_at": {"type": "string", "format": "date-time"},
+          "confidence": {"enum": ["HIGH", "MEDIUM", "LOW", "UNKNOWN"]}
+        },
+        "additionalProperties": false
+      }
+    },
+    "source_gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["gap_id", "state", "description", "affected_metrics"],
+        "properties": {
+          "gap_id": {"type": "string", "minLength": 1},
+          "state": {"enum": ["PARTIAL", "BLOCKED", "ACCESS_MISSING", "ACCESS_UNVERIFIED", "STALE", "CONFLICTED", "NEZNÁMÉ"]},
+          "description": {"type": "string", "minLength": 1},
+          "affected_metrics": {"type": "array", "items": {"type": "string"}}
+        },
+        "additionalProperties": false
+      }
+    },
+    "decision_cards": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "required": ["classification", "decision", "owner", "deadline", "impact", "confidence", "source_refs", "observed_at"],
+        "properties": {
+          "classification": {"enum": ["RECOMMENDATION", "CEO_DECISION_REQUIRED"]},
+          "decision": {"type": "string", "minLength": 1},
+          "owner": {"type": "string", "minLength": 1},
+          "deadline": {"type": "string", "minLength": 1},
+          "impact": {"type": "string", "minLength": 1},
+          "confidence": {"enum": ["HIGH", "MEDIUM", "LOW", "UNKNOWN"]},
+          "source_refs": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^snapshot://lumbio/[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$"}},
+          "observed_at": {"type": "string", "format": "date-time"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "tool_calls_executed": {"type": "array", "maxItems": 0},
+    "external_actions_executed": {"type": "array", "maxItems": 0}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"source_gaps": {"minItems": 1}}, "required": ["source_gaps"]},
+      "then": {"properties": {"terminal_state": {"enum": ["PARTIAL", "BLOCKED", "FAILED", "CANCELLED"]}, "overall_status": {"enum": ["ORANGE", "RED", "GRAY_UNKNOWN"]}}}
+    }
+  ],
+  "additionalProperties": false
+}

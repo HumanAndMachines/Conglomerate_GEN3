@@ -1,0 +1,18 @@
+{
+  "fixture_id": "partial-missing-bank",
+  "synthetic": true,
+  "classification": "ANONYMIZED_TEST",
+  "organization_id": "lumbio",
+  "scope_id": "synthetic-project-b",
+  "cutoff_at": "2026-01-15T12:00:00Z",
+  "sources": [
+    {
+      "source_ref": "fixture://partial-missing-bank/receivables",
+      "observed_at": "2026-01-15T11:00:00Z",
+      "accounts_receivable": "600000.00",
+      "currency": "CZK"
+    }
+  ],
+  "missing_required_sources": ["cleared_bank", "accounts_payable", "approved_cash_floor"],
+  "expected_liquidity_status": "GRAY_UNKNOWN"
+}

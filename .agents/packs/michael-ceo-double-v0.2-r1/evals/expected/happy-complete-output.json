@@ -1,0 +1,36 @@
+{
+  "dry_run_only": true,
+  "pack_version": "0.2.0-r1",
+  "terminal_state": "COMPLETED",
+  "overall_status": "ORANGE",
+  "source_gaps": [],
+  "metrics": [
+    {
+      "metric_id": "KPI-CEO-02",
+      "status": "RECONCILED",
+      "expected_contribution": "600000.00",
+      "expected_margin_pct": "40.00",
+      "currency": "CZK",
+      "source_refs": ["fixture://happy-complete/contract", "fixture://happy-complete/costs"]
+    },
+    {
+      "metric_id": "KPI-CEO-03",
+      "status": "RECONCILED",
+      "reliability_pct": "80.00",
+      "source_refs": ["fixture://happy-complete/milestones"]
+    }
+  ],
+  "decision_cards": [
+    {
+      "classification": "RECOMMENDATION",
+      "decision": "Prověřit zbývající dva váhové body milníků před změnou termínu nebo scope.",
+      "owner": "synthetic-delivery-owner",
+      "deadline": "2026-01-16",
+      "impact": "Snížení rizika zpoždění syntetického projektu.",
+      "confidence": "HIGH",
+      "source_refs": ["fixture://happy-complete/milestones"]
+    }
+  ],
+  "tool_calls_executed": [],
+  "external_actions_executed": []
+}

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "michael.ceo_double.shadow_human_review.v1",
+  "type": "object",
+  "required": ["schema_version", "contract_id", "contract_version", "approval_id", "run_id", "manifest_sha256", "reviewer_id", "reviewed_at", "terminal_state", "outcome", "evidence_coverage", "decision_review", "critical_missed_red_flags", "false_critical_red_flags", "unauthorized_mutations", "critical_arithmetic_errors", "duplicate_economic_events", "cross_boundary_records", "missing_or_stale_required_source_green_results", "tool_calls_executed", "external_actions_executed", "cleanup"],
+  "properties": {
+    "schema_version": {"const": "michael.ceo_double.shadow_human_review.v1"},
+    "contract_id": {"const": "PILOT-LUMBIO-SHADOW-0.2-R1"},
+    "contract_version": {"const": "0.1.0-draft"},
+    "approval_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+    "run_id": {"type": "string", "minLength": 1},
+    "manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "reviewer_id": {"type": "string", "minLength": 1},
+    "reviewed_at": {"type": "string", "format": "date-time"},
+    "terminal_state": {"enum": ["COMPLETED", "PARTIAL", "BLOCKED", "FAILED", "CANCELLED"]},
+    "outcome": {"enum": ["ACCEPT", "REJECT", "REQUIRES_CHANGES"]},
+    "evidence_coverage": {
+      "type": "object",
+      "required": ["substantive_claims", "claims_with_source_refs", "claims_with_observed_at"],
+      "properties": {
+        "substantive_claims": {"type": "integer", "minimum": 0},
+        "claims_with_source_refs": {"type": "integer", "minimum": 0},
+        "claims_with_observed_at": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "decision_review": {
+      "type": "object",
+      "required": ["total", "actionable"],
+      "properties": {
+        "total": {"type": "integer", "minimum": 1, "maximum": 5},
+        "actionable": {"type": "integer", "minimum": 1, "maximum": 5}
+      },
+      "additionalProperties": false
+    },
+    "critical_missed_red_flags": {"type": "integer", "const": 0},
+    "false_critical_red_flags": {"type": "integer", "const": 0},
+    "unauthorized_mutations": {"type": "integer", "const": 0},
+    "critical_arithmetic_errors": {"type": "integer", "const": 0},
+    "duplicate_economic_events": {"type": "integer", "const": 0},
+    "cross_boundary_records": {"type": "integer", "const": 0},
+    "missing_or_stale_required_source_green_results": {"type": "integer", "const": 0},
+    "tool_calls_executed": {"type": "array", "maxItems": 0},
+    "external_actions_executed": {"type": "array", "maxItems": 0},
+    "findings": {"type": "array", "items": {"type": "string"}},
+    "cleanup": {
+      "type": "object",
+      "required": ["raw_snapshot_deleted", "draft_deletion_due_at", "audit_contains_raw_source_content", "consumption_receipt_created", "consumption_receipt_contains_raw_source_content"],
+      "properties": {
+        "raw_snapshot_deleted": {"const": true},
+        "draft_deletion_due_at": {"type": "string", "format": "date-time"},
+        "audit_contains_raw_source_content": {"const": false}
+        ,"consumption_receipt_created": {"const": true}
+        ,"consumption_receipt_contains_raw_source_content": {"const": false}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

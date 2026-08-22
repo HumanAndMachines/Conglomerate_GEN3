@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "michael.ceo_double.economic_event.v1",
+  "type": "object",
+  "required": ["event_id", "organization_id", "scope_id", "event_type", "lineage_key", "amount", "currency", "tax_mode", "source_refs"],
+  "properties": {
+    "event_id": {"type": "string"},
+    "organization_id": {"type": "string"},
+    "scope_id": {"type": "string"},
+    "event_type": {"enum": ["PIPELINE", "ORDER", "REVENUE", "INVOICE", "PAYMENT", "COST", "COMMITMENT", "FORECAST"]},
+    "lineage_key": {"type": "string"},
+    "amount": {"type": ["string", "null"], "pattern": "^-?[0-9]+(\\.[0-9]{1,2})?$"},
+    "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+    "tax_mode": {"enum": ["NET", "VAT", "GROSS", "UNKNOWN"]},
+    "source_refs": {"type": "array", "items": {"type": "string", "pattern": "^fixture://"}}
+  },
+  "additionalProperties": true
+}

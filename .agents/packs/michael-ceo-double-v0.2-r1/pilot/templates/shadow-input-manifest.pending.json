@@ -1,0 +1,31 @@
+{
+  "schema_version": "michael.ceo_double.shadow_input_manifest.v1",
+  "contract_id": "PILOT-LUMBIO-SHADOW-0.2-R1",
+  "contract_version": "0.1.0-draft",
+  "manifest_id": "PENDING_EXACT_APPROVAL",
+  "created_at": "PENDING_EXACT_APPROVAL",
+  "prepared_by_role": "PENDING_EXACT_APPROVAL",
+  "cutoff_at": "PENDING_EXACT_APPROVAL",
+  "pilot_object": {
+    "organization_id": "lumbio",
+    "scope_id": "lumbio",
+    "legal_entity_id": "PENDING_EXACT_APPROVAL",
+    "object_id": "PENDING_EXACT_APPROVAL",
+    "object_label": "EPC Hodonín — recommended candidate, not approved",
+    "responsible_owner_id": "PENDING_EXACT_APPROVAL"
+  },
+  "files": [],
+  "total_bytes": 0,
+  "known_gaps": [],
+  "boundary_review": {
+    "status": "PENDING",
+    "reviewed_by_role": "PENDING_EXACT_APPROVAL",
+    "reviewed_at": "PENDING_EXACT_APPROVAL"
+  },
+  "secret_scan": {
+    "status": "PENDING",
+    "scanner_version": "PENDING",
+    "scanned_at": "PENDING_EXACT_APPROVAL"
+  },
+  "manifest_sha256": "PENDING_AFTER_CANONICAL_MANIFEST_SERIALIZATION"
+}

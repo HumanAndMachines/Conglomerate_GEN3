@@ -1,0 +1,61 @@
+# Michael CEO Double v0.2 R1 — neaktivní review pack
+
+Tento adresář vznikl na základě explicitního schválení `ARCH-CEO-DOUBLE-0.2-R1` dne 2026-08-12. Povolen byl pouze neaktivní Agent Builder pack a anonymizované fixtures.
+
+## Stav
+
+- runtime: **neaktivní / nevytvořený**
+- live konektory: **0**
+- callable tools: **0**
+- schedule: **0**
+- GBrain write: **zakázán**
+- externí akce: **zakázány**
+- memory: **none**
+- commit/push/PR: **neprovedeno a tímto schválením nepovoleno**
+
+## Obsah
+
+- `agent-pack.json` — governance kontrakt;
+- `instructions.md` — fail-closed instrukce;
+- `policy/` — boundary, source, retention, metriky a skill router;
+- `schemas/` — návrh datových a výstupních kontraktů;
+- `evals/` — anonymizované případy, fixtures a očekávané výstupy;
+- `runbooks/` — incident, recovery a rollback návrh.
+
+## Validace
+
+Kanonický validační příkaz:
+
+```bash
+bun .agents/skills/agent-builder/scripts/validate_agent_pack.mjs .agents/packs/michael-ceo-double-v0.2-r1
+```
+
+Tento příkaz kontroluje strukturu packu; nepovoluje ani nespouští runtime.
+
+## Offline eval runner
+
+Runner je deterministický a statický: nevolá model, Hermes tools, síť, live konektory ani externí systémy. Vyhodnocuje vnitřní konzistenci všech 46 syntetických scenario kontraktů a jejich explicitních `eq` assertions, fixture-only provenance, fail-closed boundary/access/failure pravidla, nulovou aktivaci, decision limit a finanční aritmetiku. Případ bez spustitelných assertions končí `FAIL`, nikdy se nezapočítá jako PASS. Výsledek je důkaz statické konzistence kontraktů, nikoli behaviorální nebo runtime eval agenta.
+
+```bash
+bun test tests/offline-eval-runner.test.mjs
+bun scripts/offline-eval-runner.mjs > evals/results/offline-eval-report.json
+```
+
+Výstup musí mít `dry_run_only: true`, prázdné `tool_calls_executed` a `external_actions_executed` a stav `PASS`. Soubor `evals/results/offline-eval-report.json` v tomto review packu je schválený, Git-trackovaný deterministický snapshot pro kontrolu přesného commitu. Běžné budoucí regenerace zůstávají lokální a necommitnuté; aktualizace trackovaného snapshotu vyžaduje samostatně schválený commit a musí být byte-for-byte reprodukovatelná stejným runnerem.
+
+## Manuální Lumbio shadow pilot — Brána 3
+
+Adresář `pilot/` obsahuje neaktivní návrh kontraktu pro jeden budoucí manuální read-only shadow run nad jedním přesně schváleným Lumbio objektem. Samotná přítomnost těchto souborů pilot nespouští a neopravňuje k live konektorům, síti, schedule, zápisu, GBrain promoci ani externí akci.
+
+Kontrolní vrstvy:
+
+- `pilot/scripts/validate-shadow-pilot-contract.mjs` — ověří design-only stav a approval gate;
+- `pilot/scripts/preflight-shadow-snapshot.mjs` — po budoucím exact approval ověří execution commit, kontrakt, manifest, hashe, boundaries, symlinky, evidence coverage a prázdný output;
+- `pilot/scripts/validate-shadow-outcome.mjs` — mechanicky ověří výstup, lidské review, evidence coverage, actionable ratio a cleanup;
+- `pilot/tests/` — používají pouze syntetické dočasné soubory a nespouštějí pilot.
+
+Kandidát `EPC Hodonín` je pouze starší doporučení, nikoli schválený objekt. Spuštění vyžaduje samostatné přesné schválení object ID, právnické osoby, ownera, skutečného execution commitu, hashe kontraktu, hashe celého execution bundle, snapshot manifestu, cutoffu a výstupní cesty.
+
+## Samostatné budoucí approval gates
+
+Live shadow pilot, přesné source/object allowlisty, runtime storage, GBrain promotion, schedule, jakýkoli write/outbound, commit a publikace vyžadují samostatný přesný souhlas.

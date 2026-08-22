@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "michael.ceo_double.agent_run.v1",
+  "type": "object",
+  "required": ["run_id", "pack_version", "policy_version", "principal", "active_scope", "terminal_state", "tool_calls_executed", "external_actions_executed"],
+  "properties": {
+    "run_id": {"type": "string"},
+    "pack_version": {"const": "0.2.0-r1"},
+    "policy_version": {"const": "0.2.0-r1"},
+    "principal": {"const": "michael-blazicek"},
+    "active_scope": {"type": "string"},
+    "terminal_state": {"enum": ["QUEUED", "PREFLIGHT", "COLLECTING", "NORMALIZING", "RECONCILING", "ANALYZING", "VALIDATING", "RENDERING", "WAITING_APPROVAL", "COMPLETED", "PARTIAL", "BLOCKED", "FAILED", "CANCELLED"]},
+    "tool_calls_executed": {"type": "array", "maxItems": 0},
+    "external_actions_executed": {"type": "array", "maxItems": 0}
+  },
+  "additionalProperties": true
+}

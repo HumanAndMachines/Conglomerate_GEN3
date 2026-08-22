@@ -1,0 +1,14 @@
+{
+  "dry_run_only": true,
+  "pack_version": "0.2.0-r1",
+  "terminal_state": "COMPLETED",
+  "overall_status": "GREEN",
+  "source_gaps": [],
+  "calculations": {
+    "unpaid": {"value": "2584702.47", "currency": "CZK", "match": true, "source_refs": ["fixture://financial-arithmetic/issued-paid"]},
+    "advances_sum": {"value": "1079358.85", "currency": "CZK", "match": true, "source_refs": ["fixture://financial-arithmetic/advances"]}
+  },
+  "decision_cards": [],
+  "tool_calls_executed": [],
+  "external_actions_executed": []
+}

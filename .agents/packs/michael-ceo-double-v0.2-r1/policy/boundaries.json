@@ -1,0 +1,28 @@
+{
+  "schema_version": "michael.ceo_double.boundaries.v1",
+  "policy_version": "0.2.0-r1",
+  "default": "deny",
+  "cells": [
+    {"id": "lumbio", "raw_transfer_to": ["lumbio"], "pilot_execution": "separate_approval_required"},
+    {"id": "melatime", "raw_transfer_to": ["melatime"], "pilot_execution": "separate_approval_required"},
+    {"id": "humanandmachine-rozjedeme-ai", "raw_transfer_to": ["humanandmachine-rozjedeme-ai"], "pilot_execution": "separate_approval_required"},
+    {"id": "filmbase-led-glass", "raw_transfer_to": ["filmbase-led-glass"], "pilot_execution": "separate_approval_required"},
+    {"id": "michael-private", "raw_transfer_to": ["michael-private"], "pilot_execution": "separate_approval_required"}
+  ],
+  "required_record_fields": [
+    "organization_id",
+    "legal_entity_id",
+    "team_id",
+    "scope_id",
+    "mailbox_id",
+    "classification",
+    "allowed_viewers",
+    "allowed_aggregation",
+    "source_ref",
+    "observed_at",
+    "effective_at",
+    "ingested_at",
+    "retention_class"
+  ],
+  "cross_cell_rule": "raw_transfer_forbidden; only approved schema, anonymized test patterns and explicitly approved aggregate may cross"
+}

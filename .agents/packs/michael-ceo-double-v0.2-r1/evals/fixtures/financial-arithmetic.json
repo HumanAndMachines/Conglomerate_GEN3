@@ -1,0 +1,17 @@
+{
+  "fixture_id": "financial-arithmetic",
+  "synthetic": true,
+  "classification": "ANONYMIZED_TEST",
+  "organization_id": "lumbio",
+  "scope_id": "synthetic-finance",
+  "currency": "CZK",
+  "issued": "2904957.67",
+  "paid": "320255.20",
+  "expected_unpaid": "2584702.47",
+  "advances": ["222954.60", "793901.70", "62502.55"],
+  "expected_advances_sum": "1079358.85",
+  "source_refs": [
+    "fixture://financial-arithmetic/issued-paid",
+    "fixture://financial-arithmetic/advances"
+  ]
+}
